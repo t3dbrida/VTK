@@ -12,6 +12,9 @@ set(Module_SRCS
   vtkOpenGLVolumeOpacityTable.cxx
   vtkOpenGLVolumeGradientOpacityTable.cxx
   vtkOpenGLTransferFunction2D.cxx
+  #
+  vtkMultiVolumeTexture.cxx
+  vtkOpenGLGPUMultiVolumeRayCastMapper.cxx
   )
 
 set(shader_files
@@ -19,6 +22,9 @@ set(shader_files
   shaders/raycastervs.glsl
   shaders/vtkglProjectedTetrahedraVS.glsl
   shaders/vtkglProjectedTetrahedraFS.glsl
+  #
+  shaders/multiraycasterfs.glsl
+  shaders/multiraycastervs.glsl
   )
 
 unset(shader_h_files)
