@@ -148,6 +148,13 @@ public:
   vtkAxis* GetAxis(int axisIndex) override;
 
   /**
+   * Set the axis specified by axisIndex. This is specified with the vtkAxis
+   * position enum, valid values are vtkAxis::LEFT, vtkAxis::BOTTOM,
+   * vtkAxis::RIGHT and vtkAxis::TOP.
+   */
+  virtual void SetAxis(int axisIndex, vtkAxis*) override;
+
+  /**
    * Set whether the chart should draw a legend.
    */
   void SetShowLegend(bool visible) override;
@@ -186,6 +193,11 @@ public:
    * column pair.
    */
   void SetSelectionMethod(int method) override;
+
+  /**
+  * Remove all the selection from Plots
+  */
+  void RemovePlotSelections();
 
   //@{
   /**
@@ -344,11 +356,6 @@ protected:
   void RecalculatePlotBounds();
 
   /**
-  * Remove all the selection from Plots
-  */
-  void ReleasePlotSelections();
-
-  /**
    * Update the layout of the chart, this may require the vtkContext2D in order
    * to get font metrics etc. Initially this was added to resize the charts
    * according in response to the size of the axes.
@@ -490,6 +497,12 @@ private:
   bool RemovePlotFromCorners(vtkPlot* plot);
 
   void ZoomInAxes(vtkAxis* x, vtkAxis* y, float* orign, float* max);
+
+  /**
+  * Remove all the selection from Plots.
+  * The method does not call InvokeEvent(vtkCommand::SelectionChangedEvent)
+  */
+  void ReleasePlotSelections();
 
   /**
    * Transform the selection box or polygon.

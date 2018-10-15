@@ -18,6 +18,7 @@
 #include "vtkWrapPythonMethod.h"
 #include "vtkWrapPythonOverload.h"
 
+#include "vtkParseExtras.h"
 #include "vtkWrap.h"
 #include "vtkWrapText.h"
 
@@ -480,6 +481,39 @@ static int vtkWrapPython_IsValueWrappable(
     }
   }
 
+  /* wrap std::vector<T> (IsScalar means "not pointer or array") */
+  if (vtkWrap_IsStdVector(val) &&
+      vtkWrap_IsScalar(val))
+  {
+    size_t l, n;
+    const char *tname;
+    const char **args;
+    const char *defaults[2] = { NULL, "" };
+    int wrappable = 0;
+    vtkParse_DecomposeTemplatedType(val->Class, &tname, 2, &args, defaults);
+    l = vtkParse_BasicTypeFromString(args[0], &baseType, &aClass, &n);
+    /* check that type has no following '*', '[]', or '<>' decorators */
+    if (args[0][l] == '\0')
+    {
+      if (baseType != VTK_PARSE_UNKNOWN &&
+          baseType != VTK_PARSE_OBJECT &&
+          baseType != VTK_PARSE_QOBJECT &&
+          baseType != VTK_PARSE_CHAR)
+      {
+        for (j = 0; wrappableTypes[j] != 0; j++)
+        {
+          if (baseType == wrappableTypes[j])
+          {
+            wrappable = 1;
+            break;
+          }
+        }
+      }
+    }
+    vtkParse_FreeTemplateDecomposition(tname, 2, args);
+    return wrappable;
+  }
+
   aClass = val->Class;
   baseType = (val->Type & VTK_PARSE_BASE_TYPE);
 
@@ -641,7 +675,7 @@ static void vtkWrapPython_CustomMethods(
             "  vtkObjectBase *vp = ap.GetSelfPointer(self, args);\n"
             "  %s *op = static_cast<%s *>(vp);\n"
             "\n"
-            "  char *temp0s = nullptr;\n"
+            "  const char *temp0s = nullptr;\n"
             "  int temp0i = 0;\n"
             "  PyObject *temp1 = nullptr;\n"
             "  float temp2 = 0.0f;\n"
@@ -742,7 +776,7 @@ static void vtkWrapPython_CustomMethods(
       "z", "", "i", "d", "V *vtkObjectBase" };
 
     static const char *callBackTypeDecl[] = {
-      "  char *calldata = nullptr;\n",
+      "  const char *calldata = nullptr;\n",
       "",
       "  long calldata;\n",
       "  double calldata;\n",
@@ -756,7 +790,7 @@ static void vtkWrapPython_CustomMethods(
       " &&\n      ap.GetVTKObject(calldata, \"vtkObject\")" };
 
     static const char *methodCallSecondHalf[] = {
-      ", calldata",
+      ", const_cast<char *>(calldata)",
       "",
       ", &calldata",
       ", &calldata",
@@ -766,7 +800,7 @@ static void vtkWrapPython_CustomMethods(
     static const char *eventTypeString[] = { "L", "z" };
     static const char *eventTypeDecl[] = {
       "  unsigned long event;\n",
-      "  char *event = nullptr;\n" };
+      "  const char *event = nullptr;\n" };
 
     int callBackIdx, eventIdx;
 
@@ -890,7 +924,7 @@ static void vtkWrapPython_CustomMethods(
             "  vtkObjectBase *vp = ap.GetSelfPointer(self, args);\n"
             "  %s *op = static_cast<%s *>(vp);\n"
             "\n"
-            "  char *temp0;\n"
+            "  const char *temp0;\n"
             "  char tempr[256];\n"
             "  PyObject *result = nullptr;\n"
             "\n"

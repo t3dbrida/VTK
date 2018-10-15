@@ -42,7 +42,7 @@ public:
   /**
    * Is there no point at iterator position? (exit condition).
    */
-  int IsAtEnd() override;
+  vtkTypeBool IsAtEnd() override;
 
   /**
    * Move iterator to next position. (loop progression).
@@ -90,7 +90,7 @@ protected:
    */
   ~vtkBridgePointIteratorOne() override;
 
-  vtkBridgeDataSet *DataSet; // the structure on which the objet iterates.
+  vtkBridgeDataSet *DataSet; // the structure on which the object iterates.
   vtkIdType Id; // the id at current position.
   int cIsAtEnd;
 

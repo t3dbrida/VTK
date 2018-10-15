@@ -844,7 +844,6 @@ int vtkXMLReader::ReadArrayValues(
   }
   this->InReadData = 1;
   int result;
-  // All arrays types except vtkBitArray.
   vtkArrayIterator* iter = array->NewIterator();
   switch (array->GetDataType())
   {
@@ -981,7 +980,8 @@ void vtkXMLReader::ReadFieldData()
         }
         fieldData->AddArray(array);
         array->Delete();
-        if (!this->ReadArrayValues(eNested, 0, array, 0, numTuples*array->GetNumberOfComponents()))
+        if (!this->ReadArrayValues(eNested, 0, array, 0, numTuples*array->GetNumberOfComponents())
+            && numTuples)
         {
           this->DataError = 1;
         }
@@ -1582,7 +1582,7 @@ int vtkXMLReader::SetFieldDataInfo(vtkXMLDataElement *eDSA,
     return 1;
   }
 
-  char *(attributeName[vtkDataSetAttributes::NUM_ATTRIBUTES]);
+  char *attributeName[vtkDataSetAttributes::NUM_ATTRIBUTES];
 
   for (int i = 0; i < vtkDataSetAttributes::NUM_ATTRIBUTES; i++)
   {

@@ -785,7 +785,7 @@ int vtkImplicitPlaneRepresentation::RenderTranslucentPolygonalGeometry(
 }
 
 //-----------------------------------------------------------------------------
-int vtkImplicitPlaneRepresentation::HasTranslucentPolygonalGeometry()
+vtkTypeBool vtkImplicitPlaneRepresentation::HasTranslucentPolygonalGeometry()
 {
   int result=0;
   if ( this->DrawOutline )
@@ -1141,7 +1141,7 @@ namespace {
     vtkVector3d axis(0,0,0);
     axis[largest] = 1.0;
     // 3 degrees of sticky
-    if (fabs(in.Dot(axis)) > cos(3.1415926*snapAngle/180.0))
+    if (fabs(in.Dot(axis)) > cos(vtkMath::Pi()*snapAngle/180.0))
     {
       if (in.Dot(axis) < 0)
       {

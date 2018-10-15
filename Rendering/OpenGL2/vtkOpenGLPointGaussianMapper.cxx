@@ -539,7 +539,6 @@ bool vtkOpenGLPointGaussianMapperHelper::GetNeedToRebuildBufferObjects(
   vtkRenderer *vtkNotUsed(ren),
   vtkActor *act)
 {
-  // picking state does not require a rebuild, unlike our parent
   if (this->VBOBuildTime < this->GetMTime() ||
       this->VBOBuildTime < act->GetMTime() ||
       this->VBOBuildTime < this->CurrentInput->GetMTime() ||
@@ -835,6 +834,7 @@ void vtkOpenGLPointGaussianMapper::Render(
 
   // the first step is to update the helpers if needed
   if (this->HelperUpdateTime < this->GetInputDataObject(0, 0)->GetMTime() ||
+      this->HelperUpdateTime < this->GetInputAlgorithm()->GetMTime() ||
       this->HelperUpdateTime < this->GetMTime())
   {
     // update tables
@@ -921,6 +921,7 @@ void vtkOpenGLPointGaussianMapper::Render(
   {
     vtkOpenGLState *ostate = static_cast<vtkOpenGLRenderer *>(ren)->GetState();
     vtkOpenGLState::ScopedglBlendFuncSeparate bfsaver(ostate);
+    ostate->vtkglDepthMask( GL_FALSE );
     ostate->vtkglBlendFunc( GL_SRC_ALPHA, GL_ONE);  // additive for emissive sources
     this->RenderInternal(ren,actor);
   }
@@ -1016,7 +1017,7 @@ bool vtkOpenGLPointGaussianMapper::GetIsOpaque()
 {
   if (this->Emissive)
   {
-    return false;
+    return true;
   }
   return this->Superclass::GetIsOpaque();
 }
@@ -1125,4 +1126,63 @@ void vtkOpenGLPointGaussianMapper::ComputeBounds()
 void vtkOpenGLPointGaussianMapper::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os, indent);
+}
+
+void vtkOpenGLPointGaussianMapper::ProcessSelectorPixelBuffers(
+  vtkHardwareSelector *sel,
+  std::vector<unsigned int> &pixeloffsets,
+  vtkProp *prop)
+{
+  if (sel->GetCurrentPass() == vtkHardwareSelector::ACTOR_PASS)
+  {
+    this->PickPixels.clear();
+    return;
+  }
+
+  if (PickPixels.size() == 0 && pixeloffsets.size())
+  {
+    // preprocess the image to find matching pixels and
+    // store them in a map of vectors based on flat index
+    // this makes the block processing far faster as we just
+    // loop over the pixels for our block
+    unsigned char *compositedata =
+      sel->GetRawPixelBuffer(vtkHardwareSelector::COMPOSITE_INDEX_PASS);
+
+    if (!compositedata)
+    {
+      return;
+    }
+
+    int maxFlatIndex = 0;
+    for (auto hiter = this->Helpers.begin(); hiter != this->Helpers.end(); ++hiter)
+    {
+      maxFlatIndex = ((*hiter)->FlatIndex > maxFlatIndex) ? (*hiter)->FlatIndex : maxFlatIndex;
+    }
+
+    this->PickPixels.resize(maxFlatIndex + 1);
+
+    for (auto pos : pixeloffsets)
+    {
+      int compval = compositedata[pos+2];
+      compval = compval << 8;
+      compval |= compositedata[pos+1];
+      compval = compval << 8;
+      compval |= compositedata[pos];
+      compval -= 1;
+      if (compval <= maxFlatIndex)
+      {
+        this->PickPixels[compval].push_back(pos);
+      }
+    }
+  }
+
+  // for each block update the image
+  for (auto hiter = this->Helpers.begin(); hiter != this->Helpers.end(); ++hiter)
+  {
+    if (this->PickPixels[(*hiter)->FlatIndex].size())
+    {
+      (*hiter)->ProcessSelectorPixelBuffers(sel,
+        this->PickPixels[(*hiter)->FlatIndex], prop);
+    }
+  }
 }

@@ -52,7 +52,7 @@ vtkRectilinearWipeRepresentation::vtkRectilinearWipeRepresentation()
   this->Points = vtkPoints::New();
   this->Points->SetDataTypeToDouble();
   this->Points->SetNumberOfPoints(9);
-  this->ActiveParts = -1;  // inidicates that the widget is uninitialized
+  this->ActiveParts = -1;  // indicates that the widget is uninitialized
 
   this->Lines = vtkCellArray::New();
   this->Lines->Allocate(this->Lines->EstimateSize(8,2));
@@ -432,7 +432,7 @@ int vtkRectilinearWipeRepresentation::RenderTranslucentPolygonalGeometry(
 }
 
 //-----------------------------------------------------------------------------
-int vtkRectilinearWipeRepresentation::HasTranslucentPolygonalGeometry()
+vtkTypeBool vtkRectilinearWipeRepresentation::HasTranslucentPolygonalGeometry()
 {
   return this->WipeActor->HasTranslucentPolygonalGeometry();
 }

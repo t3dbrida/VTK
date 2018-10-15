@@ -800,17 +800,30 @@ void vtkChartXY::RecalculatePlotBounds()
         return;
     }
 
-    if (this->AdjustLowerBoundForLogPlot && axis->GetLogScale() && range[0] <= 0.)
+    if (this->AdjustLowerBoundForLogPlot && axis->GetLogScale() &&
+        (range[0] <= 0.0 || vtkMath::IsNan(range[0])))
     {
-      if (range[1] <= 0.)
+      if (range[1] <= 0.0 || vtkMath::IsNan(range[1]))
       {
         // All of the data is negative, so we arbitrarily set the axis range to
         // be positive and show no data
         range[1] = 1.;
       }
+
       // The minimum value is set to either 4 decades below the max or to 1,
-      // regardless of the true minimum value (which is less than 0)
-      range[0] = (range[1] < 1.e4 ? range[1] / 1.e4 : 1.);
+      // regardless of the true minimum value (which is less than 0).
+      if (axis->GetLogScaleActive())
+      {
+        // Need to adjust in log (scaled) space
+        double candidateMin = range[1] - 4.0;
+        range[0] = (candidateMin < 0.0 ? candidateMin : 0.0);
+      }
+      else
+      {
+        // Need to adjust in unscaled space
+        double candidateMin = range[1] * 1.0e-4;
+        range[0] = (candidateMin < 1.0 ? candidateMin : 1.0);
+      }
     }
     if (this->ForceAxesToBounds)
     {
@@ -1397,6 +1410,43 @@ vtkAxis* vtkChartXY::GetAxis(int axisIndex)
 }
 
 //-----------------------------------------------------------------------------
+void vtkChartXY::SetAxis(int axisIndex, vtkAxis * axis)
+{
+  if ((axisIndex < 4) && (axisIndex >= 0))
+  {
+    vtkAxis * old_axis = this->ChartPrivate->axes[axisIndex];
+    this->ChartPrivate->axes[axisIndex] = axis;
+    this->ChartPrivate->axes[axisIndex]->SetVisible(old_axis->GetVisible());
+
+    // remove the old axis
+    this->RemoveItem(old_axis);
+
+    this->AttachAxisRangeListener(this->ChartPrivate->axes[axisIndex]);
+    this->AddItem(this->ChartPrivate->axes[axisIndex]);
+
+    this->ChartPrivate->axes[axisIndex]->SetPosition(axisIndex);
+
+    vtkPlotGrid* grid1 = static_cast<vtkPlotGrid *>(this->ChartPrivate->Clip->GetItem(0));
+    vtkPlotGrid* grid2 = static_cast<vtkPlotGrid *>(this->ChartPrivate->Clip->GetItem(1));
+    switch (axisIndex)
+    {
+    case vtkAxis::BOTTOM:
+      grid1->SetXAxis(this->ChartPrivate->axes[vtkAxis::BOTTOM]);
+      break;
+    case vtkAxis::LEFT:
+      grid1->SetYAxis(this->ChartPrivate->axes[vtkAxis::LEFT]);
+      break;
+    case vtkAxis::TOP:
+      grid2->SetXAxis(this->ChartPrivate->axes[vtkAxis::TOP]);
+      break;
+    case vtkAxis::RIGHT:
+      grid2->SetYAxis(this->ChartPrivate->axes[vtkAxis::RIGHT]);
+      break;
+    }
+  }
+}
+
+//-----------------------------------------------------------------------------
 vtkIdType vtkChartXY::GetNumberOfAxes()
 {
   return 4;
@@ -1432,6 +1482,24 @@ void vtkChartXY::SetSelectionMethod(int method)
     }
   }
   Superclass::SetSelectionMethod(method);
+}
+
+//-----------------------------------------------------------------------------
+void vtkChartXY::RemovePlotSelections()
+{
+  std::vector<vtkPlot*>::iterator it = this->ChartPrivate->plots.begin();
+  for (; it != this->ChartPrivate->plots.end(); ++it)
+  {
+    vtkPlot* plot = *it;
+    if (!plot)
+    {
+      continue;
+    }
+    vtkNew<vtkIdTypeArray> emptySelectionArray;
+    emptySelectionArray->Initialize();
+    plot->SetSelection(emptySelectionArray);
+  }
+  this->InvokeEvent(vtkCommand::SelectionChangedEvent);
 }
 
 //-----------------------------------------------------------------------------
@@ -1887,34 +1955,46 @@ bool vtkChartXY::MouseButtonReleaseEvent(const vtkContextMouseEvent& mouse)
       return true;
     }
   }
-  if (mouse.GetButton() > vtkContextMouseEvent::NO_BUTTON &&
-    mouse.GetButton() <= vtkContextMouseEvent::RIGHT_BUTTON)
+
+  // Check single action click interaction/selection
+  // First check that the selection actions are invalid or it is a pan selection
+  this->MouseBox.SetWidth(mouse.GetPos().GetX() - this->MouseBox.GetX());
+  this->MouseBox.SetHeight(mouse.GetPos().GetY() - this->MouseBox.GetY());
+  bool isActionSelectInvalid = fabs(this->MouseBox.GetWidth()) < 0.5 &&
+    fabs(this->MouseBox.GetHeight()) < 0.5 &&
+    mouse.GetButton() == this->Actions.Select();
+  bool isActionSelectPolygonInvalid = this->SelectionPolygon.GetNumberOfPoints() < 2 &&
+    mouse.GetButton() == this->Actions.SelectPolygon();
+  bool isActionPan = mouse.GetButton() == this->Actions.Pan();
+
+  if (isActionSelectInvalid || isActionSelectPolygonInvalid || isActionPan)
   {
-    this->MouseBox.SetWidth(mouse.GetPos().GetX() - this->MouseBox.GetX());
-    this->MouseBox.SetHeight(mouse.GetPos().GetY() - this->MouseBox.GetY());
-    if ((fabs(this->MouseBox.GetWidth()) < 0.5 && fabs(this->MouseBox.GetHeight()) < 0.5) &&
-      (mouse.GetButton() == this->Actions.Select() || mouse.GetButton() == this->Actions.Pan()))
+    this->MouseBox.SetWidth(0.0);
+    this->MouseBox.SetHeight(0.0);
+    this->SelectionPolygon.Clear();
+    this->DrawBox = false;
+    this->DrawSelectionPolygon = false;
+    // Find the relative interaction/selection point
+    if (mouse.GetButton() == this->ActionsClick.Notify())
     {
-      // Invalid box size - treat as a single clicke event
-      this->MouseBox.SetWidth(0.0);
-      this->MouseBox.SetHeight(0.0);
-      this->DrawBox = false;
-      if (mouse.GetButton() == this->ActionsClick.Notify())
-      {
-        this->LocatePointInPlots(mouse, vtkCommand::InteractionEvent);
-        return true;
-      }
-      else if (mouse.GetButton() == this->ActionsClick.Select())
-      {
-        this->LocatePointInPlots(mouse, vtkCommand::SelectionChangedEvent);
-        return true;
-      }
-      else
-      {
-        return false;
-      }
+      this->LocatePointInPlots(mouse, vtkCommand::InteractionEvent);
+    }
+    if (mouse.GetButton() == this->ActionsClick.Select())
+    {
+      this->LocatePointInPlots(mouse, vtkCommand::SelectionChangedEvent);
+      this->InvokeEvent(vtkCommand::SelectionChangedEvent);
+    }
+    if (mouse.GetButton() != this->ActionsClick.Notify() &&
+      mouse.GetButton() != this->ActionsClick.Select())
+    {
+      return false;
+    }
+    else
+    {
+      return true;
     }
   }
+
   if (mouse.GetButton() == this->Actions.Select() ||
     mouse.GetButton() == this->Actions.SelectPolygon())
   {
@@ -2083,7 +2163,6 @@ bool vtkChartXY::MouseButtonReleaseEvent(const vtkContextMouseEvent& mouse)
               {
                 selected = plot->SelectPoints(min, max);
               }
-              vtkNew<vtkIdTypeArray> plotsSelection;
               if (selected)
               {
                 int idx = 1; // y

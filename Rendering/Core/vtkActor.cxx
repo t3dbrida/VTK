@@ -279,7 +279,7 @@ int vtkActor::RenderTranslucentPolygonalGeometry(vtkViewport *vp)
 //-----------------------------------------------------------------------------
 // Description:
 // Does this prop have some translucent polygonal geometry?
-int vtkActor::HasTranslucentPolygonalGeometry()
+vtkTypeBool vtkActor::HasTranslucentPolygonalGeometry()
 {
   if ( ! this->Mapper )
   {
@@ -540,4 +540,15 @@ bool vtkActor::GetSupportsSelection()
   }
 
   return false;
+}
+
+void vtkActor::ProcessSelectorPixelBuffers(
+  vtkHardwareSelector *sel,
+  std::vector<unsigned int> &pixeloffsets
+  )
+{
+  if (this->Mapper)
+  {
+    this->Mapper->ProcessSelectorPixelBuffers(sel, pixeloffsets, this);
+  }
 }

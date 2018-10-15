@@ -8,6 +8,10 @@
 #include "vtkInteractorStyleTrackballCamera.h"
 #include "vtkRenderWindowInteractor.h"
 
+#ifdef __APPLE__
+#include "vtkOpenGLState.h"
+#endif
+
 // Qt headers include
 #include <QMouseEvent>
 #include <QtGui/QOffscreenSurface>
@@ -203,8 +207,8 @@ void QVTKOpenGLWindow::Frame()
   // VTK just did a render, tell Qt to swap buffers
   if(this->RenderWindow->GetSwapBuffers() || this->RenderWindow->GetDoubleBuffer() == 0)
   {
-    this->context()->swapBuffers(this->context()->surface());
     this->context()->makeCurrent(this->context()->surface());
+    this->context()->swapBuffers(this->context()->surface());
   }
 }
 
@@ -217,10 +221,24 @@ void QVTKOpenGLWindow::Start()
 //-----------------------------------------------------------------------------
 void QVTKOpenGLWindow::MakeCurrent()
 {
-  if (!this->context() || this->isCurrent())
+  // Qt uses thread storage based caching that we need to account for.
+  // Specifically its version of isCurrent doesn't actually check
+  // OpenGL for the current context but rather looks at Qt's local
+  // thread storage to see what context Qt most recently set to
+  // current.
+  //
+  // When mixed with VTK this can cause problems. Classes such as
+  // importers instantiate renderwindows which in turn can change the
+  // current context without Qt knowing about it
+  //
+  // The end result is that MakeCurrent should not rely on
+  // Qt's version of isCurrent to short circuit as it cannot be trusted.
+  //
+  if (!this->context())
   {
     return;
   }
+
   // The following reimplements QOpenGLWindow::makeCurrent() logic without
   // binding the default framebuffer.
   // If this window is registered in Qt's windowing system, use it as a surface
@@ -239,9 +257,22 @@ void QVTKOpenGLWindow::MakeCurrent()
     }
     this->context()->makeCurrent(this->OffscreenSurface);
   }
+
+  // Reset the viewport on the OpenGL state. This is necessary only on
+  // MacOS when HiDPI is supported. Enabling HiDPI has the side effect that
+  // Cocoa will start overriding any glViewport calls in application code.
+  // For reference, see QCocoaWindow::initialize().
+#ifdef __APPLE__
+  vtkOpenGLState *ostate = this->RenderWindow->GetState();
+  ostate->ResetGlViewportState();
+#endif
+
 }
 
 //-----------------------------------------------------------------------------
+// Note this only checks Qt's local thread storage, not OpenGL and
+// therefore may not return the correct value.
+//
 void QVTKOpenGLWindow::IsCurrent(vtkObject*, unsigned long, void*,
   void* call_data)
 {

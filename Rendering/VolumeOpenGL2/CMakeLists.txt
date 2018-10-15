@@ -12,6 +12,7 @@ set(Module_SRCS
   vtkOpenGLVolumeOpacityTable.cxx
   vtkOpenGLVolumeGradientOpacityTable.cxx
   vtkOpenGLTransferFunction2D.cxx
+  vtkOpenGLUniforms.cxx
   #
   vtkMultiVolumeTexture.cxx
   vtkOpenGLGPUMultiVolumeRayCastMapper.cxx

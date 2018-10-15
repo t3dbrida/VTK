@@ -31,7 +31,13 @@
 int TestPLYReaderTextureUV( int argc, char *argv[] )
 {
   // Read file name.
-  const char* fname = vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/squareTextured.ply");
+  if (argc < 2)
+  {
+    return EXIT_FAILURE;
+  }
+  std::string fn = "Data/";
+  fn += argv[1];
+  const char* fname = vtkTestUtilities::ExpandDataFileName(argc, argv, fn.c_str());
   const char* fnameImg = vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/vtk.png");
 
   // Test if the reader thinks it can open the file.
@@ -80,7 +86,7 @@ int TestPLYReaderTextureUV( int argc, char *argv[] )
 
   ren->AddActor(actor);
   ren->SetBackground(0,0,0);
-  renWin->SetSize(300,300);
+  renWin->SetSize(400,400);
 
   // interact with data
   renWin->Render();

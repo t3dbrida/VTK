@@ -25,7 +25,6 @@ set(lib_srcs
   vtkmlib/UnstructuredGridConverter.cxx
   vtkmlib/ArrayConverters.cxx
   vtkmlib/CellSetConverters.cxx
-  vtkmlib/DataSetConverters.cxx
   vtkmlib/ImageDataConverter.cxx
   vtkmlib/Storage.cxx
   )
@@ -39,57 +38,71 @@ set(headers
   vtkmContour.h
   vtkmExternalFaces.h
   vtkmExtractVOI.h
-  vtkmHistogram.h
-  vtkmThreshold.h
-  vtkmLevelOfDetail.h
   vtkmGradient.h
+  vtkmHistogram.h
+  vtkmLevelOfDetail.h
+  vtkmNDHistogram.h
   vtkmPointElevation.h
   vtkmPolyDataNormals.h
+  vtkmProbe.h
+  vtkmThreshold.h
   vtkmTriangleMeshPointNormals.h
+  vtkmWarpScalar.h
+  vtkmWarpVector.h
   )
 
 #implementation of the algorithms for cpu accelerators
 set(cpu_accelerator_srcs
   vtkmAverageToCells.cxx
   vtkmAverageToPoints.cxx
+  vtkmCellSetExplicit.cxx
+  vtkmCellSetSingleType.cxx
   vtkmCleanGrid.cxx
   vtkmClip.cxx
+  vtkmConnectivityExec.cxx
   vtkmContour.cxx
   vtkmExternalFaces.cxx
   vtkmExtractVOI.cxx
-  vtkmHistogram.cxx
-  vtkmThreshold.cxx
-  vtkmLevelOfDetail.cxx
-  vtkmCellSetExplicit.cxx
-  vtkmCellSetSingleType.cxx
-  vtkmConnectivityExec.cxx
   vtkmGradient.cxx
+  vtkmHistogram.cxx
+  vtkmLevelOfDetail.cxx
+  vtkmNDHistogram.cxx
   vtkmPointElevation.cxx
   vtkmPolyDataNormals.cxx
+  vtkmProbe.cxx
+  vtkmThreshold.cxx
   vtkmTriangleMeshPointNormals.cxx
+  vtkmWarpScalar.cxx
+  vtkmWarpVector.cxx
+  vtkmlib/DataSetConverters.cxx
   vtkmlib/Portals.cxx
   vtkmlib/ImplicitFunctionConverter.cxx
   )
 
 #implementation of the algorithms for gpu accelerators
 set(cuda_accelerator_srcs
+  vtkmAverageToCells.cu
   vtkmAverageToPoints.cu
+  vtkmCellSetExplicit.cu
+  vtkmCellSetSingleType.cu
   vtkmCleanGrid.cu
   vtkmClip.cu
+  vtkmConnectivityExec.cu
   vtkmContour.cu
   vtkmExternalFaces.cu
   vtkmExtractVOI.cu
-  vtkmHistogram.cu
-  vtkmThreshold.cu
-  vtkmLevelOfDetail.cu
-  vtkmAverageToCells.cu
-  vtkmCellSetExplicit.cu
-  vtkmCellSetSingleType.cu
-  vtkmConnectivityExec.cu
   vtkmGradient.cu
+  vtkmHistogram.cu
+  vtkmLevelOfDetail.cu
+  vtkmNDHistogram.cu
   vtkmPointElevation.cu
   vtkmPolyDataNormals.cu
+  vtkmProbe.cu
+  vtkmThreshold.cu
   vtkmTriangleMeshPointNormals.cu
+  vtkmWarpScalar.cu
+  vtkmWarpVector.cu
+  vtkmlib/DataSetConverters.cu
   vtkmlib/Portals.cu
   vtkmlib/ImplicitFunctionConverter.cu
   )

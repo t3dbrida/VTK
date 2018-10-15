@@ -65,7 +65,7 @@ public:
    * should be possible to call them multiple times, even changing WindowId
    * in-between.  This is what WindowRemap does.
    */
-  virtual void Initialize(void);
+  void Initialize(void) override;
 
   /**
    * "Deinitialize" the rendering window.  This will shutdown all system-specific
@@ -77,7 +77,7 @@ public:
   /**
    * Change the window to fill the entire screen.
    */
-  virtual void SetFullScreen(int);
+  virtual void SetFullScreen(vtkTypeBool);
 
   /**
    * Resize the window.
@@ -101,7 +101,7 @@ public:
    * overrides the superclass method since this class can actually check
    * whether the window has been realized yet.
    */
-  virtual void SetStereoCapableWindow(int capable);
+  virtual void SetStereoCapableWindow(vtkTypeBool capable);
 
   /**
    * Make this window the current OpenGL context.
@@ -141,9 +141,9 @@ public:
   virtual void *GetGenericParentId() {return NULL;}
   virtual void *GetGenericContext();
   virtual void *GetGenericDrawable() {return NULL;}
-  virtual void SetWindowInfo(char *);
-  virtual void SetNextWindowInfo(char *) {}
-  virtual void SetParentInfo(char *) {}
+  virtual void SetWindowInfo(const char *);
+  virtual void SetNextWindowInfo(const char *) {}
+  virtual void SetParentInfo(const char *) {}
   //@}
 
   void     SetWindowName(const char *);
@@ -184,8 +184,8 @@ public:
   /**
    * Render without displaying the window.
    */
-  virtual void SetOffScreenRendering (int value);
-  virtual int GetOffScreenRendering ();
+  virtual void SetOffScreenRendering (vtkTypeBool value);
+  virtual vtkTypeBool GetOffScreenRendering ();
   //@}
 
   /**
@@ -203,7 +203,7 @@ public:
    * because point sprites don't work correctly (gl_PointCoord is undefined) unless
    * glEnable(GL_POINT_SPRITE)
    */
-  virtual bool IsPointSpriteBugPresent();
+  bool IsPointSpriteBugPresent() override;
 
 protected:
   vtkEGLRenderWindow();
@@ -216,8 +216,8 @@ protected:
   class vtkInternals;
   vtkInternals* Internals;
 
-  void CreateAWindow();
-  void DestroyWindow();
+  void CreateAWindow() override;
+  void DestroyWindow() override;
   void ResizeWindow(int width, int height);
 
   /**

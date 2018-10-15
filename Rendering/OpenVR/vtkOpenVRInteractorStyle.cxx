@@ -53,6 +53,7 @@ PURPOSE.  See the above copyright notice for more information.
 #include "vtkSphereSource.h"
 #include "vtkStringArray.h"
 #include "vtkTextProperty.h"
+#include "vtkTimerLog.h"
 
 #include "vtkOpenVRMenuRepresentation.h"
 #include "vtkOpenVRMenuWidget.h"
@@ -215,14 +216,16 @@ void vtkOpenVRInteractorStyle::OnMove3D(vtkEventData *edata)
   {
     return;
   }
-  int idev = static_cast<int>(edd->GetDevice());
 
-  //Set current state and interaction prop
-  this->InteractionProp = this->InteractionProps[idev];
+  // joystick moves?
+  int idev = static_cast<int>(edd->GetDevice());
 
   //Update current state
   int x = this->Interactor->GetEventPosition()[0];
   int y = this->Interactor->GetEventPosition()[1];
+
+  //Set current state and interaction prop
+  this->InteractionProp = this->InteractionProps[idev];
 
   switch (this->InteractionState[idev])
   {
@@ -438,6 +441,7 @@ void vtkOpenVRInteractorStyle::StartDolly3D(vtkEventDataDevice3D * ed)
   }
   vtkEventDataDevice dev = ed->GetDevice();
   this->InteractionState[static_cast<int>(dev)] = VTKIS_DOLLY;
+  this->LastDolly3DEventTime->StartTimer();
 
   // this->GrabFocus(this->EventCallbackCommand);
 }
@@ -446,6 +450,8 @@ void vtkOpenVRInteractorStyle::EndDolly3D(vtkEventDataDevice3D * ed)
 {
   vtkEventDataDevice dev = ed->GetDevice();
   this->InteractionState[static_cast<int>(dev)] = VTKIS_NONE;
+
+  this->LastDolly3DEventTime->StopTimer();
 }
 
 //----------------------------------------------------------------------------
@@ -653,12 +659,12 @@ void vtkOpenVRInteractorStyle::OnPan()
       rwi->GetTranslation3D()[2] - rwi->GetLastTranslation3D()[2]};
 
     double *ptrans = rwi->GetPhysicalTranslation(camera);
-    double distance = rwi->GetPhysicalScale();
+    double physicalScale = rwi->GetPhysicalScale();
 
     rwi->SetPhysicalTranslation(camera,
-      ptrans[0] + t[0] * distance,
-      ptrans[1] + t[1] * distance,
-      ptrans[2] + t[2] * distance);
+      ptrans[0] + t[0] * physicalScale,
+      ptrans[1] + t[1] * physicalScale,
+      ptrans[2] + t[2] * physicalScale);
 
     // clean up
     if (this->Interactor->GetLightFollowCamera())
@@ -692,9 +698,9 @@ void vtkOpenVRInteractorStyle::OnPinch()
     vtkCamera *camera = this->CurrentRenderer->GetActiveCamera();
     vtkRenderWindowInteractor3D *rwi =
       static_cast<vtkRenderWindowInteractor3D *>(this->Interactor);
-    double distance = rwi->GetPhysicalScale();
+    double physicalScale = rwi->GetPhysicalScale();
 
-    this->SetScale(camera, distance / dyf);
+    this->SetScale(camera, physicalScale / dyf);
 
   }
 }

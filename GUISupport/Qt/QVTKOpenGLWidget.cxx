@@ -79,6 +79,11 @@ QVTKOpenGLWidget::QVTKOpenGLWidget(vtkGenericOpenGLRenderWindow* w,
   // forward the original QWidget size to the internal window
   this->resize(Superclass::size());
 
+  // Work around for bug paraview/paraview#18285
+  // https://gitlab.kitware.com/paraview/paraview/issues/18285
+  // This ensure that kde will not grab the window
+  this->setProperty("_kde_no_window_grab", true);
+
   // enable qt gesture events
   grabGesture(Qt::PinchGesture);
   grabGesture(Qt::PanGesture);
@@ -142,6 +147,12 @@ void QVTKOpenGLWidget::setEnableHiDPI(bool enable)
 {
   this->EnableHiDPI = enable;
   this->qVTKOpenGLWindowInternal->setEnableHiDPI(this->EnableHiDPI);
+}
+
+//-----------------------------------------------------------------------------
+void QVTKOpenGLWidget::setQVTKCursor(const QCursor &cursor)
+{
+  this->qVTKOpenGLWindowInternal->setCursor(cursor);
 }
 
 //-----------------------------------------------------------------------------

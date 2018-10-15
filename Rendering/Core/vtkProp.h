@@ -30,9 +30,11 @@
 
 #include "vtkRenderingCoreModule.h" // For export macro
 #include "vtkObject.h"
+#include <vector> // for method args
 
 class vtkAssemblyPath;
 class vtkAssemblyPaths;
+class vtkHardwareSelector;
 class vtkMatrix4x4;
 class vtkPropCollection;
 class vtkViewport;
@@ -285,7 +287,7 @@ public:
    * polygonal geometry will return true.
    * Default implementation return false.
    */
-  virtual int HasTranslucentPolygonalGeometry()
+  virtual vtkTypeBool HasTranslucentPolygonalGeometry()
     { return 0; }
 
   /**
@@ -404,6 +406,14 @@ public:
    */
   virtual bool GetSupportsSelection()
     { return false; }
+
+  /**
+   * allows a prop to update a selections color buffers
+   *
+   */
+  virtual void ProcessSelectorPixelBuffers(
+    vtkHardwareSelector * /* sel */,
+    std::vector<unsigned int> & /* pixeloffsets */) { };
 
   //@{
   /**

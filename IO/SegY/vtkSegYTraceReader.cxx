@@ -90,7 +90,7 @@ void vtkSegYTraceReader::PrintTraceHeader(std::ifstream& in, int startPos)
 }
 
 //-----------------------------------------------------------------------------
-void vtkSegYTraceReader::ReadTrace(int& startPos,
+void vtkSegYTraceReader::ReadTrace(std::streamoff& startPos,
                                    std::ifstream& in,
                                    int formatCode,
                                    vtkSegYTrace* trace)
@@ -121,6 +121,13 @@ void vtkSegYTraceReader::ReadTrace(int& startPos,
       trace->Data.push_back(value);
     }
     break;
+  case 3:
+    for (int i = 0; i < numSamples; i++)
+    {
+      value = vtkSegYIOUtils::Instance()->readShortInteger(in);
+      trace->Data.push_back(value);
+    }
+    break;
   case 5:
     for (int i = 0; i < numSamples; i++)
     {
@@ -147,7 +154,7 @@ void vtkSegYTraceReader::ReadTrace(int& startPos,
 
 //-----------------------------------------------------------------------------
 void vtkSegYTraceReader::ReadInlineCrossline(
-  int& startPos,
+  std::streamoff& startPos,
   std::ifstream& in,
   int formatCode,
   int* inlineNumber, int* crosslineNumber,

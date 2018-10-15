@@ -46,7 +46,7 @@
 #include "vtkCommonDataModelModule.h" // For export macro
 #include "vtkDataSet.h"
 
-#include <map> // STL header for dual point coordinates ajustment
+#include <map> // STL header for dual point coordinates adjustment
 
 class vtkHyperTree;
 class vtkHyperTreeCursor;
@@ -270,7 +270,7 @@ public:
 
   /**
    * Create a new hyper tree grid cursor: an object that
-   * can traverse the cells of an hyper tree grid, starting at given
+   * can traverse the cells of a hyper tree grid, starting at given
    * tree root index.
    * If no hyper tree is present at given location, then one
    * will be created only if 'create' flag is true.
@@ -280,7 +280,7 @@ public:
 
   /**
    * Create a new hyper tree grid geometric cursor: an object that
-   * can traverse the cells of an hyper tree grid, starting at given
+   * can traverse the cells of a hyper tree grid, starting at given
    * tree root index, managing the geometric properties.
    * If no hyper tree is present at given location, then one
    * will be created only if 'create' flag is true.
@@ -290,7 +290,7 @@ public:
 
   /**
    * Create a new hyper tree grid Von Neumann super cursor: an object that
-   * can traverse the cells of an hyper tree grid, starting at given
+   * can traverse the cells of a hyper tree grid, starting at given
    * tree root index, managing geometric properties and von Neumann
    * neighborhood with basic hyper tree grid cursors.
    * If no hyper tree is present at given location, then one
@@ -301,7 +301,7 @@ public:
 
   /**
    * Create a new hyper tree grid Moore super cursor: an object that
-   * can traverse the cells of an hyper tree grid, starting at given
+   * can traverse the cells of a hyper tree grid, starting at given
    * tree root index, managing geometric properties and Moore
    * neighborhood with basic hyper tree grid cursors.
    * If no hyper tree is present at given location, then one

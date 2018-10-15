@@ -300,7 +300,7 @@ void vtkOpenGLPolyDataMapper2D::BuildShaders(
   }
 
   vtkRenderer* ren = vtkRenderer::SafeDownCast(viewport);
-  if (ren && ren->GetRenderWindow()->GetIsPicking())
+  if (ren && ren->GetSelector())
   {
     this->ReplaceShaderPicking(FSSource, ren, actor);
   }
@@ -405,13 +405,10 @@ void vtkOpenGLPolyDataMapper2D::SetMapperShaderParameters(
   }
 
   vtkRenderer* ren = vtkRenderer::SafeDownCast(viewport);
-  bool picking = ren && ren->GetRenderWindow()->GetIsPicking();
-  if (picking && cellBO.Program->IsUniformUsed("mapperIndex"))
+  vtkHardwareSelector* selector = ren->GetSelector();
+  if (selector && cellBO.Program->IsUniformUsed("mapperIndex"))
   {
-    unsigned int idx = ren->GetCurrentPickId();
-    float color[3];
-    vtkHardwareSelector::Convert(idx, color);
-    cellBO.Program->SetUniform3f("mapperIndex", color);
+    cellBO.Program->SetUniform3f("mapperIndex", selector->GetPropColorValue());
   }
 }
 
@@ -483,10 +480,10 @@ void vtkOpenGLPolyDataMapper2D::SetCameraShaderParameters(
   {
     return;
   }
-  size[0] =
-    vtkMath::Round(size[0]*(visVP[2] - visVP[0])/(vport[2] - vport[0]));
-  size[1] =
-    vtkMath::Round(size[1]*(visVP[3] - visVP[1])/(vport[3] - vport[1]));
+  size[0] = static_cast<int>(std::round(
+   size[0]*(visVP[2] - visVP[0])/(vport[2] - vport[0])));
+  size[1] = static_cast<int>(std::round(
+   size[1]*(visVP[3] - visVP[1])/(vport[3] - vport[1])));
 
   int *winSize = viewport->GetVTKWindow()->GetSize();
 
@@ -561,11 +558,11 @@ void vtkOpenGLPolyDataMapper2D::UpdateVBO(vtkActor2D *act, vtkViewport *viewport
   this->HaveAppleBug =
     static_cast<vtkOpenGLRenderer *>(viewport)->HaveApplePrimitiveIdBug();
 
+  this->MapScalars(act->GetProperty()->GetOpacity());
   this->HaveCellScalars = false;
   if (this->ScalarVisibility)
   {
     // We must figure out how the scalars should be mapped to the polydata.
-    this->MapScalars(act->GetProperty()->GetOpacity());
     if ( (this->ScalarMode == VTK_SCALAR_MODE_USE_CELL_DATA ||
           this->ScalarMode == VTK_SCALAR_MODE_USE_CELL_FIELD_DATA ||
           this->ScalarMode == VTK_SCALAR_MODE_USE_FIELD_DATA ||
@@ -772,7 +769,14 @@ void vtkOpenGLPolyDataMapper2D::RenderOverlay(vtkViewport* viewport,
   this->ResourceCallback->RegisterGraphicsResources(
     static_cast<vtkOpenGLRenderWindow *>(renWin));
 
-  int picking = renWin->GetIsPicking();
+  vtkRenderer* ren = vtkRenderer::SafeDownCast(viewport);
+  vtkHardwareSelector* selector = ren->GetSelector();
+  if (selector)
+  {
+    selector->BeginRenderProp();
+  }
+
+  int picking = (selector ? 1 : 0);
   if (picking != this->LastPickState)
   {
     this->LastPickState = picking;
@@ -895,6 +899,11 @@ void vtkOpenGLPolyDataMapper2D::RenderOverlay(vtkViewport* viewport,
   if (this->LastBoundBO)
   {
     this->LastBoundBO->VAO->Release();
+  }
+
+  if (selector)
+  {
+    selector->EndRenderProp();
   }
 
   // this->VBOs->Release();

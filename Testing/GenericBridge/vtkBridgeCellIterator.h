@@ -55,7 +55,7 @@ public:
   /**
    * Is there no cell at iterator position? (exit condition).
    */
-  int IsAtEnd() override;
+  vtkTypeBool IsAtEnd() override;
 
   /**
    * Create an empty cell.
@@ -162,7 +162,7 @@ protected:
   vtkBridgeCellIteratorOnCellBoundaries * IteratorOnCellBoundaries;
   vtkBridgeCellIteratorOnCellList *IteratorOnCellList;
 
-  vtkBridgeDataSet *DataSet; // the structure on which the objet iterates.
+  vtkBridgeDataSet *DataSet; // the structure on which the object iterates.
   vtkIdType Id; // the id at current position.
   int OneCell; // Is in one cell mode?
   vtkIdType Size; // size of the structure.

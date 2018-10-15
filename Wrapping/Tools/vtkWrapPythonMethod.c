@@ -41,7 +41,7 @@ static void vtkWrapPython_CheckPreconds(
   FILE *fp, ClassInfo *data, FunctionInfo *currentFunction);
 
 /* save the contents of all arrays prior to calling the function */
-static void vtkWrapPython_SaveArrayArgs(
+static void vtkWrapPython_SaveArgs(
   FILE *fp, FunctionInfo *currentFunction);
 
 /* generate the code that calls the C++ method */
@@ -102,7 +102,8 @@ void vtkWrapPython_DeclareVariables(
 
     /* temps for arrays */
     if (vtkWrap_IsArray(arg) || vtkWrap_IsNArray(arg) ||
-        vtkWrap_IsPODPointer(arg))
+        vtkWrap_IsPODPointer(arg) ||
+        (vtkWrap_IsCharPointer(arg) && !vtkWrap_IsConst(arg)))
     {
       /* for non-const arrays, alloc twice as much space */
       const char *mtwo = "";
@@ -110,11 +111,28 @@ void vtkWrapPython_DeclareVariables(
       {
         mtwo = "2*";
       }
-      if (arg->CountHint || vtkWrap_IsPODPointer(arg))
+      if (vtkWrap_IsCharPointer(arg))
+      {
+        /* prepare for "char *" arg for non-const char pointer */
+        fprintf(fp,
+              "  size_t size%d = ap.GetStringSize(%d);\n"
+              "  vtkPythonArgs::Array<char> store%d(%ssize%d + 1);\n"
+              "  char *temp%d = store%d.Data();\n",
+              i, i,
+              i, mtwo, i,
+              i, i);
+        if (!vtkWrap_IsRef(arg))
+        {
+          fprintf(fp,
+              "  char *save%d = temp%d + size%d + 1;\n",
+              i, i, i);
+        }
+      }
+      else if (arg->CountHint || vtkWrap_IsPODPointer(arg))
       {
         /* prepare for "T *" arg, where T is a plain type */
         fprintf(fp,
-              "  int size%d = ap.GetArgSize(%d);\n"
+              "  size_t size%d = ap.GetArgSize(%d);\n"
               "  vtkPythonArgs::Array<%s> store%d(%ssize%d);\n"
               "  %s *temp%d = store%d.Data();\n",
               i, i,
@@ -132,7 +150,7 @@ void vtkWrapPython_DeclareVariables(
       {
         /* prepare for "T a[n] = nullptr" arg (array with default of NULL) */
         fprintf(fp,
-              "  int size%d = 0;\n"
+              "  size_t size%d = 0;\n"
               "  %s store%d[%s%d];\n"
               "  %s *temp%d = nullptr;\n",
               i,
@@ -175,6 +193,12 @@ void vtkWrapPython_DeclareVariables(
         }
       }
     }
+    else if (vtkWrap_IsStdVector(arg))
+    {
+      fprintf(fp,
+        "  %s temp%d(ap.GetArgSize(%d));\n",
+        arg->Class, i, i);
+    }
     else
     {
       /* make a "temp" variable for any other kind of argument */
@@ -208,7 +232,7 @@ void vtkWrapPython_DeclareVariables(
         !theFunc->ReturnValue->CountHint)
     {
       fprintf(fp,
-              "  int sizer = %d;\n",
+              "  size_t sizer = %d;\n",
               theFunc->ReturnValue->Count);
     }
   }
@@ -306,7 +330,7 @@ void vtkWrapPython_GetSingleArgument(
             prefix, argname, i, i);
   }
   else if (vtkWrap_IsString(arg) ||
-           vtkWrap_IsCharPointer(arg))
+           (vtkWrap_IsCharPointer(arg) && vtkWrap_IsConst(arg)))
   {
     fprintf(fp, "%sGetValue(%stemp%d)",
             prefix, argname, i);
@@ -328,9 +352,15 @@ void vtkWrapPython_GetSingleArgument(
     fprintf(fp, "%sGetArray(%stemp%d, size%d)",
             prefix, argname, i, i);
   }
-  else if (vtkWrap_IsPODPointer(arg))
+  else if (vtkWrap_IsPODPointer(arg) ||
+           vtkWrap_IsCharPointer(arg))
   {
     fprintf(fp, "%sGetArray(%stemp%d, size%d)",
+            prefix, argname, i, i);
+  }
+  else if (vtkWrap_IsStdVector(arg))
+  {
+    fprintf(fp, "%sGetArray(%stemp%d.data(), temp%d.size())",
             prefix, argname, i, i);
   }
 }
@@ -576,6 +606,7 @@ void vtkWrapPython_ReturnValue(
 {
   char pythonname[1024];
   const char *deref = "";
+  const char *member = ".";
   const char *prefix = "ap.";
 
   if (static_call)
@@ -596,6 +627,7 @@ void vtkWrapPython_ReturnValue(
   if (val && vtkWrap_IsRef(val))
   {
     deref = "*";
+    member = "->";
   }
 
   if (vtkWrap_IsVoid(val))
@@ -672,6 +704,19 @@ void vtkWrapPython_ReturnValue(
             "      result = %sBuildTuple(tempr, sizer);\n",
             prefix);
   }
+  else if (vtkWrap_IsStdVector(val))
+  {
+    fprintf(fp,
+            "      if (tempr%ssize() == 0)\n"
+            "      {\n"
+            "        result = PyTuple_New(0);\n"
+            "      }\n"
+            "      else\n"
+            "      {\n"
+            "        result = %sBuildTuple(tempr%sdata(), tempr%ssize());\n"
+            "      }\n",
+            member, prefix, member, member);
+  }
   else
   {
     fprintf(fp,
@@ -731,7 +776,7 @@ static int vtkWrapPython_CountAllOccurrences(
 /* -------------------------------------------------------------------- */
 /* Save a copy of each non-const array arg, so that we can check
  * if they were changed by the method call */
-void vtkWrapPython_SaveArrayArgs(FILE *fp, FunctionInfo *currentFunction)
+void vtkWrapPython_SaveArgs(FILE *fp, FunctionInfo *currentFunction)
 {
   const char *asterisks = "**********";
   ValueInfo *arg;
@@ -751,20 +796,21 @@ void vtkWrapPython_SaveArrayArgs(FILE *fp, FunctionInfo *currentFunction)
   {
     arg = currentFunction->Parameters[i];
     n = arg->NumberOfDimensions;
-    if (n < 1 && (vtkWrap_IsArray(arg) || vtkWrap_IsPODPointer(arg)))
+    if (n < 1 && (vtkWrap_IsArray(arg) || vtkWrap_IsPODPointer(arg) ||
+                  vtkWrap_IsCharPointer(arg)))
     {
       n = 1;
     }
 
     if ((vtkWrap_IsArray(arg) || vtkWrap_IsNArray(arg) ||
-         vtkWrap_IsPODPointer(arg)) &&
+         vtkWrap_IsPODPointer(arg) || vtkWrap_IsCharPointer(arg)) &&
         (arg->Type & VTK_PARSE_CONST) == 0 &&
         !vtkWrap_IsRef(arg))
     {
       noneDone = 0;
 
       fprintf(fp,
-              "    ap.SaveArray(%.*stemp%d, %.*ssave%d, ",
+              "    ap.Save(%.*stemp%d, %.*ssave%d, ",
               (n-1), asterisks, i, (n-1), asterisks, i);
 
       if (vtkWrap_IsNArray(arg))
@@ -1005,12 +1051,14 @@ static void vtkWrapPython_WriteBackToArgs(
   {
     arg = currentFunction->Parameters[i];
     n = arg->NumberOfDimensions;
-    if (n < 1 && (vtkWrap_IsArray(arg) || vtkWrap_IsPODPointer(arg)))
+    if (n < 1 && (vtkWrap_IsArray(arg) || vtkWrap_IsPODPointer(arg) ||
+                  (vtkWrap_IsCharPointer(arg) && !vtkWrap_IsConst(arg))))
     {
       n = 1;
     }
 
     if (vtkWrap_IsNonConstRef(arg) &&
+        !vtkWrap_IsStdVector(arg) &&
         !vtkWrap_IsObject(arg))
     {
       fprintf(fp,
@@ -1044,12 +1092,12 @@ static void vtkWrapPython_WriteBackToArgs(
               "    }\n");
     }
     else if ((vtkWrap_IsArray(arg) || vtkWrap_IsNArray(arg) ||
-              vtkWrap_IsPODPointer(arg)) &&
+              vtkWrap_IsPODPointer(arg) || vtkWrap_IsCharPointer(arg)) &&
              !vtkWrap_IsConst(arg) &&
              !vtkWrap_IsSetVectorMethod(currentFunction))
     {
       fprintf(fp,
-              "    if (ap.ArrayHasChanged(%.*stemp%d, %.*ssave%d, ",
+              "    if (ap.HasChanged(%.*stemp%d, %.*ssave%d, ",
               (n-1), asterisks, i, (n-1), asterisks, i);
 
       if (vtkWrap_IsNArray(arg))
@@ -1084,6 +1132,20 @@ static void vtkWrapPython_WriteBackToArgs(
       fprintf(fp,
               "    }\n"
               "\n");
+    }
+    else if (vtkWrap_IsStdVector(arg) && !vtkWrap_IsConst(arg))
+    {
+      fprintf(fp,
+              "    if (!ap.ErrorOccurred())\n"
+              "    {\n"
+              "      PyObject *vec = (temp%d.size() == 0 ?\n"
+              "        PyTuple_New(0) :\n"
+              "        ap.BuildTuple(temp%d.data(), temp%d.size()));\n"
+              "      ap.SetContents(%d, vec);\n"
+              "      Py_DECREF(vec);\n"
+              "    }\n"
+              "\n",
+              i, i, i, i);
     }
   }
 }
@@ -1261,14 +1323,14 @@ void vtkWrapPython_GenerateOneMethod(
       if (theOccurrence->ReturnValue && theOccurrence->ReturnValue->CountHint)
       {
         fprintf(fp,
-            "    int sizer = ");
+            "    size_t sizer = ");
         vtkWrapPython_SubstituteCode(fp, data, theOccurrence,
                                      theOccurrence->ReturnValue->CountHint);
         fprintf(fp, ";\n");
       }
 
       /* save a copy of all non-const array arguments */
-      vtkWrapPython_SaveArrayArgs(fp, theOccurrence);
+      vtkWrapPython_SaveArgs(fp, theOccurrence);
 
       /* generate the code that calls the C++ method */
       vtkWrapPython_GenerateMethodCall(fp, theOccurrence, data, hinfo,

@@ -233,7 +233,6 @@ void vtkOpenGLGlyph3DHelper::ReplaceShaderClip(
     if (numClipPlanes > 6)
     {
       vtkErrorMacro("OpenGL has a limit of 6 clipping planes");
-      numClipPlanes = 6;
     }
 
     vtkShaderProgram::Substitute(VSSource,
@@ -333,11 +332,6 @@ void vtkOpenGLGlyph3DHelper::GlyphRender(
       this->Primitives[i].IBO->Bind();
       for (vtkIdType inPtId = 0; inPtId < numPts; inPtId++)
       {
-        if (selector)
-        {
-          selector->RenderAttributeId(pickIds[inPtId]);
-        }
-
         // handle the middle
         vtkShaderProgram *program = this->Primitives[i].Program;
 
@@ -361,6 +355,13 @@ void vtkOpenGLGlyph3DHelper::GlyphRender(
 
         if (selector)
         {
+          if (selector->GetCurrentPass() == vtkHardwareSelector::POINT_ID_LOW24 ||
+              selector->GetCurrentPass() == vtkHardwareSelector::POINT_ID_HIGH24 ||
+              selector->GetCurrentPass() == vtkHardwareSelector::CELL_ID_LOW24 ||
+              selector->GetCurrentPass() == vtkHardwareSelector::CELL_ID_HIGH24)
+          {
+            selector->SetPropColorValue(pickIds[inPtId]);
+          }
           program->SetUniform3f("mapperIndex", selector->GetPropColorValue());
         }
 
@@ -623,9 +624,9 @@ void vtkOpenGLGlyph3DHelper::BuildCullingShaders(vtkRenderer* ren, vtkActor* act
     this->SetCameraShaderParameters(this->InstanceCulling->GetHelper(), ren, actor);
 
     double* bounds = this->CurrentInput->GetBounds();
-    float BBoxSize[4] = { static_cast<float>(bounds[3] - bounds[0]),
-                          static_cast<float>(bounds[4] - bounds[1]),
-                          static_cast<float>(bounds[5] - bounds[2]),
+    float BBoxSize[4] = { static_cast<float>(bounds[1] - bounds[0]),
+                          static_cast<float>(bounds[3] - bounds[2]),
+                          static_cast<float>(bounds[5] - bounds[4]),
                           0.f };
 
     this->InstanceCulling->GetHelper().Program->SetUniform4f("BBoxSize", BBoxSize);

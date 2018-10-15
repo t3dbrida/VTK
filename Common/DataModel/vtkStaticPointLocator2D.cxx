@@ -145,7 +145,9 @@ struct vtkBucketList2D
 // Utility class to store an array of ij values
 struct NeighborBuckets2D
 {
-  // Start with an array to avoid memory allocation overhead
+  // Start with an array to avoid memory allocation overhead.
+  // Initially, P will alias InitialBuffer, but could later
+  // be assigned dynamically allocated memory.
   int InitialBuffer[VTK_INITIAL_BUCKET_SIZE*2];
   int *P;
   vtkIdType Count;
@@ -153,7 +155,7 @@ struct NeighborBuckets2D
 
   NeighborBuckets2D()
   {
-    this->P = &(this->InitialBuffer[0]);
+    this->P = this->InitialBuffer;
     this->Count = 0;
     this->MaxSize = VTK_INITIAL_BUCKET_SIZE;
   }
@@ -161,7 +163,7 @@ struct NeighborBuckets2D
   ~NeighborBuckets2D()
   {
     this->Count = 0;
-    if ( this->P != &(this->InitialBuffer[0]) )
+    if ( this->P != this->InitialBuffer )
     {
       delete[] this->P;
     }
@@ -1824,7 +1826,7 @@ void vtkStaticPointLocator2D::BuildLocator()
     this->H[i] = (this->Bounds[2*i+1] - this->Bounds[2*i]) / static_cast<double>(ndivs[i]);
   }
 
-  // Instantiate the locator. The type is related to the maximun point id.
+  // Instantiate the locator. The type is related to the maximum point id.
   // This is done for performance (e.g., the sort is faster) and significant
   // memory savings.
   //

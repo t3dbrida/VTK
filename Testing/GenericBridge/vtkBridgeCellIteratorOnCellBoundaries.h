@@ -47,7 +47,7 @@ public:
   /**
    * Is there no cell at iterator position? (exit condition).
    */
-  int IsAtEnd() override;
+  vtkTypeBool IsAtEnd() override;
 
   /**
    * Cell at current position
@@ -86,7 +86,7 @@ protected:
 
   int Dim; // Dimension of cells over which to iterate (-1 to 3)
 
-  vtkBridgeCell *DataSetCell; // the structure on which the objet iterates.
+  vtkBridgeCell *DataSetCell; // the structure on which the object iterates.
   vtkIdType Id; // the id at current position.
   vtkBridgeCell *Cell; // cell at current position.
   vtkIdType NumberOfFaces;

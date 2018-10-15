@@ -48,6 +48,8 @@ bool g_skip;
 float g_currentT;
 float g_terminatePointMax;
 
+//VTK::CustomUniforms::Dec
+
 //VTK::Output::Dec
 
 //VTK::Base::Dec
@@ -55,6 +57,8 @@ float g_terminatePointMax;
 //VTK::Termination::Dec
 
 //VTK::Cropping::Dec
+
+//VTK::Clipping::Dec
 
 //VTK::Shading::Dec
 
@@ -86,8 +90,6 @@ float g_terminatePointMax;
 
 uniform float in_scale;
 uniform float in_bias;
-
-//VTK::Clipping::Dec
 
 //////////////////////////////////////////////////////////////////////////////
 ///
@@ -137,6 +139,8 @@ vec4 NDCToWindow(const float xNDC, const float yNDC, const float zNDC)
  */
 vec3 ClampToSampleLocation(vec3 start, vec3 step, vec3 pos, bool ceiling)
 {
+  pos -= g_rayJitter;
+
   vec3 offset = pos - start;
   float stepLength = length(step);
 
@@ -144,7 +148,7 @@ vec3 ClampToSampleLocation(vec3 start, vec3 step, vec3 pos, bool ceiling)
   float dist = dot(offset, step / stepLength);
   if (dist < 0.) // Don't move before the start position:
   {
-    return start;
+    return start + g_rayJitter;
   }
 
   // Number of steps
@@ -168,7 +172,7 @@ vec3 ClampToSampleLocation(vec3 start, vec3 step, vec3 pos, bool ceiling)
     steps = floor(steps + 0.5);
   }
 
-  return start + steps * step;
+  return start + steps * step + g_rayJitter;
 }
 
 //////////////////////////////////////////////////////////////////////////////

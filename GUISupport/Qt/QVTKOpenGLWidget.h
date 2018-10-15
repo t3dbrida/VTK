@@ -38,6 +38,8 @@ class vtkRenderWindowInteractor;
  * pointer to an internal QVTKOpenGLWindow instance in order to display VTK
  * data in a Qt OpenGL context.
  *
+ * It was designed to support quad buffer stereo rendering.
+ *
  * A typical usage for QVTKOpenGLWidget is as follows:
  * @code{.cpp}
  *
@@ -65,12 +67,19 @@ class vtkRenderWindowInteractor;
  * An alternative is to call update() on the widget instance to trigger a
  * render once the context gets validated;
  *
- * QVTKOpenGLWidget is targeted for Qt version 5.9 and above.
+ * QVTKOpenGLWidget is compatible with Qt version 5.6 and above,
+ * but it is mainly tested on Qt 5.9 and above.
  *
- * QVTKOpenGLWidget does not support to be a native widget,
- * for native widget, please use QVTKOpenGLSimpleWidget.
+ * Due to Qt limitations, QVTKOpenGLWidget does not support being a
+ * native widget.
+ * But native widget are sometimes mandatory, for example within
+ * QScrollArea and QMDIArea, so the QVTKOpenGLNativeWidget should be
+ * used when in needs of VTK rendering in the context of Qt native widget.
  *
- * @sa QVTKOpenGLWindow QVTKOpenGLSimpleWidget
+ * If a QVTKOpenGLWidget is used in a QScrollArea or in a QMDIArea, it
+ * will force it to be native and this is *NOT* supported.
+ *
+ * @sa QVTKOpenGLWindow QVTKOpenGLNativeWidget
  */
 class VTKGUISUPPORTQT_EXPORT QVTKOpenGLWidget : public QWidget
 {
@@ -125,6 +134,11 @@ public:
    */
   virtual void setEnableHiDPI(bool enable);
   virtual bool enableHiDPI() { return this->EnableHiDPI; }
+
+  /**
+   * Set the cursor on this widget.
+   */
+  void setQVTKCursor(const QCursor &cursor);
 
   /**
    * Returns true if the internal QOpenGLWindow's is valid, i.e. if OpenGL

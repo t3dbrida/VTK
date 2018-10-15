@@ -25,6 +25,7 @@
 
 #include "vtkRenderingOpenGL2Module.h" // For export macro
 #include "vtkRenderer.h"
+#include "vtkSmartPointer.h" // For vtkSmartPointer
 #include <vector>  // STL Header
 #include <string> // Ivars
 
@@ -32,6 +33,7 @@ class vtkOpenGLFXAAFilter;
 class vtkRenderPass;
 class vtkOpenGLState;
 class vtkOpenGLTexture;
+class vtkOrderIndependentTranslucentPass;
 class vtkTextureObject;
 class vtkDepthPeelingPass;
 class vtkShaderProgram;
@@ -126,6 +128,12 @@ public:
   // get the number of lights turned on
   vtkGetMacro(LightingCount, int);
 
+  /**
+   * Set the user light transform applied after the camera transform.
+   * Can be null to disable it.
+   */
+  void SetUserLightTransform(vtkTransform* transform);
+
 protected:
   vtkOpenGLRenderer();
   ~vtkOpenGLRenderer() override;
@@ -145,20 +153,12 @@ protected:
    */
   int UpdateGeometry() override;
 
-  // Picking functions to be implemented by sub-classes
-  void DevicePickRender() override;
-  void StartPick(unsigned int pickFromSize) override;
-  void UpdatePickId() override;
-  void DonePick() override;
-  unsigned int GetPickedId() override;
-  unsigned int GetNumPickedIds() override;
-  int GetPickedIds(unsigned int atMost, unsigned int *callerBuffer) override;
-  double GetPickedZ() override;
-
-  // Ivars used in picking
-  class vtkGLPickInfo* PickInfo;
-
-  double PickedZ;
+  /**
+   * Check and return the textured background for the current state
+   * If monocular or stereo left eye, check BackgroundTexture
+   * If stereo right eye, check RightBackgroundTexture
+   */
+  vtkTexture* GetCurrentTexturedBackground();
 
   friend class vtkOpenGLProperty;
   friend class vtkOpenGLTexture;
@@ -174,6 +174,11 @@ protected:
    * Depth peeling is delegated to an instance of vtkDepthPeelingPass
    */
   vtkDepthPeelingPass *DepthPeelingPass;
+
+  /**
+   * Fallback for transparency
+   */
+  vtkOrderIndependentTranslucentPass *TranslucentPass;
 
   /**
    * Shadows are delegated to an instance of vtkShadowMapPass
@@ -195,6 +200,11 @@ protected:
   int LightingComplexity;
   int LightingCount;
   vtkMTimeType LightingUpdateTime;
+
+  /**
+   * Optional user transform for lights
+   */
+  vtkSmartPointer<vtkTransform> UserLightTransform;
 
 private:
   vtkOpenGLRenderer(const vtkOpenGLRenderer&) = delete;

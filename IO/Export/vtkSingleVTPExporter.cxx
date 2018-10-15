@@ -325,6 +325,7 @@ vtkPolyData *vtkSingleVTPExporter::FixTextureCoordinates(vtkPolyData *ipd)
       // does this triangle go outside of 0 to 1.5 in tcoords?
       this->ProcessTriangle(pts, opd);
     }
+    newPolys->Delete();
     ptIds->Delete();
   }
 
@@ -382,6 +383,39 @@ void vtkSingleVTPExporter::WriteVTP(
     otnormals->SetNumberOfComponents(3);
     opd->GetPointData()->SetNormals(otnormals);
   }
+
+  // compute the maximum color in case it goes over 1.0
+  float maxColor = 1.0;
+  for (size_t i = 0; i < actors.size(); ++i)
+  {
+    actorData *ad = &(actors[i]);
+    vtkProperty *prop = ad->Actor->GetProperty();
+    double *dcolor = prop->GetDiffuseColor();
+    double diffuse = prop->GetDiffuse();
+    double *acolor = prop->GetAmbientColor();
+    double ambient = prop->GetAmbient();
+    float col[3] = {
+      static_cast<float>(
+        dcolor[0]*diffuse + acolor[0]*ambient),
+      static_cast<float>(
+        dcolor[1]*diffuse + acolor[1]*ambient),
+      static_cast<float>(
+        dcolor[2]*diffuse + acolor[2]*ambient)
+    };
+    if (col[0] > maxColor)
+    {
+      maxColor = col[0];
+    }
+    if (col[1] > maxColor)
+    {
+      maxColor = col[1];
+    }
+    if (col[2] > maxColor)
+    {
+      maxColor = col[2];
+    }
+  }
+  maxColor = 255.0/maxColor;
 
   int pointOffset = 0;
   for (size_t i = 0; i < actors.size(); ++i)
@@ -474,11 +508,11 @@ void vtkSingleVTPExporter::WriteVTP(
     double opacity = prop->GetOpacity();
     float col[4] = {
       static_cast<float>(
-        vtkMath::Min(255.0*(dcolor[0]*diffuse + acolor[0]*ambient),255.0)),
+        vtkMath::Min(maxColor*(dcolor[0]*diffuse + acolor[0]*ambient),255.0)),
       static_cast<float>(
-        vtkMath::Min(255.0*(dcolor[1]*diffuse + acolor[1]*ambient),255.0)),
+        vtkMath::Min(maxColor*(dcolor[1]*diffuse + acolor[1]*ambient),255.0)),
       static_cast<float>(
-        vtkMath::Min(255.0*(dcolor[2]*diffuse + acolor[2]*ambient),255.0)),
+        vtkMath::Min(maxColor*(dcolor[2]*diffuse + acolor[2]*ambient),255.0)),
       static_cast<float>(opacity*255.0)
     };
     if (!is)
@@ -862,15 +896,15 @@ void vtkSingleVTPExporter::WriteTexture(
             }
             break;
             case 4:
-            for (int x = 0; x < rdims[0]*4; ++x)
+            for (int x = 0; x < rdims[0]; ++x)
             {
               if (x == dims[0])
               {
                 ipos -= dims[0]*4;
               }
-              *opos = *ipos;
-              opos++;
-              ipos++;
+              memcpy(opos, ipos, 4);
+              opos += 4;
+              ipos += 4;
             }
             break;
           }

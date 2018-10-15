@@ -42,6 +42,8 @@
 #include "vtkCommonCoreModule.h" // For export macro
 #include "vtkObject.h"
 
+#include <string> // for std::string
+
 class vtkObjectFactoryCollection;
 class vtkOverrideInformationCollection;
 class vtkCollection;
@@ -263,7 +265,7 @@ private:
   /**
    * Load all dynamic libraries in the given path
    */
-  static void LoadLibrariesInPath( const char*);
+  static void LoadLibrariesInPath(const std::string&);
 
   // list of registered factories
   static vtkObjectFactoryCollection* RegisteredFactories;

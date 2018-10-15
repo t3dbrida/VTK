@@ -896,7 +896,10 @@ size_t vtkXMLDataParser::ReadAsciiData(void* buffer,
   this->UpdateProgress(0.5);
 
   // Copy the data from the pre-parsed ascii data buffer.
-  memcpy(buffer, this->AsciiDataBuffer+startByte, actualBytes);
+  if (buffer && actualBytes)
+  {
+    memcpy(buffer, this->AsciiDataBuffer+startByte, actualBytes);
+  }
 
   this->UpdateProgress(1);
 
@@ -1186,6 +1189,10 @@ void vtkXMLDataParser::FreeAsciiBuffer()
     vtkTemplateMacro(
       vtkXMLDataParserFreeAsciiBuffer(static_cast<VTK_TT*>(buffer))
       );
+
+    case VTK_BIT:
+      vtkXMLDataParserFreeAsciiBuffer(static_cast<unsigned char *>(buffer));
+      break;
   }
   this->AsciiDataBuffer = nullptr;
 }

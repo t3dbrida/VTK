@@ -63,7 +63,7 @@ public:
    * should be possible to call them multiple times, even changing WindowId
    * in-between.  This is what WindowRemap does.
    */
-  virtual void Initialize(void);
+  void Initialize(void) override;
 
   /**
    * "Deinitialize" the rendering window.  This will shutdown all system-specific
@@ -75,7 +75,7 @@ public:
   /**
    * Change the window to fill the entire screen.
    */
-  virtual void SetFullScreen(int);
+  virtual void SetFullScreen(vtkTypeBool);
 
   //@{
   /**
@@ -109,7 +109,7 @@ public:
    * overrides the superclass method since this class can actually check
    * whether the window has been realized yet.
    */
-  virtual void SetStereoCapableWindow(int capable);
+  virtual void SetStereoCapableWindow(vtkTypeBool capable);
 
   /**
    * Make this window the current OpenGL context.
@@ -206,22 +206,22 @@ public:
   /**
    * Set this RenderWindow's X window id to a pre-existing window.
    */
-  void     SetWindowInfo(char *info);
+  void     SetWindowInfo(const char *info);
 
   /**
    * Set the window info that will be used after WindowRemap()
    */
-  void     SetNextWindowInfo(char *info);
+  void     SetNextWindowInfo(const char *info);
 
   /**
    * Sets the X window id of the window that WILL BE created.
    */
-  void     SetParentInfo(char *info);
+  void     SetParentInfo(const char *info);
 
   /**
    * Render without displaying the window.
    */
-  void SetOffScreenRendering(int i);
+  void SetOffScreenRendering(vtkTypeBool i);
 
 protected:
   vtkOSOpenGLRenderWindow();
@@ -235,8 +235,8 @@ protected:
   int      CursorHidden;
   int      ForceMakeCurrent;
 
-  void CreateAWindow();
-  void DestroyWindow();
+  void CreateAWindow() override;
+  void DestroyWindow() override;
   void CreateOffScreenWindow(int width, int height);
   void DestroyOffScreenWindow();
   void ResizeOffScreenWindow(int width, int height);

@@ -90,12 +90,46 @@ bool vtkPythonGetUnsignedLongLongValue(PyObject *o, T &a)
 }
 
 
-template <class T> inline
-bool vtkPythonGetStringValue(PyObject *o, T *&a, const char *exctext)
+Py_ssize_t vtkPythonGetStringSize(PyObject *o)
+{
+  if (PyBytes_Check(o))
+  {
+    return PyBytes_GET_SIZE(o);
+  }
+  else if (PyByteArray_Check(o))
+  {
+    return PyByteArray_GET_SIZE(o);
+  }
+#ifdef Py_USING_UNICODE
+  else if (PyUnicode_Check(o))
+  {
+#if PY_VERSION_HEX >= 0x03030000
+    Py_ssize_t size;
+    PyUnicode_AsUTF8AndSize(o, &size);
+    return size;
+#else
+    PyObject *s = _PyUnicode_AsDefaultEncodedString(o, nullptr);
+    if (s)
+    {
+      return PyBytes_GET_SIZE(s);
+    }
+#endif
+  }
+#endif
+  return 0;
+}
+
+
+bool vtkPythonGetStringValue(PyObject *o, const char *&a, const char *exctext)
 {
   if (PyBytes_Check(o))
   {
     a = PyBytes_AS_STRING(o);
+    return true;
+  }
+  else if (PyByteArray_Check(o))
+  {
+    a = PyByteArray_AS_STRING(o);
     return true;
   }
 #ifdef Py_USING_UNICODE
@@ -112,12 +146,19 @@ bool vtkPythonGetStringValue(PyObject *o, T *&a, const char *exctext)
       return true;
     }
 
-    exctext = "(unicode conversion error)";
+    if (exctext)
+    {
+      // set a more specific error message
+      exctext = "(unicode conversion error)";
+    }
 #endif
   }
 #endif
 
-  PyErr_SetString(PyExc_TypeError, exctext);
+  if (exctext)
+  {
+    PyErr_SetString(PyExc_TypeError, exctext);
+  }
   return false;
 }
 
@@ -292,18 +333,8 @@ bool vtkPythonGetValue(
   return r;
 }
 
-
 inline
 bool vtkPythonGetValue(PyObject *o, const char *&a)
-{
-  a = nullptr;
-
-  return (o == Py_None ||
-          vtkPythonGetStringValue(o, a, "string or None required"));
-}
-
-inline
-bool vtkPythonGetValue(PyObject *o, char *&a)
 {
   a = nullptr;
 
@@ -512,22 +543,22 @@ bool vtkPythonGetValue(PyObject *o, unsigned long long &a)
 // Method for setting a C++ array from a Python sequence.
 
 static
-bool vtkPythonSequenceError(PyObject *o, Py_ssize_t n, Py_ssize_t m);
+bool vtkPythonSequenceError(PyObject *o, size_t n, size_t m);
 
 template<class T> inline
-bool vtkPythonGetArray(PyObject *o, T *a, int n)
+bool vtkPythonGetArray(PyObject *o, T *a, size_t n)
 {
   if (a)
   {
-    Py_ssize_t m = n;
+    Py_ssize_t m = static_cast<Py_ssize_t>(n);
 
     if (PyTuple_Check(o))
     {
       m = PyTuple_GET_SIZE(o);
-      if (m == n)
+      if (m == static_cast<Py_ssize_t>(n))
       {
         bool r = true;
-        for (int i = 0; i < n && r; i++)
+        for (Py_ssize_t i = 0; i < m && r; i++)
         {
           PyObject *s = PyTuple_GET_ITEM(o, i);
           r = vtkPythonGetValue(s, a[i]);
@@ -538,10 +569,10 @@ bool vtkPythonGetArray(PyObject *o, T *a, int n)
     else if (PyList_Check(o))
     {
       m = PyList_GET_SIZE(o);
-      if (m == n)
+      if (m == static_cast<Py_ssize_t>(n))
       {
         bool r = true;
-        for (int i = 0; i < n && r; i++)
+        for (Py_ssize_t i = 0; i < m && r; i++)
         {
           PyObject *s = PyList_GET_ITEM(o, i);
           r = vtkPythonGetValue(s, a[i]);
@@ -552,10 +583,57 @@ bool vtkPythonGetArray(PyObject *o, T *a, int n)
     else if (PySequence_Check(o))
     {
       m = PySequence_Size(o);
-      if (m == n)
+      if (m == static_cast<Py_ssize_t>(n))
       {
         bool r = true;
-        for (int i = 0; i < n && r; i++)
+        for (Py_ssize_t i = 0; i < m && r; i++)
+        {
+          r = false;
+          PyObject *s = PySequence_GetItem(o, i);
+          if (s && vtkPythonGetValue(s, a[i]))
+          {
+            Py_DECREF(s);
+            r = true;
+          }
+        }
+        return r;
+      }
+    }
+
+    return vtkPythonSequenceError(o, n, m);
+  }
+
+  return true;
+}
+
+inline bool vtkPythonGetArray(PyObject *o, char *a, size_t n)
+{
+  if (a)
+  {
+    Py_ssize_t m = static_cast<Py_ssize_t>(n);
+    const char *b;
+
+    if (vtkPythonGetStringValue(o, b, nullptr))
+    {
+      m = vtkPythonGetStringSize(o);
+      if (m == static_cast<Py_ssize_t>(n))
+      {
+        for (size_t i = 0; i < n; i++)
+        {
+          a[i] = b[i];
+        }
+        // terminate so it can be used as a C string
+        a[n] = '\0';
+        return true;
+      }
+    }
+    else if (PySequence_Check(o))
+    {
+      m = PySequence_Size(o);
+      if (m == static_cast<Py_ssize_t>(n))
+      {
+        bool r = true;
+        for (Py_ssize_t i = 0; i < m && r; i++)
         {
           r = false;
           PyObject *s = PySequence_GetItem(o, i);
@@ -579,28 +657,28 @@ bool vtkPythonGetArray(PyObject *o, T *a, int n)
 // Method for setting an n-dimensional C++ arrays from a Python sequence.
 
 template<class T>
-bool vtkPythonGetNArray(PyObject *o, T *a, int ndim, const int *dims)
+bool vtkPythonGetNArray(PyObject *o, T *a, int ndim, const size_t *dims)
 {
   if (a)
   {
-    int inc = 1;
+    size_t inc = 1;
     for (int j = 1; j < ndim; j++)
     {
       inc *= dims[j];
     }
 
-    int n = dims[0];
-    Py_ssize_t m = n;
+    size_t n = dims[0];
+    Py_ssize_t m = static_cast<Py_ssize_t>(n);
 
     if (PyList_Check(o))
     {
       m = PyList_GET_SIZE(o);
-      if (m == n)
+      if (m == static_cast<Py_ssize_t>(n))
       {
         bool r = true;
         if (ndim > 1)
         {
-          for (int i = 0; i < n && r; i++)
+          for (Py_ssize_t i = 0; i < m && r; i++)
           {
             PyObject *s = PyList_GET_ITEM(o, i);
             r = vtkPythonGetNArray(s, a, ndim-1, dims+1);
@@ -609,7 +687,7 @@ bool vtkPythonGetNArray(PyObject *o, T *a, int ndim, const int *dims)
         }
         else
         {
-          for (int i = 0; i < n && r; i++)
+          for (Py_ssize_t i = 0; i < m && r; i++)
           {
             PyObject *s = PyList_GET_ITEM(o, i);
             r = vtkPythonGetValue(s, a[i]);
@@ -621,10 +699,10 @@ bool vtkPythonGetNArray(PyObject *o, T *a, int ndim, const int *dims)
     else if (PySequence_Check(o))
     {
       m = PySequence_Size(o);
-      if (m == n)
+      if (m == static_cast<Py_ssize_t>(n))
       {
         bool r = true;
-        for (int i = 0; i < n && r; i++)
+        for (Py_ssize_t i = 0; i < m && r; i++)
         {
           r = false;
           PyObject *s = PySequence_GetItem(o, i);
@@ -656,19 +734,19 @@ bool vtkPythonGetNArray(PyObject *o, T *a, int ndim, const int *dims)
 // Method for setting a python sequence from a C++ array
 
 template<class T> inline
-bool vtkPythonSetArray(PyObject *o, const T *a, int n)
+bool vtkPythonSetArray(PyObject *o, const T *a, size_t n)
 {
   if (a)
   {
-    Py_ssize_t m = n;
+    Py_ssize_t m = static_cast<Py_ssize_t>(n);
 
     if (PyList_Check(o))
     {
       m = PyList_GET_SIZE(o);
-      if (m == n)
+      if (m == static_cast<Py_ssize_t>(n))
       {
         bool r = true;
-        for (int i = 0; i < n && r; i++)
+        for (Py_ssize_t i = 0; i < m && r; i++)
         {
           r = false;
           PyObject *s = vtkPythonArgs::BuildValue(a[i]);
@@ -685,10 +763,55 @@ bool vtkPythonSetArray(PyObject *o, const T *a, int n)
     else if (PySequence_Check(o))
     {
       m = PySequence_Size(o);
-      if (m == n)
+      if (m == static_cast<Py_ssize_t>(n))
       {
         bool r = true;
-        for (int i = 0; i < n && r; i++)
+        for (Py_ssize_t i = 0; i < m && r; i++)
+        {
+          r = false;
+          PyObject *s = vtkPythonArgs::BuildValue(a[i]);
+          if (s)
+          {
+            r = (PySequence_SetItem(o, i, s) != -1);
+            Py_DECREF(s);
+          }
+        }
+        return r;
+      }
+    }
+
+    return vtkPythonSequenceError(o, n, m);
+  }
+
+  return true;
+}
+
+inline bool vtkPythonSetArray(PyObject *o, const char *a, size_t n)
+{
+  if (a)
+  {
+    Py_ssize_t m = static_cast<Py_ssize_t>(n);
+
+    if (PyByteArray_Check(o))
+    {
+      m = PyByteArray_GET_SIZE(o);
+      if (m == static_cast<Py_ssize_t>(n))
+      {
+        char *b = PyByteArray_AS_STRING(o);
+        for (Py_ssize_t i = 0; i < m; i++)
+        {
+          b[i] = a[i];
+        }
+        return true;
+      }
+    }
+    else if (PySequence_Check(o))
+    {
+      m = PySequence_Size(o);
+      if (m == static_cast<Py_ssize_t>(n))
+      {
+        bool r = true;
+        for (Py_ssize_t i = 0; i < m && r; i++)
         {
           r = false;
           PyObject *s = vtkPythonArgs::BuildValue(a[i]);
@@ -713,28 +836,28 @@ bool vtkPythonSetArray(PyObject *o, const T *a, int n)
 
 template<class T>
 bool vtkPythonSetNArray(
-  PyObject *o, const T *a, int ndim, const int *dims)
+  PyObject *o, const T *a, int ndim, const size_t *dims)
 {
   if (a)
   {
-    int inc = 1;
+    size_t inc = 1;
     for (int j = 1; j < ndim; j++)
     {
       inc *= dims[j];
     }
 
-    int n = dims[0];
-    Py_ssize_t m = n;
+    size_t n = dims[0];
+    Py_ssize_t m = static_cast<Py_ssize_t>(n);
 
     if (PyList_Check(o))
     {
       m = PyList_GET_SIZE(o);
-      if (m == n)
+      if (m == static_cast<Py_ssize_t>(n))
       {
         bool r = true;
         if (ndim > 1)
         {
-          for (int i = 0; i < n && r; i++)
+          for (Py_ssize_t i = 0; i < m && r; i++)
           {
             PyObject *s = PyList_GET_ITEM(o, i);
             r = vtkPythonSetNArray(s, a, ndim-1, dims+1);
@@ -743,7 +866,7 @@ bool vtkPythonSetNArray(
         }
         else
         {
-          for (int i = 0; i < n && r; i++)
+          for (Py_ssize_t i = 0; i < m && r; i++)
           {
             r = false;
             PyObject *s = vtkPythonArgs::BuildValue(a[i]);
@@ -761,12 +884,12 @@ bool vtkPythonSetNArray(
     else if (PySequence_Check(o))
     {
       m = PySequence_Size(o);
-      if (m == n)
+      if (m == static_cast<Py_ssize_t>(n))
       {
         bool r = true;
         if (ndim > 1)
         {
-          for (int i = 0; i < n && r; i++)
+          for (Py_ssize_t i = 0; i < m && r; i++)
           {
             r = false;
             PyObject *s = PySequence_GetItem(o, i);
@@ -780,7 +903,7 @@ bool vtkPythonSetNArray(
         }
         else
         {
-          for (int i = 0; i < n && r; i++)
+          for (Py_ssize_t i = 0; i < m && r; i++)
           {
             r = false;
             PyObject *s = vtkPythonArgs::BuildValue(a[i]);
@@ -805,12 +928,13 @@ bool vtkPythonSetNArray(
 // Define all the "BuildValue" array methods defined in the class.
 
 template<class T> inline
-PyObject *vtkPythonBuildTuple(const T *a, int n)
+PyObject *vtkPythonBuildTuple(const T *a, size_t n)
 {
   if (a)
   {
-    PyObject *t = PyTuple_New(n);
-    for (int i = 0; i < n; i++)
+    Py_ssize_t m = static_cast<Py_ssize_t>(n);
+    PyObject *t = PyTuple_New(m);
+    for (Py_ssize_t i = 0; i < m; i++)
     {
       PyObject *o = vtkPythonArgs::BuildValue(a[i]);
       PyTuple_SET_ITEM(t, i, o);
@@ -823,7 +947,7 @@ PyObject *vtkPythonBuildTuple(const T *a, int n)
 }
 
 #define VTK_PYTHON_BUILD_TUPLE(T) \
-PyObject *vtkPythonArgs::BuildTuple(const T *a, int n) \
+PyObject *vtkPythonArgs::BuildTuple(const T *a, size_t n) \
 { \
   return vtkPythonBuildTuple(a, n); \
 }
@@ -841,6 +965,8 @@ VTK_PYTHON_BUILD_TUPLE(long)
 VTK_PYTHON_BUILD_TUPLE(unsigned long)
 VTK_PYTHON_BUILD_TUPLE(long long)
 VTK_PYTHON_BUILD_TUPLE(unsigned long long)
+VTK_PYTHON_BUILD_TUPLE(std::string)
+VTK_PYTHON_BUILD_TUPLE(vtkUnicodeString)
 
 //--------------------------------------------------------------------
 // If "self" is a class, get real "self" from arg list
@@ -985,7 +1111,6 @@ bool vtkPythonArgs::GetValue(PyObject *o, T &a) \
   return vtkPythonGetValue(o, a); \
 }
 
-VTK_PYTHON_GET_ARG(char *)
 VTK_PYTHON_GET_ARG(const char *)
 VTK_PYTHON_GET_ARG(std::string)
 VTK_PYTHON_GET_ARG(vtkUnicodeString)
@@ -1008,7 +1133,7 @@ VTK_PYTHON_GET_ARG(unsigned long long)
 // Define all the GetArray methods in the class.
 
 #define VTK_PYTHON_GET_ARRAY_ARG(T) \
-bool vtkPythonArgs::GetArray(T *a, int n) \
+bool vtkPythonArgs::GetArray(T *a, size_t n) \
 { \
   PyObject *o = PyTuple_GET_ITEM(this->Args, this->I++); \
   if (vtkPythonGetArray(o, a, n)) \
@@ -1033,12 +1158,14 @@ VTK_PYTHON_GET_ARRAY_ARG(long)
 VTK_PYTHON_GET_ARRAY_ARG(unsigned long)
 VTK_PYTHON_GET_ARRAY_ARG(long long)
 VTK_PYTHON_GET_ARRAY_ARG(unsigned long long)
+VTK_PYTHON_GET_ARRAY_ARG(std::string)
+VTK_PYTHON_GET_ARRAY_ARG(vtkUnicodeString)
 
 //--------------------------------------------------------------------
 // Define all the GetNArray methods in the class.
 
 #define VTK_PYTHON_GET_NARRAY_ARG(T) \
-bool vtkPythonArgs::GetNArray(T *a, int ndim, const int *dims) \
+bool vtkPythonArgs::GetNArray(T *a, int ndim, const size_t *dims) \
 { \
   PyObject *o = PyTuple_GET_ITEM(this->Args, this->I++); \
   if (vtkPythonGetNArray(o, a, ndim, dims)) \
@@ -1174,7 +1301,7 @@ bool vtkPythonArgs::SetArgValue(int i, T a) \
 }
 
 #define VTK_PYTHON_SET_ARGN(T) \
-bool vtkPythonArgs::SetArgValue(int i, const T *a, int n) \
+bool vtkPythonArgs::SetArgValue(int i, const T *a, size_t n) \
 { \
   if (this->M + i < this->N) \
   { \
@@ -1225,7 +1352,7 @@ VTK_PYTHON_SET_ARGN(unsigned long long)
 // Define all the SetArgValue methods for setting array args
 
 #define VTK_PYTHON_SET_ARRAY_ARG(T) \
-bool vtkPythonArgs::SetArray(int i, const T *a, int n) \
+bool vtkPythonArgs::SetArray(int i, const T *a, size_t n) \
 { \
   if (this->M + i < this->N) \
   { \
@@ -1260,7 +1387,7 @@ VTK_PYTHON_SET_ARRAY_ARG(unsigned long long)
 
 #define VTK_PYTHON_SET_NARRAY_ARG(T) \
 bool vtkPythonArgs::SetNArray( \
-  int i, const T *a, int ndim, const int *dims) \
+  int i, const T *a, int ndim, const size_t *dims) \
 { \
   if (this->M + i < this->N) \
   { \
@@ -1289,6 +1416,24 @@ VTK_PYTHON_SET_NARRAY_ARG(long)
 VTK_PYTHON_SET_NARRAY_ARG(unsigned long)
 VTK_PYTHON_SET_NARRAY_ARG(long long)
 VTK_PYTHON_SET_NARRAY_ARG(unsigned long long)
+
+//--------------------------------------------------------------------
+// Replace the contents of an argument, arg[:] = seq
+bool vtkPythonArgs::SetContents(int i, PyObject *seq)
+{
+  if (this->M + i < this->N)
+  {
+    PyObject *o = PyTuple_GET_ITEM(this->Args, this->M + i);
+    Py_ssize_t l = PySequence_Size(o);
+    if (l >= 0 && PySequence_SetSlice(o, 0, l, seq) != -1)
+    {
+      return true;
+    }
+    this->RefineArgTypeError(i);
+    return false;
+  }
+  return true;
+}
 
 //--------------------------------------------------------------------
 // Raise an exception about incorrect arg count.
@@ -1385,18 +1530,21 @@ bool vtkPythonArgs::RefineArgTypeError(int i)
 
 //--------------------------------------------------------------------
 // Raise a type error for a sequence arg of wrong type or size.
-bool vtkPythonSequenceError(PyObject *o, Py_ssize_t n, Py_ssize_t m)
+bool vtkPythonSequenceError(PyObject *o, size_t n, size_t m)
 {
   char text[80];
   if (m == n)
   {
-    snprintf(text, sizeof(text), "expected a sequence of %ld value%s, got %s",
-            (long)n, ((n == 1) ? "" : "s"), Py_TYPE(o)->tp_name);
+    snprintf(text, sizeof(text), "expected a sequence of %lld value%s, got %s",
+             static_cast<long long>(n), ((n == 1) ? "" : "s"),
+             Py_TYPE(o)->tp_name);
   }
   else
   {
-    snprintf(text, sizeof(text), "expected a sequence of %ld value%s, got %ld values",
-            (long)n, ((n == 1) ? "" : "s"), (long)m);
+    snprintf(text, sizeof(text),
+             "expected a sequence of %lld value%s, got %lld values",
+             static_cast<long long>(n), ((n == 1) ? "" : "s"),
+             static_cast<long long>(m));
   }
   PyErr_SetString(PyExc_TypeError, text);
   return false;
@@ -1404,15 +1552,32 @@ bool vtkPythonSequenceError(PyObject *o, Py_ssize_t n, Py_ssize_t m)
 
 //--------------------------------------------------------------------
 // Checking size of array arg.
-int vtkPythonArgs::GetArgSize(int i)
+size_t vtkPythonArgs::GetArgSize(int i)
 {
-  int size = 0;
+  size_t size = 0;
   if (this->M + i < this->N)
   {
     PyObject *o = PyTuple_GET_ITEM(this->Args, this->M + i);
     if (PySequence_Check(o))
     {
-      size = static_cast<int>(PySequence_Size(o));
+      size = PySequence_Size(o);
+    }
+  }
+  return size;
+}
+
+//--------------------------------------------------------------------
+// Checking size of string arg.
+size_t vtkPythonArgs::GetStringSize(int i)
+{
+  size_t size = 0;
+  if (this->M + i < this->N)
+  {
+    PyObject *o = PyTuple_GET_ITEM(this->Args, this->M + i);
+    size = vtkPythonGetStringSize(o);
+    if (size == 0 && PySequence_Check(o))
+    {
+      size = PySequence_Size(o);
     }
   }
   return size;
@@ -1420,7 +1585,7 @@ int vtkPythonArgs::GetArgSize(int i)
 
 //--------------------------------------------------------------------
 // Check if 'm' equals 'n', and report an error for arg i if not.
-bool vtkPythonArgs::CheckSizeHint(int i, Py_ssize_t m, Py_ssize_t n)
+bool vtkPythonArgs::CheckSizeHint(int i, size_t m, size_t n)
 {
   if (this->M + i < this->N)
   {
@@ -1436,7 +1601,7 @@ bool vtkPythonArgs::CheckSizeHint(int i, Py_ssize_t m, Py_ssize_t n)
 //--------------------------------------------------------------------
 // Use stack space for small arrays, heap for large arrays.
 template<class T>
-vtkPythonArgs::Array<T>::Array(Py_ssize_t n) : Pointer(nullptr)
+vtkPythonArgs::Array<T>::Array(size_t n) : Pointer(nullptr)
 {
   if (n > basicsize)
   {

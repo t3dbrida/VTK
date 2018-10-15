@@ -29,10 +29,10 @@
   OSPRAY_VERSION_PATCH
 
 //------------------------------------------------------------------------------
-osp::Texture2D *vtkOSPRayMaterialHelpers::VTKToOSPTexture
+OSPTexture2D vtkOSPRayMaterialHelpers::VTKToOSPTexture
   (vtkImageData *vColorTextureMap)
 {
-  unsigned char *ochars;
+  unsigned char *ochars = nullptr;
   void *obuffer;
   int xsize = vColorTextureMap->GetExtent()[1];
   int ysize = vColorTextureMap->GetExtent()[3];
@@ -68,7 +68,7 @@ osp::Texture2D *vtkOSPRayMaterialHelpers::VTKToOSPTexture
   } else {
     obuffer = vColorTextureMap->GetScalarPointer();
   }
-  osp::Texture2D *t2d;
+  OSPTexture2D t2d;
   OSPTextureFormat ospformat = OSP_TEXTURE_RGB8;
   if (scalartype == VTK_FLOAT)
   {
@@ -100,7 +100,7 @@ osp::Texture2D *vtkOSPRayMaterialHelpers::VTKToOSPTexture
       ospformat = OSP_TEXTURE_RGBA8;
     }
   }
-  t2d = (osp::Texture2D*)ospNewTexture2D
+  t2d = ospNewTexture2D
     (
      osp::vec2i{xsize+1,
          ysize+1},
@@ -118,8 +118,8 @@ osp::Texture2D *vtkOSPRayMaterialHelpers::VTKToOSPTexture
 //------------------------------------------------------------------------------
 void vtkOSPRayMaterialHelpers::MakeMaterials
   (vtkOSPRayRendererNode *orn,
-   osp::Renderer *oRenderer,
-   std::map<std::string, osp::Material*> &mats)
+   OSPRenderer oRenderer,
+   std::map<std::string, OSPMaterial> &mats)
 {
   vtkOSPRayMaterialLibrary *ml = vtkOSPRayRendererNode::GetMaterialLibrary(orn->GetRenderer());
   if (!ml)
@@ -131,7 +131,7 @@ void vtkOSPRayMaterialHelpers::MakeMaterials
   std::set<std::string >::iterator it = nicknames.begin();
   while (it != nicknames.end())
   {
-    osp::Material* newmat = vtkOSPRayMaterialHelpers::MakeMaterial
+    OSPMaterial newmat = vtkOSPRayMaterialHelpers::MakeMaterial
       (orn, oRenderer, *it);
     mats[*it] = newmat;
     ++it;
@@ -177,16 +177,16 @@ void vtkOSPRayMaterialHelpers::MakeMaterials
   if (texname) \
   { \
     vtkImageData* vColorTextureMap = vtkImageData::SafeDownCast(texname->GetInput()); \
-    osp::Texture2D *t2d = vtkOSPRayMaterialHelpers::VTKToOSPTexture(vColorTextureMap); \
+    OSPTexture2D t2d = vtkOSPRayMaterialHelpers::VTKToOSPTexture(vColorTextureMap); \
     ospSetObject(oMaterial, #texname, ((OSPTexture2D)(t2d))); \
   }
 
 //------------------------------------------------------------------------------
-osp::Material* vtkOSPRayMaterialHelpers::MakeMaterial
+OSPMaterial vtkOSPRayMaterialHelpers::MakeMaterial
   (vtkOSPRayRendererNode *orn,
-  osp::Renderer* oRenderer, std::string nickname)
+  OSPRenderer oRenderer, std::string nickname)
 {
-  osp::Material* oMaterial;
+  OSPMaterial oMaterial;
   vtkOSPRayMaterialLibrary *ml = vtkOSPRayRendererNode::GetMaterialLibrary(orn->GetRenderer());
   if (!ml)
     {
@@ -312,19 +312,58 @@ osp::Material* vtkOSPRayMaterialHelpers::MakeMaterial
   {
     oMaterial = NewMaterial(orn, oRenderer, implname);
     OSPSET3F(baseColor);
-    OSPSET1F(metallic);
-    OSPSET3F(specular);
     OSPSET3F(edgeColor);
+    OSPSET1F(metallic);
+    OSPSET1F(diffuse);
+    OSPSET1F(specular);
+    OSPSET1F(ior);
     OSPSET1F(transmission);
+    OSPSET3F(transmissionColor);
+    OSPSET1F(transmissionDepth);
     OSPSET1F(roughness);
-    OSPSET1F(normalScale);
+    OSPSET1F(anisotropy);
+    OSPSET1F(rotation);
+    OSPSET1F(normal);
+    OSPSET1F(thin);
+    OSPSET1F(thickness);
+    OSPSET1F(backlight);
     OSPSET1F(coat);
+    OSPSET1F(coatIor);
     OSPSET3F(coatColor);
     OSPSET1F(coatThickness);
     OSPSET1F(coatRoughness);
-    OSPSET1F(coatNormalScale);
-    OSPSET1F(ior);
-    OSPSET1F(iorOutside);
+    OSPSET1F(coatNormal);
+    OSPSET1F(sheen);
+    OSPSET3F(sheenColor);
+    OSPSET1F(sheenRoughness);
+    OSPSET1F(opacity);
+
+    OSPSETTEXTURE(baseColorMap);
+    OSPSETTEXTURE(edgeColorMap);
+    OSPSETTEXTURE(metallicMap);
+    OSPSETTEXTURE(diffuseMap);
+    OSPSETTEXTURE(specularMap);
+    OSPSETTEXTURE(iorMap);
+    OSPSETTEXTURE(transmissionMap);
+    OSPSETTEXTURE(transmissionColorMap);
+    OSPSETTEXTURE(transmissionDepthMap);
+    OSPSETTEXTURE(roughnessMap);
+    OSPSETTEXTURE(anisotropyMap);
+    OSPSETTEXTURE(rotationMap);
+    OSPSETTEXTURE(normalMap);
+    OSPSETTEXTURE(thinMap);
+    OSPSETTEXTURE(thicknessMap);
+    OSPSETTEXTURE(backlightMap);
+    OSPSETTEXTURE(coatMap);
+    OSPSETTEXTURE(coatIorMap);
+    OSPSETTEXTURE(coatColorMap);
+    OSPSETTEXTURE(coatThicknessMap);
+    OSPSETTEXTURE(coatRoughnessMap);
+    OSPSETTEXTURE(coatNormalMap);
+    OSPSETTEXTURE(sheenMap);
+    OSPSETTEXTURE(sheenColorMap);
+    OSPSETTEXTURE(sheenRoughnessMap);
+    OSPSETTEXTURE(opacityMap);
   }
   else if (implname == "CarPaint")
   {
@@ -359,11 +398,11 @@ osp::Material* vtkOSPRayMaterialHelpers::MakeMaterial
 }
 
 //------------------------------------------------------------------------------
-osp::Material *vtkOSPRayMaterialHelpers::NewMaterial(vtkOSPRayRendererNode *orn,
-                                                     osp::Renderer *oRenderer,
+OSPMaterial vtkOSPRayMaterialHelpers::NewMaterial(vtkOSPRayRendererNode *orn,
+                                                     OSPRenderer oRenderer,
                                                      std::string ospMatName)
 {
-  osp::Material *result;
+  OSPMaterial result;
 
 #if VTK_OSPRAY_VERSION >= 10500 // 1.5.0
 

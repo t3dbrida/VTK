@@ -95,6 +95,10 @@ vtkStreamingDemandDrivenPipeline::vtkStreamingDemandDrivenPipeline()
 {
   this->ContinueExecuting = 0;
   this->UpdateExtentRequest = nullptr;
+  this->UpdateTimeRequest = nullptr;
+  this->TimeDependentInformationRequest = nullptr;
+  this->InformationIterator = vtkInformationIterator::New();
+
   this->LastPropogateUpdateExtentShortCircuited = 0;
 }
 
@@ -105,6 +109,15 @@ vtkStreamingDemandDrivenPipeline::~vtkStreamingDemandDrivenPipeline()
   {
     this->UpdateExtentRequest->Delete();
   }
+  if (this->UpdateTimeRequest)
+  {
+    this->UpdateTimeRequest->Delete();
+  }
+  if (this->TimeDependentInformationRequest)
+  {
+    this->TimeDependentInformationRequest->Delete();
+  }
+  this->InformationIterator->Delete();
 }
 
 //----------------------------------------------------------------------------
@@ -163,27 +176,40 @@ int vtkStreamingDemandDrivenPipeline
     return result;
   }
 
- // Look for specially supported requests.
+  // Look for specially supported requests.
   if(request->Has(REQUEST_TIME_DEPENDENT_INFORMATION()))
   {
+    int result = 1;
     int outputPort = -1;
     if(request->Has(FROM_OUTPUT_PORT()))
     {
       outputPort = request->Get(FROM_OUTPUT_PORT());
     }
-    int N2E = 1;
-    if(outputPort>=0)
+
+    int N2E =  this->Superclass::NeedToExecuteData(outputPort, inInfoVec,outInfoVec);
+    if(!N2E && outputPort>=0)
     {
       vtkInformation* outInfo = outInfoVec->GetInformationObject(outputPort);
-      if(!outInfo->Has(TIME_DEPENDENT_INFORMATION()))
+      vtkDataObject* dataObject = outInfo->Get(vtkDataObject::DATA_OBJECT());
+      if (outInfo->Has(TIME_DEPENDENT_INFORMATION()))
+      {
+        N2E  = this->NeedToExecuteBasedOnTime(outInfo,dataObject);
+      }
+      else
       {
         N2E = 0;
       }
     }
-    if(!N2E)
+    if(N2E)
     {
-      return 1;
+      if(!this->ForwardUpstream(request))
+      {
+        return 0;
+      }
+      result = this->CallAlgorithm(request, vtkExecutive::RequestUpstream,
+                                   inInfoVec, outInfoVec);
     }
+    return result;
   }
 
   if(request->Has(REQUEST_UPDATE_EXTENT()))
@@ -738,21 +764,20 @@ int vtkStreamingDemandDrivenPipeline::PropagateTime(int outputPort)
   }
 
   // Setup the request for update extent propagation.
-  vtkSmartPointer<vtkInformation> updateTimeRequest = vtkSmartPointer<vtkInformation>::New();
-
-  //if (!this->UpdateExtentRequest)
+  if (!this->UpdateTimeRequest)
   {
-    updateTimeRequest->Set(REQUEST_UPDATE_TIME());
+    this->UpdateTimeRequest = vtkInformation::New();
+    this->UpdateTimeRequest->Set(REQUEST_UPDATE_TIME());
     // The request is forwarded upstream through the pipeline.
-    updateTimeRequest->Set(vtkExecutive::FORWARD_DIRECTION(), vtkExecutive::RequestUpstream);
+    this->UpdateTimeRequest->Set(vtkExecutive::FORWARD_DIRECTION(), vtkExecutive::RequestUpstream);
     // Algorithms process this request before it is forwarded.
-    updateTimeRequest->Set(vtkExecutive::ALGORITHM_BEFORE_FORWARD(), 1);
+    this->UpdateTimeRequest->Set(vtkExecutive::ALGORITHM_BEFORE_FORWARD(), 1);
   }
 
-  updateTimeRequest->Set(FROM_OUTPUT_PORT(), outputPort);
+  this->UpdateTimeRequest->Set(FROM_OUTPUT_PORT(), outputPort);
 
   // Send the request.
-  return this->ProcessRequest(updateTimeRequest,
+  return this->ProcessRequest(this->UpdateTimeRequest,
                               this->GetInputInformation(),
                               this->GetOutputInformation());
 }
@@ -765,18 +790,24 @@ int vtkStreamingDemandDrivenPipeline::UpdateTimeDependentInformation(int port)
   {
     return 0;
   }
-  // Setup the request for information.
-  vtkSmartPointer<vtkInformation> timeRequest = vtkSmartPointer<vtkInformation>::New();
-  timeRequest->Set(REQUEST_TIME_DEPENDENT_INFORMATION());
-  // The request is forwarded upstream through the pipeline.
-  timeRequest->Set(vtkExecutive::FORWARD_DIRECTION(), vtkExecutive::RequestUpstream);
-  // Algorithms process this request after it is forwarded.
-  timeRequest->Set(vtkExecutive::ALGORITHM_AFTER_FORWARD(), 1);
 
-  timeRequest->Set(FROM_OUTPUT_PORT(), port);
+  // Setup the request for information.
+  if (!this->TimeDependentInformationRequest)
+  {
+    this->TimeDependentInformationRequest = vtkInformation::New();
+    this->TimeDependentInformationRequest->Set(REQUEST_TIME_DEPENDENT_INFORMATION());
+    // The request is forwarded upstream through the pipeline.
+    this->TimeDependentInformationRequest->Set(
+      vtkExecutive::FORWARD_DIRECTION(), vtkExecutive::RequestUpstream);
+    // Algorithms process this request after it is forwarded.
+    this->TimeDependentInformationRequest->Set(
+      vtkExecutive::ALGORITHM_AFTER_FORWARD(), 1);
+  }
+
+  this->TimeDependentInformationRequest->Set(FROM_OUTPUT_PORT(), port);
 
   // Send the request.
-  return this->ProcessRequest(timeRequest,
+  return this->ProcessRequest(this->TimeDependentInformationRequest,
                               this->GetInputInformation(),
                               this->GetOutputInformation());
 }
@@ -1320,19 +1351,17 @@ int vtkStreamingDemandDrivenPipeline
   // NeedToExecute() to make their own decision about whether
   // what they are asking for is different than what is in the
   // data and whether the filter should execute.
-  vtkSmartPointer<vtkInformationIterator> infoIter =
-    vtkSmartPointer<vtkInformationIterator>::New();
-  infoIter->SetInformationWeak(outInfo);
+  this->InformationIterator->SetInformationWeak(outInfo);
 
-  infoIter->InitTraversal();
-  while(!infoIter->IsDoneWithTraversal())
+  this->InformationIterator->InitTraversal();
+  while(!this->InformationIterator->IsDoneWithTraversal())
   {
-    vtkInformationKey* key = infoIter->GetCurrentKey();
+    vtkInformationKey* key = this->InformationIterator->GetCurrentKey();
     if (key->NeedToExecute(outInfo, dataInfo))
     {
       return 1;
     }
-    infoIter->GoToNextItem();
+    this->InformationIterator->GoToNextItem();
   }
 
   // We do not need to execute.

@@ -296,7 +296,13 @@ int vtkExtractSelection::RequestData(
       for (auto nodeIter = selectors.begin(); nodeIter != selectors.end(); ++nodeIter)
       {
         auto name = nodeIter->first;
-        auto array = outputBlock->GetAttributes(assoc)->GetArray(name.c_str());
+        auto fieldData = outputBlock->GetAttributes(assoc);
+        if (!fieldData)
+        {
+          arrayMap[name] = nullptr;
+          continue;
+        }
+        auto array = fieldData->GetArray(name.c_str());
         auto insidednessArray = vtkSignedCharArray::SafeDownCast(array);
 
         auto node = selection->GetNode(name.c_str());
@@ -332,7 +338,13 @@ int vtkExtractSelection::RequestData(
       selector->ComputeSelectedElements(input, output);
 
       // Set up a map from selection node name to insidedness array.
-      auto array = output->GetAttributes(assoc)->GetArray(name.c_str());
+      auto *attributes = output->GetAttributes(assoc);
+      if (!attributes)
+      {
+        arrayMap[name] = nullptr;
+        continue;
+      }
+      auto array = attributes->GetArray(name.c_str());
       auto insidednessArray = vtkSignedCharArray::SafeDownCast(array);
 
       auto node = selection->GetNode(name.c_str());
@@ -420,6 +432,10 @@ vtkSmartPointer<vtkDataObject> vtkExtractSelection::ExtractElements(
   else if (type == vtkDataObject::ROW)
   {
     vtkTable* input = vtkTable::SafeDownCast(block);
+    if (!input)
+    {
+      return nullptr;
+    }
     vtkTable* output = vtkTable::New();
     this->ExtractSelectedRows(input, output, insidednessArray);
     return vtkSmartPointer<vtkTable>::Take(output);
@@ -614,49 +630,49 @@ void vtkExtractSelection::PrintSelf(ostream& os, vtkIndent indent)
 //----------------------------------------------------------------------------
 void vtkExtractSelection::SetShowBounds(bool)
 {
-  VTK_LEGACY_BODY(vtkExtractSelection::SetShowBounds, "VTK 9.0");
+  VTK_LEGACY_BODY(vtkExtractSelection::SetShowBounds, "VTK 8.2");
 }
 //----------------------------------------------------------------------------
 bool vtkExtractSelection::GetShowBounds()
 {
-  VTK_LEGACY_BODY(vtkExtractSelection::GetShowBounds, "VTK 9.0");
+  VTK_LEGACY_BODY(vtkExtractSelection::GetShowBounds, "VTK 8.2");
   return false;
 }
 
 //----------------------------------------------------------------------------
 void vtkExtractSelection::ShowBoundsOn()
 {
-  VTK_LEGACY_BODY(vtkExtractSelection::ShowBoundsOn, "VTK 9.0");
+  VTK_LEGACY_BODY(vtkExtractSelection::ShowBoundsOn, "VTK 8.2");
 }
 
 //----------------------------------------------------------------------------
 void vtkExtractSelection::ShowBoundsOff()
 {
-  VTK_LEGACY_BODY(vtkExtractSelection::ShowBoundsOff, "VTK 9.0");
+  VTK_LEGACY_BODY(vtkExtractSelection::ShowBoundsOff, "VTK 8.2");
 }
 
 //----------------------------------------------------------------------------
 void vtkExtractSelection::SetUseProbeForLocations(bool)
 {
-  VTK_LEGACY_BODY(vtkExtractSelection::SetUseProbeForLocations, "VTK 9.0");
+  VTK_LEGACY_BODY(vtkExtractSelection::SetUseProbeForLocations, "VTK 8.2");
 }
 
 //----------------------------------------------------------------------------
 bool vtkExtractSelection::GetUseProbeForLocations()
 {
-  VTK_LEGACY_BODY(vtkExtractSelection::GetUseProbeForLocations, "VTK 9.0");
+  VTK_LEGACY_BODY(vtkExtractSelection::GetUseProbeForLocations, "VTK 8.2");
   return false;
 }
 
 //----------------------------------------------------------------------------
 void vtkExtractSelection::UseProbeForLocationsOn()
 {
-  VTK_LEGACY_BODY(vtkExtractSelection::UseProbeForLocationsOn, "VTK 9.0");
+  VTK_LEGACY_BODY(vtkExtractSelection::UseProbeForLocationsOn, "VTK 8.2");
 }
 
 //----------------------------------------------------------------------------
 void vtkExtractSelection::UseProbeForLocationsOff()
 {
-  VTK_LEGACY_BODY(vtkExtractSelection::UseProbeForLocationsOff, "VTK 9.0");
+  VTK_LEGACY_BODY(vtkExtractSelection::UseProbeForLocationsOff, "VTK 8.2");
 }
 #endif

@@ -83,7 +83,7 @@ public:
    * before the window has been created, and it might not work on all
    * versions of OS X.
    */
-  void SetFullScreen(int) override;
+  void SetFullScreen(vtkTypeBool) override;
 
   /**
    * Remap the window.  This is not implemented for the vtkIOSRenderWindow.
@@ -133,7 +133,7 @@ public:
    */
   void SetWindowName(const char *) override;
 
-  void SetNextWindowInfo(char *) override
+  void SetNextWindowInfo(const char *) override
   {
       vtkWarningMacro("SetNextWindowInfo not implemented (WindowRemap not implemented).");
   }
@@ -157,14 +157,14 @@ public:
    * The parameter is an ASCII string of a decimal number representing
    * a pointer to the window.
    */
-  void SetWindowInfo(char*) override;
+  void SetWindowInfo(const char*) override;
 
   /**
    * See the documentation for SetParentId().  This method allows the ParentId
    * to be set as an ASCII string of a decimal number that is the memory
    * address of the parent UIView.
    */
-  void SetParentInfo(char*) override;
+  void SetParentInfo(const char*) override;
 
   void SetNextWindowId(void*) override
   {
@@ -183,7 +183,7 @@ public:
    * overrides the superclass method since this class can actually check
    * whether the window has been realized yet.
    */
-  void SetStereoCapableWindow(int capable) override;
+  void SetStereoCapableWindow(vtkTypeBool capable) override;
 
   /**
    * Make this windows OpenGL context the current context.

@@ -10,11 +10,15 @@ vtk_add_test_cxx(vtkAcceleratorsVtkmCxxTests tests
   TestVTKMLevelOfDetail.cxx
   TestVTKMMarchingCubes.cxx
   TestVTKMMarchingCubes2.cxx
+  TestVTKMNDHistogram.cxx,NO_VALID
   TestVTKMPointElevation.cxx
+  TestVTKMProbe.cxx,NO_VALID
   TestVTKMPolyDataNormals.cxx
   TestVTKMThreshold.cxx
   TestVTKMThreshold2.cxx
   TestVTKMTriangleMeshPointNormals.cxx
+  TestVTKMWarpScalar.cxx
+  TestVTKMWarpVector.cxx
   )
 vtk_test_cxx_executable(vtkAcceleratorsVtkmCxxTests tests
   RENDERING_FACTORY

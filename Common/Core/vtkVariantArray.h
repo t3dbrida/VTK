@@ -67,7 +67,7 @@ public:
    * Allocate memory for this array. Delete old storage only if necessary.
    * Note that ext is no longer used.
    */
-  int Allocate(vtkIdType sz, vtkIdType ext=1000) override;
+  vtkTypeBool Allocate(vtkIdType sz, vtkIdType ext=1000) override;
 
   /**
    * Release storage and reset array to initial state.
@@ -159,7 +159,7 @@ public:
    * given the ptIndices in the source array and associated
    * interpolation weights.
    * This method assumes that the two arrays are of the same type
-   * and strcuture.
+   * and structure.
    */
   void InterpolateTuple(vtkIdType i, vtkIdList *ptIndices,
     vtkAbstractArray* source,  double* weights) override;
@@ -187,7 +187,7 @@ public:
    * Resize the array while conserving the data.  Returns 1 if
    * resizing succeeded and 0 otherwise.
    */
-  int Resize(vtkIdType numTuples) override;
+  vtkTypeBool Resize(vtkIdType numTuples) override;
 
   //@{
   /**

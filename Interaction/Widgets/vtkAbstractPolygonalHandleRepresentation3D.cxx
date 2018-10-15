@@ -711,6 +711,10 @@ int vtkAbstractPolygonalHandleRepresentation3D::RenderOpaqueGeometry(vtkViewport
 int vtkAbstractPolygonalHandleRepresentation3D::RenderTranslucentPolygonalGeometry(
   vtkViewport *viewport)
 {
+  // The internal actor needs to share property keys. This allows depth peeling
+  // etc to work.
+  this->Actor->SetPropertyKeys(this->GetPropertyKeys());
+
   int count=0;
   if (this->HandleVisibility)
   {
@@ -724,7 +728,7 @@ int vtkAbstractPolygonalHandleRepresentation3D::RenderTranslucentPolygonalGeomet
 }
 
 //-----------------------------------------------------------------------------
-int vtkAbstractPolygonalHandleRepresentation3D::HasTranslucentPolygonalGeometry()
+vtkTypeBool vtkAbstractPolygonalHandleRepresentation3D::HasTranslucentPolygonalGeometry()
 {
   int result=0;
   this->BuildRepresentation();

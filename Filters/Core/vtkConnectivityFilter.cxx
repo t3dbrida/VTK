@@ -31,7 +31,7 @@
 #include "vtkUnstructuredGrid.h"
 #include "vtkIdTypeArray.h"
 
-vtkStandardNewMacro(vtkConnectivityFilter);
+vtkObjectFactoryNewMacro(vtkConnectivityFilter);
 
 // Construct with default extraction mode to extract largest regions.
 vtkConnectivityFilter::vtkConnectivityFilter()
@@ -132,9 +132,9 @@ int vtkConnectivityFilter::RequestData(
 
   vtkIdType numPts, numCells, cellId, i, j, pt;
   vtkPoints *newPts;
-  int id;
-  int maxCellsInRegion;
-  int largestRegionId = 0;
+  vtkIdType id;
+  vtkIdType maxCellsInRegion;
+  vtkIdType largestRegionId = 0;
   vtkPointData *pd=input->GetPointData(), *outputPD=output->GetPointData();
   vtkCellData *cd=input->GetCellData(), *outputCD=output->GetCellData();
 
@@ -705,4 +705,3 @@ void vtkConnectivityFilter::PrintSelf(ostream& os, vtkIndent indent)
   os << indent << "Output Points Precision: " << this->OutputPointsPrecision
      << "\n";
 }
-

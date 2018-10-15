@@ -73,7 +73,7 @@ public:
   /**
    * Does this prop have some translucent polygonal geometry?
    */
-  int HasTranslucentPolygonalGeometry() override;
+  vtkTypeBool HasTranslucentPolygonalGeometry() override;
 
   /**
    * This causes the actor to be rendered. It in turn will render the actor's
@@ -199,6 +199,14 @@ public:
    * selection.
    */
   bool GetSupportsSelection() override;
+
+  /**
+   * allows a prop to update a selections color buffers
+   * Default just forwards to the Mapper
+   */
+  void ProcessSelectorPixelBuffers(
+    vtkHardwareSelector *sel,
+    std::vector<unsigned int> &pixeloffsets) override;
 
 protected:
   vtkActor();

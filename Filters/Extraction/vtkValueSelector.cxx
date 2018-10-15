@@ -362,7 +362,9 @@ private:
             darray, vtkDataArray::SafeDownCast(this->SelectionList), worker))
       {
         // should we use slow data array API?
-        vtkGenericWarningMacro("Mismatch in selection list and field array.");
+        vtkGenericWarningMacro("Type mismatch in selection list ("
+          << this->SelectionList->GetClassName() << ") and field array ("
+          << darray->GetClassName() << ").");
         return false;
       }
     }
@@ -372,9 +374,54 @@ private:
       if (!vtkArrayDispatch::Dispatch2BySameValueType<vtkArrayDispatch::AllTypes>::Execute(
             darray, vtkDataArray::SafeDownCast(this->SelectionList), worker))
       {
-        // should we use slow data array API?
-        vtkGenericWarningMacro("Mismatch in selection list and field array.");
-        return false;
+        // Use the slow data array API for threshold-based selection. Thresholds
+        // are assumed to be stored in a vtkDoubleArray, which may very well not be the
+        // same as the data array type.
+        vtkDataArray* selList = vtkDataArray::SafeDownCast(this->SelectionList);
+        const int comp = darray->GetNumberOfComponents() == 1 ? 0 : this->ComponentNo;
+        const vtkIdType numRanges = selList->GetNumberOfTuples();
+
+        if (comp >= 0)
+        {
+          vtkSMPTools::For(0, darray->GetNumberOfTuples(), [=](vtkIdType begin, vtkIdType end) {
+            for (vtkIdType cc = begin; cc < end; ++cc)
+            {
+              const auto val = darray->GetComponent(cc, comp);
+              bool match = false;
+              for (vtkIdType r = 0; r < numRanges && !match; ++r)
+              {
+                match = (val >= selList->GetComponent(r, 0) &&
+                  val <= selList->GetComponent(r, 1));
+              }
+              insidednessArray->SetValue(cc, match ? 1 : 0);
+            }
+          });
+        }
+        else
+        {
+          const int num_components = darray->GetNumberOfComponents();
+
+          // compare vector magnitude.
+          vtkSMPTools::For(0, darray->GetNumberOfTuples(), [=](vtkIdType begin, vtkIdType end) {
+            for (vtkIdType cc = begin; cc < end; ++cc)
+            {
+              double val = double(0);
+              for (int kk = 0; kk < num_components; ++kk)
+              {
+                const auto valKK = darray->GetComponent(cc, comp);
+                val += valKK * valKK;
+              }
+              const auto magnitude = std::sqrt(val);
+              bool match = false;
+              for (vtkIdType r = 0; r < numRanges && !match; ++r)
+              {
+                match = (magnitude >= selList->GetComponent(r, 0) &&
+                  magnitude <= selList->GetComponent(r, 1));
+              }
+              insidednessArray->SetValue(cc, match ? 1 : 0);
+            }
+          });
+        }
       }
     }
 
@@ -394,7 +441,8 @@ private:
             vtkDataArray::SafeDownCast(this->SelectionList), worker))
       {
         // should we use slow data array API?
-        vtkGenericWarningMacro("Mismatch in selection list and field array.");
+        vtkGenericWarningMacro("Unsupported selection list array type ("
+          << this->SelectionList->GetClassName() << ").");
         return false;
       }
     }
@@ -405,7 +453,8 @@ private:
             vtkDataArray::SafeDownCast(this->SelectionList), worker))
       {
         // should we use slow data array API?
-        vtkGenericWarningMacro("Mismatch in selection list and field array.");
+        vtkGenericWarningMacro("Unsupported selection list array type ("
+          << this->SelectionList->GetClassName() << ").");
         return false;
       }
     }

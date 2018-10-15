@@ -131,7 +131,7 @@ void vtkOSOpenGLRenderWindow::Frame()
 // Set the variable that indicates that we want a stereo capable window
 // be created. This method can only be called before a window is realized.
 //
-void vtkOSOpenGLRenderWindow::SetStereoCapableWindow(int capable)
+void vtkOSOpenGLRenderWindow::SetStereoCapableWindow(vtkTypeBool capable)
 {
   if (!this->Internal->OffScreenContextId)
   {
@@ -173,9 +173,9 @@ void vtkOSOpenGLRenderWindow::CreateOffScreenWindow(int width, int height)
     this->Internal->OffScreenWindow = vtkOSMesaCreateWindow(width,height);
     this->OwnWindow = 1;
   }
+#if (OSMESA_MAJOR_VERSION * 100 + OSMESA_MINOR_VERSION >= 1102) && defined(OSMESA_CONTEXT_MAJOR_VERSION)
   if (!this->Internal->OffScreenContextId)
   {
-#if (OSMESA_MAJOR_VERSION * 100 + OSMESA_MINOR_VERSION >= 1102) && defined(OSMESA_CONTEXT_MAJOR_VERSION)
     static const int attribs[] = {
        OSMESA_FORMAT, OSMESA_RGBA,
        OSMESA_DEPTH_BITS, 32,
@@ -194,12 +194,12 @@ void vtkOSOpenGLRenderWindow::CreateOffScreenWindow(int width, int height)
     {
       this->Internal->OffScreenContextId = OSMesaCreateContextAttribs(attribs, nullptr);
     }
+  }
 #endif
-    // if we still have no context fall back to the generic signature
-    if (!this->Internal->OffScreenContextId)
-    {
-      this->Internal->OffScreenContextId = OSMesaCreateContext(GL_RGBA, nullptr);
-    }
+  // if we still have no context fall back to the generic signature
+  if (!this->Internal->OffScreenContextId)
+  {
+    this->Internal->OffScreenContextId = OSMesaCreateContext(GL_RGBA, nullptr);
   }
   this->MakeCurrent();
 
@@ -295,7 +295,7 @@ void vtkOSOpenGLRenderWindow::Finalize (void)
 }
 
 // Change the window to fill the entire screen.
-void vtkOSOpenGLRenderWindow::SetFullScreen(int arg)
+void vtkOSOpenGLRenderWindow::SetFullScreen(vtkTypeBool arg)
 {
   (void)arg;
   this->Modified();
@@ -416,7 +416,7 @@ void vtkOSOpenGLRenderWindow::SetPosition(int x, int y)
 }
 
 // Set this RenderWindow's X window id to a pre-existing window.
-void vtkOSOpenGLRenderWindow::SetWindowInfo(char *info)
+void vtkOSOpenGLRenderWindow::SetWindowInfo(const char *info)
 {
   int tmp;
 
@@ -427,7 +427,7 @@ void vtkOSOpenGLRenderWindow::SetWindowInfo(char *info)
 }
 
 // Set this RenderWindow's X window id to a pre-existing window.
-void vtkOSOpenGLRenderWindow::SetNextWindowInfo(char *info)
+void vtkOSOpenGLRenderWindow::SetNextWindowInfo(const char *info)
 {
   int tmp;
   sscanf(info,"%i",&tmp);
@@ -436,7 +436,7 @@ void vtkOSOpenGLRenderWindow::SetNextWindowInfo(char *info)
 }
 
 // Sets the X window id of the window that WILL BE created.
-void vtkOSOpenGLRenderWindow::SetParentInfo(char *info)
+void vtkOSOpenGLRenderWindow::SetParentInfo(const char *info)
 {
   int tmp;
 
@@ -544,7 +544,7 @@ void vtkOSOpenGLRenderWindow::SetNextWindowId(void *arg)
 // (mangled) from vtkOSOpenGLRenderWindow like the other OpenGL classes.
 //============================================================================
 
-void vtkOSOpenGLRenderWindow::SetOffScreenRendering(int i)
+void vtkOSOpenGLRenderWindow::SetOffScreenRendering(vtkTypeBool i)
 {
   if (this->OffScreenRendering == i)
   {

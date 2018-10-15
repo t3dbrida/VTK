@@ -12,6 +12,7 @@ vtk_add_test_cxx(vtkCommonDataModelCxxTests tests
   TestDataArrayDispatcher.cxx
   TestDataObject.cxx
   TestDispatchers.cxx
+  TestFieldList.cxx
   TestGenericCell.cxx
   TestGraph.cxx
   TestGraph2.cxx
@@ -75,6 +76,7 @@ vtk_add_test_cxx(vtkCommonDataModelCxxTests tests
 vtk_add_test_cxx(vtkCommonDataModelCxxTests data_tests
   TestLagrangeTriangle.cxx
   TestLagrangeTetra.cxx
+  TestLagrangeWedge.cxx
   quadraticIntersection.cxx
   TestCellIterators.cxx,NO_VALID,NO_OUTPUT
   TestCellLocator.cxx,NO_DATA

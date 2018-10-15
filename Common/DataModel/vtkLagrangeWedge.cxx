@@ -158,11 +158,49 @@ static bool linearWedgeLocationFromSubId(
   {
     return false;
   }
-  int triId = numWedgesPerLayer - subId % numWedgesPerLayer - 1;
-  int mm = static_cast<int>(std::floor(std::sqrt(triId)));
-  jj = rsOrder - mm - 1;
-  orientation = (triId + jj + 1) % 2 == 0 ? true : false;
-  ii = rsOrder - jj - (((triId - mm * mm + 1) / 2) % rsOrder) - 1;
+  // int triId = numWedgesPerLayer - subId % numWedgesPerLayer - 1;
+
+  int triId = subId % numWedgesPerLayer;
+
+  if (rsOrder == 1)
+  {
+    ii = jj = 0;
+    orientation = true;
+  }
+  else
+  {
+    vtkIdType nRightSideUp = rsOrder*(rsOrder+1)/2;
+    if (triId < nRightSideUp)
+    {
+      // there are nRightSideUp subtriangles whose orientation is the same as
+      // the parent triangle. We traverse them here.
+      vtkIdType barycentricIndex[3];
+      vtkLagrangeTriangle::BarycentricIndex(triId, barycentricIndex, rsOrder - 1);
+      ii = barycentricIndex[0];
+      jj = barycentricIndex[1];
+      orientation = true;
+    }
+    else
+    {
+      // the remaining subtriangles are inverted with respect to the parent
+      // triangle. We traverse them here.
+      orientation = false;
+
+      if (rsOrder == 2)
+      {
+        ii = jj = 0;
+      }
+      else
+      {
+        vtkIdType barycentricIndex[3];
+        vtkLagrangeTriangle::BarycentricIndex(triId - nRightSideUp,
+                                              barycentricIndex, rsOrder - 2);
+        ii = barycentricIndex[0];
+        jj = barycentricIndex[1];
+      }
+    }
+  }
+
   return true;
 }
 
@@ -172,7 +210,11 @@ vtkLagrangeWedge::vtkLagrangeWedge()
 {
   this->Approx = nullptr;
   this->Order[0] = this->Order[1] = this->Order[2] = 1;
-  this->Order[3] = 6;
+
+  // Deliberately leave this unset. When GetOrder() is called, it will construct
+  // the accompanying data arrays used for other calculations.
+  this->Order[3] = 0;
+
   this->Points->SetNumberOfPoints(6);
   this->PointIds->SetNumberOfIds(6);
   for (int i = 0; i < 6; i++)
@@ -280,6 +322,7 @@ vtkCell* vtkLagrangeWedge::GetFace(int faceId)
 
 void vtkLagrangeWedge::Initialize()
 {
+  this->GetOrder();
 }
 
 /**\brief Obtain the corner points of the nearest bounding face to \a pcoords.
@@ -596,7 +639,7 @@ void vtkLagrangeWedge::Derivatives(
   int dim,
   double* derivs)
 {
-  this->Interp->WedgeEvaluateDerivative(this->Order, pcoords, values, dim, derivs);
+  this->Interp->WedgeEvaluateDerivative(this->Order, pcoords, this->GetPoints(), values, dim, derivs);
 }
 
 double* vtkLagrangeWedge::GetParametricCoords()
@@ -650,7 +693,7 @@ const int* vtkLagrangeWedge::GetOrder()
 {
   // FIXME: The interpolation routines can handle different order along each axis
   //   but we cannot infer the order from the number of points in that case.
-  //   This method currrently assumes hexahedra are of the same order on each axis.
+  //   This method currently assumes hexahedra are of the same order on each axis.
   //   We populate the Order array for use with the interpolation class.
   vtkIdType npts = this->Points->GetNumberOfPoints();
   if (this->Order[3] != npts)
@@ -696,13 +739,13 @@ const int* vtkLagrangeWedge::GetOrder()
 void vtkLagrangeWedge::InterpolateFunctions(
   const double pcoords[3], double* weights)
 {
-  vtkLagrangeInterpolation::WedgeShapeFunctions(this->GetOrder(), pcoords, weights);
+  vtkLagrangeInterpolation::WedgeShapeFunctions(this->GetOrder(), this->GetOrder()[3], pcoords, weights);
 }
 
 void vtkLagrangeWedge::InterpolateDerivs(
   const double pcoords[3], double* derivs)
 {
-  vtkLagrangeInterpolation::WedgeShapeDerivatives(this->GetOrder(), pcoords, derivs);
+  vtkLagrangeInterpolation::WedgeShapeDerivatives(this->GetOrder(), this->GetOrder()[3], pcoords, derivs);
 }
 
 /// A convenience method; see the overloaded variant for more information.
@@ -824,8 +867,8 @@ int vtkLagrangeWedge::PointIndexFromIJK(int i, int j, int k, const int* order)
         }
       offset += rm1; // Skip the i-axis edge
       if (ijbdy)
-        { // NB: Order flipped due to triangle's barycentric coordinates:
-        return offset + (rsOrder - j - 1);
+        {
+        return offset + j - 1;
         }
       offset += rm1; // Skip the ij-axis edge
       // if (ibdy)
@@ -863,7 +906,7 @@ int vtkLagrangeWedge::PointIndexFromIJK(int i, int j, int k, const int* order)
       return offset + (rsOrder - i - 1) + rm1 * (k - 1);
     }
     offset += nqfdof; // Skip ij-normal face
-    return offset + (rsOrder - j - 1) + rm1 * (k - 1);
+    return offset + j - 1 + rm1 * (k - 1);
     }
 
   // Skip all face DOF
@@ -1127,6 +1170,16 @@ vtkWedge* vtkLagrangeWedge::GetApproximateWedge(
       j + deltas[orientation ? 0 : 1][ic % 3][1],
       k + ((ic / 3) ? 1 : 0));
     vtkVector3d cp;
+
+    if (corner == -1)
+    {
+      vtkWarningMacro("Could not determine point index for IJK = ("
+                      <<i + deltas[orientation ? 0 : 1][ic % 3][0]<<" "
+                      <<j + deltas[orientation ? 0 : 1][ic % 3][1]<<" "
+                      <<k + ((ic / 3) ? 1 : 0)<<")");
+      return nullptr;
+    }
+
     this->Points->GetPoint(corner, cp.GetData());
     //std::cout << "    corner " << ic << " @ " << corner << ": " << cp << "\n";
     //aconn[ic] = this->PointIds->GetId(corner);

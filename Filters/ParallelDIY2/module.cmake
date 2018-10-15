@@ -2,6 +2,7 @@ if (NOT WIN32)
   vtk_module(vtkFiltersParallelDIY2
     IMPLEMENTS
       vtkFiltersCore
+      vtkFiltersParallel
     GROUPS
       MPI
     TEST_DEPENDS
@@ -15,11 +16,14 @@ if (NOT WIN32)
       vtkParallel
     DEPENDS
       vtkFiltersCore
+      vtkFiltersParallel
+      vtkImagingCore
       vtkdiy2
     PRIVATE_DEPENDS
       vtkCommonCore
       vtkCommonDataModel
       vtkCommonExecutionModel
+      vtkIOXML
       vtkParallelMPI
     )
 endif()

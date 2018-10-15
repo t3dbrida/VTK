@@ -63,13 +63,13 @@ vtkContinuousScatterplot::vtkContinuousScatterplot()
   this->Fields[0] = this->Fields[1] = nullptr;
 }
 //----------------------------------------------------------------------------
-void vtkContinuousScatterplot::SetField1(char* nm, vtkIdType xRes)
+void vtkContinuousScatterplot::SetField1(const char* nm, vtkIdType xRes)
 {
   this->Fields[0] = nm;
   this->ResX = xRes;
 }
 //----------------------------------------------------------------------------
-void vtkContinuousScatterplot::SetField2(char* nm, vtkIdType yRes)
+void vtkContinuousScatterplot::SetField2(const char* nm, vtkIdType yRes)
 {
   this->Fields[1] = nm;
   this->ResY = yRes;
@@ -323,7 +323,7 @@ int vtkContinuousScatterplot::RequestData(
   newPoints->Allocate(estOutputPointSize);
 
   // main loop ...
-  // For each tetrahedron in a gird
+  // For each tetrahedron in a grid
   for (vtkIdType tetraIndex = 0; tetraIndex < input->GetNumberOfCells(); tetraIndex++)
   {
     // current tetrahedron vertex list.
@@ -357,7 +357,7 @@ int vtkContinuousScatterplot::RequestData(
     // Initialise the scalar values in this tetrahedral cell.
     for (vtkIdType cellIndex = 0; cellIndex < cell->GetNumberOfIds(); cellIndex++)
     {
-      int pointId = cell->GetId(cellIndex);
+      vtkIdType pointId = cell->GetId(cellIndex);
       pointLocator->InsertNextPoint(inputGridPoints->GetPoint(pointId));
       tetraF1->SetComponent(
         cellIndex, 0, inPD->GetArray(this->Fields[0])->GetComponent(pointId, 0));

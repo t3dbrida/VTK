@@ -61,6 +61,7 @@
 #include <vtkOpenGLShaderCache.h>
 #include "vtkOpenGLState.h"
 #include <vtkOpenGLVertexArrayObject.h>
+#include "vtkOpenGLUniforms.h"
 #include <vtkMultiVolume.h>
 #include <vtkPixelBufferObject.h>
 #include <vtkPixelExtent.h>
@@ -1300,7 +1301,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetCroppingRegions(
 //----------------------------------------------------------------------------
 void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetClippingPlanes(
   vtkRenderer* vtkNotUsed(ren), vtkShaderProgram* prog,
-  vtkVolume* vtkNotUsed(vol))
+  vtkVolume* vol)
 {
   if (this->Parent->GetClippingPlanes())
   {
@@ -1331,6 +1332,9 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetClippingPlanes(
     prog->SetUniform1fv("in_clippingPlanes",
       static_cast<int>(clippingPlanes.size()),
       &clippingPlanes[0]);
+    float clippedVoxelIntensity =
+      static_cast<float>(vol->GetProperty()->GetClippedVoxelIntensity());
+    prog->SetUniformf("in_clippedVoxelIntensity", clippedVoxelIntensity);
   }
 }
 
@@ -1398,11 +1402,6 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::BeginPicking(
   if (selector && this->IsPicking)
   {
     selector->BeginRenderProp();
-
-    if (this->CurrentSelectionPass >= vtkHardwareSelector::ID_LOW24)
-    {
-      selector->RenderAttributeId(0);
-    }
   }
 }
 
@@ -1418,11 +1417,6 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetPickingId(
     // query the selector for the appropriate id
     selector->GetPropColorValue(propIdColor);
   }
-  else // RenderWindow is picking
-  {
-    unsigned int const idx = ren->GetCurrentPickId();
-    vtkHardwareSelector::Convert(idx, propIdColor);
-  }
 
   this->ShaderProgram->SetUniform3f("in_propId", propIdColor);
 }
@@ -1433,7 +1427,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::EndPicking(vtkRenderer* ren)
   vtkHardwareSelector* selector = ren->GetSelector();
   if (selector && this->IsPicking)
   {
-    if (this->CurrentSelectionPass >= vtkHardwareSelector::ID_LOW24)
+    if (this->CurrentSelectionPass >= vtkHardwareSelector::POINT_ID_LOW24)
     {
       // Only supported on single-input
       int extents[6];
@@ -1442,7 +1436,8 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::EndPicking(vtkRenderer* ren)
       // Tell the selector the maximum number of cells that the mapper could render
       unsigned int const numVoxels = (extents[1] - extents[0] + 1) *
         (extents[3] - extents[2] + 1) * (extents[5] - extents[4] + 1);
-      selector->RenderAttributeId(numVoxels);
+      selector->UpdateMaximumPointId(numVoxels);
+      selector->UpdateMaximumCellId(numVoxels);
     }
     selector->EndRenderProp();
   }
@@ -2435,6 +2430,21 @@ void vtkOpenGLGPUVolumeRayCastMapper::GetShaderTemplate(
 }
 
 //-----------------------------------------------------------------------------
+void vtkOpenGLGPUVolumeRayCastMapper::ReplaceShaderCustomUniforms(
+  std::map<vtkShader::Type, vtkShader*>& shaders )
+{
+    vtkShader* vertexShader = shaders[vtkShader::Vertex];
+    vtkShaderProgram::Substitute(vertexShader,
+      "//VTK::CustomUniforms::Dec",
+      this->VertexCustomUniforms->GetDeclarations());
+
+    vtkShader* fragmentShader = shaders[vtkShader::Fragment];
+    vtkShaderProgram::Substitute(fragmentShader,
+      "//VTK::CustomUniforms::Dec",
+      this->FragmentCustomUniforms->GetDeclarations());
+}
+
+//-----------------------------------------------------------------------------
 void vtkOpenGLGPUVolumeRayCastMapper::ReplaceShaderBase(
   std::map<vtkShader::Type, vtkShader*>& shaders,
   vtkRenderer* ren,
@@ -2583,7 +2593,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::ReplaceShaderCompute(
 
   vtkShaderProgram::Substitute(fragmentShader,
     "//VTK::ComputeGradient::Dec",
-    vtkvolume::ComputeGradientDeclaration(this->AssembledInputs));
+    vtkvolume::ComputeGradientDeclaration(this, this->AssembledInputs));
 
   if (this->Impl->MultiVolume)
   {
@@ -2800,15 +2810,15 @@ void vtkOpenGLGPUVolumeRayCastMapper::ReplaceShaderPicking(
   {
     switch (this->Impl->CurrentSelectionPass)
     {
-      case vtkHardwareSelector::ID_LOW24:
+      case vtkHardwareSelector::CELL_ID_LOW24:
         vtkShaderProgram::Substitute(fragmentShader,
           "//VTK::Picking::Exit",
           vtkvolume::PickingIdLow24PassExit(ren, this, vol));
         break;
-      case vtkHardwareSelector::ID_MID24:
+      case vtkHardwareSelector::CELL_ID_HIGH24:
         vtkShaderProgram::Substitute(fragmentShader,
           "//VTK::Picking::Exit",
-          vtkvolume::PickingIdMid24PassExit(ren, this, vol));
+          vtkvolume::PickingIdHigh24PassExit(ren, this, vol));
         break;
       default: // ACTOR_PASS, PROCESS_PASS
         vtkShaderProgram::Substitute(fragmentShader,
@@ -2900,6 +2910,10 @@ void vtkOpenGLGPUVolumeRayCastMapper::ReplaceShaderValues(
   // Render pass pre replacements
   //---------------------------------------------------------------------------
   this->ReplaceShaderRenderPass(shaders, vol, true);
+
+  // Custom uniform variables replacements
+  //---------------------------------------------------------------------------
+  this->ReplaceShaderCustomUniforms(shaders);
 
   // Base methods replacements
   //---------------------------------------------------------------------------
@@ -3020,7 +3034,6 @@ void vtkOpenGLGPUVolumeRayCastMapper::BuildShader(vtkRenderer* ren)
   geometryShader->Delete();
 
   this->Impl->ShaderBuildTime.Modified();
-  this->InvokeEvent(vtkCommand::UpdateShaderEvent, this->Impl->ShaderProgram);
 }
 
 //-----------------------------------------------------------------------------
@@ -3348,6 +3361,8 @@ void vtkOpenGLGPUVolumeRayCastMapper::GPURender(vtkRenderer* ren,
     {
       // Bind the shader
       this->Impl->ShaderCache->ReadyShaderProgram(this->Impl->ShaderProgram);
+      this->InvokeEvent(vtkCommand::UpdateShaderEvent,
+                        this->Impl->ShaderProgram);
     }
 
     if (this->RenderToImage)
@@ -3380,6 +3395,8 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::ShaderRebuildNeeded(vtkCamera
   return (this->NeedToInitializeResources ||
       this->VolumePropertyChanged ||
       this->Parent->GetMTime() > this->ShaderBuildTime.GetMTime() ||
+      this->Parent->GetFragmentCustomUniforms()->GetUniformListMTime() > this->ShaderBuildTime.GetMTime() ||
+      this->Parent->GetVertexCustomUniforms()->GetUniformListMTime() > this->ShaderBuildTime.GetMTime() ||
       cam->GetParallelProjection() != this->LastProjectionParallel ||
       this->SelectionStateTime.GetMTime() > this->ShaderBuildTime.GetMTime() ||
       renderPassTime > this->ShaderBuildTime ||
@@ -3451,6 +3468,8 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderWithDepthPass(
     }
 
     renWin->GetShaderCache()->ReadyShaderProgram(this->ShaderProgram);
+    this->Parent->InvokeEvent(vtkCommand::UpdateShaderEvent,
+                              this->ShaderProgram);
 
     this->DPDepthBufferTextureObject->Activate();
     this->ShaderProgram->SetUniformi("in_depthPassSampler",
@@ -3650,6 +3669,10 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetMapperShaderParameters(
       static_cast<vtkOpenGLRenderWindow *>(ren->GetRenderWindow());
     prog->SetUniformi("in_noiseSampler", win->GetNoiseTextureUnit());
   }
+  else
+  {
+    prog->SetUniformi("in_noiseSampler", 0);
+  }
 
   prog->SetUniformi("in_useJittering", this->Parent->UseJittering);
   prog->SetUniformi("in_noOfComponents", numComp);
@@ -3757,7 +3780,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetAdvancedShaderParameters(
   this->SetClippingPlanes(ren, prog, vol);
 
   // Picking
-  if (this->CurrentSelectionPass < vtkHardwareSelector::ID_LOW24)
+  if (this->CurrentSelectionPass < vtkHardwareSelector::POINT_ID_LOW24)
   {
     this->SetPickingId(ren);
   }
@@ -3860,6 +3883,10 @@ void vtkOpenGLGPUVolumeRayCastMapper::DoGPURender(vtkRenderer* ren,
   {
     return;
   }
+
+  // Upload the value of user-defined uniforms in the program
+  this->VertexCustomUniforms->SetUniforms( prog );
+  this->FragmentCustomUniforms->SetUniforms( prog );
 
   this->SetShaderParametersRenderPass();
   if (!this->Impl->MultiVolume)

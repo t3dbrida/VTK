@@ -59,10 +59,12 @@
  *   vtkCommand::InteractionEvent (moving after selecting something)
  *   vtkCommand::PlacePointEvent (after point is positioned;
  *                                call data includes handle id (0,1))
+ *   vtkCommand::DeletePointEvent (before point is deleted;
+ *                                call data includes handle id (0,1))
  * </pre>
  *
  * @sa
- * vtkHandleWidget vtkSeedReoresentation
+ * vtkHandleWidget vtkSeedRepresentation
 */
 
 #ifndef vtkSeedWidget_h

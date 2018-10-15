@@ -28,6 +28,7 @@
 #include "vtkQuaternion.h"
 #include "vtkRenderer.h"
 #include "vtkMatrix3x3.h"
+#include "vtkTimerLog.h"
 #include "vtkTransform.h"
 #include "vtkCamera.h"
 
@@ -44,7 +45,7 @@ vtkInteractorStyle3D::vtkInteractorStyle3D()
   this->AppliedTranslation[1] = 0;
   this->AppliedTranslation[2] = 0;
   this->TempTransform = vtkTransform::New();
-  this->DollyMotionFactor = 2.0;
+  this->DollyPhysicalSpeed = 1.6666;
 }
 
 //----------------------------------------------------------------------------
@@ -162,10 +163,10 @@ void vtkInteractorStyle3D::FindPickedActor(double pos[3], double orient[4])
 
 //----------------------------------------------------------------------------
 void vtkInteractorStyle3D::Prop3DTransform(vtkProp3D *prop3D,
-                                                       double *boxCenter,
-                                                       int numRotation,
-                                                       double **rotate,
-                                                       double *scale)
+                                           double *boxCenter,
+                                           int numRotation,
+                                           double **rotate,
+                                           double *scale)
 {
   vtkMatrix4x4 *oldMatrix = this->TempMatrix4;
   prop3D->GetMatrix(oldMatrix);
@@ -241,27 +242,38 @@ void vtkInteractorStyle3D::Dolly3D(vtkEventData *ed)
   double elem[3][3];
   q1.ToMatrix3x3(elem);
   double vdir[3] = {0.0,0.0,-1.0};
-  vtkMatrix3x3::MultiplyPoint(
-    elem[0],vdir,vdir);
+  vtkMatrix3x3::MultiplyPoint(elem[0],vdir,vdir);
 
   double *trans = rwi->GetPhysicalTranslation(
     this->CurrentRenderer->GetActiveCamera());
-  double distance = rwi->GetPhysicalScale();
 
-  // The world coordinate speed of
-  // movement can be determined from the camera scale.
-  // movement speed is scaled by the touchpad
-  // y coordinate
+  // scale speed by thumb position on the touchpad along Y axis
+  float tpos[3];
+  rwi->GetTouchPadPosition(
+    edd->GetDevice(),
+    vtkEventDataDeviceInput::Unknown,
+    tpos);
+  if (fabs(tpos[0]) > fabs(tpos[1]))
+  {
+    // do not dolly if pressed direction is not up or down but left or right
+    return;
+  }
+  double speedScaleFactor = tpos[1]; // -1 to +1 (the Y axis of the trackpad)
+  double physicalScale = rwi->GetPhysicalScale();
 
-  float *tpos = rwi->GetTouchPadPosition();
-  // 2.0 so that the max is 2.0 times the average
-  // motion factor
-  double factor = tpos[1]*2.0*this->DollyMotionFactor/90.0;
+  this->LastDolly3DEventTime->StopTimer();
+  double distanceTravelled_World =
+    speedScaleFactor * this->DollyPhysicalSpeed /* m/sec */ *
+    physicalScale * /* world/physical */
+    this->LastDolly3DEventTime->GetElapsedTime() /* sec */;
+
+  this->LastDolly3DEventTime->StartTimer();
+
   rwi->SetPhysicalTranslation(
     this->CurrentRenderer->GetActiveCamera(),
-    trans[0]-vdir[0]*factor*distance,
-    trans[1]-vdir[1]*factor*distance,
-    trans[2]-vdir[2]*factor*distance);
+    trans[0]-vdir[0]*distanceTravelled_World,
+    trans[1]-vdir[1]*distanceTravelled_World,
+    trans[2]-vdir[2]*distanceTravelled_World);
 
   if (this->AutoAdjustCameraClippingRange)
   {
@@ -269,40 +281,37 @@ void vtkInteractorStyle3D::Dolly3D(vtkEventData *ed)
   }
 }
 
-void vtkInteractorStyle3D::SetScale(vtkCamera *camera, double newDistance)
+void vtkInteractorStyle3D::SetScale(vtkCamera *camera, double newScale)
 {
   vtkRenderWindowInteractor3D *rwi =
     static_cast<vtkRenderWindowInteractor3D *>(this->Interactor);
 
   double *trans = rwi->GetPhysicalTranslation(camera);
-  double distance = rwi->GetPhysicalScale();
+  double physicalScale = rwi->GetPhysicalScale();
   double *dop = camera->GetDirectionOfProjection();
   double *pos = camera->GetPosition();
   double hmd[3];
-  hmd[0] = (pos[0] + trans[0])/distance;
-  hmd[1] = (pos[1] + trans[1])/distance;
-  hmd[2] = (pos[2] + trans[2])/distance;
-
-  // cerr << "dyf " << dyf << "\n";
-  // rwi->SetPhysicalTranslation(camera,
-  //   trans[0],  trans[1] - distance + newDistance, trans[2]);
-  // trans = rwi->GetPhysicalTranslation(camera);
+  hmd[0] = (pos[0] + trans[0])/physicalScale;
+  hmd[1] = (pos[1] + trans[1])/physicalScale;
+  hmd[2] = (pos[2] + trans[2])/physicalScale;
 
   double newPos[3];
-  newPos[0] = hmd[0]*newDistance - trans[0];
-  newPos[1] = hmd[1]*newDistance - trans[1];
-  newPos[2] = hmd[2]*newDistance - trans[2];
+  newPos[0] = hmd[0]*newScale - trans[0];
+  newPos[1] = hmd[1]*newScale - trans[1];
+  newPos[2] = hmd[2]*newScale - trans[2];
 
+  // Note: New camera properties are overridden by virtual reality render
+  // window if head-mounted display is tracked
   camera->SetFocalPoint(
-    newPos[0] + dop[0]*newDistance,
-    newPos[1] + dop[1]*newDistance,
-    newPos[2] + dop[2]*newDistance);
+    newPos[0] + dop[0]*newScale,
+    newPos[1] + dop[1]*newScale,
+    newPos[2] + dop[2]*newScale);
   camera->SetPosition(
     newPos[0],
     newPos[1],
     newPos[2]);
 
-  rwi->SetPhysicalScale(newDistance);
+  rwi->SetPhysicalScale(newScale);
 
   if (this->AutoAdjustCameraClippingRange && this->CurrentRenderer)
   {

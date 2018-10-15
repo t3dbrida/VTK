@@ -36,13 +36,13 @@ public:
   vtkNeighborPoints()
   {
       this->Count = 0;
-      this->P=&(this->InitialBuffer[0]);
+      this->P = this->InitialBuffer;
       this->MaxSize = VTK_INITIAL_SIZE;
   }
   ~vtkNeighborPoints()
   {
       this->Count = 0;
-      if ( this->P != &(this->InitialBuffer[0]) )
+      if ( this->P != this->InitialBuffer )
       {
         delete[] this->P;
       }
@@ -52,7 +52,7 @@ public:
 
   int *GetPoint(int i)
   {
-      return (this->Count > i ?  &(this->P[3*i]) : nullptr);
+    return (this->Count > i ?  (this->P + 3*i) : nullptr);
   }
 
   int InsertNextPoint(const int x[3])
@@ -72,7 +72,7 @@ public:
         {
           this->P[i] = tmp[i];
         }
-        if ( tmp != &(this->InitialBuffer[0]) )
+        if ( tmp != this->InitialBuffer )
         {
           delete[] tmp;
         }
@@ -846,7 +846,6 @@ void vtkPointLocator::FindPointsWithinRadius(double R, const double x[3],
 void vtkPointLocator::BuildLocator()
 {
   int ndivs[3];
-  int i;
   vtkIdType idx;
   vtkIdList *bucket;
   vtkIdType numPts;
@@ -891,7 +890,7 @@ void vtkPointLocator::BuildLocator()
   {
     bbox.Inflate(); //make sure non-zero volume
     bbox.GetBounds(this->Bounds);
-    for (i=0; i<3; i++)
+    for (int i=0; i<3; ++i)
     {
       ndivs[i] = ( this->Divisions[i] < 1 ? 1 : this->Divisions[i] );
     }
@@ -905,7 +904,7 @@ void vtkPointLocator::BuildLocator()
 
   //  Compute width of bucket in three directions
   //
-  for (i=0; i<3; i++)
+  for (int i=0; i<3; ++i)
   {
     this->H[i] = (this->Bounds[2*i+1] - this->Bounds[2*i]) / static_cast<double>(ndivs[i]);
   }
@@ -921,7 +920,7 @@ void vtkPointLocator::BuildLocator()
   //  Insert each point into the appropriate bucket.  Make sure point
   //  falls within bucket.
   //
-  for (i=0; i<numPts; i++)
+  for (vtkIdType i=0; i<numPts; ++i)
   {
     this->DataSet->GetPoint(i, x);
     idx = this->GetBucketIndex(x);

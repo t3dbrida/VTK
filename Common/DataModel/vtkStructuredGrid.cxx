@@ -858,7 +858,7 @@ void vtkStructuredGrid::SetDimensions(int i, int j, int k)
 
 //----------------------------------------------------------------------------
 // Set dimensions of structured grid dataset.
-void vtkStructuredGrid::SetDimensions(int dim[3])
+void vtkStructuredGrid::SetDimensions(const int dim[3])
 {
   this->SetExtent(0, dim[0]-1, 0, dim[1]-1, 0, dim[2]-1);
 }
@@ -1152,14 +1152,13 @@ void vtkStructuredGrid::ComputeScalarRange()
     double ptRange[2];
     double cellRange[2];
     double s;
-    int id, num;
 
-    ptRange[0] =  VTK_DOUBLE_MAX;
-    ptRange[1] =  VTK_DOUBLE_MIN;
+    ptRange[0] = VTK_DOUBLE_MAX;
+    ptRange[1] = VTK_DOUBLE_MIN;
     if ( ptScalars )
     {
-      num = this->GetNumberOfPoints();
-      for (id=0; id < num; id++)
+      vtkIdType num = this->GetNumberOfPoints();
+      for (vtkIdType id=0; id < num; ++id)
       {
         if ( this->IsPointVisible(id) )
         {
@@ -1176,12 +1175,12 @@ void vtkStructuredGrid::ComputeScalarRange()
       }
     }
 
-    cellRange[0] =  ptRange[0];
-    cellRange[1] =  ptRange[1];
+    cellRange[0] = ptRange[0];
+    cellRange[1] = ptRange[1];
     if ( cellScalars )
     {
-      num = this->GetNumberOfCells();
-      for (id=0; id < num; id++)
+      vtkIdType num = this->GetNumberOfCells();
+      for (vtkIdType id=0; id < num; ++id)
       {
         if ( this->IsCellVisible(id) )
         {

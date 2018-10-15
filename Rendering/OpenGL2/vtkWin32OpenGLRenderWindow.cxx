@@ -310,7 +310,7 @@ void AdjustWindowRectForBorders(HWND hwnd, DWORD style, const int x, const int y
 // ----------------------------------------------------------------------------
 void vtkWin32OpenGLRenderWindow::SetSize(int x, int y)
 {
-  static int resizing = 0;
+  static bool resizing = false;
   if ((this->Size[0] != x) || (this->Size[1] != y))
   {
     this->Superclass::SetSize(x, y);
@@ -326,10 +326,10 @@ void vtkWin32OpenGLRenderWindow::SetSize(int x, int y)
       {
         if (!resizing)
         {
-          resizing = 1;
+          resizing = true;
           this->CleanUpOffScreenRendering();
           this->CreateOffScreenWindow(x,y);
-          resizing = 0;
+          resizing = false;
         }
       }
     }
@@ -338,7 +338,7 @@ void vtkWin32OpenGLRenderWindow::SetSize(int x, int y)
     {
       if (!resizing)
       {
-        resizing = 1;
+        resizing = true;
 
         if (this->ParentId)
         {
@@ -356,7 +356,7 @@ void vtkWin32OpenGLRenderWindow::SetSize(int x, int y)
                        r.bottom - r.top,
                        SWP_NOMOVE | SWP_NOZORDER);
         }
-        resizing = 0;
+        resizing = false;
       }
     }
   }
@@ -364,7 +364,7 @@ void vtkWin32OpenGLRenderWindow::SetSize(int x, int y)
 
 void vtkWin32OpenGLRenderWindow::SetPosition(int x, int y)
 {
-  static int resizing = 0;
+  static bool resizing = false;
 
   if ((this->Position[0] != x) || (this->Position[1] != y))
   {
@@ -375,11 +375,11 @@ void vtkWin32OpenGLRenderWindow::SetPosition(int x, int y)
     {
       if (!resizing)
       {
-        resizing = 1;
+        resizing = true;
 
         SetWindowPos(this->WindowId,HWND_TOP,x,y,
                      0, 0, SWP_NOSIZE | SWP_NOZORDER);
-        resizing = 0;
+        resizing = false;
       }
     }
   }
@@ -1203,7 +1203,7 @@ int *vtkWin32OpenGLRenderWindow::GetPosition(void)
 }
 
 // Change the window to fill the entire screen.
-void vtkWin32OpenGLRenderWindow::SetFullScreen(int arg)
+void vtkWin32OpenGLRenderWindow::SetFullScreen(vtkTypeBool arg)
 {
   int *temp;
 
@@ -1252,7 +1252,7 @@ void vtkWin32OpenGLRenderWindow::SetFullScreen(int arg)
 // Set the variable that indicates that we want a stereo capable window
 // be created. This method can only be called before a window is realized.
 //
-void vtkWin32OpenGLRenderWindow::SetStereoCapableWindow(int capable)
+void vtkWin32OpenGLRenderWindow::SetStereoCapableWindow(vtkTypeBool capable)
 {
   if (this->ContextId == 0)
   {
@@ -1333,7 +1333,7 @@ void vtkWin32OpenGLRenderWindow::SetWindowId(HWND arg)
 }
 
 // Set this RenderWindow's X window id to a pre-existing window.
-void vtkWin32OpenGLRenderWindow::SetWindowInfo(char *info)
+void vtkWin32OpenGLRenderWindow::SetWindowInfo(const char *info)
 {
   int tmp;
 
@@ -1343,7 +1343,7 @@ void vtkWin32OpenGLRenderWindow::SetWindowInfo(char *info)
   vtkDebugMacro(<< "Setting WindowId to " << this->WindowId << "\n");
 }
 
-void vtkWin32OpenGLRenderWindow::SetNextWindowInfo(char *info)
+void vtkWin32OpenGLRenderWindow::SetNextWindowInfo(const char *info)
 {
   int tmp;
 
@@ -1369,7 +1369,7 @@ void vtkWin32OpenGLRenderWindow::SetDeviceContext(HDC arg)
 }
 
 // Sets the HWND id of the window that WILL BE created.
-void vtkWin32OpenGLRenderWindow::SetParentInfo(char *info)
+void vtkWin32OpenGLRenderWindow::SetParentInfo(const char *info)
 {
   int tmp;
 
@@ -1414,7 +1414,7 @@ void vtkWin32OpenGLRenderWindow::Start(void)
 }
 
 
-void vtkWin32OpenGLRenderWindow::SetOffScreenRendering(int offscreen)
+void vtkWin32OpenGLRenderWindow::SetOffScreenRendering(vtkTypeBool offscreen)
 {
   if (offscreen == this->OffScreenRendering)
   {

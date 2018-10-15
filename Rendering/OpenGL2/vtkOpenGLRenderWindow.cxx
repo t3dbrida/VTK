@@ -100,10 +100,10 @@ public:
       case READ:
       {
         glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, reinterpret_cast<GLint*>(&this->LastFrameBuffer));
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, fb);
 #ifdef GL_READ_BUFFER
         glGetIntegerv(GL_READ_BUFFER, &this->LastColorBuffer);
 #endif
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, fb);
         glReadBuffer(buf);
       }
       break;
@@ -111,10 +111,10 @@ public:
       case DRAW:
       {
         glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, reinterpret_cast<GLint*>(&this->LastFrameBuffer));
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fb);
 #ifdef GL_DRAW_BUFFER
         glGetIntegerv(GL_DRAW_BUFFER, &this->LastColorBuffer);
 #endif
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fb);
         glDrawBuffer(buf);
       }
       break;
@@ -311,6 +311,8 @@ const char* vtkOpenGLRenderWindow::ReportCapabilities()
 // ----------------------------------------------------------------------------
 void vtkOpenGLRenderWindow::ReleaseGraphicsResources(vtkRenderWindow *renWin)
 {
+  this->PushContext();
+
   // release the registered resources
   if (this->NoiseTextureObject)
   {
@@ -361,6 +363,8 @@ void vtkOpenGLRenderWindow::ReleaseGraphicsResources(vtkRenderWindow *renWin)
   {
     this->TQuad2DVBO->ReleaseGraphicsResources();
   }
+
+  this->PopContext();
 
   delete this->State;
   this->State = new vtkOpenGLState();
@@ -486,7 +490,7 @@ void vtkOpenGLRenderWindow::OpenGLInit()
 
 void vtkOpenGLRenderWindow::OpenGLInitState()
 {
-  this->State->Initialize(this);
+  this->GetState()->Initialize(this);
 
 #ifdef GL_FRAMEBUFFER_SRGB
   if (this->UseSRGBColorSpace && this->GetUsingSRGBColorSpace())
@@ -672,8 +676,8 @@ void vtkOpenGLRenderWindow::GetOpenGLVersion(int &major, int &minor)
 
   if (this->Initialized)
   {
-    this->State->vtkglGetIntegerv(GL_MAJOR_VERSION, & glMajorVersion);
-    this->State->vtkglGetIntegerv(GL_MINOR_VERSION, & glMinorVersion);
+    this->GetState()->vtkglGetIntegerv(GL_MAJOR_VERSION, & glMajorVersion);
+    this->GetState()->vtkglGetIntegerv(GL_MINOR_VERSION, & glMinorVersion);
   }
 
   major = glMajorVersion;
@@ -1087,7 +1091,7 @@ int vtkOpenGLRenderWindow::ReadPixels(
     resolveMSAA = (samples > 0);
   }
 
-  this->State->vtkglDisable( GL_SCISSOR_TEST );
+  this->GetState()->vtkglDisable( GL_SCISSOR_TEST );
 
   // Calling pack alignment ensures that we can grab the any size window
   glPixelStorei( GL_PACK_ALIGNMENT, 1 );
@@ -1293,8 +1297,8 @@ int vtkOpenGLRenderWindow::SetPixelData(int x1, int y1, int x2, int y2,
 void vtkOpenGLRenderWindow::DrawPixels(
   int srcWidth, int srcHeight, int numComponents, int dataType, void *data)
 {
-  this->State->vtkglDisable( GL_SCISSOR_TEST );
-  this->State->vtkglDisable(GL_DEPTH_TEST);
+  this->GetState()->vtkglDisable( GL_SCISSOR_TEST );
+  this->GetState()->vtkglDisable(GL_DEPTH_TEST);
   if (!this->DrawPixelsTextureObject)
   {
     this->DrawPixelsTextureObject = vtkTextureObject::New();
@@ -1315,8 +1319,8 @@ void vtkOpenGLRenderWindow::DrawPixels(
   int srcXmin, int srcYmin, int srcXmax, int srcYmax,
   int srcWidth, int srcHeight, int numComponents, int dataType, void *data)
 {
-  this->State->vtkglDisable( GL_SCISSOR_TEST );
-  this->State->vtkglDisable(GL_DEPTH_TEST);
+  this->GetState()->vtkglDisable( GL_SCISSOR_TEST );
+  this->GetState()->vtkglDisable(GL_DEPTH_TEST);
   if (!this->DrawPixelsTextureObject)
   {
     this->DrawPixelsTextureObject = vtkTextureObject::New();
@@ -1983,6 +1987,13 @@ int vtkOpenGLRenderWindow::CreateHardwareOffScreenWindow(int width, int height)
   this->CreateAWindow();
   this->MakeCurrent();
   this->OpenGLInit();
+
+  // make sure OPenGL initialized correctly before proceeding
+  if (!this->Initialized)
+  {
+    this->DestroyWindow();
+    return 0;
+  }
 
   int result = this->CreateHardwareOffScreenBuffers(width, height);
   if (!result)

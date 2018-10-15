@@ -30,6 +30,7 @@ PURPOSE.  See the above copyright notice for more information.
 #include "vtkMeanValueCoordinatesInterpolator.h"
 #include "vtkCellData.h"
 #include "vtkVector.h"
+#include "vtkMath.h"
 
 #include <map>
 #include <set>
@@ -1488,16 +1489,13 @@ void CalculateAngles(const vtkIdType* tri, vtkPoints* phPoints, const vtkPointId
     right.Set(p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]);
     left.Normalize(); right.Normalize();
 
-#define PI		3.14159265358979323846
-#define TO_DEGREES (180.0/PI);
-
     double dot = left.Dot(right);
     // rounding errors can occur in the vtkVector3d::Dot function,
     // clamp to [-1, 1] (i.e. the input range for the acos function)
     dot = min( 1.0, dot);
     dot = max(-1.0, dot);
 
-    double angle = acos(dot)*TO_DEGREES;
+    double angle = acos(dot)*180.0/vtkMath::Pi();
 
     minAngle = min(angle, minAngle);
     maxAngle = max(angle, maxAngle);
@@ -2183,11 +2181,11 @@ void vtkPolyhedron::Clip(double value,
       faceStream->InsertNextId(nFacePoints);
       for (int j = 0; j < nFacePoints; ++j)
       {
-        faceStream->InsertNextId(face->GetPointId(j));
         face->GetPoints()->GetPoint(j, x);
 
         vtkIdType id(-1);
         locator->InsertUniquePoint(x, id);
+        faceStream->InsertNextId(id);
         outPd->CopyData(inPd, face->GetPointId(j), id);
       }
     }

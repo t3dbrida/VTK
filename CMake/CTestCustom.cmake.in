@@ -188,6 +188,7 @@ SET(CTEST_CUSTOM_WARNING_EXCEPTION
   # warnings from some Open MPI headers/libs, cannot fix:
   "/openmpi/.*request_inln.h.*warning: declaration .struct MPI::Grequest_intercept_t. does not declare anything"
   "openmpi.*comm_inln.h.*warning: unused parameter"
+  "openmpi.*/cxx/op_inln.h.*warning: cast between incompatible function types from"
 
   # remove the next line once this class is removed probably VTK 9.1
   "vtkExtractArraysOverTime"
@@ -274,6 +275,16 @@ SET(CTEST_CUSTOM_WARNING_EXCEPTION
   "bootstrap class path not set in conjunction with -source"
   "1 warning"
 
+  # diy warnings
+  "vtkmdiy/io/utils.hpp\\(84\\): warning: result of call is not used"
+
+  # stephen and matt should be working on these. Suppress until they fix
+  # upstream and we update. Todo: check after Sept 1 2018 with Stephen and
+  # Matt if these are fixed.
+  #
+  "vtkmetaio/metaImage.cxx"
+  "vtkmetaio/metaArray.cxx"
+
   # 3-rd party warnings from double-conversion
   "vtkdoubleconversion.*unused function"
 
@@ -286,8 +297,6 @@ SET(CTEST_CUSTOM_WARNING_EXCEPTION
   "Consider increasing DOT_GRAPH_MAX_NODES"
   "based on cache misses the ideal setting for LOOKUP_CACHE_SIZE"
 
-  #Qt vtk class warning from buggy cppcheck
-  "warning: Member variable 'QVTKOpenGLWidget::qVTKOpenGLWindowInternal' is not initialized"
   )
 
 IF(APPLE)

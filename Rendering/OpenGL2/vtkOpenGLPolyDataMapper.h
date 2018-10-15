@@ -27,6 +27,7 @@
 #include "vtkPolyDataMapper.h"
 #include "vtkShader.h" // for methods
 #include "vtkOpenGLHelper.h" // used for ivars
+#include "vtkStateStorage.h" // used for ivars
 
 #include <vector> //for ivars
 #include <map> //for methods
@@ -231,14 +232,21 @@ public:
     PrimitiveEnd
   };
 
+  void UpdateCellMaps(
+    bool HaveAppleBug,
+    vtkPolyData *poly,
+    vtkCellArray **prims, int representation,
+    vtkPoints *points);
+
   /**
    * Get access to the map of glprim to vtkcell ids
    */
-  static void MakeCellCellMap(std::vector<vtkIdType> &CellCellMap,
-                              bool HaveAppleBug,
-                              vtkPolyData *poly,
-                              vtkCellArray **prims, int representation,
-                              vtkPoints *points);
+  static void MakeCellCellMap(
+    std::vector<vtkIdType> &cellCellMap,
+    bool HaveAppleBug,
+    vtkPolyData *poly,
+    vtkCellArray **prims, int representation,
+    vtkPoints *points);
 
   /**
    * Select a data array from the point/cell data
@@ -275,6 +283,14 @@ public:
    * Remove all vertex attributes.
    */
   void RemoveAllVertexAttributeMappings() override;
+
+  /**
+   * allows a mapper to update a selections color buffers
+   * Called from a prop which in turn is called from the selector
+   */
+  void ProcessSelectorPixelBuffers(vtkHardwareSelector *sel,
+    std::vector<unsigned int> &pixeloffsets,
+    vtkProp *prop) override;
 
 protected:
   vtkOpenGLPolyDataMapper();
@@ -474,9 +490,10 @@ protected:
 
   bool UsingScalarColoring;
   vtkTimeStamp VBOBuildTime; // When was the OpenGL VBO updated?
-  std::string VBOBuildString; // used for determining whento rebuild the VBO
-  std::string IBOBuildString; // used for determining whento rebuild the IBOs
-  std::string CellTextureBuildString;
+  vtkStateStorage VBOBuildState; // used for determining when to rebuild the VBO
+  vtkStateStorage IBOBuildState; // used for determining whento rebuild the IBOs
+  vtkStateStorage CellTextureBuildState;
+  vtkStateStorage TempState; // can be used to avoid constant allocs/deallocs
   vtkOpenGLTexture* InternalColorTexture;
 
   int PopulateSelectionSettings;
@@ -494,7 +511,7 @@ protected:
   // mapper has identified a texture map as well.
   bool ForceTextureCoordinates;
 
-  void BuildCellTextures(
+  virtual void BuildCellTextures(
     vtkRenderer *ren,
     vtkActor *,
     vtkCellArray *prims[4],
@@ -509,7 +526,6 @@ protected:
     std::vector<float> &normals,
     vtkPolyData *pd);
 
-  bool HavePickScalars;
   vtkTextureObject *CellScalarTexture;
   vtkOpenGLBufferObject *CellScalarBuffer;
   bool HaveCellScalars;
@@ -553,11 +569,16 @@ protected:
   // typically 2 for points, 4 for lines, 6 for surface
   int GetPointPickingPrimitiveSize(int primType);
 
-  // a map from drawn triangles back to containing cell id
-  std::vector<unsigned int> CellCellMap;
-
   // used to occasionally invoke timers
   unsigned int TimerQueryCounter;
+
+  // stores the mapping from vtk cells to gl_PrimitiveId
+  std::vector<vtkIdType> CellCellMap;
+  std::vector<vtkIdType> PointCellMap;
+  std::string CellMapsBuildString;
+
+  // compute and set the maximum point and cell ID used in selection
+  virtual void UpdateMaximumPointCellIds(vtkRenderer* ren, vtkActor *actor);
 
 private:
   vtkOpenGLPolyDataMapper(const vtkOpenGLPolyDataMapper&) = delete;

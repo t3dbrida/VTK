@@ -72,7 +72,7 @@ public:
   /**
    * Change the window to fill the entire screen.
    */
-  void SetFullScreen(int) override;
+  void SetFullScreen(vtkTypeBool) override;
 
   /**
    * Remap the window.
@@ -124,17 +124,17 @@ public:
   /**
    * Set this RenderWindow's window id to a pre-existing window.
    */
-  void SetWindowInfo(char *) override;
+  void SetWindowInfo(const char *) override;
 
   /**
    * Sets the WindowInfo that will be used after a WindowRemap.
    */
-  void SetNextWindowInfo(char *) override;
+  void SetNextWindowInfo(const char *) override;
 
   /**
    * Sets the HWND id of the window that WILL BE created.
    */
-  void SetParentInfo(char *) override;
+  void SetParentInfo(const char *) override;
 
   void *GetGenericDisplayId() override {return (void *)this->ContextId;}
   void *GetGenericWindowId() override {return (void *)this->WindowId;}
@@ -196,7 +196,7 @@ public:
    * overrides the superclass method since this class can actually check
    * whether the window has been realized yet.
    */
-  void SetStereoCapableWindow(int capable) override;
+  void SetStereoCapableWindow(vtkTypeBool capable) override;
 
   /**
    * Make this windows OpenGL context the current context.
@@ -263,7 +263,7 @@ public:
    * Override the default implementation so that we can actively switch between
    * on and off screen rendering.
    */
-  void SetOffScreenRendering(int offscreen) override;
+  void SetOffScreenRendering(vtkTypeBool offscreen) override;
 
   //@{
   /**

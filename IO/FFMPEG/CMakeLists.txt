@@ -5,6 +5,13 @@ set(Module_SRCS
   vtkFFMPEGWriter.cxx
   )
 
+# vtkFFMPEGVideoSource equires ffmpeg 3.1 or later
+if (VTK_FFMPEG_AVCODEC_SEND_PACKET)
+  list(APPEND Module_SRCS
+    vtkFFMPEGVideoSource.cxx
+    )
+endif()
+
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/vtkFFMPEGConfig.h.in
   ${CMAKE_CURRENT_BINARY_DIR}/vtkFFMPEGConfig.h @ONLY
   )
@@ -21,8 +28,11 @@ set_source_files_properties( vtkFFMPEGWriter.cxx
   PROPERTIES COMPILE_DEFINITIONS __STDC_CONSTANT_MACROS
   )
 
-set(_ffmpeg_libs ${FFMPEG_LIBAVFORMAT_LIBRARIES} ${FFMPEG_LIBAVCODEC_LIBRARIES}
+set(_ffmpeg_libs
+  ${FFMPEG_LIBAVFORMAT_LIBRARIES}
+  ${FFMPEG_LIBAVCODEC_LIBRARIES}
   ${FFMPEG_LIBAVUTIL_LIBRARIES}
+  ${FFMPEG_LIBSWRESAMPLE_LIBRARIES}
   )
 
 if(NOT VTK_FFMPEG_HAS_IMG_CONVERT)

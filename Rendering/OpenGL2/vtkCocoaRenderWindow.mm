@@ -1523,7 +1523,7 @@ void vtkCocoaRenderWindow::SetCocoaManager(void *manager)
 }
 
 //----------------------------------------------------------------------------
-void vtkCocoaRenderWindow::SetWindowInfo(char *info)
+void vtkCocoaRenderWindow::SetWindowInfo(const char *info)
 {
   // The parameter is an ASCII string of a decimal number representing
   // a pointer to the window. Convert it back to a pointer.
@@ -1537,7 +1537,7 @@ void vtkCocoaRenderWindow::SetWindowInfo(char *info)
 }
 
 //----------------------------------------------------------------------------
-void vtkCocoaRenderWindow::SetParentInfo(char *info)
+void vtkCocoaRenderWindow::SetParentInfo(const char *info)
 {
   // The parameter is an ASCII string of a decimal number representing
   // a pointer to the window. Convert it back to a pointer.
@@ -1618,6 +1618,12 @@ void vtkCocoaRenderWindow::SetCurrentCursor(int shape)
     return;
   }
   this->Superclass::SetCurrentCursor(shape);
+
+  if (!this->Mapped)
+  {
+    return;
+  }
+
   NSCursor* cursor = nil;
   switch (shape)
   {

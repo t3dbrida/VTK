@@ -126,7 +126,7 @@ int vtkImageBSplineCoefficients::RequestData(
 
   // We are about to call superclass' RequestData which allocates output
   // based on the update extent. However, we want the output to be the
-  // whole extent. So we temprarily override the update extent to be
+  // whole extent. So we temporarily override the update extent to be
   // the whole extent.
   int extentcache[6];
   memcpy(extentcache, outInfo->Get(
@@ -247,7 +247,7 @@ void vtkImageBSplineCoefficientsExecute(
   int extent[6], int axis, int threadId)
 {
   // change the order so the inner loop is the chosen axis
-  static int permute[3][3] = {
+  static const int permute[3][3] = {
     { 0, 1, 2 }, { 1, 0, 2 }, { 2, 0, 1 } };
 
   int borderMode = self->GetBorderMode();

@@ -838,6 +838,12 @@ void vtkPUnstructuredGridGhostCellsGenerator::ExtractAndSendGhostCells(
     extractCells->Update();
     vtkUnstructuredGrid* extractGrid = extractCells->GetOutput();
 
+    //There might be case where the originalcellids needs to be removed
+    //but there are definitely cases where it shouldn't.
+    //So if you run into that case, think twice before you uncomment this
+    //next line and look carefully at paraview issue #18470
+    //extractGrid->GetCellData()->RemoveArray("vtkOriginalCellIds");
+
     // Send the extracted grid to the neighbor rank asynchronously
     if (vtkCommunicator::MarshalDataObject(extractGrid, c.SendBuffer))
     {
@@ -1015,7 +1021,10 @@ void vtkPUnstructuredGridGhostCellsGenerator::ReceiveAndMergeGhostCells(int ghos
   // Then merge ghost grid from neighbor ranks
   for (std::size_t i = 0; i < neighborGrids.size(); i++)
   {
-    mergeCells->MergeDataSet(neighborGrids[i]);
+    if (neighborGrids[i]->GetNumberOfCells())
+    {
+      mergeCells->MergeDataSet(neighborGrids[i]);
+    }
     neighborGrids[i]->Delete();
   }
 

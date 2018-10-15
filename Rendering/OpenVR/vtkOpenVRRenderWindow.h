@@ -34,6 +34,18 @@ PURPOSE.  See the above copyright notice for more information.
  * made to work with this but consider how overlays will appear in a
  * HMD if they do not track the viewpoint etc. This class is based on
  * sample code from the OpenVR project.
+ *
+ * OpenVR provides HMD and controller positions in "Physical" coordinate
+ * system.
+ * Origin: user's eye position at the time of calibration.
+ * Axis directions: x = user's right; y = user's up; z = user's back.
+ * Unit: meter.
+ *
+ * Renderer shows actors in World coordinate system. Transformation between
+ * Physical and World coordinate systems is defined by PhysicalToWorldMatrix.
+ * This matrix determines the user's position and orientation in the rendered
+ * scene and scaling (magnification) of rendered actors.
+ *
 */
 
 #ifndef vtkOpenVRRenderWindow_h
@@ -49,6 +61,7 @@ PURPOSE.  See the above copyright notice for more information.
 #include "vtkEventData.h" // for enums
 
 class vtkCamera;
+class vtkMatrix4x4;
 class vtkOpenVRModel;
 class vtkOpenVROverlay;
 class vtkOpenGLVertexBufferObject;
@@ -57,6 +70,11 @@ class vtkTransform;
 class VTKRENDERINGOPENVR_EXPORT vtkOpenVRRenderWindow : public vtkOpenGLRenderWindow
 {
 public:
+  enum
+    {
+    PhysicalToWorldMatrixModified = vtkCommand::UserEvent + 200
+    };
+
   static vtkOpenVRRenderWindow *New();
   vtkTypeMacro(vtkOpenVRRenderWindow,vtkOpenGLRenderWindow);
   void PrintSelf(ostream& os, vtkIndent indent);
@@ -80,7 +98,9 @@ public:
   //@}
 
   /**
-   * Update the HMD pose
+   * Update the HMD pose based on hardware pose and physical to world transform.
+   * VR camera properties are directly modified based on physical to world to
+   * simulate \sa PhysicalTranslation, \sa PhysicalScale, etc.
    */
   void UpdateHMDMatrixPose();
 
@@ -111,7 +131,7 @@ public:
     return this->TrackedDeviceToRenderModel[idx]; };
 
   /**
-  *Get the openVR Render Models
+  * Get the openVR Render Models
   */
   vr::IVRRenderModels * GetOpenVRRenderModels() {
     return this->OpenVRRenderModels; };
@@ -129,7 +149,7 @@ public:
     return this->TrackedDevicePose[idx]; };
 
   /**
-   * Initialize the Vive to World setting and camera settings so
+   * Initialize the HMD to World setting and camera settings so
    * that the VR world view most closely matched the view from
    * the provided camera. This method is useful for initialing
    * a VR world from an existing on screen window and camera.
@@ -140,19 +160,71 @@ public:
 
   //@{
   /**
-   * Control the Vive to World transformations. IN
-   * some cases users may not want the Y axis to be up
-   * and these methods allow them to control it.
+   * Set/get physical coordinate system in world coordinate system.
+   *
+   * View direction is the -Z axis of the physical coordinate system
+   * in world coordinate system.
+   * \sa SetPhysicalViewUp, \sa SetPhysicalTranslation,
+   * \sa SetPhysicalScale, \sa SetPhysicalToWorldMatrix
    */
-  vtkSetVector3Macro(PhysicalViewDirection, double);
-  vtkSetVector3Macro(PhysicalViewUp, double);
+  virtual void SetPhysicalViewDirection(double,double,double);
+  virtual void SetPhysicalViewDirection(double[3]);
   vtkGetVector3Macro(PhysicalViewDirection, double);
+  //@}
+
+  //@{
+  /**
+   * Set/get physical coordinate system in world coordinate system.
+   *
+   * View up is the +Y axis of the physical coordinate system
+   * in world coordinate system.
+   * \sa SetPhysicalViewDirection, \sa SetPhysicalTranslation,
+   * \sa SetPhysicalScale, \sa SetPhysicalToWorldMatrix
+   */
+  virtual void SetPhysicalViewUp(double,double,double);
+  virtual void SetPhysicalViewUp(double[3]);
   vtkGetVector3Macro(PhysicalViewUp, double);
-  vtkSetVector3Macro(PhysicalTranslation, double);
+  //@}
+
+  //@{
+  /**
+   * Set/get physical coordinate system in world coordinate system.
+   *
+   * Position of the physical coordinate system origin
+   * in world coordinates.
+   * \sa SetPhysicalViewDirection, \sa SetPhysicalViewUp,
+   * \sa SetPhysicalScale, \sa SetPhysicalToWorldMatrix
+   */
+  virtual void SetPhysicalTranslation(double,double,double);
+  virtual void SetPhysicalTranslation(double[3]);
   vtkGetVector3Macro(PhysicalTranslation, double);
-  vtkSetMacro(PhysicalScale, double);
+  //@}
+
+  //@{
+  /**
+   * Set/get physical coordinate system in world coordinate system.
+   *
+   * Ratio of distance in world coordinate and physical and system
+   * (PhysicalScale = distance_World / distance_Physical).
+   * Example: if world coordinate system is in mm then
+   * PhysicalScale = 1000.0 makes objects appear in real size.
+   * PhysicalScale = 100.0 makes objects appear 10x larger than real size.
+   */
+  virtual void SetPhysicalScale(double);
   vtkGetMacro(PhysicalScale, double);
   //@}
+
+  /**
+  * Set physical to world transform matrix. Members calculated and set from the matrix:
+  * \sa PhysicalViewDirection, \sa PhysicalViewUp, \sa PhysicalTranslation, \sa PhysicalScale
+  * The x axis scale is used for \sa PhysicalScale
+  */
+  void SetPhysicalToWorldMatrix(vtkMatrix4x4* matrix);
+  /**
+  * Get physical to world transform matrix. Members used to calculate the matrix:
+  * \sa PhysicalViewDirection, \sa PhysicalViewUp, \sa PhysicalTranslation, \sa PhysicalScale
+  */
+  void GetPhysicalToWorldMatrix(vtkMatrix4x4* matrix);
 
   //@{
   /**
@@ -260,9 +332,9 @@ public:
     //@}
 
   // implement required virtual functions
-  void SetWindowInfo(char *) {};
-  void SetNextWindowInfo(char *) {};
-  void SetParentInfo(char *) {};
+  void SetWindowInfo(const char *) {};
+  void SetNextWindowInfo(const char *) {};
+  void SetParentInfo(const char *) {};
   virtual void *GetGenericDisplayId() {return (void *)this->HelperWindow->GetGenericDisplayId();};
   virtual void *GetGenericWindowId()  {return (void *)this->HelperWindow->GetGenericWindowId();};
   virtual void *GetGenericParentId()  {return (void *)nullptr;};
@@ -273,7 +345,7 @@ public:
   void  SetParentId(void *) {};
   void HideCursor() {};
   void ShowCursor() {};
-  virtual void SetFullScreen(int) {};
+  virtual void SetFullScreen(vtkTypeBool) {};
   virtual void WindowRemap(void) {};
   virtual void SetNextWindowId(void *) {};
 
@@ -346,9 +418,13 @@ protected:
 
   // used in computing the pose
   vtkTransform *HMDTransform;
+  /// -Z axis of the Physical to World matrix
   double PhysicalViewDirection[3];
+  /// Y axis of the Physical to World matrix
   double PhysicalViewUp[3];
+  /// Inverse of the translation component of the Physical to World matrix, in mm
   double PhysicalTranslation[3];
+  /// Scale of the Physical to World matrix
   double PhysicalScale;
 
   // for the overlay

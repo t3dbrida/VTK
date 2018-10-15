@@ -730,7 +730,7 @@ inline OTTetra::TetraClassification OTTetra::DetermineType()
 
 //------------------------------------------------------------------------
 // Determine whether the point is used by a specified tetra.
-inline static int IsAPoint(OTTetra *t, vtkIdType id)
+inline static vtkTypeBool IsAPoint(OTTetra *t, vtkIdType id)
 {
   if ( id == t->Points[0]->InsertionId || id == t->Points[1]->InsertionId ||
        id == t->Points[2]->InsertionId || id == t->Points[3]->InsertionId )
@@ -747,7 +747,7 @@ inline static int IsAPoint(OTTetra *t, vtkIdType id)
 // Given two tetra face neighbors, assign the neighbor pointers to each tetra.
 static void AssignNeighbors(OTTetra* t1, OTTetra* t2)
 {
-  static int CASE_MASK[4] = {1,2,4,8};
+  static const int CASE_MASK[4] = {1,2,4,8};
   int i, index;
 
   for (i=0, index=0; i<4; ++i)

@@ -119,15 +119,14 @@ void vtkOpenGLSphereMapper::ReplaceShaderValues(
     "  float d = b*b - 4.0*c;\n"
     "  vec3 normalVCVSOutput = vec3(0.0,0.0,1.0);\n"
     "  if (d < 0.0) { discard; }\n"
-    "  else {\n"
-    "    float t = (-b - invertedDepth*sqrt(d))*0.5;\n"
+    "  float t = (-b - invertedDepth*sqrt(d))*0.5;\n"
 
     // compute the normal, for unit sphere this is just
     // the intersection point
-    "    normalVCVSOutput = invertedDepth*normalize(EyePos + t*EyeDir);\n"
+    "  normalVCVSOutput = normalize(EyePos + t*EyeDir);\n"
     // compute the intersection point in VC
-    "    vertexVC.xyz = normalVCVSOutput*radiusVCVSOutput + centerVCVSOutput;\n"
-    "    }\n"
+    "  vertexVC.xyz = normalVCVSOutput*radiusVCVSOutput + centerVCVSOutput;\n"
+    "  normalVCVSOutput *= invertedDepth;\n"
     // compute the pixel's depth
    // " normalVCVSOutput = vec3(0,0,1);\n"
     "  vec4 pos = VCDCMatrix * vertexVC;\n"
@@ -254,21 +253,6 @@ void vtkOpenGLSphereMapper::CreateVBO(
 }
 
 //-------------------------------------------------------------------------
-bool vtkOpenGLSphereMapper::GetNeedToRebuildBufferObjects(
-  vtkRenderer *vtkNotUsed(ren),
-  vtkActor *act)
-{
-  // picking state does not require a rebuild, unlike our parent
-  if (this->VBOBuildTime < this->GetMTime() ||
-      this->VBOBuildTime < act->GetMTime() ||
-      this->VBOBuildTime < this->CurrentInput->GetMTime())
-  {
-    return true;
-  }
-  return false;
-}
-
-//-------------------------------------------------------------------------
 void vtkOpenGLSphereMapper::BuildBufferObjects(
   vtkRenderer *ren,
   vtkActor *act)
@@ -312,12 +296,11 @@ void vtkOpenGLSphereMapper::BuildBufferObjects(
   }
 
   float *scales;
-  vtkIdType ns = poly->GetPoints()->GetNumberOfPoints();
+  vtkIdType ns = numPts;
   if (this->ScaleArray != nullptr &&
       poly->GetPointData()->HasArray(this->ScaleArray))
   {
     scales = static_cast<float*>(poly->GetPointData()->GetArray(this->ScaleArray)->GetVoidPointer(0));
-    ns = numPts;
   }
   else
   {
