@@ -1720,10 +1720,10 @@ void vtkOpenGLGPUMultiVolumeRayCastMapper::vtkInternal::BeginPicking(vtkRenderer
   {
     selector->BeginRenderProp();
 
-    if (this->CurrentSelectionPass >= vtkHardwareSelector::ID_LOW24)
-    {
-      selector->RenderAttributeId(0);
-    }
+    //if (this->CurrentSelectionPass >= vtkHardwareSelector::ID_LOW24)
+    //{
+    //  selector->RenderAttributeId(0);
+    //}
   }
 }
 
@@ -1741,8 +1741,8 @@ void vtkOpenGLGPUMultiVolumeRayCastMapper::vtkInternal::SetPickingId
   }
   else // RenderWindow is picking
   {
-    unsigned int const idx = ren->GetCurrentPickId();
-    vtkHardwareSelector::Convert(idx, propIdColor);
+    //unsigned int const idx = ren->GetCurrentPickId();
+    //vtkHardwareSelector::Convert(idx, propIdColor);
   }
 
   this->ShaderProgram->SetUniform3f("in_propId", propIdColor);
@@ -3548,10 +3548,10 @@ void vtkOpenGLGPUMultiVolumeRayCastMapper::DoGPURender(vtkRenderer* ren,
 
   // Bind the prop Id
   //--------------------------------------------------------------------------
-  if (this->Impl->CurrentSelectionPass < vtkHardwareSelector::ID_LOW24)
+  /*if (this->Impl->CurrentSelectionPass < vtkHardwareSelector::ID_LOW24)
   {
 	  this->Impl->SetPickingId(ren);
-  }
+  }*/
 
   // Set the scalar range to be considered for average ip blend
   //--------------------------------------------------------------------------

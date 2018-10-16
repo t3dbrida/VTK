@@ -623,10 +623,14 @@ namespace vtkvolume
                                          int lightingComplexity)
   {
     vtkVolumeProperty* volProperty = vol->GetProperty();
-    std::string shaderStr = std::string("\
-      \nvec4 computeLighting(vec4 color, int component)\
-      \n  {\
-      \n  vec4 finalColor = vec4(0.0);"
+    std::string shaderStr = std::string(
+      "vec4 computeLighting(vec4 color,\n"
+                           "int component,\n"
+                           "const in vec3 texPos,\n"
+                           "const in sampler3D volume,\n"
+                           "const int idx)\n"
+      "{\
+        vec4 finalColor = vec4(0.0);"
     );
 
     // Shading for composite blending only
@@ -642,13 +646,13 @@ namespace vtkvolume
       {
         case vtkVolumeProperty::TF_1D:  shaderStr += std::string(
           "  // Compute gradient function only once\n"
-          "  vec4 gradient = computeGradient(g_dataPos, component, in_volume[0], 0);\n");
+          "  vec4 gradient = computeGradient(texPos, component, volume, idx);\n");
           break;
         case vtkVolumeProperty::TF_2D:
           shaderStr += std::string(
           "  // TransferFunction2D is enabled so the gradient for\n"
           "  // each component has already been cached\n"
-          "  vec4 gradient = g_gradients_0[component];\n");
+          "  vec4 gradient = g_gradients_0[component];\n"); // TODO
           break;
       }
     }
@@ -922,7 +926,8 @@ namespace vtkvolume
           \nvec4 computeColor(vec4 scalar, float opacity)\
           \n  {\
           \n  return computeLighting(vec4(texture2D(" + colorTableMap[0] +",\
-          \n                         vec2(scalar.w, 0.0)).xyz, opacity), 0);\
+          \n                                        vec2(scalar.w, 0.)).xyz,\
+          \n                              opacity), 0, g_dataPos, in_volume[0], 0);\
           \n  }");
         return shaderStr;
       }
@@ -946,7 +951,7 @@ namespace vtkvolume
             \n      "+colorTableMap[i]);
           shaderStr += std::string(", vec2(\
             \n      scalar[" + toString.str() + "],0.0)).xyz,\
-            \n      opacity),"+toString.str()+");\
+            \n      opacity),"+toString.str()+", g_dataPos, in_volume[0], 0);\
             \n    }");
 
           // Reset
@@ -973,7 +978,7 @@ namespace vtkvolume
         shaderStr += std::string("\
           \nvec4 computeColor(vec4 scalar, float opacity)\
           \n  {\
-          \n  return computeLighting(vec4(scalar.xyz, opacity), 0);\
+          \n  return computeLighting(vec4(scalar.xyz, opacity), 0, g_dataPos, in_volume[0], 0);\
           \n  }");
         return shaderStr;
       }
@@ -999,10 +1004,12 @@ namespace vtkvolume
     }
 
     ss <<
-      "vec3 computeColor(const in float scalar, const in sampler2D colorTF)\n"
+      "vec3 computeColor(const in float scalar, const in sampler2D colorTF,\n"
+      "                  const in vec3 texPos, const in sampler3D volume, const int idx)\n"
       "{\n"
-      "  return texture2D(colorTF, vec2(scalar, 0)).rgb;\n"
+      "  return computeLighting(texture2D(colorTF, vec2(scalar, 0.)), 0, texPos, volume, idx).rgb;\n"
       "}\n";
+
     return ss.str();
   }
 
@@ -1135,7 +1142,7 @@ namespace vtkvolume
           "{\n"
           "  vec4 color = texture2D(" + colorTableMap[0]  + ",\n"
           "    vec2(scalar.w, g_gradients_0[0].w));\n"
-          "  return computeLighting(color, 0);\n"
+          "  return computeLighting(color, 0, g_dataPos, in_volume[0], 0);\n"
           "}\n");
       }
       else if (noOfComponents > 1 && independentComponents)
@@ -1156,7 +1163,7 @@ namespace vtkvolume
               "  {\n"
               "    vec4 color = texture2D(" + colorTableMap[i] + ",\n"
               "      vec2(scalar[" + num + "], g_gradients_0[" + num + "].w));\n"
-              "    return computeLighting(color, " + num + ");\n"
+              "    return computeLighting(color, " + num + ", g_dataPos, in_volume[0], 0);\n"
               "  }\n");
         }
         shaderStr += std::string("}\n");
@@ -1171,7 +1178,7 @@ namespace vtkvolume
           "{\n"
           "  vec4 color = texture2D(" + colorTableMap[0]  + ",\n"
           "    vec2(scalar.x, g_gradients_0[0].w));\n"
-          "  return computeLighting(color, 0);\n"
+          "  return computeLighting(color, 0, g_dataPos, in_volume[0], 0);\n"
           "}\n");
       }
       else
@@ -1179,7 +1186,7 @@ namespace vtkvolume
         return std::string(
           "vec4 computeColor(vec4 scalar, float opacity)\n"
           "{\n"
-          "  return computeLighting(vec4(scalar.xyz, opacity), 0);\n"
+          "  return computeLighting(vec4(scalar.xyz, opacity), 0, g_dataPos, in_volume[0], 0);\n"
           "}\n");
       }
   }
@@ -1466,7 +1473,8 @@ namespace vtkvolume
             "        g_srcColor.a = computeOpacity(scalar.r," << input.OpacityTablesMap[0] << ");\n"
             "        if (g_srcColor.a > 0.0)\n"
             "        {\n"
-            "          g_srcColor.rgb = computeColor(scalar.r, " << input.RGBTablesMap[0]  << ");\n";
+            "          g_srcColor.rgb = computeColor(scalar.r, " << input.RGBTablesMap[0]  << ",\n"
+            "                                        texPos, in_volume[" << i <<  "], " << i << ");\n";
 
               if (property->HasGradientOpacity())
               {
