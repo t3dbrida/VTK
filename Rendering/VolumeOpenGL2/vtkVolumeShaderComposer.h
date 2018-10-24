@@ -146,12 +146,12 @@ namespace vtkvolume
 
   //--------------------------------------------------------------------------
   std::string BaseDeclarationFragment(vtkRenderer* vtkNotUsed(ren),
-                        vtkVolumeMapper* mapper,
-                        vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs,
-                        int vtkNotUsed(numberOfLights),
-                        int lightingComplexity,
-                        int noOfComponents,
-                        int independentComponents)
+                                      vtkVolumeMapper* mapper,
+                                      vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs,
+                                      int vtkNotUsed(numberOfLights),
+                                      int lightingComplexity,
+                                      int noOfComponents,
+                                      int independentComponents)
   {
     const int numInputs = static_cast<int>(inputs.size());
 
@@ -306,9 +306,9 @@ namespace vtkvolume
 
   //--------------------------------------------------------------------------
   std::string BaseInit(vtkRenderer* vtkNotUsed(ren),
-                     vtkVolumeMapper* mapper,
-                     vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs,
-                     int lightingComplexity)
+                       vtkVolumeMapper* mapper,
+                       vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs,
+                       int lightingComplexity)
   {
     vtkOpenGLGPUVolumeRayCastMapper* glMapper =
       vtkOpenGLGPUVolumeRayCastMapper::SafeDownCast(mapper);
@@ -418,8 +418,8 @@ namespace vtkvolume
 
   //--------------------------------------------------------------------------
   std::string ComputeGradientOpacity1DDecl(vtkVolume* vol,
-                                int noOfComponents, int independentComponents,
-                                std::map<int, std::string> gradientTableMap)
+                                           int noOfComponents, int independentComponents,
+                                           std::map<int, std::string> gradientTableMap)
   {
     std::ostringstream ss;
     ss << "uniform sampler2D " << ArrayBaseName(gradientTableMap[0])
@@ -465,9 +465,8 @@ namespace vtkvolume
   }
 
   //--------------------------------------------------------------------------
-  std::string ComputeGradientDeclaration(
-    vtkOpenGLGPUVolumeRayCastMapper* mapper,
-    vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs)
+  std::string ComputeGradientDeclaration(vtkOpenGLGPUVolumeRayCastMapper* mapper,
+                                         vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs)
   {
     const bool hasLighting = HasLighting(inputs);
     const bool hasGradientOp = HasGradientOpacity(inputs);
@@ -948,9 +947,9 @@ namespace vtkvolume
           shaderStr += std::string("\
             \n    {\
             \n    return computeLighting(vec4(texture2D(\
-            \n      "+colorTableMap[i]);
+            \n      " + colorTableMap[i]);
           shaderStr += std::string(", vec2(\
-            \n      scalar[" + toString.str() + "],0.0)).xyz,\
+            \n      scalar[" + toString.str() + "], 0.)).xyz,\
             \n      opacity),"+toString.str()+", g_dataPos, in_volume[0], 0);\
             \n    }");
 
@@ -1004,8 +1003,11 @@ namespace vtkvolume
     }
 
     ss <<
-      "vec3 computeColor(const in float scalar, const in sampler2D colorTF,\n"
-      "                  const in vec3 texPos, const in sampler3D volume, const int idx)\n"
+      "vec3 computeColor(const in float scalar,\n"
+                        "const in sampler2D colorTF,\n"
+                        "const in vec3 texPos,\n"
+                        "const in sampler3D volume,\n"
+                        "const int idx)\n"
       "{\n"
       "  return computeLighting(texture2D(colorTF, vec2(scalar, 0.)), 0, texPos, volume, idx).rgb;\n"
       "}\n";
@@ -1177,7 +1179,7 @@ namespace vtkvolume
           "vec4 computeColor(vec4 scalar, float opacity)\n"
           "{\n"
           "  vec4 color = texture2D(" + colorTableMap[0]  + ",\n"
-          "    vec2(scalar.x, g_gradients_0[0].w));\n"
+          "                         vec2(scalar.x, g_gradients_0[0].w));\n"
           "  return computeLighting(color, 0, g_dataPos, in_volume[0], 0);\n"
           "}\n");
       }
