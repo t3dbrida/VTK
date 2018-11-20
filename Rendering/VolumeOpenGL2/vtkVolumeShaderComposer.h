@@ -287,18 +287,21 @@ namespace vtkvolume
 
     if (glMapper->GetBlendMode() == vtkVolumeMapper::ISOSURFACE_BLEND)
     {
-      toShaderStr <<
-        "#if NUMBER_OF_CONTOURS\n"
-        "uniform float in_isosurfacesValues[NUMBER_OF_CONTOURS];\n"
-        "\n"
-        "int findIsoSurfaceIndex(float scalar, float array[NUMBER_OF_CONTOURS+2])\n"
-        "{\n"
-        "  int index = NUMBER_OF_CONTOURS >> 1;\n"
-        "  while (scalar > array[index]) ++index;\n"
-        "  while (scalar < array[index]) --index;\n"
-        "  return index;\n"
-        "}\n"
-        "#endif\n";
+      for (int i = 0; i < numInputs; ++i)
+      {
+        toShaderStr <<
+          "#if NUMBER_OF_CONTOURS_" << i <<"\n"
+          "uniform float in_isosurfacesValues_" << i << "[NUMBER_OF_CONTOURS_" << i << "];\n"
+          "\n"
+          "int findIsoSurfaceIndex_" << i << "(float scalar, float array[NUMBER_OF_CONTOURS_" << i << " + 2])\n"
+          "{\n"
+          "  int index = NUMBER_OF_CONTOURS_" << i << " >> 1;\n"
+          "  while (scalar > array[index]) ++index;\n"
+          "  while (scalar < array[index]) --index;\n"
+          "  return index;\n"
+          "}\n"
+          "#endif\n";
+      }
     }
 
     return toShaderStr.str();
@@ -1278,6 +1281,9 @@ namespace vtkvolume
                                          vtkVolumeMapper* mapper,
                                          vtkVolume* vtkNotUsed(vol))
   {
+    auto gpuMapper = vtkGPUVolumeRayCastMapper::SafeDownCast(mapper);
+    const int numInputs = gpuMapper->GetInputCount();
+
     if (mapper->GetBlendMode() == vtkVolumeMapper::MAXIMUM_INTENSITY_BLEND)
     {
       return std::string("\
@@ -1304,9 +1310,14 @@ namespace vtkvolume
     }
     else if (mapper->GetBlendMode() == vtkVolumeMapper::ISOSURFACE_BLEND)
     {
-      return std::string("\
-        \n  int l_initialIndex = 0;\
-        \n  float l_normValues[NUMBER_OF_CONTOURS + 2];");
+      std::string str = "";
+      for (int i = 0; i < numInputs; ++i)
+      {
+        auto istr = std::to_string(i);
+        str += "\nint l_initialIndex_" + istr + " = 0;"
+               "\nfloat l_normValues_" + istr + "[NUMBER_OF_CONTOURS_" + istr + " + 2];";
+      }
+      return str;
     }
     else
     {
@@ -1319,64 +1330,67 @@ namespace vtkvolume
                           vtkVolumeMapper* mapper,
                           vtkVolume* vtkNotUsed(vol))
   {
+    auto gpuMapper = vtkGPUVolumeRayCastMapper::SafeDownCast(mapper);
+    const int numInputs = gpuMapper->GetInputCount();
+
+    std::string str = "";
     if (mapper->GetBlendMode() == vtkVolumeMapper::MAXIMUM_INTENSITY_BLEND)
     {
-      return std::string("\
-        \n  // We get data between 0.0 - 1.0 range\
-        \n  l_firstValue = true;\
-        \n  l_maxValue = vec4(0.0);"
-      );
+      str = "\n  // We get data between 0.0 - 1.0 range"
+            "\n  l_firstValue = true;"
+            "\n  l_maxValue = vec4(0.0);";
     }
     else if (mapper->GetBlendMode() ==
              vtkVolumeMapper::MINIMUM_INTENSITY_BLEND)
     {
-      return std::string("\
-        \n  //We get data between 0.0 - 1.0 range\
-        \n  l_firstValue = true;\
-        \n  l_minValue = vec4(1.0);"
-      );
+      str = "\n  //We get data between 0.0 - 1.0 range"
+            "\n  l_firstValue = true;"
+            "\n  l_minValue = vec4(1.0);";
     }
     else if (mapper->GetBlendMode() == vtkVolumeMapper::AVERAGE_INTENSITY_BLEND)
     {
-      return std::string("\
-        \n  //We get data between 0.0 - 1.0 range\
-        \n  l_avgValue = vec4(0.0);\
-        \n  // Keep track of number of samples\
-        \n  l_numSamples = uvec4(0);"
-      );
+      str =
+        "\n  //We get data between 0.0 - 1.0 range"
+        "\n  l_avgValue = vec4(0.0);"
+        "\n  // Keep track of number of samples"
+        "\n  l_numSamples = uvec4(0);";
     }
     else if (mapper->GetBlendMode() == vtkVolumeMapper::ADDITIVE_BLEND)
     {
-      return std::string("\
-        \n  //We get data between 0.0 - 1.0 range\
-        \n  l_sumValue = vec4(0.0);"
-      );
+      str = 
+        "\n  //We get data between 0.0 - 1.0 range"
+        "\n  l_sumValue = vec4(0.0);"
+      ;
     }
     else if (mapper->GetBlendMode() == vtkVolumeMapper::ISOSURFACE_BLEND)
     {
-      return std::string("\
-        \n#if NUMBER_OF_CONTOURS\
-        \n  l_normValues[0] = -1e20; //-infinity\
-        \n  l_normValues[NUMBER_OF_CONTOURS+1] = +1e20; //+infinity\
-        \n  for (int i = 0; i < NUMBER_OF_CONTOURS; i++)\
-        \n  {\
-        \n    l_normValues[i+1] = (in_isosurfacesValues[i] - in_scalarsRange[0].x) / \
-        \n                        (in_scalarsRange[0].y - in_scalarsRange[0].x);\
-        \n  }\
-        \n#endif\
-        ");
+      str += "  bool initialIndexUnset[" + std::to_string(numInputs) + "];";
+      for (int i = 0; i < numInputs; ++i)
+      {
+          auto ii = std::to_string(i);
+          str +=
+           "\n  initialIndexUnset[" + ii + "] = true;"
+           "\n#if NUMBER_OF_CONTOURS_" + ii + "\
+            \n  l_normValues_" + ii + "[0] = -1e20; //-infinity\
+            \n  l_normValues_" + ii + "[NUMBER_OF_CONTOURS_" + ii + " + 1] = +1e20; //+infinity\
+            \n  for (int i = 0; i < NUMBER_OF_CONTOURS_" + ii + "; ++i)\
+            \n  {\
+            \n    l_normValues_" + ii + "[i + 1] = (in_isosurfacesValues_" + ii + "[i] - "
+                                                   "in_scalarsRange[4 * " + ii + " + 0].x) / \
+            \n                                       (in_scalarsRange[4 * " + ii + " + 0].y - "
+                                                    "in_scalarsRange[4 * " + ii + " + 0].x);\
+            \n  }\
+            \n#endif";
+      }
     }
-    else
-    {
-      return std::string();
-    }
+    return str;
   }
 
   //--------------------------------------------------------------------------
   std::string GradientCacheDec(vtkRenderer* vtkNotUsed(ren),
-                                    vtkVolume* vtkNotUsed(vol),
-                                    vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs,
-                                    int independentComponents = 0)
+                               vtkVolume* vtkNotUsed(vol),
+                               vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs,
+                               int independentComponents = 0)
   {
     const int numInputs  = static_cast<int>(inputs.size());
     const int comp = numInputs == 1 ?
@@ -1442,73 +1456,130 @@ namespace vtkvolume
       "    {\n"
       "      vec3 texPos;\n";
 
+    int i = 0;
     switch (mapper->GetBlendMode())
     {
+      case vtkVolumeMapper::ISOSURFACE_BLEND:
+        for (auto& item : inputs)
+        {
+          auto& input = item.second;
+          auto property = input.Volume->GetProperty();
+          // Transformation index. Index 0 refers to the global bounding-box.
+          const auto idx = i + 1;
+          toShaderStr <<
+          // From global texture coordinates (bbox) to volume_i texture coords.
+          // texPos = T * g_dataPos
+          // T = T_dataToTex1 * T_worldToData * T_bboxTexToWorld;
+          "      texPos = (in_cellToPoint[" << idx << "] * in_inverseTextureDatasetMatrix[" << idx << "] *\n"
+          "                in_inverseVolumeMatrix[" << idx  <<"] * in_volumeMatrix[0] * in_textureDatasetMatrix[0] *\n"
+          "                vec4(g_dataPos.xyz, 1.0)).xyz;\n"
+          "      if ((all(lessThanEqual(texPos, vec3(1.0))) &&\n"
+          "           all(greaterThanEqual(texPos, vec3(0.0)))))\n"
+          "      {\n"
+          "        vec4 scalar = texture3D(in_volume[" << i << "], texPos);\n"
+          "        scalar = scalar * in_volume_scale[" << i << "] + in_volume_bias[" << i << "];\n"
+          "        scalar = vec4(scalar.r);\n"
+          "\n"
+          "        int maxComp = 0;\n"
+          "        if (initialIndexUnset[" << i << "] == true)\n"
+          "        {\n"
+          "          l_initialIndex_" << i << " = findIsoSurfaceIndex_" << i << "(scalar[maxComp],\n"
+          "                                                                       l_normValues_" << i << ");\n"
+          "          initialIndexUnset[" << i << "] = false;\n"
+          "        }\n"
+          "        else\n"
+          "        {\n"
+          "          float s;\n"
+          "          bool shade = false;\n"
+          "          l_initialIndex_" << i << " = clamp(l_initialIndex_" << i << ", 0,"
+          "                                             NUMBER_OF_CONTOURS_" << i << ");\n"
+          "          if (scalar[maxComp] < l_normValues_" << i << "[l_initialIndex_" << i << "])\n"
+          "          {\n"
+          "            s = l_normValues_" << i << "[l_initialIndex_" << i << "];\n"
+          "            --l_initialIndex_" << i << ";\n"
+          "            shade = true;\n"
+          "          }\n"
+          "          if (scalar[maxComp] > l_normValues_" << i << "[l_initialIndex_" << i << " + 1]) \n"
+          "          {\n"
+          "            s = l_normValues_" << i << "[l_initialIndex_" << i << " + 1];\n"
+          "            ++l_initialIndex_" << i << ";\n"
+          "            shade = true;\n"
+          "          }\n"
+          "          if (shade == true)\n"
+          "          {\n"
+          "            g_srcColor.a = computeOpacity(s, in_opacityTransferFunc_" << i << "[0]);\n"
+          "            g_srcColor.rgb = computeColor(s, in_colorTransferFunc_" << i << "[0], texPos, in_volume[" << i << "],"
+          "                                          0);\n"
+          "            g_srcColor.rgb *= g_srcColor.a;\n"
+          "            g_fragColor = (1. - g_fragColor.a) * g_srcColor + g_fragColor;\n"
+          "          }\n"
+          "        }\n"
+          "      }\n";
+          ++i;
+        }
+        break;
       case vtkVolumeMapper::COMPOSITE_BLEND:
       default:
+        for (auto& item : inputs)
         {
-          int i = 0;
-          for (auto& item : inputs)
+          auto& input = item.second;
+          auto property = input.Volume->GetProperty();
+          // Transformation index. Index 0 refers to the global bounding-box.
+          const auto idx = i + 1;
+          toShaderStr <<
+          // From global texture coordinates (bbox) to volume_i texture coords.
+          // texPos = T * g_dataPos
+          // T = T_dataToTex1 * T_worldToData * T_bboxTexToWorld;
+          "      texPos = (in_cellToPoint[" << idx << "] * in_inverseTextureDatasetMatrix[" << idx
+            << "] * in_inverseVolumeMatrix[" << idx  <<"] *\n"
+          "        in_volumeMatrix[0] * in_textureDatasetMatrix[0] * vec4(g_dataPos.xyz, 1.0)).xyz;\n"
+          "      if ((all(lessThanEqual(texPos, vec3(1.0))) &&\n"
+          "        all(greaterThanEqual(texPos, vec3(0.0)))))\n"
+          "      {\n"
+          "        vec4 scalar = texture3D(in_volume[" << i << "], texPos);\n"
+          "        scalar = scalar * in_volume_scale[" << i << "] + in_volume_bias[" << i << "];\n"
+          "        scalar = vec4(scalar.r);\n"
+          "        g_srcColor = vec4(0.0);\n";
+
+          if (property->GetTransferFunctionMode() == vtkVolumeProperty::TF_1D)
           {
-            auto& input = item.second;
-            auto property = input.Volume->GetProperty();
-            // Transformation index. Index 0 refers to the global bounding-box.
-            const auto idx = i + 1;
-            toShaderStr <<
-            // From global texture coordinates (bbox) to volume_i texture coords.
-            // texPos = T * g_dataPos
-            // T = T_dataToTex1 * T_worldToData * T_bboxTexToWorld;
-            "      texPos = (in_cellToPoint[" << idx << "] * in_inverseTextureDatasetMatrix[" << idx
-              << "] * in_inverseVolumeMatrix[" << idx  <<"] *\n"
-            "        in_volumeMatrix[0] * in_textureDatasetMatrix[0] * vec4(g_dataPos.xyz, 1.0)).xyz;\n"
-            "      if ((all(lessThanEqual(texPos, vec3(1.0))) &&\n"
-            "        all(greaterThanEqual(texPos, vec3(0.0)))))\n"
-            "      {\n"
-            "        vec4 scalar = texture3D(in_volume[" << i << "], texPos);\n"
-            "        scalar = scalar * in_volume_scale[" << i << "] + in_volume_bias[" << i << "];\n"
-            "        scalar = vec4(scalar.r);\n"
-            "        g_srcColor = vec4(0.0);\n";
+          toShaderStr <<
+          "        g_srcColor.a = computeOpacity(scalar.r," << input.OpacityTablesMap[0] << ");\n"
+          "        if (g_srcColor.a > 0.0)\n"
+          "        {\n"
+          "          g_srcColor.rgb = computeColor(scalar.r, " << input.RGBTablesMap[0]  << ",\n"
+          "                                        texPos, in_volume[" << i <<  "], " << i << ");\n";
 
-            if (property->GetTransferFunctionMode() == vtkVolumeProperty::TF_1D)
+            if (property->HasGradientOpacity())
             {
-            toShaderStr <<
-            "        g_srcColor.a = computeOpacity(scalar.r," << input.OpacityTablesMap[0] << ");\n"
-            "        if (g_srcColor.a > 0.0)\n"
-            "        {\n"
-            "          g_srcColor.rgb = computeColor(scalar.r, " << input.RGBTablesMap[0]  << ",\n"
-            "                                        texPos, in_volume[" << i <<  "], " << i << ");\n";
-
-              if (property->HasGradientOpacity())
-              {
-                const auto& grad = input.GradientCacheName;
-                toShaderStr <<
-                "          " << grad << "[0] = computeGradient(texPos, 0, " << "in_volume[" << i << "], " << i << ");\n"
-                "          if ("<< grad << "[0].w >= 0.0)\n"
-                "          {\n"
-                "            g_srcColor.a *= computeGradientOpacity(" << grad << "[0].w, "
-                  << input.GradientOpacityTablesMap[0] << ");\n"
-                "          }\n";
-              }
+              const auto& grad = input.GradientCacheName;
+              toShaderStr <<
+              "          " << grad << "[0] = computeGradient(texPos, 0, " << "in_volume[" << i << "], " << i << ");\n"
+              "          if ("<< grad << "[0].w >= 0.0)\n"
+              "          {\n"
+              "            g_srcColor.a *= computeGradientOpacity(" << grad << "[0].w, "
+                << input.GradientOpacityTablesMap[0] << ");\n"
+              "          }\n";
             }
-            else if (property->GetTransferFunctionMode() == vtkVolumeProperty::TF_2D)
-            {
-            const auto& grad = input.GradientCacheName;
-            toShaderStr <<
-            // Sample 2DTF directly
-            "        " << grad << "[0] = computeGradient(texPos, 0, " << "in_volume[" << i << "], " << i << ");\n"
-            "        g_srcColor = texture2D(" << input.TransferFunctions2DMap[0] << ", vec2(scalar.r, " << input.GradientCacheName << "[0].w));\n"
-            "        if (g_srcColor.a > 0.0)\n"
-            "        {\n";
-            }
-
-            toShaderStr <<
-            "          g_srcColor.rgb *= g_srcColor.a;\n"
-            "          g_fragColor = (1.0f - g_fragColor.a) * g_srcColor + g_fragColor;\n"
-            "        }\n"
-            "      }\n\n";
-
-            i++;
           }
+          else if (property->GetTransferFunctionMode() == vtkVolumeProperty::TF_2D)
+          {
+          const auto& grad = input.GradientCacheName;
+          toShaderStr <<
+          // Sample 2DTF directly
+          "        " << grad << "[0] = computeGradient(texPos, 0, " << "in_volume[" << i << "], " << i << ");\n"
+          "        g_srcColor = texture2D(" << input.TransferFunctions2DMap[0] << ", vec2(scalar.r, " << input.GradientCacheName << "[0].w));\n"
+          "        if (g_srcColor.a > 0.0)\n"
+          "        {\n";
+          }
+
+          toShaderStr <<
+          "          g_srcColor.rgb *= g_srcColor.a;\n"
+          "          g_fragColor = (1.0f - g_fragColor.a) * g_srcColor + g_fragColor;\n"
+          "        }\n"
+          "      }\n\n";
+
+          i++;
         }
         break;
     }
@@ -1709,7 +1780,7 @@ namespace vtkvolume
     else if (mapper->GetBlendMode() == vtkVolumeMapper::ISOSURFACE_BLEND)
     {
       shaderStr += std::string("\
-        \n#if NUMBER_OF_CONTOURS\
+        \n#if NUMBER_OF_CONTOURS_0\
         \n    int maxComp = 0;");
 
       std::string compParamStr = "";
@@ -1726,30 +1797,30 @@ namespace vtkvolume
       shaderStr += std::string("\
         \n    if (g_currentT == 0)\
         \n    {\
-        \n      l_initialIndex = findIsoSurfaceIndex(scalar[maxComp], l_normValues);\
+        \n      l_initialIndex_0 = findIsoSurfaceIndex_0(scalar[maxComp], l_normValues_0);\
         \n    }\
         \n    else\
         \n    {\
         \n      float s;\
         \n      bool shade = false;\
-        \n      l_initialIndex = clamp(l_initialIndex, 0, NUMBER_OF_CONTOURS);\
-        \n      if (scalar[maxComp] < l_normValues[l_initialIndex])\
+        \n      l_initialIndex_0 = clamp(l_initialIndex_0, 0, NUMBER_OF_CONTOURS_0);\
+        \n      if (scalar[maxComp] < l_normValues_0[l_initialIndex_0])\
         \n      {\
-        \n        s = l_normValues[l_initialIndex];\
-        \n        l_initialIndex--;\
+        \n        s = l_normValues_0[l_initialIndex_0];\
+        \n        l_initialIndex_0--;\
         \n        shade = true;\
         \n      }\
-        \n      if (scalar[maxComp] > l_normValues[l_initialIndex+1])\
+        \n      if (scalar[maxComp] > l_normValues_0[l_initialIndex_0 + 1])\
         \n      {\
-        \n        s = l_normValues[l_initialIndex+1];\
-        \n        l_initialIndex++;\
+        \n        s = l_normValues_0[l_initialIndex_0 + 1];\
+        \n        l_initialIndex_0++;\
         \n        shade = true;\
         \n      }\
         \n      if (shade == true)\
         \n      {\
         \n        vec4 vs = vec4(s);\
-        \n        g_srcColor.a = computeOpacity(vs "+compParamStr+");\
-        \n        g_srcColor = computeColor(vs, g_srcColor.a "+compParamStr+");\
+        \n        g_srcColor.a = computeOpacity(vs " + compParamStr + ");\
+        \n        g_srcColor = computeColor(vs, g_srcColor.a " + compParamStr + ");\
         \n        g_srcColor.rgb *= g_srcColor.a;\
         \n        g_fragColor = (1.0f - g_fragColor.a) * g_srcColor + g_fragColor;\
         \n      }\
