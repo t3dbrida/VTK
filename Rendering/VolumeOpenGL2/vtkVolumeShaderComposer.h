@@ -627,6 +627,7 @@ namespace vtkvolume
     vtkVolumeProperty* volProperty = vol->GetProperty();
     std::string shaderStr = std::string(
       "vec4 computeLighting(vec4 color,\n"
+                           "vec4 gradient,\n"
                            "int component,\n"
                            "const in vec3 texPos,\n"
                            "const in sampler3D volume,\n"
@@ -644,7 +645,7 @@ namespace vtkvolume
 
     if (shadeReqd || volProperty->HasGradientOpacity())
     {
-      switch (transferMode)
+      /*switch (transferMode)
       {
         case vtkVolumeProperty::TF_1D:  shaderStr += std::string(
           "  // Compute gradient function only once\n"
@@ -652,11 +653,9 @@ namespace vtkvolume
           break;
         case vtkVolumeProperty::TF_2D:
           shaderStr += std::string(
-          "  // TransferFunction2D is enabled so the gradient for\n"
-          "  // each component has already been cached\n"
-          "  vec4 gradient = g_gradients_0[component];\n"); // TODO
+          "  vec4 gradient = g_gradients_0[component];\n");
           break;
-      }
+      }*/
     }
 
     if (shadeReqd)
@@ -1006,13 +1005,14 @@ namespace vtkvolume
     }
 
     ss <<
-      "vec3 computeColor(const in float scalar,\n"
-                        "const in sampler2D colorTF,\n"
-                        "const in vec3 texPos,\n"
-                        "const in sampler3D volume,\n"
-                        "const int idx)\n"
+      "vec4 computeColor(const in vec2 uv,\n"
+      "                  const in vec4 gradient,\n"
+      "                  const in sampler2D colorTF,\n"
+      "                  const in vec3 texPos,\n"
+      "                  const in sampler3D volume,\n"
+      "                  const int idx)\n"
       "{\n"
-      "  return computeLighting(texture2D(colorTF, vec2(scalar, 0.)), 0, texPos, volume, idx).rgb;\n"
+      "  return computeLighting(texture2D(colorTF, uv), gradient, 0, texPos, volume, idx);\n"
       "}\n";
 
     return ss.str();
@@ -1506,12 +1506,33 @@ namespace vtkvolume
           "            shade = true;\n"
           "          }\n"
           "          if (shade == true)\n"
-          "          {\n"
-          "            g_srcColor.a = computeOpacity(s, in_opacityTransferFunc_" << i << "[0]);\n"
-          "            g_srcColor.rgb = computeColor(s, in_colorTransferFunc_" << i << "[0], texPos, in_volume[" << i << "],"
-          "                                          0);\n"
-          "            g_srcColor.rgb *= g_srcColor.a;\n"
-          "            g_fragColor = (1. - g_fragColor.a) * g_srcColor + g_fragColor;\n"
+          "          {\n";
+          if (property->GetTransferFunctionMode() == vtkVolumeProperty::TF_1D)
+          {
+            toShaderStr <<
+            "            g_srcColor.a = computeOpacity(s, in_opacityTransferFunc_" << i << "[0]);\n"
+            "            g_srcColor.rgb = computeColor(vec2(s, 0),\n"
+            "                                          computeGradient(texPos, 0, in_volume[" << i <<  "], " << i << "),\n"
+            "                                          in_colorTransferFunc_" << i << "[0],\n"
+            "                                          texPos,\n"
+            "                                          in_volume[" << i << "],\n"
+            "                                          0).rgb;\n"
+            "            g_srcColor.rgb *= g_srcColor.a;\n"
+            "            g_fragColor = (1. - g_fragColor.a) * g_srcColor + g_fragColor;\n";
+          }
+          else if (property->GetTransferFunctionMode() == vtkVolumeProperty::TF_2D)
+          {
+              const auto& grad = input.GradientCacheName;
+              toShaderStr <<
+              // Sample 2DTF directly
+              "        " << grad << "[0] = computeGradient(texPos, 0, " << "in_volume[" << i << "], " << i << ");\n"
+              "        g_srcColor = computeColor(vec2(scalar.r, " << grad << "[0].w), " << grad << "[0], "
+                                                 << input.TransferFunctions2DMap[0] << ",\n"
+              "                                  texPos, in_volume[" << i << "], " << i << ");\n"
+              "        g_srcColor.rgb *= g_srcColor.a;\n"
+              "        g_fragColor = (1.0f - g_fragColor.a) * g_srcColor + g_fragColor;\n";
+          }
+          toShaderStr << 
           "          }\n"
           "        }\n"
           "      }\n";
@@ -1547,8 +1568,10 @@ namespace vtkvolume
           "        g_srcColor.a = computeOpacity(scalar.r," << input.OpacityTablesMap[0] << ");\n"
           "        if (g_srcColor.a > 0.0)\n"
           "        {\n"
-          "          g_srcColor.rgb = computeColor(scalar.r, " << input.RGBTablesMap[0]  << ",\n"
-          "                                        texPos, in_volume[" << i <<  "], " << i << ");\n";
+          "          g_srcColor.rgb = computeColor(vec2(scalar.r, 0.),\n"
+          "                                        computeGradient(texPos, 0, in_volume[" << i <<  "], " << i << "),\n"
+                                                   << input.RGBTablesMap[0] << ",\n"
+          "                                        texPos, in_volume[" << i <<  "], " << i << ").rgb;\n";
 
             if (property->HasGradientOpacity())
             {
@@ -1568,7 +1591,9 @@ namespace vtkvolume
           toShaderStr <<
           // Sample 2DTF directly
           "        " << grad << "[0] = computeGradient(texPos, 0, " << "in_volume[" << i << "], " << i << ");\n"
-          "        g_srcColor = texture2D(" << input.TransferFunctions2DMap[0] << ", vec2(scalar.r, " << input.GradientCacheName << "[0].w));\n"
+          "        g_srcColor = computeColor(vec2(scalar.r, " << grad << "[0].w), " << grad << "[0], "
+                                             << input.TransferFunctions2DMap[0] << ",\n"
+          "                                  texPos, in_volume[" << i << "], " << i << ");\n"
           "        if (g_srcColor.a > 0.0)\n"
           "        {\n";
           }
