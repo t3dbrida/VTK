@@ -578,6 +578,7 @@ namespace vtkvolume
         "  g2 = g2 * in_volume_scale[index][c] + in_volume_bias[index][c];\n"
         "\n"
         "  // Scale values the actual scalar range.\n"
+        "  c = 4 * index + c;"
         "  float range = in_scalarsRange[c][1] - in_scalarsRange[c][0];\n"
         "  g1 = in_scalarsRange[c][0] + range * g1;\n"
         "  g2 = in_scalarsRange[c][0] + range * g2;\n"
@@ -642,21 +643,6 @@ namespace vtkvolume
                    mapper->GetBlendMode() == vtkVolumeMapper::ISOSURFACE_BLEND);
 
     int const transferMode = volProperty->GetTransferFunctionMode();
-
-    if (shadeReqd || volProperty->HasGradientOpacity())
-    {
-      /*switch (transferMode)
-      {
-        case vtkVolumeProperty::TF_1D:  shaderStr += std::string(
-          "  // Compute gradient function only once\n"
-          "  vec4 gradient = computeGradient(texPos, component, volume, idx);\n");
-          break;
-        case vtkVolumeProperty::TF_2D:
-          shaderStr += std::string(
-          "  vec4 gradient = g_gradients_0[component];\n");
-          break;
-      }*/
-    }
 
     if (shadeReqd)
     {
@@ -928,7 +914,9 @@ namespace vtkvolume
           \n  {\
           \n  return computeLighting(vec4(texture2D(" + colorTableMap[0] +",\
           \n                                        vec2(scalar.w, 0.)).xyz,\
-          \n                              opacity), 0, g_dataPos, in_volume[0], 0);\
+          \n                              opacity),\n"
+          "                               computeGradient(g_dataPos, 0, in_volume[0], 0),\n"
+          "                               0, g_dataPos, in_volume[0], 0);\
           \n  }");
         return shaderStr;
       }
@@ -979,7 +967,7 @@ namespace vtkvolume
         shaderStr += std::string("\
           \nvec4 computeColor(vec4 scalar, float opacity)\
           \n  {\
-          \n  return computeLighting(vec4(scalar.xyz, opacity), 0, g_dataPos, in_volume[0], 0);\
+          \n  return computeLighting(vec4(scalar.xyz, opacity), computeGradient(g_dataPos, 0, in_volume[0], 0), 0, g_dataPos, in_volume[0], 0);\
           \n  }");
         return shaderStr;
       }
@@ -1147,7 +1135,7 @@ namespace vtkvolume
           "{\n"
           "  vec4 color = texture2D(" + colorTableMap[0]  + ",\n"
           "    vec2(scalar.w, g_gradients_0[0].w));\n"
-          "  return computeLighting(color, 0, g_dataPos, in_volume[0], 0);\n"
+          "  return computeLighting(color, g_gradients_0[0], 0, g_dataPos, in_volume[0], 0);\n"
           "}\n");
       }
       else if (noOfComponents > 1 && independentComponents)
@@ -1470,6 +1458,7 @@ namespace vtkvolume
           // From global texture coordinates (bbox) to volume_i texture coords.
           // texPos = T * g_dataPos
           // T = T_dataToTex1 * T_worldToData * T_bboxTexToWorld;
+          "#if NUMBER_OF_CONTOURS_" << i << "\n"
           "      texPos = (in_cellToPoint[" << idx << "] * in_inverseTextureDatasetMatrix[" << idx << "] *\n"
           "                in_inverseVolumeMatrix[" << idx  <<"] * in_volumeMatrix[0] * in_textureDatasetMatrix[0] *\n"
           "                vec4(g_dataPos.xyz, 1.0)).xyz;\n"
@@ -1535,7 +1524,8 @@ namespace vtkvolume
           toShaderStr << 
           "          }\n"
           "        }\n"
-          "      }\n";
+          "      }\n"
+          "#endif\n";
           ++i;
         }
         break;

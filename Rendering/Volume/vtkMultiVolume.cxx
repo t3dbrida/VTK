@@ -63,6 +63,10 @@ void vtkMultiVolume::SetVolume(vtkVolume* vol, int port)
       this->Volumes[port] = vol;
       vol->Register(this);
     }
+    else
+    {
+        vtkMath::UninitializeBounds(this->Bounds);
+    }
 
     this->Modified();
   }
