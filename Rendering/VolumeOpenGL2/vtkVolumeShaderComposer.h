@@ -226,6 +226,10 @@ namespace vtkvolume
       "\n"
       "uniform vec2 in_averageIPRange;\n";
 
+    // volume visibility handling
+    toShaderStr <<
+      "uniform int in_volumeVisibility[" << numInputs << "];\n";
+
     const bool hasGradientOpacity = HasGradientOpacity(inputs);
     if (lightingComplexity > 0 || hasGradientOpacity)
     {
@@ -1462,8 +1466,9 @@ namespace vtkvolume
           "      texPos = (in_cellToPoint[" << idx << "] * in_inverseTextureDatasetMatrix[" << idx << "] *\n"
           "                in_inverseVolumeMatrix[" << idx  <<"] * in_volumeMatrix[0] * in_textureDatasetMatrix[0] *\n"
           "                vec4(g_dataPos.xyz, 1.0)).xyz;\n"
-          "      if ((all(lessThanEqual(texPos, vec3(1.0))) &&\n"
-          "           all(greaterThanEqual(texPos, vec3(0.0)))))\n"
+          "      if (in_volumeVisibility[" << i << "] == 1 &&\n"
+          "          all(lessThanEqual(texPos, vec3(1.0))) &&\n"
+          "          all(greaterThanEqual(texPos, vec3(0.0))))\n"
           "      {\n"
           "        vec4 scalar = texture3D(in_volume[" << i << "], texPos);\n"
           "        scalar = scalar * in_volume_scale[" << i << "] + in_volume_bias[" << i << "];\n"
@@ -1544,8 +1549,9 @@ namespace vtkvolume
           "      texPos = (in_cellToPoint[" << idx << "] * in_inverseTextureDatasetMatrix[" << idx
             << "] * in_inverseVolumeMatrix[" << idx  <<"] *\n"
           "        in_volumeMatrix[0] * in_textureDatasetMatrix[0] * vec4(g_dataPos.xyz, 1.0)).xyz;\n"
-          "      if ((all(lessThanEqual(texPos, vec3(1.0))) &&\n"
-          "        all(greaterThanEqual(texPos, vec3(0.0)))))\n"
+          "      if (in_volumeVisibility[" << i << "] == 1 &&\n"
+          "          all(lessThanEqual(texPos, vec3(1.0))) &&\n"
+          "          all(greaterThanEqual(texPos, vec3(0.0))))\n"
           "      {\n"
           "        vec4 scalar = texture3D(in_volume[" << i << "], texPos);\n"
           "        scalar = scalar * in_volume_scale[" << i << "] + in_volume_bias[" << i << "];\n"
@@ -1577,15 +1583,15 @@ namespace vtkvolume
           }
           else if (property->GetTransferFunctionMode() == vtkVolumeProperty::TF_2D)
           {
-          const auto& grad = input.GradientCacheName;
-          toShaderStr <<
-          // Sample 2DTF directly
-          "        " << grad << "[0] = computeGradient(texPos, 0, " << "in_volume[" << i << "], " << i << ");\n"
-          "        g_srcColor = computeColor(vec2(scalar.r, " << grad << "[0].w), " << grad << "[0], "
-                                             << input.TransferFunctions2DMap[0] << ",\n"
-          "                                  texPos, in_volume[" << i << "], " << i << ");\n"
-          "        if (g_srcColor.a > 0.0)\n"
-          "        {\n";
+            const auto& grad = input.GradientCacheName;
+            toShaderStr <<
+            // Sample 2DTF directly
+            "        " << grad << "[0] = computeGradient(texPos, 0, " << "in_volume[" << i << "], " << i << ");\n"
+            "        g_srcColor = computeColor(vec2(scalar.r, " << grad << "[0].w), " << grad << "[0], "
+                                               << input.TransferFunctions2DMap[0] << ",\n"
+            "                                  texPos, in_volume[" << i << "], " << i << ");\n"
+            "        if (g_srcColor.a > 0.0)\n"
+            "        {\n";
           }
 
           toShaderStr <<

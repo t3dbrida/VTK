@@ -3180,7 +3180,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::ClearRemovedInputs(
 
 //----------------------------------------------------------------------------
 bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateInputs(vtkRenderer* ren,
-  vtkVolume* vol)
+                                                                vtkVolume* vol)
 {
   this->VolumePropertyChanged = false;
   bool orderChanged = false;
@@ -3357,7 +3357,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::GPURender(vtkRenderer* ren,
   }
   else
   {
-    if (this->Impl->IsPicking && !this->Impl->MultiVolume)
+    if (this->Impl->IsPicking/* && !this->Impl->MultiVolume*/)
     {
       this->Impl->BeginPicking(ren);
     }
@@ -3390,7 +3390,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::GPURender(vtkRenderer* ren,
       this->Impl->EndImageSample(ren);
     }
 
-    if (this->Impl->IsPicking && !this->Impl->MultiVolume)
+    if (this->Impl->IsPicking/* && !this->Impl->MultiVolume*/)
     {
       this->Impl->EndPicking(ren);
     }
@@ -3614,6 +3614,8 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
   this->SpacingVec.resize(numInputs * 3, 0);
   this->RangeVec.resize(numInputs * 8, 0);
 
+  std::vector<int> volumeVisibility(numInputs, 0);
+
   int index = 0;
   for (auto& input : this->Parent->AssembledInputs)
   {
@@ -3646,6 +3648,16 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
       this->RangeVec.data(), index * 8);
 
     input.second.ActivateTransferFunction(prog, this->Parent->BlendMode);
+
+    if (this->MultiVolume)
+    {
+        volumeVisibility[index] = this->MultiVolume->GetVolume(index)->GetVisibility();
+    }
+    else
+    {
+        volumeVisibility[index] = true; // TODO single volume always visible
+    }
+
     index++;
   }
   prog->SetUniform4fv("in_volume_scale", numInputs,
@@ -3658,6 +3670,11 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
    reinterpret_cast<const float(*)[3]>(this->StepVec.data()));
   prog->SetUniform3fv("in_cellSpacing", numInputs,
    reinterpret_cast<const float(*)[3]>(this->SpacingVec.data()));
+
+  // upload volume visibility information
+  prog->SetUniform1iv("in_volumeVisibility",
+                      numInputs,
+                      volumeVisibility.data());
 }
 
 ////----------------------------------------------------------------------------
@@ -3920,10 +3937,9 @@ void vtkOpenGLGPUVolumeRayCastMapper::DoGPURender(vtkRenderer* ren,
 }
 
 //----------------------------------------------------------------------------
-void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderMultipleInputs(
-                                                  vtkRenderer* ren,
-                                                  vtkOpenGLCamera* cam,
-                                                  vtkShaderProgram* prog)
+void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderMultipleInputs(vtkRenderer* ren,
+                                                                        vtkOpenGLCamera* cam,
+                                                                        vtkShaderProgram* prog)
 {
   auto& input = this->Parent->AssembledInputs[0];
   auto vol = input.Volume;
@@ -3948,8 +3964,8 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderMultipleInputs(
 
 //----------------------------------------------------------------------------
 void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderSingleInput(vtkRenderer* ren,
-                                                  vtkOpenGLCamera* cam,
-                                                  vtkShaderProgram* prog)
+                                                                     vtkOpenGLCamera* cam,
+                                                                     vtkShaderProgram* prog)
 {
   auto& input = this->Parent->AssembledInputs[0];
   auto vol = input.Volume;
