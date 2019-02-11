@@ -3191,6 +3191,11 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateInputs(vtkRenderer* ren
     {
       vol = this->MultiVolume->GetVolume(port);
     }
+    // else if there is a multiVolume prop, but only 1 input volume is connected
+    else if (vtkMultiVolume* const multiVol = vtkMultiVolume::SafeDownCast(vol))
+    {
+        vol = multiVol->GetVolume(port);
+    }
     auto property = vol->GetProperty();
     auto input = this->Parent->GetTransformedInput(port);
 
@@ -3658,7 +3663,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
         volumeVisibility[index] = true; // TODO single volume always visible
     }
 
-    index++;
+    ++index;
   }
   prog->SetUniform4fv("in_volume_scale", numInputs,
    reinterpret_cast<const float(*)[4]>(this->ScaleVec.data()));
