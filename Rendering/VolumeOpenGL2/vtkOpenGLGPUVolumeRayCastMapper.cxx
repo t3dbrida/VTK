@@ -3281,6 +3281,18 @@ void vtkOpenGLGPUVolumeRayCastMapper::GPURender(vtkRenderer* ren,
 {
   vtkOpenGLClearErrorMacro();
 
+  if (!this->Impl->MultiVolume)
+  {
+      if (vtkMultiVolume* const multiVolume = vtkMultiVolume::SafeDownCast(vol))
+      {
+          // there is a single volume in the multi-volume but it is not visible, do not render it
+          if (!multiVolume->GetVolume(0)->GetVisibility())
+          {
+              return;
+          }
+      }
+  }
+
   vtkOpenGLCamera* cam = vtkOpenGLCamera::SafeDownCast(ren->GetActiveCamera());
 
   /*if (this->GetBlendMode() == vtkVolumeMapper::ISOSURFACE_BLEND &&
@@ -3362,7 +3374,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::GPURender(vtkRenderer* ren,
   }
   else
   {
-    if (this->Impl->IsPicking/* && !this->Impl->MultiVolume*/)
+    if (this->Impl->IsPicking)
     {
       this->Impl->BeginPicking(ren);
     }
@@ -3395,7 +3407,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::GPURender(vtkRenderer* ren,
       this->Impl->EndImageSample(ren);
     }
 
-    if (this->Impl->IsPicking/* && !this->Impl->MultiVolume*/)
+    if (this->Impl->IsPicking)
     {
       this->Impl->EndPicking(ren);
     }
@@ -3654,14 +3666,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
 
     input.second.ActivateTransferFunction(prog, this->Parent->BlendMode);
 
-    if (this->MultiVolume)
-    {
-        volumeVisibility[index] = this->MultiVolume->GetVolume(index)->GetVisibility();
-    }
-    else
-    {
-        volumeVisibility[index] = true; // TODO single volume always visible
-    }
+    volumeVisibility[index] = input.second.Volume->GetVisibility();
 
     ++index;
   }
