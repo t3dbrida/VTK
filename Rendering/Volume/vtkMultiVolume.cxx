@@ -208,7 +208,7 @@ std::array<double, 6> vtkMultiVolume::ComputeAABounds(double bounds[6],
   pointsDataCoords.push_back(std::move(minPoint + Point(0., dim[1],0., 0.)));
   pointsDataCoords.push_back(std::move(minPoint + Point(0., 0., dim[2], 0.)));
   pointsDataCoords.push_back(std::move(minPoint + Point(dim[0], 0.,dim[2], 0.)));
-  pointsDataCoords.push_back(Point(bounds[1], bounds[3], bounds[5], 0.));
+  pointsDataCoords.push_back(Point(bounds[1], bounds[3], bounds[5], 1.));
   pointsDataCoords.push_back(std::move(minPoint + Point(0., dim[1], dim[2], 0.)));
 
   // Transform all points from data to world coordinates

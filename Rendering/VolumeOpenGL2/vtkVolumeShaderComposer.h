@@ -1478,7 +1478,7 @@ namespace vtkvolume
           "        if (initialIndexUnset[" << i << "] == true)\n"
           "        {\n"
           //"          l_initialIndex_" << i << " = findIsoSurfaceIndex_" << i << "(scalar[maxComp],\n"
-          "          l_initialIndex_" << i << " = findIsoSurfaceIndex_" << i << "(-1e20,\n"
+          "          l_initialIndex_" << i << " = findIsoSurfaceIndex_" << i << "(scalar[maxComp],\n"
           "                                                                       l_normValues_" << i << ");\n"
           "          initialIndexUnset[" << i << "] = false;\n"
           "        }\n"
@@ -1819,7 +1819,7 @@ namespace vtkvolume
       shaderStr += std::string("\
         \n    if (g_currentT == 0)\
         \n    {\
-        \n      l_initialIndex_0 = findIsoSurfaceIndex_0(-1e20, l_normValues_0);\
+        \n      l_initialIndex_0 = findIsoSurfaceIndex_0(scalar[maxComp], l_normValues_0);\
         \n    }\
         \n    else\
         \n    {\
