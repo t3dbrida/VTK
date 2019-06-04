@@ -1824,11 +1824,14 @@ vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::GetNumImageSampleDrawBuffers(
   if (this->RenderPassAttached)
   {
     vtkInformation* info = vol->GetPropertyKeys();
-    const int num = info->Length(vtkOpenGLRenderPass::RenderPasses());
-    vtkObjectBase* rpBase =
-      info->Get(vtkOpenGLRenderPass::RenderPasses(), num - 1);
-    vtkOpenGLRenderPass* rp = static_cast<vtkOpenGLRenderPass*>(rpBase);
-    return static_cast<size_t>(rp->GetActiveDrawBuffers());
+    if (info)
+    {
+        const int num = info->Length(vtkOpenGLRenderPass::RenderPasses());
+        vtkObjectBase* rpBase =
+          info->Get(vtkOpenGLRenderPass::RenderPasses(), num - 1);
+        vtkOpenGLRenderPass* rp = static_cast<vtkOpenGLRenderPass*>(rpBase);
+        return static_cast<size_t>(rp->GetActiveDrawBuffers());
+    }
   }
 
   return 1;
