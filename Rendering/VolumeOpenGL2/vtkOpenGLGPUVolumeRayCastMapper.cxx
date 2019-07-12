@@ -838,28 +838,62 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetLightingShaderParameters(
     return;
   }
 
-  auto volumeProperty = vol->GetProperty();
-  float ambient[4][3];
-  float diffuse[4][3];
-  float specular[4][3];
-  float specularPower[4];
+  std::vector<float> ambient;
+  std::vector<float> diffuse;
+  std::vector<float> specular;
+  std::vector<float> specularPower;
 
-  for (int i = 0; i < numberOfSamplers; ++i)
+  if (this->MultiVolume)
   {
-    ambient[i][0] = ambient[i][1] = ambient[i][2] =
-      volumeProperty->GetAmbient(i);
-    diffuse[i][0] = diffuse[i][1] = diffuse[i][2] =
-      volumeProperty->GetDiffuse(i);
-    specular[i][0] = specular[i][1] = specular[i][2] =
-      volumeProperty->GetSpecular(i);
-    specularPower[i] = volumeProperty->GetSpecularPower(i);
+      for (const auto& port : this->Parent->Ports)
+      {
+          vtkVolume* const volume = this->MultiVolume->GetVolume(port);
+          auto volumeProperty = volume->GetProperty();
+          double value = volumeProperty->GetAmbient(0);
+          ambient.emplace_back(value);
+          ambient.emplace_back(value);
+          ambient.emplace_back(value);
+
+          value = volumeProperty->GetDiffuse(0);
+          diffuse.emplace_back(value);
+          diffuse.emplace_back(value);
+          diffuse.emplace_back(value);
+
+          value = volumeProperty->GetSpecular(0);
+          specular.emplace_back(value);
+          specular.emplace_back(value);
+          specular.emplace_back(value);
+
+          value = volumeProperty->GetSpecularPower(0);
+          specularPower.emplace_back(value);
+      }
+  }
+  else
+  {
+      auto volumeProperty = vol->GetProperty();
+      double value = volumeProperty->GetAmbient(0);
+      ambient.emplace_back(value);
+      ambient.emplace_back(value);
+      ambient.emplace_back(value);
+
+      value = volumeProperty->GetDiffuse(0);
+      diffuse.emplace_back(value);
+      diffuse.emplace_back(value);
+      diffuse.emplace_back(value);
+
+      value = volumeProperty->GetSpecular(0);
+      specular.emplace_back(value);
+      specular.emplace_back(value);
+      specular.emplace_back(value);
+
+      value = volumeProperty->GetSpecularPower(0);
+      specularPower.emplace_back(value);
   }
 
-  prog->SetUniform3fv("in_ambient", numberOfSamplers, ambient);
-  prog->SetUniform3fv("in_diffuse", numberOfSamplers, diffuse);
-  prog->SetUniform3fv("in_specular", numberOfSamplers, specular);
-  prog->SetUniform1fv("in_shininess", numberOfSamplers, specularPower);
-
+  prog->SetUniform3fv("in_ambient", ambient.size(), (const float(*)[3]) (ambient.data()));
+  prog->SetUniform3fv("in_diffuse", diffuse.size(), (const float(*)[3]) (diffuse.data()));
+  prog->SetUniform3fv("in_specular", specular.size(), (const float(*)[3]) (specular.data()));
+  prog->SetUniform1fv("in_shininess", specularPower.size(), specularPower.data());
 
   // Set advanced lighting features
   if (vol && !vol->GetProperty()->GetShade())
