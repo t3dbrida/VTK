@@ -147,7 +147,6 @@ int vtkWrap_IsNumeric(ValueInfo *val)
     case VTK_PARSE_SHORT:
     case VTK_PARSE_INT:
     case VTK_PARSE_LONG:
-    case VTK_PARSE_ID_TYPE:
     case VTK_PARSE_LONG_LONG:
     case VTK_PARSE___INT64:
     case VTK_PARSE_SIGNED_CHAR:
@@ -194,7 +193,6 @@ int vtkWrap_IsInteger(ValueInfo *val)
     case VTK_PARSE_SHORT:
     case VTK_PARSE_INT:
     case VTK_PARSE_LONG:
-    case VTK_PARSE_ID_TYPE:
     case VTK_PARSE_LONG_LONG:
     case VTK_PARSE___INT64:
     case VTK_PARSE_UNSIGNED_CHAR:
@@ -259,14 +257,26 @@ int vtkWrap_IsNArray(ValueInfo *val)
 
 int vtkWrap_IsNonConstRef(ValueInfo *val)
 {
-  return ((val->Type & VTK_PARSE_REF) != 0 &&
-          (val->Type & VTK_PARSE_CONST) == 0);
+  int isconst = ((val->Type & VTK_PARSE_CONST) != 0);
+  unsigned int ptrBits = val->Type & VTK_PARSE_POINTER_MASK;
+
+  /* If this is a reference to a pointer, we need to check whether
+   * the pointer is const, for example "int *const &arg".  The "const"
+   * we need to check is the one that is adjacent to the "&". */
+  while (ptrBits != 0)
+  {
+    isconst =
+      ((ptrBits & VTK_PARSE_POINTER_LOWMASK) == VTK_PARSE_CONST_POINTER);
+    ptrBits >>= 2;
+  }
+
+  return ((val->Type & VTK_PARSE_REF) != 0 && !isconst);
 }
 
 int vtkWrap_IsConstRef(ValueInfo *val)
 {
   return ((val->Type & VTK_PARSE_REF) != 0 &&
-          (val->Type & VTK_PARSE_CONST) != 0);
+          !vtkWrap_IsNonConstRef(val));
 }
 
 int vtkWrap_IsRef(ValueInfo *val)
@@ -567,7 +577,7 @@ int vtkWrap_HasPublicDestructor(ClassInfo *data)
     func = data->Functions[i];
 
     if (vtkWrap_IsDestructor(data, func) &&
-        func->Access != VTK_ACCESS_PUBLIC)
+        (func->Access != VTK_ACCESS_PUBLIC || func->IsDeleted))
     {
       return 0;
     }
@@ -591,7 +601,7 @@ int vtkWrap_HasPublicCopyConstructor(ClassInfo *data)
         func->NumberOfParameters == 1 &&
         func->Parameters[0]->Class &&
         strcmp(func->Parameters[0]->Class, data->Name) == 0 &&
-        func->Access != VTK_ACCESS_PUBLIC)
+        (func->Access != VTK_ACCESS_PUBLIC || func->IsDeleted))
     {
       return 0;
     }
@@ -681,7 +691,8 @@ void vtkWrap_FindCountHints(
            strcmp(theFunc->Name, "GetTypedTuple") == 0) &&
           theFunc->ReturnValue && theFunc->ReturnValue->Count == 0 &&
           theFunc->NumberOfParameters == 1 &&
-          theFunc->Parameters[0]->Type == VTK_PARSE_ID_TYPE)
+          vtkWrap_IsScalar(theFunc->Parameters[0]) &&
+          vtkWrap_IsInteger(theFunc->Parameters[0]))
       {
         theFunc->ReturnValue->CountHint = countMethod;
       }
@@ -692,7 +703,8 @@ void vtkWrap_FindCountHints(
                 strcmp(theFunc->Name, "InsertTuple") == 0 ||
                 strcmp(theFunc->Name, "InsertTypedTuple") == 0) &&
                theFunc->NumberOfParameters == 2 &&
-               theFunc->Parameters[0]->Type == VTK_PARSE_ID_TYPE &&
+               vtkWrap_IsScalar(theFunc->Parameters[0]) &&
+               vtkWrap_IsInteger(theFunc->Parameters[0]) &&
                theFunc->Parameters[1]->Count == 0)
       {
         theFunc->Parameters[1]->CountHint = countMethod;
@@ -955,7 +967,6 @@ const char *vtkWrap_GetTypeName(ValueInfo *val)
     case VTK_PARSE_UNSIGNED_SHORT: return "unsigned short";
     case VTK_PARSE_UNSIGNED_LONG:  return "unsigned long";
     case VTK_PARSE_UNSIGNED_CHAR:  return "unsigned char";
-    case VTK_PARSE_ID_TYPE:        return "vtkIdType";
     case VTK_PARSE_LONG_LONG:      return "long long";
     case VTK_PARSE___INT64:        return "__int64";
     case VTK_PARSE_UNSIGNED_LONG_LONG: return "unsigned long long";
@@ -1110,7 +1121,8 @@ void vtkWrap_DeclareVariable(
     /* add a default value */
     else if (val->Value)
     {
-      fprintf(fp, " = %s", val->Value);
+      fprintf(fp, " = ");
+      vtkWrap_QualifyExpression(fp, data, val->Value);
     }
     else if (aType == VTK_PARSE_CHAR_PTR ||
              aType == VTK_PARSE_VOID_PTR ||
@@ -1178,6 +1190,80 @@ void vtkWrap_DeclareVariableSize(
             "  const size_t %s%s = %s;\n",
             name, idx, val->Dimensions[0]);
   }
+}
+
+void vtkWrap_QualifyExpression(
+  FILE *fp, ClassInfo *data, const char *text)
+{
+  StringTokenizer t;
+  int qualified = 0;
+  int matched;
+  int j;
+
+  /* tokenize the text according to C/C++ rules */
+  vtkParse_InitTokenizer(&t, text, WS_DEFAULT);
+  do
+  {
+    /* check whether we have found an unqualified identifier */
+    matched = 0;
+    if (t.tok == TOK_ID && !qualified)
+    {
+      /* check for class members */
+      for (j = 0; j < data->NumberOfItems; j++)
+      {
+        ItemInfo *item = &data->Items[j];
+        const char *name = NULL;
+
+        if (item->Type == VTK_CONSTANT_INFO)
+        {
+          /* enum values and other constants */
+          name = data->Constants[item->Index]->Name;
+        }
+        else if (item->Type == VTK_CLASS_INFO ||
+                 item->Type == VTK_STRUCT_INFO ||
+                 item->Type == VTK_UNION_INFO)
+        {
+          /* embedded classes */
+          name = data->Classes[item->Index]->Name;
+        }
+        else if (item->Type == VTK_ENUM_INFO)
+        {
+          /* enum type */
+          name = data->Enums[item->Index]->Name;
+        }
+        else if (item->Type == VTK_TYPEDEF_INFO)
+        {
+          /* typedef'd type */
+          name = data->Typedefs[item->Index]->Name;
+        }
+
+        if (name && strlen(name) == t.len &&
+            strncmp(name, t.text, t.len) == 0)
+        {
+          fprintf(fp, "%s::%s", data->Name, name);
+          matched = 1;
+          break;
+        }
+      }
+    }
+
+    if (!matched)
+    {
+      fprintf(fp, "%*.*s", (int)t.len, (int)t.len, t.text);
+    }
+
+    /* if next character is whitespace, add a space */
+    if (vtkParse_CharType(t.text[t.len], CPRE_WHITE))
+    {
+      fprintf(fp, " ");
+    }
+
+    /* check whether the next identifier is qualified */
+    qualified = (t.tok == TOK_SCOPE ||
+                 t.tok == TOK_ARROW ||
+                 t.tok == '.');
+  }
+  while (vtkParse_NextToken(&t));
 }
 
 char *vtkWrap_SafeSuperclassName(const char *name)

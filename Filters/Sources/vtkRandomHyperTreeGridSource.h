@@ -27,7 +27,7 @@
 
 class vtkDoubleArray;
 class vtkExtentTranslator;
-class vtkHyperTreeCursor;
+class vtkHyperTreeGridNonOrientedCursor;
 class vtkMinimalStandardRandomSequence;
 
 class VTKFILTERSSOURCES_EXPORT vtkRandomHyperTreeGridSource
@@ -39,12 +39,12 @@ public:
   void PrintSelf(ostream &os, vtkIndent indent) override;
 
   /**
-   * The GridSize of the output vtkHyperTreeGrid.
+   * The Dimensions of the output vtkHyperTreeGrid.
    * Default is 5x5x2.
    * @{
    */
-  vtkGetVector3Macro(GridSize, unsigned int)
-  vtkSetVector3Macro(GridSize, unsigned int)
+  vtkGetVector3Macro(Dimensions, unsigned int)
+  vtkSetVector3Macro(Dimensions, unsigned int)
   /**@}*/
 
   /**
@@ -99,11 +99,11 @@ protected:
 
   int FillOutputPortInformation(int port, vtkInformation *info) override;
 
-  void SubdivideLeaves(vtkHyperTreeCursor *cursor, vtkIdType treeId);
+  void SubdivideLeaves(vtkHyperTreeGridNonOrientedCursor *cursor, vtkIdType treeId);
 
   bool ShouldRefine(vtkIdType level);
 
-  unsigned int GridSize[3];
+  unsigned int Dimensions[3];
   double OutputBounds[6];
   vtkTypeUInt32 Seed;
   vtkIdType MaxDepth;
@@ -115,7 +115,6 @@ private:
 
   vtkNew<vtkMinimalStandardRandomSequence> RNG;
   vtkNew<vtkExtentTranslator> ExtentTranslator;
-  vtkHyperTreeGrid *HTG;
   vtkDoubleArray *Levels;
 };
 

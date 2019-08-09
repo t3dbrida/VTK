@@ -77,11 +77,10 @@ int TestHyperTreeGridTernary3DGeometryLargeMaterialBits( int argc, char* argv[] 
   // Hyper tree grid
   vtkNew<vtkHyperTreeGridSource> htGrid;
   htGrid->SetMaximumLevel( 6 );
-  htGrid->SetGridSize( 100, 100, 20 );
+  htGrid->SetDimensions( 101, 101, 21 ); //GridCell 100, 100, 20
   htGrid->SetGridScale( 1.5, 1., .7 );
-  htGrid->SetDimension( 3 );
   htGrid->SetBranchFactor( 3 );
-  htGrid->UseMaterialMaskOn();
+  htGrid->UseMaskOn();
   const std::string descriptor = ".RRR.RR..R.R .R|" // Level 0 refinement
    "R.......................... ........................... ........................... .............R............. ....RR.RR........R......... .....RRRR.....R.RR......... ........................... ...........................|........................... ........................... ........................... ...RR.RR.......RR.......... ........................... RR......................... ........................... ........................... ........................... ........................... ........................... ........................... ........................... ............RRR............|........................... ........................... .......RR.................. ........................... ........................... ........................... ........................... ........................... ........................... ........................... ...........................|........................... ...........................";
   const std::string materialMask = // Level 0 materials are not needed, visible cells are described with LevelZeroMaterialIndex
@@ -93,15 +92,15 @@ int TestHyperTreeGridTernary3DGeometryLargeMaterialBits( int argc, char* argv[] 
   vtkBitArray* desc = htGrid->ConvertDescriptorStringToBitArray( descriptor );
   htGrid->SetDescriptorBits(desc);
   desc->Delete();
-  vtkBitArray* mat = htGrid->ConvertMaterialMaskStringToBitArray( materialMask );
-  htGrid->SetMaterialMaskBits(mat);
+  vtkBitArray* mat = htGrid->ConvertMaskStringToBitArray( materialMask );
+  htGrid->SetMaskBits(mat);
   mat->Delete();
   vtkNew<vtkTimerLog> timer;
   timer->StartTimer();
   htGrid->Update();
   timer->StopTimer();
   cout << "Tree created in " << timer->GetElapsedTime() << "s" << endl;
-  htGrid->GetHyperTreeGridOutput()->GetNumberOfCells();
+  //DDM htGrid->GetHyperTreeGridOutput()->GetNumberOfCells();
 
   timer->StartTimer();
   // Geometry

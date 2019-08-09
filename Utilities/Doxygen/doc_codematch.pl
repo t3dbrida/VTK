@@ -249,7 +249,7 @@ foreach my $source (@files) {
 
     my $preamble = "    \@par      " . $args{"label"} . ":\n";
     my $doc = $preamble .
-      "              " . join(" ", keys %{$class2matches{$class}}) . "\n";
+      "              " . join(" ", sort keys %{$class2matches{$class}}) . "\n";
 
     if ($block !~ s/($preamble.+?)(\s*\@par|\z)/$doc$2/gms) {
         $block .= "\n$doc";
@@ -282,7 +282,7 @@ my $header;
 my (@summary, @credits);
 
 push @summary,
-  "  - $nb_files implementation file(s) returning " . scalar (keys %allmatches) . " word(s) for " . scalar (keys %allclasses) . " classe(es) on " . localtime(),
+  "  - $nb_files implementation file(s) returning " . scalar (keys %allmatches) . " word(s) for " . scalar (keys %allclasses) . " classe(es) on " . gmtime($ENV{SOURCE_DATE_EPOCH}||time),
   "  - $nb_replaced_files file(s) updated";
 
 push @credits,

@@ -14,12 +14,15 @@
 =========================================================================*/
 #include <vtkCellData.h>
 #include <vtkDataArray.h>
+#include <vtkGDAL.h>
 #include <vtkGDALRasterReader.h>
+#include <vtkInformation.h>
 #include <vtkMathUtilities.h>
 #include <vtkNew.h>
 #include <vtkUniformGrid.h>
 
 #include <iostream>
+#include <limits>
 
 // Main program
 int TestGDALRasterNoDataValue(int argc, char** argv)
@@ -71,6 +74,55 @@ int TestGDALRasterNoDataValue(int argc, char** argv)
     std::cerr << "Error scalarRange[1] should be 9999.0, not "
               << scalarRange[1] << std::endl;
     ++numErrors;
+  }
+
+  // test that we read the NoData value correctly
+  double nodata = reader->GetInvalidValue(0);
+  double expectedNodata = -3.40282346638529993e+38;
+  double tolerance = 1e+26;
+  if ( !vtkMathUtilities::FuzzyCompare(nodata, expectedNodata, tolerance))
+  {
+    std::cerr << std::setprecision(std::numeric_limits<double>::max_digits10)
+              << "Error NoData value. Found: " << nodata << ". Expected: "
+              << expectedNodata << std::endl;
+    ++numErrors;
+  }
+
+  // test that we read a flip for the Y axis
+  reader->UpdateInformation();
+
+  // Do we have the meta-data created by the reader at the end
+  // of the pipeline?
+  vtkInformation* outInfo = reader->GetOutputInformation(0);
+  if (! outInfo->Has(vtkGDAL::FLIP_AXIS()))
+  {
+    std::cerr << "Error: There is no FLIP_AXIS key" << std::endl;
+    ++numErrors;
+  }
+  int flipAxis[3];
+  outInfo->Get(vtkGDAL::FLIP_AXIS(), flipAxis);
+  if (flipAxis[0] != 0 || flipAxis[1] != 0)
+  {
+    std::cerr << "Error: Wrong flipAxis for " << inputFileName
+              << ": " << flipAxis[0] << ", " << flipAxis[1] << std::endl;
+    ++numErrors;
+  }
+
+  if (! outInfo->Has(vtkGDAL::MAP_PROJECTION()))
+  {
+    std::cerr << "Error: There is no MAP_PROJECTION key" << std::endl;
+    ++numErrors;
+  }
+  std::string expectedMapProjection(
+    "GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\","
+    "SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],"
+    "AUTHORITY[\"EPSG\",\"6326\"]],"
+    "PRIMEM[\"Greenwich\",0],UNIT[\"degree\",0.0174532925199433],AUTHORITY[\"EPSG\",\"4326\"]]");
+  if (expectedMapProjection != std::string(outInfo->Get(vtkGDAL::MAP_PROJECTION())))
+  {
+    std::cerr << "Error: Different MAP_PROJECTION value than expected. Value:\n"
+              << outInfo->Get(vtkGDAL::MAP_PROJECTION()) << "\nExpected:\n"
+              << expectedMapProjection << "\n";
   }
 
   //std::cout << "numErrors: " << numErrors << std::endl;

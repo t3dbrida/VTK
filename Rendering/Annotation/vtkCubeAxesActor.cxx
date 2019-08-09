@@ -1372,13 +1372,13 @@ int vtkCubeAxesActor::Digits(double min, double max )
   long digitsPastDecimal;
 
   double range = max - min;
-  double pow10 = log10(range);
-  if (!vtkMath::IsFinite(pow10))
+  if (max == min)
   {
     digitsPastDecimal = 0;
   }
   else
   {
+    double pow10 = log10(range);
     long ipow10 = static_cast<long>(floor(pow10));
     digitsPastDecimal = -ipow10;
 
@@ -2268,8 +2268,14 @@ void vtkCubeAxesActor::BuildLabels(vtkAxisActor *axes[NUMBER_OF_ALIGNED_AXIS])
   if (customizedLabels == nullptr)
   {
     // Convert deltaMajor from world coord to range scale
-    deltaMajor = extents * deltaMajor/axisLength;
-
+    if (axisLength != 0.0)
+    {
+      deltaMajor = extents * deltaMajor/axisLength;
+    }
+    else
+    {
+      deltaMajor = extents;
+    }
     double scaleFactor = 1.;
     if (lastPow != 0)
     {

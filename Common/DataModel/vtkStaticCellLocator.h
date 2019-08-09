@@ -74,6 +74,8 @@ public:
   vtkGetVectorMacro(Divisions,int,3);
   //@}
 
+  using vtkAbstractCellLocator::FindClosestPoint;
+
   /**
    * Test a point to find if it is inside a cell. Returns the cellId if inside
    * or -1 if not.
@@ -103,6 +105,34 @@ public:
    */
   void FindCellsAlongLine(const double p1[3], const double p2[3],
                           double tolerance, vtkIdList *cells) override;
+
+  //@{
+  /**
+   * Given an unbounded plane defined by an origin o[3] and unit normal n[3],
+   * return the list of unique cell ids in the buckets containing the
+   * plane. It is possible that an empty cell list is returned. The user must
+   * provide the vtkIdList cell list to populate. This method returns data
+   * only after the locator has been built.
+   */
+  void FindCellsAlongPlane(const double o[3], const double n[3],
+                           double tolerance, vtkIdList *cells);
+  //@}
+
+  /**
+   * Return the closest point and the cell which is closest to the point x.
+   * The closest point is somewhere on a cell, it need not be one of the
+   * vertices of the cell.  This version takes in a vtkGenericCell
+   * to avoid allocating and deallocating the cell.  This is much faster than
+   * the version which does not take a *cell, especially when this function is
+   * called many times in a row such as by a for loop, where the allocation and
+   * deallocation can be done only once outside the for loop.  If a cell is
+   * found, "cell" contains the points and ptIds for the cell "cellId" upon
+   * exit.
+   */
+  void FindClosestPoint(
+    const double x[3], double closestPoint[3],
+    vtkGenericCell *cell, vtkIdType &cellId,
+    int &subId, double& dist2) override;
 
   /**
    * Return intersection point (if any) AND the cell which was intersected by

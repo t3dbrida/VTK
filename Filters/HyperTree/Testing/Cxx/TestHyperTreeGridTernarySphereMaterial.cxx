@@ -39,12 +39,11 @@ int TestHyperTreeGridTernarySphereMaterial( int argc, char* argv[] )
   // Hyper tree grid
   vtkNew<vtkHyperTreeGridSource> htGrid;
   htGrid->SetMaximumLevel( 4 );
-  htGrid->SetGridSize( 5, 5, 6 );
+  htGrid->SetDimensions( 6, 6, 7 ); //GridCell 5, 5, 6
   htGrid->SetGridScale( 1.5, 1., .7 );
-  htGrid->SetDimension( 3 );
   htGrid->SetBranchFactor( 3 );
   htGrid->UseDescriptorOff();
-  htGrid->UseMaterialMaskOn();
+  htGrid->UseMaskOn();
   vtkNew<vtkQuadric> quadric;
   quadric->SetCoefficients( 1., 1., 1.,
                             0, 0., 0.,

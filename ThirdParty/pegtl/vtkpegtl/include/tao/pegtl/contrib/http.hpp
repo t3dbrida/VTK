@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018 Dr. Colin Hirsch and Daniel Frey
+// Copyright (c) 2014-2019 Dr. Colin Hirsch and Daniel Frey
 // Please see LICENSE for license or visit https://github.com/taocpp/PEGTL/
 
 #ifndef TAO_PEGTL_CONTRIB_HTTP_HPP
@@ -129,7 +129,7 @@ namespace tao
 
          struct chunk_ext_name : token {};
          struct chunk_ext_val : sor< quoted_string, token > {};
-         struct chunk_ext : star< if_must< one< ';' >, chunk_ext_name, if_must< one< '=' >, chunk_ext_val > > > {};
+         struct chunk_ext : star_must< one< ';' >, chunk_ext_name, if_must< one< '=' >, chunk_ext_val > > {};
 
          struct chunk_data : until< at< abnf::CRLF >, abnf::OCTET > {};
 

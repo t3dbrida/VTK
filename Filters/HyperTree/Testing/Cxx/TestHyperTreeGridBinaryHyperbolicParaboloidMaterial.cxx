@@ -42,12 +42,11 @@ int TestHyperTreeGridBinaryHyperbolicParaboloidMaterial( int argc, char* argv[] 
   // Hyper tree grid
   vtkNew<vtkHyperTreeGridSource> htGrid;
   htGrid->SetMaximumLevel( 6 );
-  htGrid->SetGridSize( 8, 8, 8 );
+  htGrid->SetDimensions( 9, 9, 9 ); //GridCell 8, 8, 8
   htGrid->SetGridScale( 1., .5, .75 );
-  htGrid->SetDimension( 3 );
   htGrid->SetBranchFactor( 2 );
   htGrid->UseDescriptorOff();
-  htGrid->UseMaterialMaskOn();
+  htGrid->UseMaskOn();
   vtkNew<vtkQuadric> quadric;
   quadric->SetCoefficients( 4., -16., 0.,
                             0., 0., 0.,

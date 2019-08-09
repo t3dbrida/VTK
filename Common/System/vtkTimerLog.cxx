@@ -84,13 +84,6 @@ tms     vtkTimerLog::CurrentCpuTicks;
 #endif
 
 //----------------------------------------------------------------------------
-// Allocate timing table with MaxEntries elements.
-void vtkTimerLog::AllocateLog()
-{
-  vtkTimerLog::TimerLog.resize(vtkTimerLog::MaxEntries);
-}
-
-//----------------------------------------------------------------------------
 // Remove timer log.
 void vtkTimerLog::CleanupLog()
 {
@@ -122,7 +115,7 @@ void vtkTimerLog::FormatAndMarkEvent(const char *format, ...)
   static  char event[4096];
   va_list var_args;
   va_start(var_args, format);
-  vsprintf(event, format, var_args);
+  vsnprintf(event, sizeof(event), format, var_args);
   va_end(var_args);
 
   vtkTimerLog::MarkEventInternal(event, vtkTimerLogEntry::STANDALONE);
@@ -155,7 +148,7 @@ void vtkTimerLog::MarkEventInternal(
   {
     if (vtkTimerLog::TimerLog.empty())
     {
-      vtkTimerLog::AllocateLog();
+      vtkTimerLog::TimerLog.resize(vtkTimerLog::MaxEntries);
     }
 
 #ifdef _WIN32
@@ -673,8 +666,8 @@ void vtkTimerLog::PrintSelf(ostream& os, vtkIndent indent)
 // timer table logging.
 
 //----------------------------------------------------------------------------
-// Returns the elapsed number of seconds since January 1, 1970. This
-// is also called Universal Coordinated Time.
+// Returns the elapsed number of seconds since 00:00:00 Coordinated Universal
+// Time (UTC), Thursday, 1 January 1970. This is also called Unix Time.
 double vtkTimerLog::GetUniversalTime()
 {
   double currentTimeInSeconds;

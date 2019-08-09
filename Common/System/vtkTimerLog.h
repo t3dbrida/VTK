@@ -109,9 +109,11 @@ public:
 
   /**
    * Record a timing event.  The event is represented by a formatted
-   * string.
+   * string.  The internal buffer is 4096 bytes and will truncate anything longer.
    */
-  static void FormatAndMarkEvent(const char *EventString, ...);
+#ifndef __VTK_WRAP__
+  static void FormatAndMarkEvent(const char *EventString, ...) VTK_FORMAT_PRINTF(1, 2);
+#endif
 
   //@{
   /**
@@ -165,22 +167,14 @@ public:
    */
   static void ResetLog();
 
-  //@{
-  /**
-   * Allocate timing table with MaxEntries elements.  @deprecated
-   * AllocateLog() should be replaced with SetMaxEntries() (VTK 7.1.0).
-   */
-  static void AllocateLog();
-  //@}
-
   /**
    * Remove timer log.
    */
   static void CleanupLog();
 
   /**
-   * Returns the elapsed number of seconds since January 1, 1970. This
-   * is also called Universal Coordinated Time.
+   * Returns the elapsed number of seconds since 00:00:00 Coordinated Universal
+   * Time (UTC), Thursday, 1 January 1970. This is also called Unix Time.
    */
   static double GetUniversalTime();
 

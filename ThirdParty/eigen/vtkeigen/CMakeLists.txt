@@ -44,10 +44,13 @@ set(EIGEN_MINOR_VERSION "${CMAKE_MATCH_1}")
 set(EIGEN_VERSION_NUMBER ${EIGEN_WORLD_VERSION}.${EIGEN_MAJOR_VERSION}.${EIGEN_MINOR_VERSION})
 
 if (FALSE) # XXX(kitware): VTK doesn't have a mercurial import.
-# if the mercurial program is absent, this will leave the EIGEN_HG_CHANGESET string empty,
-# but won't stop CMake.
-execute_process(COMMAND hg tip -R ${CMAKE_SOURCE_DIR} OUTPUT_VARIABLE EIGEN_HGTIP_OUTPUT)
-execute_process(COMMAND hg branch -R ${CMAKE_SOURCE_DIR} OUTPUT_VARIABLE EIGEN_BRANCH_OUTPUT)
+# if we are not in a mercurial clone
+if(IS_DIRECTORY ${CMAKE_SOURCE_DIR}/.hg)
+  # if the mercurial program is absent or this will leave the EIGEN_HG_CHANGESET string empty,
+  # but won't stop CMake.
+  execute_process(COMMAND hg tip -R ${CMAKE_SOURCE_DIR} OUTPUT_VARIABLE EIGEN_HGTIP_OUTPUT)
+  execute_process(COMMAND hg branch -R ${CMAKE_SOURCE_DIR} OUTPUT_VARIABLE EIGEN_BRANCH_OUTPUT)
+endif()
 
 # if this is the default (aka development) branch, extract the mercurial changeset number from the hg tip output...
 if(EIGEN_BRANCH_OUTPUT MATCHES "default")
@@ -69,6 +72,37 @@ include(GNUInstallDirs)
 endif ()
 
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
+
+
+if (FALSE) # XXX(kitware): hardcoding settings.
+option(EIGEN_TEST_CXX11 "Enable testing with C++11 and C++11 features (e.g. Tensor module)." OFF)
+else ()
+set(EIGEN_TEST_CXX11 ON) # VTK requires C++11 anyways
+endif ()
+
+
+macro(ei_add_cxx_compiler_flag FLAG)
+  string(REGEX REPLACE "-" "" SFLAG1 ${FLAG})
+  string(REGEX REPLACE "\\+" "p" SFLAG ${SFLAG1})
+  check_cxx_compiler_flag(${FLAG} COMPILER_SUPPORT_${SFLAG})
+  if(COMPILER_SUPPORT_${SFLAG})
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAG}")
+  endif()
+endmacro(ei_add_cxx_compiler_flag)
+
+check_cxx_compiler_flag("-std=c++11" EIGEN_COMPILER_SUPPORT_CPP11)
+
+if(EIGEN_TEST_CXX11)
+  set(CMAKE_CXX_STANDARD 11)
+  set(CMAKE_CXX_EXTENSIONS OFF)
+  if(EIGEN_COMPILER_SUPPORT_CPP11)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+  endif()
+else()
+  #set(CMAKE_CXX_STANDARD 03)
+  #set(CMAKE_CXX_EXTENSIONS OFF)
+  ei_add_cxx_compiler_flag("-std=c++03")
+endif()
 
 #############################################################################
 # find how to link to the standard libraries                                #
@@ -138,15 +172,6 @@ set(EIGEN_SPLIT_LARGE_TESTS OFF)
 set(EIGEN_DEFAULT_TO_ROW_MAJOR OFF)
 set(EIGEN_TEST_MAX_SIZE 320)
 endif ()
-
-macro(ei_add_cxx_compiler_flag FLAG)
-  string(REGEX REPLACE "-" "" SFLAG1 ${FLAG})
-  string(REGEX REPLACE "\\+" "p" SFLAG ${SFLAG1})
-  check_cxx_compiler_flag(${FLAG} COMPILER_SUPPORT_${SFLAG})
-  if(COMPILER_SUPPORT_${SFLAG})
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAG}")
-  endif()
-endmacro(ei_add_cxx_compiler_flag)
 
 if(NOT MSVC)
   # We assume that other compilers are partly compatible with GNUCC
@@ -427,12 +452,6 @@ if(EIGEN_TEST_NO_EXCEPTIONS)
 endif()
 
 if (FALSE) # XXX(kitware): hardcoding settings.
-option(EIGEN_TEST_CXX11 "Enable testing with C++11 and C++11 features (e.g. Tensor module)." OFF)
-else ()
-set(EIGEN_TEST_CXX11 OFF)
-endif ()
-
-if (FALSE) # XXX(kitware): hardcoding settings.
 set(EIGEN_CUDA_COMPUTE_ARCH 30 CACHE STRING "The CUDA compute architecture level to target when compiling CUDA code")
 else ()
 set(EIGEN_CUDA_COMPUTE_ARCH 30)
@@ -494,16 +513,15 @@ add_subdirectory(Eigen)
 
 add_subdirectory(doc EXCLUDE_FROM_ALL)
 
-include(EigenConfigureTesting)
+option(BUILD_TESTING "Enable creation of Eigen tests." ON)
+if(BUILD_TESTING)
+  include(EigenConfigureTesting)
 
-# fixme, not sure this line is still needed:
-enable_testing() # must be called from the root CMakeLists, see man page
-
-
-if(EIGEN_LEAVE_TEST_IN_ALL_TARGET)
-  add_subdirectory(test) # can't do EXCLUDE_FROM_ALL here, breaks CTest
-else()
-  add_subdirectory(test EXCLUDE_FROM_ALL)
+  if(EIGEN_LEAVE_TEST_IN_ALL_TARGET)
+    add_subdirectory(test) # can't do EXCLUDE_FROM_ALL here, breaks CTest
+  else()
+    add_subdirectory(test EXCLUDE_FROM_ALL)
+  endif()
 endif()
 
 if(EIGEN_LEAVE_TEST_IN_ALL_TARGET)
@@ -539,7 +557,9 @@ endif(NOT WIN32)
 
 configure_file(scripts/cdashtesting.cmake.in cdashtesting.cmake @ONLY)
 
-ei_testing_print_summary()
+if(BUILD_TESTING)
+  ei_testing_print_summary()
+endif()
 
 message(STATUS "")
 message(STATUS "Configured Eigen ${EIGEN_VERSION_NUMBER}")
@@ -673,10 +693,7 @@ install ( FILES ${CMAKE_CURRENT_SOURCE_DIR}/cmake/UseEigen3.cmake
 add_custom_target ( uninstall
     COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/EigenUninstall.cmake)
 else ()
-if (NOT VTK_NO_INSTALL_DEVELOPMENT)
-  install(
-    DIRECTORY   "${CMAKE_CURRENT_SOURCE_DIR}/eigen/"
-    DESTINATION "${VTK_INSTALL_INCLUDE_DIR}/vtkeigen/eigen"
-    PATTERN "*.txt" EXCLUDE)
-endif ()
+vtk_module_install_headers(
+  DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/eigen/"
+  SUBDIR      "vtkeigen/eigen/")
 endif ()

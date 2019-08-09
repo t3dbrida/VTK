@@ -21,7 +21,6 @@
 #include "vtkContourValues.h"
 #include "vtkHyperTree.h"
 #include "vtkHyperTreeGrid.h"
-#include "vtkHyperTreeGridCursor.h"
 #include "vtkIdTypeArray.h"
 #include "vtkIncrementalPointLocator.h"
 #include "vtkInformation.h"
@@ -33,6 +32,10 @@
 #include "vtkPointData.h"
 #include "vtkPolyData.h"
 #include "vtkVoxel.h"
+
+#include "vtkHyperTreeGridNonOrientedCursor.h"
+#include "vtkHyperTreeGridNonOrientedGeometryCursor.h"
+#include "vtkHyperTreeGridNonOrientedMooreSuperCursor.h"
 
 static const unsigned int MooreCursors1D[2] = {
   0, 2 };
@@ -285,11 +288,10 @@ int vtkHyperTreeGridContour::ProcessTrees( vtkHyperTreeGrid* input,
   this->CurrentId = 0;
 
   // Retrieve material mask
-  vtkBitArray* mask
-    = input->HasMaterialMask() ? input->GetMaterialMask() : nullptr;
+  this->InMask = input->HasMask() ? input->GetMask() : 0;
 
   // Estimate output size as a multiple of 1024
-  vtkIdType numCells = input->GetNumberOfPoints();
+  vtkIdType numCells = input->GetNumberOfVertices();
   int numContours = this->ContourValues->GetNumberOfContours();
   vtkIdType estimatedSize = static_cast<vtkIdType>(pow(static_cast<double>( numCells ), .75 ) );
   estimatedSize *= numContours;
@@ -328,15 +330,11 @@ int vtkHyperTreeGridContour::ProcessTrees( vtkHyperTreeGrid* input,
   }
   this->Locator->InitPointInsertion( newPts, input->GetBounds(), estimatedSize );
 
-  vtkCellData* inCd = input->GetCellData();
-  vtkCellData* outCd = output->GetCellData();
-  outCd->CopyAllocate( inCd, estimatedSize, estimatedSize );
-
   // Instantiate a contour helper for convenience, with triangle generation on
   this->Helper = new vtkContourHelper( this->Locator,
                                        newVerts, newLines, newPolys,
-                                       input->GetPointData(), input->GetCellData(),
-                                       output->GetPointData(), output->GetCellData(),
+                                       input->GetPointData(), nullptr,
+                                       output->GetPointData(), nullptr,
                                        estimatedSize, true );
 
   // Create storage to keep track of selected cells
@@ -356,30 +354,24 @@ int vtkHyperTreeGridContour::ProcessTrees( vtkHyperTreeGrid* input,
   vtkIdType index;
   vtkHyperTreeGrid::vtkHyperTreeGridIterator it;
   input->InitializeTreeIterator( it );
+  vtkNew<vtkHyperTreeGridNonOrientedCursor> cursor;
   while ( it.GetNextTree( index ) )
   {
     // Initialize new grid cursor at root of current input tree
-    vtkHyperTreeGridCursor* cursor = input->NewGridCursor( index );
-
+    input->InitializeNonOrientedCursor( cursor, index );
     // Pre-process tree recursively
     this->RecursivelyPreProcessTree( cursor );
-
-    // Clean up
-    cursor->Delete();
   } // it
 
   // Second pass across tree roots: now compute isocontours recursively
   input->InitializeTreeIterator( it );
+  vtkNew<vtkHyperTreeGridNonOrientedMooreSuperCursor> supercursor;
   while ( it.GetNextTree( index ) )
   {
     // Initialize new Moore cursor at root of current tree
-    vtkHyperTreeGridCursor* cursor = input->NewMooreSuperCursor( index );
-
+    input->InitializeNonOrientedMooreSuperCursor( supercursor, index );
     // Compute contours recursively
-    this->RecursivelyProcessTree( cursor, mask );
-
-    // Clean up
-    cursor->Delete();
+    this->RecursivelyProcessTree( supercursor );
   } // it
 
   // Set output
@@ -422,11 +414,8 @@ int vtkHyperTreeGridContour::ProcessTrees( vtkHyperTreeGrid* input,
 }
 
 //-----------------------------------------------------------------------------
-bool vtkHyperTreeGridContour::RecursivelyPreProcessTree( vtkHyperTreeGridCursor* cursor )
+bool vtkHyperTreeGridContour::RecursivelyPreProcessTree( vtkHyperTreeGridNonOrientedCursor* cursor )
 {
-  // Retrieve input grid
-  vtkHyperTreeGrid* input = cursor->GetGrid();
-
   // Retrieve global index of input cursor
   vtkIdType id = cursor->GetGlobalNodeIndex();
 
@@ -438,18 +427,16 @@ bool vtkHyperTreeGridContour::RecursivelyPreProcessTree( vtkHyperTreeGridCursor*
   if ( ! cursor->IsLeaf() )
   {
     // Cursor is not at leaf, recurse to all all children
-    int numChildren = input->GetNumberOfChildren();
+    int numChildren = cursor->GetNumberOfChildren();
     for ( int child = 0; child < numChildren; ++ child )
     {
       // Create storage for signs relative to contour values
       std::vector<bool> signs( numContours );
 
-      // Create child cursor from parent in input grid
-      vtkHyperTreeGridCursor* childCursor = cursor->Clone();
-      childCursor->ToChild( child );
+      cursor->ToChild( child );
 
       // Recurse and keep track of whether this branch is selected
-      selected |= this->RecursivelyPreProcessTree( childCursor );
+      selected |= this->RecursivelyPreProcessTree( cursor );
 
       // Check if branch not completely selected
       if( ! selected )
@@ -458,7 +445,7 @@ bool vtkHyperTreeGridContour::RecursivelyPreProcessTree( vtkHyperTreeGridCursor*
         for( int c = 0; c < numContours ; ++ c )
         {
           // Retrieve global index of child
-          vtkIdType childId = childCursor->GetGlobalNodeIndex();
+          vtkIdType childId = cursor->GetGlobalNodeIndex();
 
           // Compute and store selection flags for current contour
           if ( ! child )
@@ -478,9 +465,7 @@ bool vtkHyperTreeGridContour::RecursivelyPreProcessTree( vtkHyperTreeGridCursor*
         } // c
       } // if( ! selected )
 
-      // Clean up
-      childCursor->Delete();
-      childCursor = nullptr;
+      cursor->ToParent();
     } // child
   } // if ( ! cursor->IsLeaf() )
   else
@@ -511,21 +496,17 @@ bool vtkHyperTreeGridContour::RecursivelyPreProcessTree( vtkHyperTreeGridCursor*
 }
 
 //-----------------------------------------------------------------------------
-void vtkHyperTreeGridContour::RecursivelyProcessTree( vtkHyperTreeGridCursor* cursor,
-                                                      vtkBitArray* mask )
+void vtkHyperTreeGridContour::RecursivelyProcessTree( vtkHyperTreeGridNonOrientedMooreSuperCursor* supercursor )
 
 {
-  // Retrieve input grid
-  vtkHyperTreeGrid* input = cursor->GetGrid();
-
   // Retrieve global index of input cursor
-  vtkIdType id = cursor->GetGlobalNodeIndex();
+  vtkIdType id = supercursor->GetGlobalNodeIndex();
 
   // Retrieve dimensionality
-  unsigned int dim = input->GetDimension();
+  unsigned int dim = supercursor->GetDimension();
 
   // Descend further into input trees only if cursor is not a leaf
-  if ( ! cursor->IsLeaf() )
+  if ( ! supercursor->IsLeaf() )
   {
     // Cell is not selected until proven otherwise
     bool selected = false;
@@ -537,38 +518,39 @@ void vtkHyperTreeGridContour::RecursivelyProcessTree( vtkHyperTreeGridCursor* cu
       bool sign = (this->CellSigns[c]->GetTuple1( id ) != 0.0);
 
       // Iterate over all cursors of Von Neumann neighborhood around center
-      unsigned int nn = cursor->GetNumberOfCursors() - 1;
+      unsigned int nn = supercursor->GetNumberOfCursors() - 1;
       for( unsigned int neighbor = 0; neighbor < nn && ! selected; ++ neighbor )
       {
         // Retrieve global index of neighbor
-        vtkIdType idN = cursor->GetCursor( MooreCursors[dim-1][neighbor] )->GetGlobalNodeIndex();
+        unsigned int icursorN = MooreCursors[dim-1][neighbor];
+        if ( supercursor->HasTree( icursorN ) )
+        {
+          vtkIdType idN = supercursor->GetGlobalNodeIndex( icursorN );
 
-        // Decide whether neighbor was selected or must be retained because of a sign change
-        selected = this->SelectedCells->GetTuple1( idN ) == 1
-          || ((this->CellSigns[c]->GetTuple1( idN )!=0.0) != sign);
+          // Decide whether neighbor was selected or must be retained because of a sign change
+          selected = this->SelectedCells->GetTuple1( idN ) == 1
+            || ((this->CellSigns[c]->GetTuple1( idN )!=0.0) != sign);
+        } else {
+          selected = false;
+        }
       } // neighbor
     } // c
 
     if( selected )
     {
       // Node has at least one neighbor containing one contour, recurse to all children
-      unsigned int numChildren = input->GetNumberOfChildren();
+      unsigned int numChildren = supercursor->GetNumberOfChildren();
       for ( unsigned int child = 0; child < numChildren; ++ child )
       {
         // Create child cursor from parent in input grid
-        vtkHyperTreeGridCursor* childCursor = cursor->Clone();
-        childCursor->ToChild( child );
-
+        supercursor->ToChild( child );
         // Recurse
-        this->RecursivelyProcessTree( childCursor, mask );
-
-        // Clean up
-        childCursor->Delete();
-        childCursor = nullptr;
+        this->RecursivelyProcessTree( supercursor );
+        supercursor->ToParent();
       } // child
     } // if( selected )
-  } // if ( ! cursor->IsLeaf() )
-  else if ( ! mask || ! mask->GetTuple1( id ) )
+  } // if ( ! supercursor->IsLeaf() )
+  else if ( ! this->InMask || ! this->InMask->GetTuple1( id ) )
   {
     // Cell is not masked, iterate over its corners
     unsigned int numLeavesCorners = 1 << dim;
@@ -580,7 +562,7 @@ void vtkHyperTreeGridContour::RecursivelyProcessTree( vtkHyperTreeGridCursor* cu
       // Iterate over every leaf touching the corner and check ownership
       for ( unsigned int leafIdx = 0; leafIdx < numLeavesCorners && owner; ++ leafIdx )
       {
-        owner = cursor->GetCornerCursors( cornerIdx, leafIdx, this->Leaves );
+        owner = supercursor->GetCornerCursors( cornerIdx, leafIdx, this->Leaves );
       } // leafIdx
 
       // If cell owns dual cell, compute contours thereof
@@ -609,14 +591,13 @@ void vtkHyperTreeGridContour::RecursivelyProcessTree( vtkHyperTreeGridCursor* cu
         {
           // Get cursor corresponding to this corner
           vtkIdType cursorId = this->Leaves->GetId( _cornerIdx );
-          vtkHyperTreeGridCursor* cursorN = cursor->GetCursor( cursorId );
 
           // Retrieve neighbor coordinates and store them
-          cursorN->GetPoint( x );
+          supercursor->GetPoint( cursorId, x );
           cell->Points->SetPoint( _cornerIdx, x );
 
           // Retrieve neighbor index and add to list of cell vertices
-          vtkIdType idN = cursorN->GetGlobalNodeIndex();
+          vtkIdType idN = supercursor->GetGlobalNodeIndex( cursorId );
           cell->PointIds->SetId( _cornerIdx, idN );
 
           // Assign scalar value attached to this contour item
@@ -633,5 +614,5 @@ void vtkHyperTreeGridContour::RecursivelyProcessTree( vtkHyperTreeGridCursor* cu
         ++ this->CurrentId;
       } // if ( owner )
     } // cornerIdx
-  } // else if ( ! mask || mask->GetTuple1( id ) )
+  } // else if ( ! this->InMask || this->InMask->GetTuple1( id ) )
 }

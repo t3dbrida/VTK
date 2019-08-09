@@ -6,6 +6,8 @@ vtk_add_test_python(
   TestAdaptiveSubdivisionFilter.py
   TestBandedContourFilter.py
   TestBandedContourFilter2.py
+  TestBandedContourFilter3.py
+  TestBandedContourFilter4.py
   TestBoxFunction.py
   TestContourLoopExtraction.py
   TestContourLoopExtraction2.py
@@ -15,6 +17,7 @@ vtk_add_test_python(
   TestFitToHeightMapFilter.py
   TestFitToHeightMapFilter2.py
   TestImageMarchingCubes.py
+  TestOutlineFilter.py
   TestRibbonAndTube.py
   TestRuledSurface.py
   TestRuledSurface2.py

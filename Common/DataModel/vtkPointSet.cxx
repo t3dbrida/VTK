@@ -19,6 +19,7 @@
 #include "vtkGenericCell.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
+#include "vtkStaticPointLocator.h"
 #include "vtkPointLocator.h"
 #include "vtkPointSetCellIterator.h"
 
@@ -31,8 +32,10 @@
 
 vtkCxxSetObjectMacro(vtkPointSet,Points,vtkPoints);
 
+//----------------------------------------------------------------------------
 vtkPointSet::vtkPointSet ()
 {
+  this->Editable = false;
   this->Points = nullptr;
   this->Locator = nullptr;
 }
@@ -128,6 +131,36 @@ vtkMTimeType vtkPointSet::GetMTime()
 }
 
 //----------------------------------------------------------------------------
+void vtkPointSet::BuildLocator()
+{
+  if ( ! this->Points )
+  {
+    return;
+  }
+
+  if ( !this->Locator )
+  {
+    if ( this->Editable || ! this->Points->GetData()->HasStandardMemoryLayout() )
+    {
+      this->Locator = vtkPointLocator::New();
+    }
+    else
+    {
+      this->Locator = vtkStaticPointLocator::New();
+    }
+    this->Locator->Register(this);
+    this->Locator->Delete();
+    this->Locator->SetDataSet(this);
+  }
+  else if ( this->Points->GetMTime() > this->Locator->GetMTime() )
+  {
+    this->Locator->SetDataSet(this);
+  }
+
+  this->Locator->BuildLocator();
+}
+
+//----------------------------------------------------------------------------
 vtkIdType vtkPointSet::FindPoint(double x[3])
 {
   if ( !this->Points )
@@ -137,15 +170,7 @@ vtkIdType vtkPointSet::FindPoint(double x[3])
 
   if ( !this->Locator )
   {
-    this->Locator = vtkPointLocator::New();
-    this->Locator->Register(this);
-    this->Locator->Delete();
-    this->Locator->SetDataSet(this);
-  }
-
-  if ( this->Points->GetMTime() > this->Locator->GetMTime() )
-  {
-    this->Locator->SetDataSet(this);
+    this->BuildLocator();
   }
 
   return this->Locator->FindClosestPoint(x);
@@ -260,17 +285,7 @@ vtkIdType vtkPointSet::FindCell(double x[3], vtkCell *cell,
 
   if ( !this->Locator )
   {
-    this->Locator = vtkPointLocator::New();
-    this->Locator->Register(this);
-    this->Locator->Delete();
-    this->Locator->SetDataSet(this);
-    this->Locator->BuildLocator();
-  }
-
-  if ( this->Points->GetMTime() > this->Locator->GetBuildTime() )
-  {
-    this->Locator->SetDataSet(this);
-    this->Locator->BuildLocator();
+    this->BuildLocator();
   }
 
   std::set<vtkIdType> visitedCells;
@@ -312,7 +327,7 @@ vtkIdType vtkPointSet::FindCell(double x[3], vtkCell *cell,
   this->GetPoint(ptId, ptCoord);
   VTK_CREATE(vtkIdList, coincidentPtIds);
   coincidentPtIds->Allocate(8, 100);
-  this->Locator->FindPointsWithinRadius(tol2, ptCoord, coincidentPtIds);
+  this->Locator->FindPointsWithinRadius(sqrt(tol2), ptCoord, coincidentPtIds);
   coincidentPtIds->DeleteId(ptId);      // Already searched this one.
   for (vtkIdType i = 0; i < coincidentPtIds->GetNumberOfIds(); i++)
   {
@@ -382,6 +397,7 @@ void vtkPointSet::ShallowCopy(vtkDataObject *dataObject)
 
   if ( pointSet != nullptr )
   {
+    this->SetEditable(pointSet->GetEditable());
     this->SetPoints(pointSet->GetPoints());
   }
 
@@ -396,6 +412,7 @@ void vtkPointSet::DeepCopy(vtkDataObject *dataObject)
 
   if ( pointSet != nullptr )
   {
+    this->SetEditable(pointSet->GetEditable());
     vtkPoints* newPoints;
     vtkPoints* pointsToCopy = pointSet->GetPoints();
     if (pointsToCopy)
@@ -433,6 +450,7 @@ void vtkPointSet::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os,indent);
 
+  os << indent << "Editable: " << (this->Editable ? "true\n" : "false\n");
   os << indent << "Number Of Points: " << this->GetNumberOfPoints() << "\n";
   os << indent << "Point Coordinates: " << this->Points << "\n";
   os << indent << "Locator: " << this->Locator << "\n";

@@ -18,6 +18,7 @@
 #include "vtkCommand.h"
 #include "vtkFloatArray.h"
 #include "vtkImageData.h"
+#include "vtkImageTransform.h"
 #include "vtkInformation.h"
 #include "vtkInformationExecutivePortKey.h"
 #include "vtkInformationVector.h"
@@ -68,6 +69,21 @@ template <class T>
 int vtkImageMarchingCubesGetTypeSize(T*)
 {
   return sizeof(T);
+}
+
+//----------------------------------------------------------------------------
+int vtkImageMarchingCubes::RequestUpdateExtent(
+  vtkInformation* vtkNotUsed(request),
+  vtkInformationVector** inputVector,
+  vtkInformationVector* vtkNotUsed(outputVector))
+{
+  // start with an empty UPDATE_EXTENT to ensure proper streaming
+  // (the UPDATE_EXTENT will be set properly in RequestData()).
+  int extent[6] = { 0, -1, 0, -1, 0, -1 };
+  vtkInformation* inInfo = inputVector[0]->GetInformationObject(0);
+  inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_EXTENT(),
+              extent, 6);
+  return 1;
 }
 
 //----------------------------------------------------------------------------
@@ -123,6 +139,7 @@ int vtkImageMarchingCubes::RequestData(
       return 1;
   }
 
+  // Get the WHOLE_EXTENT and divide it into chunks
   int extent[6];
   inInfo->Get(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT(), extent);
   // multiply by the area of each slice
@@ -252,6 +269,8 @@ int vtkImageMarchingCubes::RequestData(
   // Recover extra space.
   output->Squeeze();
 
+  vtkImageTransform::TransformPointSet(inData,output);
+
   // release the locators memory
   this->DeleteLocator();
 
@@ -320,7 +339,6 @@ int vtkImageMarchingCubesMakeNewPoint(vtkImageMarchingCubes *self,
                                       int inc0, int inc1, int inc2,
                                       T *ptr, int edge,
                                       int *imageExtent,
-                                      double *spacing, double *origin,
                                       double value)
 {
   int edgeAxis = 0;
@@ -405,19 +423,19 @@ int vtkImageMarchingCubesMakeNewPoint(vtkImageMarchingCubes *self,
   switch (edgeAxis)
   {
     case 0:
-      pt[0] = origin[0] + spacing[0] * ((double)idx0 + temp);
-      pt[1] = origin[1] + spacing[1] * ((double)idx1);
-      pt[2] = origin[2] + spacing[2] * ((double)idx2);
+      pt[0] = (double)idx0 + temp;
+      pt[1] = (double)idx1;
+      pt[2] = (double)idx2;
       break;
     case 1:
-      pt[0] = origin[0] + spacing[0] * ((double)idx0);
-      pt[1] = origin[1] + spacing[1] * ((double)idx1 + temp);
-      pt[2] = origin[2] + spacing[2] * ((double)idx2);
+      pt[0] = (double)idx0;
+      pt[1] = (double)idx1 + temp;
+      pt[2] = (double)idx2;
       break;
     case 2:
-      pt[0] = origin[0] + spacing[0] * ((double)idx0);
-      pt[1] = origin[1] + spacing[1] * ((double)idx1);
-      pt[2] = origin[2] + spacing[2] * ((double)idx2 + temp);
+      pt[0] = (double)idx0;
+      pt[1] = (double)idx1;
+      pt[2] = (double)idx2 + temp;
       break;
   }
 
@@ -469,9 +487,9 @@ int vtkImageMarchingCubesMakeNewPoint(vtkImageMarchingCubes *self,
     vtkImageMarchingCubesComputePointGradient(ptrB, gB, inc0, inc1, inc2,
                                              b0, b1, b2);
     // Interpolate Gradient
-    g[0] = (g[0] + temp * (gB[0] - g[0])) / spacing[0];
-    g[1] = (g[1] + temp * (gB[1] - g[1])) / spacing[1];
-    g[2] = (g[2] + temp * (gB[2] - g[2])) / spacing[2];
+    g[0] = g[0] + temp * (gB[0] - g[0]);
+    g[1] = g[1] + temp * (gB[1] - g[1]);
+    g[2] = g[2] + temp * (gB[2] - g[2]);
     if (self->ComputeGradients)
     {
       self->Gradients->InsertNextTuple(g);
@@ -562,8 +580,6 @@ void vtkImageMarchingCubesHandleCube(vtkImageMarchingCubes *self,
           // If the point has not been created yet
           if (pointIds[ii] == -1)
           {
-            double *spacing = inData->GetSpacing();
-            double *origin = inData->GetOrigin();
             int *extent =
               inInfo->Get(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT());
 
@@ -571,7 +587,7 @@ void vtkImageMarchingCubesHandleCube(vtkImageMarchingCubes *self,
                                               cellX, cellY, cellZ,
                                               inc0, inc1, inc2,
                                               ptr, *edge, extent,
-                                              spacing, origin, value);
+                                              value);
             self->AddLocatorPoint(cellX, cellY, *edge, pointIds[ii]);
           }
         }

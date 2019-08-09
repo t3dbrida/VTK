@@ -79,6 +79,9 @@ public:
   void SetBackRightBuffer(unsigned int);
   // }@
 
+  void SetDefaultFrameBufferId(unsigned int);
+  void SetOwnContext(int);
+
   //! no-op (for API compat with OpenGL1).
   void PushState() {}
   //! no-op (for API compat with OpenGL1).
@@ -97,7 +100,6 @@ public:
   void SetWindowInfo(const char*) override;
   void SetParentInfo(const char*) override;
   int* GetScreenSize() VTK_SIZEHINT(2) override;
-  void Start() override;
   void HideCursor() override;
   void ShowCursor() override;
   void SetFullScreen(vtkTypeBool) override;
@@ -157,12 +159,28 @@ public:
   vtkSetVector2Macro(ScreenSize,int);
 
   /**
-  * Overridden to invoke vtkCommand::StartPickEvent and
-  * vtkCommand::EndPickEvent.
-  */
-  void SetIsPicking(vtkTypeBool isPicking) override;
+   * Overridden to invoke vtkCommand::CursorChangedEvent
+   */
+  void SetCurrentCursor(int cShape) override;
+
+  // since we are using an external context it must
+  // specify if the window is mapped or not.
+  vtkSetMacro(Mapped, vtkTypeBool);
+
+  /**
+   * Overridden to simply call `GetReadyForRendering`
+   */
+  bool IsDrawable() override { return this->ReadyForRendering; }
 
 protected:
+  /**
+   * Overridden to not attempt to read pixels if `this->ReadyForRendering` is
+   * false. In that case, this method will simply return `VTK_ERROR`. Otherwise,
+   * the superclass' implementation will be called.
+   */
+  int ReadPixels(
+    const vtkRecti& rect, int front, int glFormat, int glType, void* data, int right) override;
+
   int DirectStatus;
   int SupportsOpenGLStatus;
   bool CurrentStatus;

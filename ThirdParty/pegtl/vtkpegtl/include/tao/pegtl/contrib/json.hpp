@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018 Dr. Colin Hirsch and Daniel Frey
+// Copyright (c) 2014-2019 Dr. Colin Hirsch and Daniel Frey
 // Please see LICENSE for license or visit https://github.com/taocpp/PEGTL/
 
 #ifndef TAO_PEGTL_CONTRIB_JSON_HPP
@@ -17,7 +17,7 @@ namespace tao
    {
       namespace json
       {
-         // JSON grammar according to RFC 7159 (for UTF-8 encoded JSON only).
+         // JSON grammar according to RFC 8259
 
          // clang-format off
          struct ws : one< ' ', '\t', '\n', '\r' > {};

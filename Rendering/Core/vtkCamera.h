@@ -34,6 +34,7 @@
 #include "vtkRect.h" // for ivar
 
 class vtkHomogeneousTransform;
+class vtkInformation;
 class vtkMatrix4x4;
 class vtkPerspectiveTransform;
 class vtkRenderer;
@@ -347,6 +348,19 @@ public:
    */
   vtkSetMacro(FocalDisk, double);
   vtkGetMacro(FocalDisk, double);
+  //@}
+
+  //@{
+  /**
+   * Sets the distance at which rendering is in focus. This is currently
+   * only used by the ray tracing renderers. 0 (default) disables
+   * ray traced depth of field.
+   * Not to be confused with FocalPoint that is the camera target and
+   * is centered on screen. Using a separate focal distance property
+   * enables out-of-focus areas anywhere on screen.
+   */
+  vtkSetMacro(FocalDistance, double);
+  vtkGetMacro(FocalDistance, double);
   //@}
 
   //@{
@@ -681,6 +695,14 @@ public:
   void GetScissorRect(vtkRecti& scissorRect);
   //@}
 
+  //@{
+  /**
+   * Set/Get the information object associated with this camera.
+   */
+  vtkGetObjectMacro(Information, vtkInformation);
+  virtual void SetInformation(vtkInformation*);
+  //@}
+
 protected:
   vtkCamera();
   ~vtkCamera() override;
@@ -782,6 +804,7 @@ protected:
   vtkTransform *ModelViewTransform;
 
   double FocalDisk;
+  double FocalDistance;
 
   vtkCameraCallbackCommand *UserViewTransformCallbackCommand;
   friend class vtkCameraCallbackCommand;
@@ -795,6 +818,8 @@ protected:
 
   vtkRecti ScissorRect;
 
+  // Arbitrary extra information associated with this camera.
+  vtkInformation* Information;
 
 private:
   vtkCamera(const vtkCamera&) = delete;

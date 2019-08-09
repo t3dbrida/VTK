@@ -24,6 +24,7 @@
 #include "vtkCellData.h"
 #include "vtkColorTransferFunction.h"
 #include "vtkContourFilter.h"
+#include "vtkHyperTreeGridToDualGrid.h"
 #include "vtkMath.h"
 #include "vtkNew.h"
 #include "vtkPolyDataMapper.h"
@@ -42,19 +43,21 @@ int TestHyperTreeGridTernaryHyperbola( int argc, char* argv[] )
   // Hyper tree grid
   vtkNew<vtkHyperTreeGridSource> htGrid;
   htGrid->SetMaximumLevel( 6 );
-  htGrid->SetGridSize( 8, 12, 1 );
+  htGrid->SetDimensions( 9, 13, 1 ); //GridCell 8, 12, 1
   htGrid->SetGridScale( 1.5, 1., .7 );
-  htGrid->SetDimension( 2 );
-  htGrid->SetOrientation( 2 ); // in xy plane
   htGrid->SetBranchFactor( 3 );
   htGrid->UseDescriptorOff();
-  htGrid->UseMaterialMaskOff();
+  htGrid->UseMaskOff();
   vtkNew<vtkQuadric> quadric;
   quadric->SetCoefficients( 1., -1., 0.,
                             0., 0., 0.,
                             -12., 12., 0.,
                             1. );
   htGrid->SetQuadric( quadric );
+
+  // DualGrid
+  vtkNew<vtkHyperTreeGridToDualGrid> dualFilter;
+  dualFilter->SetInputConnection( htGrid->GetOutputPort() );
 
   // Geometry
   vtkNew<vtkHyperTreeGridGeometry> geometry;
@@ -65,7 +68,7 @@ int TestHyperTreeGridTernaryHyperbola( int argc, char* argv[] )
 
   // Contour
   vtkNew<vtkContourFilter> contour;
-  contour->SetInputConnection( htGrid->GetOutputPort() );
+  contour->SetInputConnection( dualFilter->GetOutputPort() );
   contour->SetNumberOfContours( 0 );
   contour->SetValue( 0, 0 );
   contour->SetInputArrayToProcess( 0, 0, 0,
@@ -90,6 +93,8 @@ int TestHyperTreeGridTernaryHyperbola( int argc, char* argv[] )
   vtkNew<vtkPolyDataMapper> mapper3;
   mapper3->SetInputConnection( contour->GetOutputPort() );
   mapper3->ScalarVisibilityOff();
+  mapper3->SetRelativeCoincidentTopologyLineOffsetParameters(
+    0.0, -8.0);
 
   // Actors
   vtkNew<vtkActor> actor1;

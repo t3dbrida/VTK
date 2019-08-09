@@ -23,14 +23,15 @@
  * determine neighbors and construct other local topological information.
  *
  * @warning
- * Note that this class is designed to support incremental link construction.
- * More efficient cell links structures can be built with vtkStaticCellLinks
- * (and vtkStaticCellLinksTemplate). However these other classes are typically
- * meant for one-time (static) construction.
+ * vtkCellLinks supports incremental (i.e., "editable") operations such as
+ * inserting a new cell, or deleting a point. Because of this, it is less
+ * memory efficient, and slower to construct and delete than static classes
+ * such as vtkStaticCellLinks or vtkStaticCellLinksTemplate. However these
+ * other classes are typically meant for one-time (static) construction.
  *
  * @sa
  * vtkCellArray vtkCellTypes vtkStaticCellLinks vtkStaticCellLinksTemplate
-*/
+ */
 
 #ifndef vtkCellLinks_h
 #define vtkCellLinks_h
@@ -47,7 +48,7 @@ public:
 
   class Link {
   public:
-    unsigned short ncells;
+    vtkIdType ncells;
     vtkIdType *cells;
   };
 
@@ -67,11 +68,6 @@ public:
   void BuildLinks(vtkDataSet *data) override;
 
   /**
-   * Build the link list array with a provided connectivity array.
-   */
-  void BuildLinks(vtkDataSet *data, vtkCellArray *Connectivity);
-
-  /**
    * Allocate the specified number of links (i.e., number of points) that
    * will be built.
    */
@@ -80,22 +76,25 @@ public:
   /**
    * Clear out any previously allocated data structures
    */
-  void Initialize();
+  void Initialize() override;
 
   /**
    * Get a link structure given a point id.
    */
-  Link &GetLink(vtkIdType ptId) {return this->Array[ptId];};
+  Link &GetLink(vtkIdType ptId)
+  {return this->Array[ptId];}
 
   /**
    * Get the number of cells using the point specified by ptId.
    */
-  unsigned short GetNcells(vtkIdType ptId) { return this->Array[ptId].ncells;};
+  vtkIdType GetNcells(vtkIdType ptId)
+  { return this->Array[ptId].ncells;}
 
   /**
    * Return a list of cell ids using the point.
    */
-  vtkIdType *GetCells(vtkIdType ptId) {return this->Array[ptId].cells;};
+  vtkIdType *GetCells(vtkIdType ptId)
+  {return this->Array[ptId].cells;}
 
   /**
    * Insert a new point into the cell-links data structure. The size parameter
@@ -138,12 +137,12 @@ public:
   /**
    * Reclaim any unused memory.
    */
-  void Squeeze();
+  void Squeeze() override;
 
   /**
    * Reset to a state of no entries without freeing the memory.
    */
-  void Reset();
+  void Reset() override;
 
   /**
    * Return the memory in kibibytes (1024 bytes) consumed by this cell links array.
@@ -153,13 +152,13 @@ public:
    * The information returned is valid only after the pipeline has
    * been updated.
    */
-  unsigned long GetActualMemorySize();
+  unsigned long GetActualMemorySize() override;
 
   /**
    * Standard DeepCopy method.  Since this object contains no reference
    * to other objects, there is no ShallowCopy.
    */
-  void DeepCopy(vtkCellLinks *src);
+  void DeepCopy(vtkAbstractCellLinks *src) override;
 
 protected:
   vtkCellLinks():Array(nullptr),Size(0),MaxId(-1),Extend(1000) {}
@@ -175,7 +174,7 @@ protected:
   /**
    * Insert a cell id into the list of cells using the point.
    */
-  void InsertCellReference(vtkIdType ptId, unsigned short pos,
+  void InsertCellReference(vtkIdType ptId, vtkIdType pos,
                            vtkIdType cellId);
 
   Link *Array;   // pointer to data
@@ -191,7 +190,7 @@ private:
 
 //----------------------------------------------------------------------------
 inline void vtkCellLinks::InsertCellReference(vtkIdType ptId,
-                                              unsigned short pos,
+                                              vtkIdType pos,
                                               vtkIdType cellId)
 {
   this->Array[ptId].cells[pos] = cellId;

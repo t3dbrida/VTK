@@ -185,6 +185,7 @@ static void vtkWrapPython_GenerateSpecialHeaders(
     {
       currentFunction = data->Functions[i];
       if (currentFunction->Access == VTK_ACCESS_PUBLIC &&
+          !currentFunction->IsExcluded &&
           strcmp(currentFunction->Class, data->Name) == 0)
       {
         classname = "void";
@@ -287,7 +288,10 @@ static void vtkWrapPython_GenerateSpecialHeaders(
   {
     fprintf(fp,
       "#include \"vtkSOADataArrayTemplate.h\"\n"
-      "#include \"vtkAOSDataArrayTemplate.h\"\n");
+      "#include \"vtkAOSDataArrayTemplate.h\"\n"
+      "#ifdef VTK_USE_SCALED_SOA_ARRAYS\n"
+      "#include \"vtkScaledSOADataArrayTemplate.h\"\n"
+      "#endif\n");
   }
 
   free((char **)types);
@@ -505,6 +509,11 @@ int main(int argc, char *argv[])
   for (i = 0; i < contents->NumberOfClasses; i++)
   {
     data = contents->Classes[i];
+    if (data->IsExcluded)
+    {
+      continue;
+    }
+
     is_vtkobject = wrapAsVTKObject[i];
 
     /* if "hinfo" is present, wrap everything, else just the main class */
@@ -583,12 +592,9 @@ int main(int argc, char *argv[])
              "      {\n"
              "        nt = ((PyTypeObject *)ot)->tp_name;\n"
              "      }\n"
-             "      else if (PyCFunction_Check(ot))\n"
-             "      {\n"
-             "        nt = ((PyCFunctionObject *)ot)->m_ml->ml_name;\n"
-             "      }\n"
              "      if (nt)\n"
              "      {\n"
+             "        nt = vtkPythonUtil::StripModule(nt);\n"
              "        PyDict_SetItemString(dict, nt, ot);\n"
              "      }\n"
              "    }\n"

@@ -37,11 +37,11 @@ static int vtkMapperGlobalResolveCoincidentTopology = VTK_RESOLVE_OFF;
 static double vtkMapperGlobalResolveCoincidentTopologyZShift = 0.01;
 static int vtkMapperGlobalResolveCoincidentTopologyPolygonOffsetFaces = 1;
 
-static double vtkMapperGlobalResolveCoincidentTopologyPolygonOffsetFactor = 2.0;
-static double vtkMapperGlobalResolveCoincidentTopologyPolygonOffsetUnits = 2.0;
-static double vtkMapperGlobalResolveCoincidentTopologyLineOffsetFactor = 1.0;
-static double vtkMapperGlobalResolveCoincidentTopologyLineOffsetUnits = 1.0;
-static double vtkMapperGlobalResolveCoincidentTopologyPointOffsetUnits = 0.0;
+static double vtkMapperGlobalResolveCoincidentTopologyPolygonOffsetFactor = 0.0;
+static double vtkMapperGlobalResolveCoincidentTopologyPolygonOffsetUnits = 0.0;
+static double vtkMapperGlobalResolveCoincidentTopologyLineOffsetFactor = 0.0;
+static double vtkMapperGlobalResolveCoincidentTopologyLineOffsetUnits = -4.0;
+static double vtkMapperGlobalResolveCoincidentTopologyPointOffsetUnits = -8.0;
 
 // Construct with initial range (0,1).
 vtkMapper::vtkMapper()
@@ -675,7 +675,7 @@ void vtkMapper::CreateDefaultLookupTable()
 
 //-------------------------------------------------------------------
 // Return the method of coloring scalar data.
-const char *vtkMapper::GetColorModeAsString(void)
+const char *vtkMapper::GetColorModeAsString()
 {
   if ( this->ColorMode == VTK_COLOR_MODE_MAP_SCALARS )
   {
@@ -688,7 +688,7 @@ const char *vtkMapper::GetColorModeAsString(void)
 }
 
 // Return the method for obtaining scalar data.
-const char *vtkMapper::GetScalarModeAsString(void)
+const char *vtkMapper::GetScalarModeAsString()
 {
   if ( this->ScalarMode == VTK_SCALAR_MODE_USE_CELL_DATA )
   {

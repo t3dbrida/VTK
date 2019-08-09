@@ -103,8 +103,8 @@ public:
    * May be used by a reader to allow the reading
    * of an image from memory instead of from file.
    */
-  virtual void SetMemoryBuffer(void *);
-  virtual void *GetMemoryBuffer() { return this->MemoryBuffer; }
+  virtual void SetMemoryBuffer(const void *);
+  virtual const void *GetMemoryBuffer() { return this->MemoryBuffer; }
 
   /**
    * Specify the in memory image buffer length.
@@ -177,6 +177,14 @@ public:
    */
   vtkSetVector3Macro(DataOrigin,double);
   vtkGetVector3Macro(DataOrigin,double);
+  //@}
+
+  //@{
+  /**
+   * Set/Get the direction of the data (9 elements: 3x3 matrix).
+   */
+  vtkSetVectorMacro(DataDirection,double, 9);
+  vtkGetVectorMacro(DataDirection,double, 9);
   //@}
 
   //@{
@@ -313,7 +321,7 @@ protected:
   int NumberOfScalarComponents;
   vtkTypeBool FileLowerLeft;
 
-  void *MemoryBuffer;
+  const void *MemoryBuffer;
   vtkIdType MemoryBufferLength;
 
   ifstream *File;
@@ -328,6 +336,7 @@ protected:
 
   double DataSpacing[3];
   double DataOrigin[3];
+  double DataDirection[9];
 
   int FileNameSliceOffset;
   int FileNameSliceSpacing;

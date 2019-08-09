@@ -16,10 +16,15 @@
  * @class   vtkGDALRasterReader
  * @brief   Read raster file formats using GDAL.
  *
- * vtkGDALRasterReader is a source object that reads raster files and uses
- * GDAL as the underlying library for the task. GDAL is required for this
- * reader. The output of the reader is a vtkUniformGrid (vtkImageData
- * with blanking) with cell data.
+ * vtkGDALRasterReader is a source object that reads raster files and
+ * uses GDAL as the underlying library for the task. GDAL library is
+ * required for this reader. The output of the reader is a
+ * vtkUniformGrid (vtkImageData with blanking) with cell data.
+ * The reader currently supports only north up images. Flips along
+ * X or Y direction are also supported. Arbitrary affine geotransforms or
+ * GCPs are not supported. See GDAL Data Model for more information
+ * https://www.gdal.org/gdal_datamodel.html
+ *
  *
  *
  * @sa
@@ -57,10 +62,27 @@ public:
   const char*  GetProjectionString() const;
 
   /**
+   * Returns WKT spatial reference.
+   */
+  const char* GetProjectionWKT () const
+  {
+    return this->ProjectionWKT.c_str();
+  }
+
+  /**
    * Return geo-referenced corner points (Upper left,
    * lower left, lower right, upper right)
    */
   const double* GetGeoCornerPoints();
+
+  /**
+   * Get/Set if bands are collated in one scalar array.
+   * Currently we collate RGB, RGBA, gray alpha and palette.
+   * The default is true.
+   */
+  vtkSetMacro(CollateBands, bool);
+  vtkGetMacro(CollateBands, bool);
+  vtkBooleanMacro(CollateBands, bool);
 
   //@{
   /**
@@ -72,9 +94,9 @@ public:
 
   //@{
   /**
-   * Get raster width and height
+   * Get raster width and height in number of pixels (cells)
    */
-  vtkGetVector2Macro(RasterDimensions, int);
+  int* GetRasterDimensions();
   //@}
 
   /**
@@ -83,9 +105,12 @@ public:
   const std::vector<std::string>& GetMetaData();
 
   /**
-   * Return the invalid value for a pixel (for blanking purposes)
+   * Return the invalid value for a pixel (for blanking purposes) in
+   * a specified raster band. Note bandIndex is a 0 based index while
+   * GDAL bands are 1 based indexes. hasNoData indicates if there is a NoData
+   * value associated with this band.
    */
-  double GetInvalidValue();
+  double GetInvalidValue(size_t bandIndex = 0, int* hasNoData = nullptr);
 
   /**
    * Return domain metadata
@@ -105,6 +130,20 @@ public:
    */
   vtkIdType GetNumberOfCells();
 
+  //@{
+  /**
+   * The following methods allow selective reading of bands.
+   * By default, ALL bands are read.
+   */
+  int GetNumberOfCellArrays();
+  const char* GetCellArrayName(int index);
+  int GetCellArrayStatus(const char* name);
+  void SetCellArrayStatus(const char* name, int status);
+  void DisableAllCellArrays();
+  void EnableAllCellArrays();
+  //@}
+
+
 protected:
 
   int RequestData(vtkInformation* request,
@@ -120,16 +159,17 @@ protected:
 
 protected:
   int TargetDimensions[2];
-  int RasterDimensions[2];
   std::string Projection;
+  std::string ProjectionWKT;
   std::string DomainMetaData;
   std::string DriverShortName;
   std::string DriverLongName;
   std::vector<std::string> Domains;
   std::vector<std::string> MetaData;
+  bool CollateBands;
 
   class vtkGDALRasterReaderInternal;
-  vtkGDALRasterReaderInternal* Implementation;
+  vtkGDALRasterReaderInternal* Impl;
 
 private:
   vtkGDALRasterReader(const vtkGDALRasterReader&) = delete;

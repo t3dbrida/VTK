@@ -17,13 +17,17 @@
 #include <cstring>
 #include <cmath>
 
+#ifndef WINVER
+#define WINVER 0x0601  // for touch support, 0x0601 means target Windows 7 or later
+#endif
 
 #ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0501  // for trackmouseevent support, 0x0501 means target Windows XP or later
-//#define _WIN32_WINNT 0x0601  // for touch support, 0x0601 means target Windows 7 or later
+#define _WIN32_WINNT 0x0601  // for touch support, 0x0601 means target Windows 7 or later
 #endif
 
 #include "vtkWin32OpenGLRenderWindow.h"
+
+#include <winuser.h>  // for touch support
 
 // Mouse wheel support
 // In an ideal world we would just have to include <zmouse.h>, but it is not
@@ -58,19 +62,9 @@ VTKRENDERINGOPENGL2_EXPORT LRESULT CALLBACK vtkHandleMessage2(HWND,UINT,WPARAM,L
 #define MOUSEEVENTF_FROMTOUCH 0xFF515700
 #define WM_TOUCH              0x0240
 #define TOUCH_COORD_TO_PIXEL(l)  ((l) / 100)
-typedef struct _TOUCHINPUT {
-  LONG      x;
-  LONG      y;
-  HANDLE    hSource;
-  DWORD     dwID;
-  DWORD     dwFlags;
-  DWORD     dwMask;
-  DWORD     dwTime;
-  ULONG_PTR dwExtraInfo;
-  DWORD     cxContact;
-  DWORD     cyContact;
-} TOUCHINPUT, *PTOUCHINPUT;
-DECLARE_HANDLE(HTOUCHINPUT);
+
+typedef TOUCHINPUT* PTOUCHINPUT;
+
 //#define HTOUCHINPUT ULONG
 #define TOUCHEVENTF_MOVE  0x0001
 #define TOUCHEVENTF_DOWN  0x0002

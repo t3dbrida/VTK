@@ -55,6 +55,7 @@ WARRANTY OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
 #include <cstddef>
 #include <cstring>
 #include <cassert>
+#include <limits>
 
 /* memory allocation */
 #define myalloc(mem_size) vtkPLY::my_alloc((mem_size), __LINE__, __FILE__)
@@ -86,7 +87,7 @@ static const char *type_names[] = {
   "invalid",
   "char", "short", "int", "int8", "int16", "int32",
   "uchar", "ushort", "uint", "uint8", "uint16", "uint32",
-  "float", "float32", "double",
+  "float", "float32", "double", "float64"
 };
 
 static const int ply_type_size[] = {
@@ -1938,6 +1939,7 @@ double vtkPLY::get_item_value(const char *item, int type)
       return ((double) value);
     }
     case PLY_DOUBLE:
+    case PLY_FLOAT64:
     {
       vtkTypeFloat64 value;
       memcpy(&value, item, sizeof(value));
@@ -2024,6 +2026,7 @@ void vtkPLY::write_binary_item(PlyFile *plyfile,
       fwrite (&float_val, sizeof(float_val), 1, fp);
       break;
     case PLY_DOUBLE:
+    case PLY_FLOAT64:
       plyfile->file_type == PLY_BINARY_BE ?
         vtkByteSwap::Swap8BE(&double_val) :
         vtkByteSwap::Swap8LE(&double_val);
@@ -2075,7 +2078,9 @@ void vtkPLY::write_ascii_item(
     case PLY_FLOAT:
     case PLY_FLOAT32:
     case PLY_DOUBLE:
-      fprintf (fp, "%g ", double_val);
+    case PLY_FLOAT64:
+      // Use needed precision.
+      fprintf (fp, "%.*g ", std::numeric_limits<double>::max_digits10, double_val);
       break;
     default:
       fprintf (stderr, "write_ascii_item: bad type = %d\n", type);
@@ -2156,6 +2161,7 @@ double vtkPLY::old_write_ascii_item(FILE *fp, char *item, int type)
       return value;
     }
     case PLY_DOUBLE:
+    case PLY_FLOAT64:
     {
       vtkTypeFloat64 value;
       memcpy(&value, item, sizeof(value));
@@ -2262,6 +2268,7 @@ void vtkPLY::get_stored_item(
       break;
     }
     case PLY_DOUBLE:
+    case PLY_FLOAT64:
     {
       vtkTypeFloat64 value;
       memcpy(&value, ptr, sizeof(value));
@@ -2444,6 +2451,7 @@ void vtkPLY::get_binary_item(
     }
       break;
     case PLY_DOUBLE:
+    case PLY_FLOAT64:
     {
       vtkTypeFloat64 value = 0.0;
       if (fread (&value, sizeof(value), 1, plyfile->fp) != 1)
@@ -2518,6 +2526,7 @@ void vtkPLY::get_ascii_item(
     case PLY_FLOAT:
     case PLY_FLOAT32:
     case PLY_DOUBLE:
+    case PLY_FLOAT64:
       *double_val = atof (word);
       *int_val = (int) *double_val;
       *uint_val = (unsigned int) *double_val;
@@ -2603,6 +2612,7 @@ void vtkPLY::store_item (
       break;
     }
     case PLY_DOUBLE:
+    case PLY_FLOAT64:
     {
       vtkTypeFloat64 value = static_cast<vtkTypeFloat64>(double_val);
       memcpy(item, &value, sizeof(value));
@@ -2795,4 +2805,3 @@ void *vtkPLY::my_alloc(size_t size, int lnum, const char *fname)
 
   return (ptr);
 }
-

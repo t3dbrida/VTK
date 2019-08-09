@@ -283,8 +283,7 @@ void vtkOpenGLGlyph3DHelper::GlyphRender(
 
   vtkHardwareSelector* selector = ren->GetSelector();
 
-  if (!selector && !ren->GetRenderWindow()->GetIsPicking()
-      && GLEW_ARB_instanced_arrays)
+  if (!selector && GLEW_ARB_instanced_arrays)
   {
     // if there is no triangle, culling is useless.
     // GLEW_ARB_gpu_shader5 is needed by the culling shader.
@@ -312,7 +311,7 @@ void vtkOpenGLGlyph3DHelper::GlyphRender(
 
   if (selecting_points)
   {
-#if GL_ES_VERSION_3_0 != 1
+#ifndef GL_ES_VERSION_3_0
     glPointSize(6.0);
 #endif
     representation = GL_POINTS;
@@ -501,7 +500,7 @@ void vtkOpenGLGlyph3DHelper::GlyphRenderInstances(
           {
             this->InstanceCulling->GetLOD(j).IBO->Bind();
 
-#if GL_ES_VERSION_3_0 == 1
+#ifdef GL_ES_VERSION_3_0
             glDrawElementsInstanced(mode,
               static_cast<GLsizei>(this->InstanceCulling->GetLOD(j).IBO->IndexCount),
               GL_UNSIGNED_INT,
@@ -518,7 +517,7 @@ void vtkOpenGLGlyph3DHelper::GlyphRenderInstances(
           }
           else
           {
-#if GL_ES_VERSION_3_0 == 1
+#ifdef GL_ES_VERSION_3_0
             glDrawArraysInstanced(GL_POINTS, 0, 1,
               this->InstanceCulling->GetLOD(j).NumberOfInstances);
 #else
@@ -579,7 +578,7 @@ void vtkOpenGLGlyph3DHelper::GlyphRenderInstances(
 
         this->Primitives[i].IBO->Bind();
 
-#if GL_ES_VERSION_3_0 == 1
+#ifdef GL_ES_VERSION_3_0
         glDrawElementsInstanced(mode,
           static_cast<GLsizei>(this->Primitives[i].IBO->IndexCount),
           GL_UNSIGNED_INT,

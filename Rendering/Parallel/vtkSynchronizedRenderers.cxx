@@ -21,20 +21,20 @@
 #include "vtkFXAAOptions.h"
 #include "vtkHardwareSelector.h"
 #include "vtkImageData.h"
+#include "vtkLogger.h"
 #include "vtkMatrix4x4.h"
 #include "vtkMultiProcessController.h"
 #include "vtkMultiProcessStream.h"
 #include "vtkObjectFactory.h"
-#include "vtkOpenGLRenderUtilities.h"
-#include "vtkParallelRenderManager.h"
-#include "vtkPNGWriter.h"
-#include "vtkRenderWindow.h"
-#include "vtkOpenGLRenderer.h"
-#include "vtkOpenGLRenderWindow.h"
-#include "vtkOpenGLState.h"
 #include "vtkOpenGLError.h"
-
 #include "vtkOpenGLFXAAFilter.h"
+#include "vtkOpenGLRenderUtilities.h"
+#include "vtkOpenGLRenderWindow.h"
+#include "vtkOpenGLRenderer.h"
+#include "vtkOpenGLState.h"
+#include "vtkPNGWriter.h"
+#include "vtkParallelRenderManager.h"
+#include "vtkRenderWindow.h"
 
 #include <cassert>
 
@@ -80,6 +80,11 @@ vtkCxxSetObjectMacro(vtkSynchronizedRenderers, CaptureDelegate,
   vtkSynchronizedRenderers);
 //----------------------------------------------------------------------------
 vtkSynchronizedRenderers::vtkSynchronizedRenderers()
+  : LastBackground{ 0, 0, 0 }
+  , LastBackgroundAlpha(0)
+  , LastTexturedBackground(false)
+  , LastGradientBackground(false)
+  , FixBackground(false)
 {
   this->Observer = vtkSynchronizedRenderers::vtkObserver::New();
   this->Observer->Target = this;
@@ -162,13 +167,25 @@ void vtkSynchronizedRenderers::HandleStartRender()
     return;
   }
 
-  this->ReducedImage.MarkInValid();
-  this->FullImage.MarkInValid();
+  this->Image.MarkInValid();
 
   // disable FXAA when parallel rendering. We'll do the FXAA pass after the
   // compositing stage. This avoid any seam artifacts from creeping in.
   this->UseFXAA = this->Renderer->GetUseFXAA();
   this->Renderer->SetUseFXAA(false);
+
+  if (this->FixBackground)
+  {
+    this->Renderer->GetBackground(this->LastBackground);
+    this->LastBackgroundAlpha = this->Renderer->GetBackgroundAlpha();
+    this->LastTexturedBackground = this->Renderer->GetTexturedBackground();
+    this->LastGradientBackground = this->Renderer->GetGradientBackground();
+
+    this->Renderer->SetBackground(0, 0, 0);
+    this->Renderer->SetBackgroundAlpha(0);
+    this->Renderer->SetTexturedBackground(false);
+    this->Renderer->SetGradientBackground(false);
+  }
 
   if (this->ParallelController->GetLocalProcessId() == this->RootProcessId)
   {
@@ -246,16 +263,29 @@ void vtkSynchronizedRenderers::HandleEndRender()
 
   if (this->WriteBackImages)
   {
-    if (this->ImageReductionFactor > 1 && this->ParallelRendering)
+    if (this->GetImageReductionFactor() > 1 || this->FixBackground)
     {
       this->CaptureRenderedImage();
     }
-
-    this->PushImageToScreen();
   }
 
-  // restore viewport
+  if (this->FixBackground)
+  {
+    // restore background values.
+    this->Renderer->SetBackground(this->LastBackground);
+    this->Renderer->SetBackgroundAlpha(this->LastBackgroundAlpha);
+    this->Renderer->SetTexturedBackground(this->LastTexturedBackground);
+    this->Renderer->SetGradientBackground(this->LastGradientBackground);
+  }
+
+  // restore viewport before `PushImageToScreen`, but after
+  // `CaptureRenderedImage`.
   this->Renderer->SetViewport(this->LastViewport);
+
+  if (this->WriteBackImages)
+  {
+    this->PushImageToScreen();
+  }
 
   // restore FXAA state.
   this->Renderer->SetUseFXAA(this->UseFXAA);
@@ -276,10 +306,7 @@ void vtkSynchronizedRenderers::SlaveEndRender()
 vtkSynchronizedRenderers::vtkRawImage&
 vtkSynchronizedRenderers::CaptureRenderedImage()
 {
-  vtkRawImage& rawImage =
-    (this->ImageReductionFactor == 1)?
-    this->FullImage : this->ReducedImage;
-
+  vtkRawImage& rawImage = this->Image;
   if (!rawImage.IsValid())
   {
     if (this->CaptureDelegate)
@@ -298,10 +325,7 @@ vtkSynchronizedRenderers::CaptureRenderedImage()
 //----------------------------------------------------------------------------
 void vtkSynchronizedRenderers::PushImageToScreen()
 {
-  vtkRawImage& rawImage =
-    (this->ImageReductionFactor == 1)?
-    this->FullImage : this->ReducedImage;
-
+  vtkRawImage& rawImage = this->Image;
   if (!rawImage.IsValid())
   {
     return;
@@ -404,6 +428,7 @@ void vtkSynchronizedRenderers::PrintSelf(ostream& os, vtkIndent indent)
   os << indent << "ImageReductionFactor: "
     << this->ImageReductionFactor << endl;
   os << indent << "WriteBackImages: " << this->WriteBackImages << endl;
+  os << indent << "FixBackground: " << this->FixBackground << endl;
   os << indent << "RootProcessId: " << this->RootProcessId << endl;
   os << indent << "ParallelRendering: " << this->ParallelRendering << endl;
   os << indent << "AutomaticEventHandling: "
@@ -691,23 +716,22 @@ bool vtkSynchronizedRenderers::vtkRawImage::PushToViewport(vtkRenderer* ren)
     return false;
   }
 
-  double viewport[4];
-  ren->GetViewport(viewport);
-  const int* window_size = ren->GetVTKWindow()->GetActualSize();
+  int size[2], low_point[2];
+  ren->GetTiledSizeAndOrigin(&size[0], &size[1], &low_point[0], &low_point[1]);
+  vtkLogF(TRACE, "GetTiledSizeAndOrigin(w=%d, h=%d, x=%d, y=%d)", size[0], size[1], low_point[0],
+    low_point[1]);
+  if (size[0] <= 0 || size[1] <= 0)
+  {
+    vtkGenericWarningMacro("Viewport empty. Cannot push to screen.");
+    return false;
+  }
 
   vtkOpenGLState *ostate =
     static_cast<vtkOpenGLRenderWindow *>(ren->GetVTKWindow())->GetState();
   ostate->vtkglEnable(GL_SCISSOR_TEST);
-  ostate->vtkglViewport(
-    static_cast<GLint>(viewport[0]*window_size[0]),
-    static_cast<GLint>(viewport[1]*window_size[1]),
-    static_cast<GLsizei>((viewport[2]-viewport[0])*window_size[0]),
-    static_cast<GLsizei>((viewport[3]-viewport[1])*window_size[1]));
-  ostate->vtkglScissor(
-    static_cast<GLint>(viewport[0]*window_size[0]),
-    static_cast<GLint>(viewport[1]*window_size[1]),
-    static_cast<GLsizei>((viewport[2]-viewport[0])*window_size[0]),
-    static_cast<GLsizei>((viewport[3]-viewport[1])*window_size[1]));
+  ostate->vtkglViewport(low_point[0], low_point[1], size[0], size[1]);
+  ostate->vtkglScissor(low_point[0], low_point[1], size[0], size[1]);
+
   ren->Clear();
   return this->PushToFrameBuffer(ren);
 }
@@ -725,22 +749,23 @@ bool vtkSynchronizedRenderers::vtkRawImage::PushToFrameBuffer(vtkRenderer *ren)
   vtkOpenGLRenderUtilities::MarkDebugEvent("vtkRawImage::PushToViewport begin");
   vtkOpenGLRenderWindow *renWin = vtkOpenGLRenderWindow::SafeDownCast(ren->GetVTKWindow());
   vtkOpenGLState *ostate = renWin->GetState();
-  vtkOpenGLState::ScopedglBlendFuncSeparate bfsaver(ostate);
 
   // framebuffers have their color premultiplied by alpha.
+  vtkOpenGLState::ScopedglBlendFuncSeparate bfsaver(ostate);
   ostate->vtkglEnable(GL_BLEND);
   ostate->vtkglBlendFuncSeparate(GL_ONE,GL_ONE_MINUS_SRC_ALPHA,
     GL_ONE,GL_ONE_MINUS_SRC_ALPHA);
 
-  // always draw the entire image on the entire viewport
-  vtkOpenGLState::ScopedglViewport vsaver(ostate);
-  int renSize[2];
-  ren->GetTiledSize(renSize, renSize + 1);
-  ostate->vtkglViewport(0, 0, renSize[0], renSize[1]);
 
-  renWin->DrawPixels(this->GetWidth(), this->GetHeight(),
-    this->Data->GetNumberOfComponents(), VTK_UNSIGNED_CHAR,
-    this->GetRawPtr()->GetVoidPointer(0));
+  int size[2], low_point[2];
+  ren->GetTiledSizeAndOrigin(&size[0], &size[1], &low_point[0], &low_point[1]);
+
+  renWin->DrawPixels(
+      low_point[0], low_point[1], low_point[0] + size[0]-1, low_point[1] + size[1]-1,
+      0, 0, this->GetWidth()-1, this->GetHeight()-1,
+      this->GetWidth(), this->GetHeight(),
+      this->Data->GetNumberOfComponents(), VTK_UNSIGNED_CHAR,
+      this->GetRawPtr()->GetVoidPointer(0));
 
   vtkOpenGLStaticCheckErrorMacro("failed after PushToFrameBuffer");
   vtkOpenGLRenderUtilities::MarkDebugEvent("vtkRawImage::PushToViewport end");
@@ -778,7 +803,8 @@ bool vtkSynchronizedRenderers::vtkRawImage::Capture(vtkRenderer* ren)
     viewport_in_pixels[0], viewport_in_pixels[1],
     viewport_in_pixels[2], viewport_in_pixels[3],
     ren->GetRenderWindow()->GetDoubleBuffer()? 0 : 1,
-    this->GetRawPtr());
+    this->GetRawPtr(),
+    /*right=*/ ren->GetActiveCamera()->GetLeftEye()==0);
 
   // if selecting then pass the processed pixel buffer
   vtkHardwareSelector *sel = ren->GetSelector();

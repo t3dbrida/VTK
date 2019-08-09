@@ -25,6 +25,7 @@
 #include "vtkPointData.h"
 #include "vtkSetGet.h"
 #include "vtkSmartPointer.h"
+#include "vtkStreamingDemandDrivenPipeline.h"
 
 #include <vector>
 
@@ -124,11 +125,38 @@ void ParticlePathFilterInternal::Finalize()
            << "\n" << "): " <<" no lines in the output"<< "\n\n";
     return;
   }
-  for(unsigned int i=0; i<this->Paths.size(); i++)
+  // if we have a path that leaves a process and than comes back we need
+  // to add that as separate cells. we use the simulation time step to check
+  // on that assuming that the particle path filter is updated every time step.
+  vtkIntArray* sourceSimulationTimeStepArray = vtkArrayDownCast<vtkIntArray>(
+    this->Filter->Output->GetPointData()->GetArray("SimulationTimeStep"));
+  vtkNew<vtkIdList> tmpIds;
+  for(size_t i=0; i<this->Paths.size(); i++)
   {
     if(this->Paths[i]->GetNumberOfIds()>1)
     {
-      outLines->InsertNextCell(this->Paths[i]);
+      vtkIdList* ids = this->Paths[i];
+      int previousTimeStep = sourceSimulationTimeStepArray->GetTypedComponent(ids->GetId(0), 0);
+      tmpIds->Reset();
+      tmpIds->InsertNextId(ids->GetId(0));
+      for (vtkIdType j=1; j<ids->GetNumberOfIds(); j++)
+      {
+        int currentTimeStep = sourceSimulationTimeStepArray->GetTypedComponent(ids->GetId(j), 0);
+        if (currentTimeStep != (previousTimeStep + 1))
+        {
+          if (tmpIds->GetNumberOfIds() > 1)
+          {
+            outLines->InsertNextCell(tmpIds);
+          }
+          tmpIds->Reset();
+        }
+        tmpIds->InsertNextId(ids->GetId(j));
+        previousTimeStep = currentTimeStep;
+      }
+      if (tmpIds->GetNumberOfIds() > 1)
+      {
+        outLines->InsertNextCell(tmpIds);
+      }
     }
   }
 }
@@ -207,4 +235,17 @@ void vtkParticlePathFilter::AppendToExtraPointDataArrays(
 void vtkParticlePathFilter::Finalize()
 {
   this->It.Finalize();
+}
+
+int vtkParticlePathFilter::RequestInformation(
+  vtkInformation *request, vtkInformationVector **inputVector, vtkInformationVector *outputVector)
+{
+  vtkInformation *outInfo = outputVector->GetInformationObject(0);
+
+  // The output data of this filter has no time associated with it.  It is the
+  // result of computations that happen over all time.
+  outInfo->Remove(vtkStreamingDemandDrivenPipeline::TIME_STEPS());
+  outInfo->Remove(vtkStreamingDemandDrivenPipeline::TIME_RANGE());
+
+  return this->Superclass::RequestInformation(request, inputVector, outputVector);
 }

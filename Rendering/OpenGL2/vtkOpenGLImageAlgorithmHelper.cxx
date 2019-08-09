@@ -24,9 +24,7 @@
 #include "vtkOpenGLShaderCache.h"
 #include "vtkOpenGLState.h"
 #include "vtk_glew.h"
-#include "vtkPixelTransfer.h"
 #include "vtkPointData.h"
-#include "vtkPixelBufferObject.h"
 #include "vtkShaderProgram.h"
 #include "vtkOpenGLVertexArrayObject.h"
 
@@ -74,7 +72,7 @@ void vtkOpenGLImageAlgorithmHelper::Execute(
   if (!this->RenderWindow)
   {
     this->SetRenderWindow(vtkRenderWindow::New());
-    this->RenderWindow->SetOffScreenRendering(true);
+    this->RenderWindow->SetShowWindow(false);
     this->RenderWindow->UnRegister(this);
   }
   this->RenderWindow->Initialize();
@@ -131,10 +129,12 @@ void vtkOpenGLImageAlgorithmHelper::Execute(
 
   vtkNew<vtkOpenGLFramebufferObject> fbo;
   fbo->SetContext(this->RenderWindow);
+  fbo->SaveCurrentBindingsAndBuffers();
+  fbo->Bind();
   vtkOpenGLState *ostate = this->RenderWindow->GetState();
 
   outputTex->Create2D(outDims[0], outDims[1], 4, VTK_FLOAT, false);
-  fbo->AddColorAttachment(fbo->GetDrawMode(), 0, outputTex);
+  fbo->AddColorAttachment(0, outputTex);
 
   // because the same FBO can be used in another pass but with several color
   // buffers, force this pass to use 1, to avoid side effects from the
@@ -145,6 +145,8 @@ void vtkOpenGLImageAlgorithmHelper::Execute(
   ostate->vtkglViewport(0, 0, outDims[0], outDims[1]);
   ostate->vtkglScissor(0, 0, outDims[0], outDims[1]);
   ostate->vtkglDisable(GL_DEPTH_TEST);
+  ostate->vtkglDepthMask(false);
+  ostate->vtkglClearColor(0.0,0.0,0.0,1.0);
 
   vtkShaderProgram *prog =
     this->RenderWindow->GetShaderCache()->ReadyShaderProgram(
@@ -165,33 +167,37 @@ void vtkOpenGLImageAlgorithmHelper::Execute(
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
+  float *ftmp = new float[outDims[0]*outDims[1]*4];
+  int outNumComponents = outImage->GetNumberOfScalarComponents();
+
   // for each zslice in the output
-  vtkPixelExtent outputPixelExt(outExt);
   for (int i = outExt[4]; i <= outExt[5]; i++)
   {
     cb->UpdateShaderUniforms(prog, i);
     this->Quad.Program->SetUniformf("zPos", (i - outExt[4] + 0.5) / (outDims[2]));
-
+    glClear(GL_COLOR_BUFFER_BIT);
     fbo->RenderQuad(
       0, outDims[0] - 1,
       0, outDims[1] - 1,
       this->Quad.Program, this->Quad.VAO);
+    glReadPixels(0,0,outDims[0], outDims[1], GL_RGBA, GL_FLOAT, ftmp);
 
-    vtkPixelBufferObject *outPBO = outputTex->Download();
-
-    vtkPixelTransfer::Blit<float, double>(
-      outputPixelExt,
-      outputPixelExt,
-      outputPixelExt,
-      outputPixelExt,
-      4,
-      (float*)outPBO->MapPackedBuffer(),
-      outImage->GetPointData()->GetScalars()->GetNumberOfComponents(),
-      static_cast<double *>(outImage->GetScalarPointer(outExt[0], outExt[2], i)));
-
-    outPBO->UnmapPackedBuffer();
-    outPBO->Delete();
+    double *outP = static_cast<double *>(outImage->GetScalarPointer(outExt[0], outExt[2], i));
+    float *tmpP = ftmp;
+    for (int j = 0; j < outDims[1]*outDims[0]; ++j)
+    {
+      for (int c = 0; c < outNumComponents; ++c)
+      {
+        outP[c] = tmpP[c];
+      }
+      tmpP += 4;
+      outP += outNumComponents;
+    }
   }
+
+  inputTex->Deactivate();
+  fbo->RestorePreviousBindingsAndBuffers();
+  delete [] ftmp;
 }
 
 // ----------------------------------------------------------------------------

@@ -1961,6 +1961,10 @@ void vtkLabelHierarchyBuildCoincidenceMap(
 // in the highest possible level of octree which is not already full.
 void vtkLabelHierarchy::ComputeHierarchy()
 {
+  if (this->CoincidentPoints != nullptr)
+  {
+    this->CoincidentPoints->Clear();
+  }
   delete this->Impl->Hierarchy3;
   delete this->Impl->Hierarchy2;
   this->Impl->ActualDepth = 0;
@@ -2548,4 +2552,63 @@ void vtkLabelHierarchy::Implementation::SmudgeAnchor3( HierarchyCursor3& cursor,
   (void)cursor;
   (void)anchor;
   (void)x;
+}
+
+void vtkLabelHierarchy::GetAnchorFrustumPlanes(double frustumPlanes[24], vtkRenderer* ren, vtkCoordinate* anchorTransform)
+{
+  // We set infinitely large frustum (disable clipping) for all coordinate systems other than world
+  // and normalized coordinate systems.
+  // To improve performance, accurate view frustum could be computed for all other coordinate systems, too
+  // (such as DISPLAY, VIEWPORT, VIEW, POSE - see vtkCoordinate).
+  int coordinateSystem = anchorTransform->GetCoordinateSystem();
+
+  if (coordinateSystem == VTK_WORLD)
+  {
+    vtkCamera* cam = ren->GetActiveCamera();
+    if (cam)
+    {
+      cam->GetFrustumPlanes(ren->GetTiledAspectRatio(), frustumPlanes);
+      return;
+    }
+  }
+
+  double minPosition = VTK_DOUBLE_MAX;
+  double maxPosition = VTK_DOUBLE_MAX;
+
+  if (coordinateSystem == VTK_NORMALIZED_DISPLAY
+    || coordinateSystem == VTK_NORMALIZED_VIEWPORT)
+  {
+    minPosition = 0.0;
+    maxPosition = 1.0;
+  }
+
+  frustumPlanes[0] = 1.0;
+  frustumPlanes[1] = 0.0;
+  frustumPlanes[2] = 0.0;
+  frustumPlanes[3] = minPosition;
+
+  frustumPlanes[4] = -1.0;
+  frustumPlanes[5] = 0.0;
+  frustumPlanes[6] = 0.0;
+  frustumPlanes[7] = maxPosition;
+
+  frustumPlanes[8] = 0.0;
+  frustumPlanes[9] = 1.0;
+  frustumPlanes[10] = 0.0;
+  frustumPlanes[11] = minPosition;
+
+  frustumPlanes[12] = 0.0;
+  frustumPlanes[13] = -1.0;
+  frustumPlanes[14] = 0.0;
+  frustumPlanes[15] = maxPosition;
+
+  frustumPlanes[16] = 0.0;
+  frustumPlanes[17] = 0.0;
+  frustumPlanes[18] = -1.0;
+  frustumPlanes[19] = VTK_DOUBLE_MAX;
+
+  frustumPlanes[20] = 0.0;
+  frustumPlanes[21] = 0.0;
+  frustumPlanes[22] = 1.0;
+  frustumPlanes[23] = VTK_DOUBLE_MAX;
 }

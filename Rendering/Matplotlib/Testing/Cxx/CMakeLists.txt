@@ -1,12 +1,8 @@
-include(vtkGhostscript)
+include(../../../../CMake/vtkGhostscript.cmake)
 
 # Check that matplotlib is available
-include(FindPythonModules)
+include(../../../../CMake/FindPythonModules.cmake)
 find_python_module(matplotlib MATPLOTLIB_FOUND)
-
-if(NOT MATPLOTLIB_FOUND)
-  message(STATUS "Matplotlib not found! MathText rendering will not be available until it is installed. Disabling tests.")
-endif()
 
 if(MATPLOTLIB_FOUND)
   # add tests that require data
@@ -37,5 +33,5 @@ if(MATPLOTLIB_FOUND)
     RENDERING_FACTORY)
 endif()
 
-include(vtkTestingGL2PS)
+include(../../../../CMake/vtkTestingGL2PS.cmake)
 vtk_add_gl2ps_test_cxx(${GL2PSTests})

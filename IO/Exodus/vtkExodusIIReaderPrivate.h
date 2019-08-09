@@ -1,5 +1,7 @@
 #ifndef vtkExodusIIReaderPrivate_h
 #define vtkExodusIIReaderPrivate_h
+#ifndef __VTK_WRAP__
+#ifndef VTK_WRAPPING_CXX
 
 // Do not include this file directly. It is only for use
 // from inside the ExodusII reader and its descendants.
@@ -540,7 +542,7 @@ protected:
   /** Fill the output grid's point coordinates array.
     * Returns 1 on success, 0 on failure.
     * Failure occurs when the Exodus library is unable to read the point
-    * coordindates array. This can be caused when there is not enough memory
+    * coordinates array. This can be caused when there is not enough memory
     * or there is a file I/O problem.
     */
   int AssembleOutputPoints( vtkIdType timeStep,
@@ -871,5 +873,7 @@ private:
   void operator = ( const vtkExodusIIReaderPrivate& ) = delete;
 };
 
+#endif
+#endif
 #endif // vtkExodusIIReaderPrivate_h
 // VTK-HeaderTest-Exclude: vtkExodusIIReaderPrivate.h

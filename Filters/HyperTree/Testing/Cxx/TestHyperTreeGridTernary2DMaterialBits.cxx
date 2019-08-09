@@ -24,6 +24,7 @@
 #include "vtkCellData.h"
 #include "vtkContourFilter.h"
 #include "vtkDataSetMapper.h"
+#include "vtkHyperTreeGridToDualGrid.h"
 #include "vtkNew.h"
 #include "vtkPolyData.h"
 #include "vtkPolyDataMapper.h"
@@ -43,10 +44,8 @@ int TestHyperTreeGridTernary2DMaterialBits( int argc, char* argv[] )
   vtkNew<vtkHyperTreeGridSource> htGrid;
   int maxLevel = 6;
   htGrid->SetMaximumLevel( maxLevel );
-  htGrid->SetGridSize( 2, 3, 1 );
+  htGrid->SetDimensions( 3, 4, 1 ); //Dimension 2 in xy plane GridCell 2, 3, 1
   htGrid->SetGridScale( 1.5, 1., .7 );
-  htGrid->SetDimension( 2 );
-  htGrid->SetOrientation( 2 ); // in xy plane
   htGrid->SetBranchFactor( 3 );
   const std::string descriptor = "RRRR.|" // Level 0 refinement
     "..R...... RRRRRRRRR R........ R........|..R...... ........R ......RRR ......RRR ..R..R..R RRRRRRRRR R..R..R.. ......... ......... ......... ......... .........|......... ......... ......... ......... ......... ......... ......... ......... ........R ..R..R..R ......... ......RRR ......R.. ......... RRRRRRRRR R..R..R.. ......... ......... ......... ......... ......... ......... .........|......... ......... ......... ......... ......... ......... ......... ......... ......... RRRRRRRRR ......... ......... ......... ......... ......... ......... ......... ......... ......... .........|......... ......... ......... ......... ......... ......... ......... ......... ........." ;
@@ -58,14 +57,18 @@ int TestHyperTreeGridTernary2DMaterialBits( int argc, char* argv[] )
   zero->InsertNextValue( 3 );
   zero->InsertNextValue( 4 );
   zero->InsertNextValue( 5 );
-  htGrid->UseMaterialMaskOn();
+  htGrid->UseMaskOn();
   htGrid->SetLevelZeroMaterialIndex( zero );
   vtkBitArray* desc = htGrid->ConvertDescriptorStringToBitArray( descriptor );
-  vtkBitArray* mat = htGrid->ConvertMaterialMaskStringToBitArray( materialMask );
+  vtkBitArray* mat = htGrid->ConvertMaskStringToBitArray( materialMask );
   htGrid->SetDescriptorBits( desc );
   desc->Delete();
-  htGrid->SetMaterialMaskBits( mat );
+  htGrid->SetMaskBits( mat );
   mat->Delete();
+
+  // DualGrid
+  vtkNew<vtkHyperTreeGridToDualGrid> dualFilter;
+  dualFilter->SetInputConnection( htGrid->GetOutputPort() );
 
   // Geometry
   vtkNew<vtkHyperTreeGridGeometry> geometry;
@@ -77,7 +80,7 @@ int TestHyperTreeGridTernary2DMaterialBits( int argc, char* argv[] )
   vtkNew<vtkContourFilter> contour;
   int nContours = 3;
   contour->SetNumberOfContours( nContours );
-  contour->SetInputConnection( htGrid->GetOutputPort() );
+  contour->SetInputConnection( dualFilter->GetOutputPort() );
   double resolution = ( maxLevel - 1 ) / ( nContours + 1. );
   double isovalue = resolution;
   for ( int i = 0; i < nContours; ++ i, isovalue += resolution )
@@ -97,7 +100,7 @@ int TestHyperTreeGridTernary2DMaterialBits( int argc, char* argv[] )
   mapper3->SetInputConnection( contour->GetOutputPort() );
   mapper3->ScalarVisibilityOff();
   vtkNew<vtkDataSetMapper> mapper4;
-  mapper4->SetInputConnection( htGrid->GetOutputPort() );
+  mapper4->SetInputConnection( dualFilter->GetOutputPort() );
   mapper4->ScalarVisibilityOff();
 
   // Actors

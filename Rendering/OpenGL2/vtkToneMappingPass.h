@@ -22,7 +22,7 @@
  * - Reinhard: maps the color using formula: x/(x+1)
  * - Exponential: maps the colors using a coefficient and the formula: 1-exp(-a*x)
  *
- * Advanced tone maping like Reinhard or Exponential can be useful when several lights
+ * Advanced tone mapping like Reinhard or Exponential can be useful when several lights
  * are added to the renderer.
  *
  * @sa
@@ -44,6 +44,7 @@ class VTKRENDERINGOPENGL2_EXPORT vtkToneMappingPass : public vtkImageProcessingP
 public:
   static vtkToneMappingPass* New();
   vtkTypeMacro(vtkToneMappingPass, vtkImageProcessingPass);
+  void PrintSelf(ostream& os, vtkIndent indent) override;
 
   /**
    * Perform rendering according to a render state.

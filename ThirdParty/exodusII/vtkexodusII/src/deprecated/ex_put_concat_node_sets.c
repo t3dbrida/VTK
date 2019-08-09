@@ -34,7 +34,6 @@
  */
 
 #include "exodusII.h" // for ex_set_specs, void_int, etc
-#include <stddef.h>   // for NULL
 
 /*!
 \deprecated Use ex_put_concat_sets()(exoid, EX_NODE_SET, &set_specs)
@@ -47,8 +46,7 @@ node sets. ``Concatenated node sets'' refers to the arrays required to
 define all of the node sets (ID array, counts arrays, pointers arrays,
 node list array, and distribution factors array) as described in
 Section 3.10 on page 11. Writing concatenated node sets is more
-efficient than writing individual node sets. See #Efficiency for a
-discussion of efficiency issues.
+efficient than writing individual node sets.
 
 Because the distribution factors are floating point values, the
 application code must declare the array passed to be the appropriate

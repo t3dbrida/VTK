@@ -49,6 +49,7 @@ hid_t H5E_ATOM_g           = FAIL;      /* Object atom */
 hid_t H5E_NONE_MAJOR_g     = FAIL;      /* No error */
 hid_t H5E_SLIST_g          = FAIL;      /* Skip Lists */
 hid_t H5E_ARGS_g           = FAIL;      /* Invalid arguments to routine */
+hid_t H5E_CONTEXT_g        = FAIL;      /* API Context */
 hid_t H5E_EARRAY_g         = FAIL;      /* Extensible Array */
 hid_t H5E_PLINE_g          = FAIL;      /* Data filters */
 hid_t H5E_ERROR_g          = FAIL;      /* Error API */
@@ -178,7 +179,8 @@ hid_t H5E_CANTRESIZE_g     = FAIL;      /* Unable to resize a metadata cache ent
 hid_t H5E_CANTDEPEND_g     = FAIL;      /* Unable to create a flush dependency */
 hid_t H5E_CANTUNDEPEND_g   = FAIL;      /* Unable to destroy a flush dependency */
 hid_t H5E_CANTNOTIFY_g     = FAIL;      /* Unable to notify object about action */
-hid_t H5E_LOGFAIL_g        = FAIL;      /* Failure in the cache logging framework */
+hid_t H5E_LOGGING_g        = FAIL;      /* Failure in the cache logging framework */
+hid_t H5E_LOGFAIL_g        = FAIL;      /* old H5E_LOGGING_g (maintained for binary compatibility) */
 hid_t H5E_CANTCORK_g       = FAIL;      /* Unable to cork an object */
 hid_t H5E_CANTUNCORK_g     = FAIL;      /* Unable to uncork an object */
 
@@ -193,6 +195,8 @@ hid_t H5E_CANTSORT_g       = FAIL;      /* Can't sort objects */
 hid_t H5E_MPI_g            = FAIL;      /* Some MPI function failed */
 hid_t H5E_MPIERRSTR_g      = FAIL;      /* MPI Error String */
 hid_t H5E_CANTRECV_g       = FAIL;      /* Can't receive data */
+hid_t H5E_CANTGATHER_g     = FAIL;      /* Can't gather data */
+hid_t H5E_NO_INDEPENDENT_g = FAIL;      /* Can't perform independent IO */
 
 /* Dataspace errors */
 hid_t H5E_CANTCLIP_g       = FAIL;      /* Can't clip hyperslab region */

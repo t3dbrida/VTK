@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import vtk
+from math import cos, sin, pi
 from vtk.util.misc import vtkGetDataRoot
 VTK_DATA_ROOT = vtkGetDataRoot()
 
@@ -22,19 +23,24 @@ iren.SetRenderWindow(renWin)
 
 # create pipeline
 #
-v16 = vtk.vtkVolume16Reader()
-v16.SetDataDimensions(64, 64)
-v16.GetOutput().SetOrigin(0.0, 0.0, 0.0)
-v16.SetDataByteOrderToLittleEndian()
-v16.SetFilePrefix(VTK_DATA_ROOT + "/Data/headsq/quarter")
-v16.SetImageRange(1, 93)
-v16.SetDataSpacing(3.2, 3.2, 1.5)
-v16.Update()
+angle = pi/2
+direction = [
+  -1, 0, 0,
+  0, cos(angle), -sin(angle),
+  0, -sin(angle), -cos(angle)
+]
+reader = vtk.vtkImageReader2()
+reader.SetDataScalarTypeToUnsignedShort()
+reader.SetFilePrefix(VTK_DATA_ROOT + "/Data/headsq/quarter")
+reader.SetDataExtent(0, 63, 0, 63, 1, 93)
+reader.SetDataSpacing(3.2, 3.2, 1.5)
+reader.SetDataOrigin(0.0, 0.0, 0.0)
+reader.SetDataDirection(direction)
 
 iso = vtk.vtkImageMarchingCubes()
-iso.SetInputConnection(v16.GetOutputPort())
+iso.SetInputConnection(reader.GetOutputPort())
 iso.SetValue(0, 1150)
-iso.SetInputMemoryLimit(1000)
+iso.SetInputMemoryLimit(100)
 
 isoMapper = vtk.vtkPolyDataMapper()
 isoMapper.SetInputConnection(iso.GetOutputPort())
@@ -45,7 +51,7 @@ isoActor.SetMapper(isoMapper)
 isoActor.GetProperty().SetColor(GetRGBColor('antique_white'))
 
 outline = vtk.vtkOutlineFilter()
-outline.SetInputConnection(v16.GetOutputPort())
+outline.SetInputConnection(reader.GetOutputPort())
 
 outlineMapper = vtk.vtkPolyDataMapper()
 outlineMapper.SetInputConnection(outline.GetOutputPort())
@@ -61,13 +67,7 @@ ren1.AddActor(isoActor)
 ren1.SetBackground(0.2, 0.3, 0.4)
 
 renWin.SetSize(200, 200)
-
 ren1.ResetCamera()
-ren1.GetActiveCamera().Elevation(90)
-ren1.GetActiveCamera().SetViewUp(0, 0, -1)
-ren1.GetActiveCamera().Azimuth(180)
-ren1.ResetCameraClippingRange()
-
 renWin.Render()
 
 # render the image

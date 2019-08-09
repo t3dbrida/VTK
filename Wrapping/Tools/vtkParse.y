@@ -104,6 +104,7 @@ to the more usual form y x; without parentheses.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #define yyerror(a) print_parser_error(a, NULL, 0)
 #define yywrap() 1
 
@@ -113,9 +114,9 @@ to the more usual form y x; without parentheses.
 #endif
 #define YYINCLUDED_STDLIB_H
 
-/* Borland and MSVC do not define __STDC__ properly. */
+/* MSVC does not define __STDC__ properly. */
 #if !defined(__STDC__)
-# if defined(_MSC_VER) || (defined(__BORLANDC__) && (__BORLANDC__ < 0x660))
+# if defined(_MSC_VER)
 #  define __STDC__ 1
 # endif
 #endif
@@ -125,59 +126,10 @@ to the more usual form y x; without parentheses.
 # pragma warning (disable: 4127) /* conditional expression is constant */
 # pragma warning (disable: 4244) /* conversion to smaller integer type */
 #endif
-#if defined(__BORLANDC__) && (__BORLANDC__ < 0x660)
-# pragma warn -8004 /* assigned a value that is never used */
-# pragma warn -8008 /* conditional is always true */
-# pragma warn -8066 /* unreachable code */
-#endif
-
-/* Map from the type anonymous_enumeration in vtkType.h to the
-   VTK wrapping type system number for the type. */
 
 #include "vtkParse.h"
 #include "vtkParsePreprocess.h"
 #include "vtkParseData.h"
-#include "vtkType.h"
-
-static unsigned int vtkParseTypeMap[] =
-  {
-  VTK_PARSE_VOID,               /* VTK_VOID                0 */
-  0,                            /* VTK_BIT                 1 */
-  VTK_PARSE_CHAR,               /* VTK_CHAR                2 */
-  VTK_PARSE_UNSIGNED_CHAR,      /* VTK_UNSIGNED_CHAR       3 */
-  VTK_PARSE_SHORT,              /* VTK_SHORT               4 */
-  VTK_PARSE_UNSIGNED_SHORT,     /* VTK_UNSIGNED_SHORT      5 */
-  VTK_PARSE_INT,                /* VTK_INT                 6 */
-  VTK_PARSE_UNSIGNED_INT,       /* VTK_UNSIGNED_INT        7 */
-  VTK_PARSE_LONG,               /* VTK_LONG                8 */
-  VTK_PARSE_UNSIGNED_LONG,      /* VTK_UNSIGNED_LONG       9 */
-  VTK_PARSE_FLOAT,              /* VTK_FLOAT              10 */
-  VTK_PARSE_DOUBLE,             /* VTK_DOUBLE             11 */
-  VTK_PARSE_ID_TYPE,            /* VTK_ID_TYPE            12 */
-  VTK_PARSE_STRING,             /* VTK_STRING             13 */
-  0,                            /* VTK_OPAQUE             14 */
-  VTK_PARSE_SIGNED_CHAR,        /* VTK_SIGNED_CHAR        15 */
-  VTK_PARSE_LONG_LONG,          /* VTK_LONG_LONG          16 */
-  VTK_PARSE_UNSIGNED_LONG_LONG, /* VTK_UNSIGNED_LONG_LONG 17 */
-  VTK_PARSE___INT64,            /* VTK___INT64            18 */
-  VTK_PARSE_UNSIGNED___INT64,   /* VTK_UNSIGNED___INT64   19 */
-  0,                            /* VTK_VARIANT            20 */
-  0,                            /* VTK_OBJECT             21 */
-  VTK_PARSE_UNICODE_STRING      /* VTK_UNICODE_STRING     22 */
-  };
-
-/* Define some constants to simplify references to the table lookup in
-   the primitive_type production rule code.  */
-#define VTK_PARSE_INT8 vtkParseTypeMap[VTK_TYPE_INT8]
-#define VTK_PARSE_UINT8 vtkParseTypeMap[VTK_TYPE_UINT8]
-#define VTK_PARSE_INT16 vtkParseTypeMap[VTK_TYPE_INT16]
-#define VTK_PARSE_UINT16 vtkParseTypeMap[VTK_TYPE_UINT16]
-#define VTK_PARSE_INT32 vtkParseTypeMap[VTK_TYPE_INT32]
-#define VTK_PARSE_UINT32 vtkParseTypeMap[VTK_TYPE_UINT32]
-#define VTK_PARSE_INT64 vtkParseTypeMap[VTK_TYPE_INT64]
-#define VTK_PARSE_UINT64 vtkParseTypeMap[VTK_TYPE_UINT64]
-#define VTK_PARSE_FLOAT32 vtkParseTypeMap[VTK_TYPE_FLOAT32]
-#define VTK_PARSE_FLOAT64 vtkParseTypeMap[VTK_TYPE_FLOAT64]
 
 /* Define the kinds of [[attributes]] to collect */
 enum
@@ -204,6 +156,9 @@ int            parseDebug;
 /* the "preprocessor" */
 PreprocessInfo *preprocessor = NULL;
 
+/* whether to pre-define platform-specific macros */
+int            PredefinePlatformMacros = 1;
+
 /* include dirs specified on the command line */
 int            NumberOfIncludeDirectories= 0;
 const char   **IncludeDirectories;
@@ -211,6 +166,14 @@ const char   **IncludeDirectories;
 /* macros specified on the command line */
 int            NumberOfDefinitions = 0;
 const char   **Definitions;
+
+/* include specified on the command line */
+int            NumberOfMacroIncludes = 0;
+const char   **MacroIncludes;
+
+/* for dumping diagnostics about macros */
+int            DumpMacros = 0;
+const char    *DumpFileName = NULL;
 
 /* options that can be set by the programs that use the parser */
 int            Recursive = 0;
@@ -240,8 +203,6 @@ void output_function(void);
 void reject_function(void);
 void set_return(FunctionInfo *func, unsigned int type,
                 const char *typeclass, int count);
-void add_parameter(FunctionInfo *func, unsigned int type,
-                   const char *classname, int count);
 void add_template_parameter(unsigned int datatype,
                             unsigned int extra, const char *funcSig);
 void add_using(const char *name, int is_namespace);
@@ -252,7 +213,6 @@ void end_enum(void);
 unsigned int guess_constant_type(const char *value);
 void add_constant(const char *name, const char *value,
                   unsigned int type, const char *typeclass, int global);
-const char *add_const_scope(const char *name);
 void prepend_scope(char *cp, const char *arg);
 unsigned int guess_id_type(const char *cp);
 unsigned int add_indirection(unsigned int tval, unsigned int ptr);
@@ -263,11 +223,6 @@ void handle_function_type(ValueInfo *param, const char *name,
                           const char *funcSig);
 void handle_attribute(const char *att, int pack);
 void add_legacy_parameter(FunctionInfo *func, ValueInfo *param);
-
-void outputSetVectorMacro(const char *var, unsigned int paramType,
-                          const char *typeText, int n);
-void outputGetVectorMacro(const char *var, unsigned int paramType,
-                          const char *typeText, int n);
 
 
 /*----------------------------------------------------------------
@@ -358,23 +313,6 @@ static const char *vtkstrcat4(const char *str1, const char *str2,
   cp[2] = str3;
   cp[3] = str4;
   return vtkstrncat(4, cp);
-}
-
-static const char *vtkstrcat7(const char *str1, const char *str2,
-                              const char *str3, const char *str4,
-                              const char *str5, const char *str6,
-                              const char *str7)
-{
-  const char *cp[7];
-
-  cp[0] = str1;
-  cp[1] = str2;
-  cp[2] = str3;
-  cp[3] = str4;
-  cp[4] = str5;
-  cp[5] = str6;
-  cp[6] = str7;
-  return vtkstrncat(7, cp);
 }
 
 /*----------------------------------------------------------------
@@ -1146,7 +1084,7 @@ void preSig(const char *arg)
     if (n > 0)
     {
       memmove(&signature[n], signature, sigLength);
-      strncpy(signature, arg, n);
+      memmove(signature, arg, n);
       sigLength += n;
     }
     signature[sigLength] = '\0';
@@ -1162,10 +1100,9 @@ void postSig(const char *arg)
     checkSigSize(n);
     if (n > 0)
     {
-      strncpy(&signature[sigLength], arg, n);
+      strncpy(&signature[sigLength], arg, n + 1);
       sigLength += n;
     }
-    signature[sigLength] = '\0';
   }
 }
 
@@ -1818,9 +1755,9 @@ unsigned int add_indirection_to_array(unsigned int type)
    and five from '(' constructor_args ')' in initializer */
 %expect 10
 
-/* Expect 122 reduce/reduce conflicts, these can be cleared by removing
+/* Expect 111 reduce/reduce conflicts, these can be cleared by removing
    either '<' or angle_brackets_sig from constant_expression_item. */
-%expect-rr 122
+%expect-rr 111
 
 /* The parser will shift/reduce values <str> or <integer>, where
    <str> is for IDs and <integer> is for types, modifiers, etc. */
@@ -1955,36 +1892,6 @@ unsigned int add_indirection_to_array(unsigned int type)
 %token SIGNED
 %token UNSIGNED
 
-/* VTK typedef types */
-%token IdType
-%token TypeInt8
-%token TypeUInt8
-%token TypeInt16
-%token TypeUInt16
-%token TypeInt32
-%token TypeUInt32
-%token TypeInt64
-%token TypeUInt64
-%token TypeFloat32
-%token TypeFloat64
-
-/* VTK macros */
-%token SetVector2Macro
-%token SetVector3Macro
-%token SetVector4Macro
-%token SetVector6Macro
-%token GetVector2Macro
-%token GetVector3Macro
-%token GetVector4Macro
-%token GetVector6Macro
-%token SetVectorMacro
-%token GetVectorMacro
-%token ViewportCoordinateMacro
-%token WorldCoordinateMacro
-
-/* VTK special tokens */
-%token VTK_BYTE_SWAP_DECL
-
 %%
 /*
  * Here is the start of the grammar
@@ -2020,7 +1927,6 @@ declaration:
   | function_definition
   | template_declaration
   | explicit_instantiation
-  | declaration_macro
   | id_expression ';'
   | ';'
 
@@ -2159,8 +2065,6 @@ member_declaration:
   | method_definition
   | template_member_declaration
   | explicit_instantiation
-  | declaration_macro
-  | VTK_BYTE_SWAP_DECL ignored_parentheses
   | id_expression ';'
   | ';'
 
@@ -2170,6 +2074,7 @@ template_member_declaration:
   | template_head template_member_declaration
   | template_head alias_declaration
   | template_head variable_declaration
+  | template_head friend_declaration
 
 friend_declaration:
     FRIEND ignored_class
@@ -2595,7 +2500,7 @@ function_nr:
     }
 
 function_trailer_clause:
-    func_cv_qualifier_seq opt_noexcept_specifier opt_ref_qualifier
+    func_cv_qualifier_seq opt_ref_qualifier opt_noexcept_specifier
     func_attribute_specifier_seq opt_trailing_return_type
     virt_specifier_seq opt_body_as_trailer
 
@@ -2625,7 +2530,14 @@ virt_specifier:
     ID
     {
       postSig(" "); postSig($<str>1);
-      if (strcmp($<str>1, "final") == 0) { currentFunction->IsFinal = 1; }
+      if (strcmp($<str>1, "final") == 0)
+      {
+        currentFunction->IsFinal = 1;
+      }
+      else if (strcmp($<str>1, "override") == 0)
+      {
+        currentFunction->IsOverride = 1;
+      }
     }
 
 opt_body_as_trailer:
@@ -2674,11 +2586,11 @@ function_sig:
  */
 
 structor_declaration:
-    structor_sig { closeSig(); }
-    opt_ctor_initializer { openSig(); }
-    function_trailer_clause
+    structor_sig
+    opt_noexcept_specifier
+    func_attribute_specifier_seq
+    virt_specifier_seq
     {
-      postSig(";");
       closeSig();
       if (getType() & VTK_PARSE_VIRTUAL)
       {
@@ -2688,8 +2600,21 @@ structor_declaration:
       {
         currentFunction->IsExplicit = 1;
       }
+      if (getType() & VTK_PARSE_WRAPEXCLUDE)
+      {
+        currentFunction->IsExcluded = 1;
+      }
       currentFunction->Name = $<str>1;
       currentFunction->Comment = vtkstrdup(getComment());
+    }
+    opt_ctor_initializer
+    {
+      openSig();
+    }
+    opt_body_as_trailer
+    {
+      postSig(";");
+      closeSig();
       vtkParseDebug("Parsed func", currentFunction->Name);
     }
 
@@ -3054,17 +2979,6 @@ simple_id:
   | NULLPTR_T { postSig($<str>1); }
   | SIZE_T { postSig($<str>1); }
   | SSIZE_T { postSig($<str>1); }
-  | TypeInt8 { $<str>$ = "vtkTypeInt8"; postSig($<str>$); }
-  | TypeUInt8 { $<str>$ = "vtkTypeUInt8"; postSig($<str>$); }
-  | TypeInt16 { $<str>$ = "vtkTypeInt16"; postSig($<str>$); }
-  | TypeUInt16 { $<str>$ = "vtkTypeUInt16"; postSig($<str>$); }
-  | TypeInt32 { $<str>$ = "vtkTypeInt32"; postSig($<str>$); }
-  | TypeUInt32 { $<str>$ = "vtkTypeUInt32"; postSig($<str>$); }
-  | TypeInt64 { $<str>$ = "vtkTypeInt64"; postSig($<str>$); }
-  | TypeUInt64 { $<str>$ = "vtkTypeUInt64"; postSig($<str>$); }
-  | TypeFloat32 { $<str>$ = "vtkTypeFloat32"; postSig($<str>$); }
-  | TypeFloat64 { $<str>$ = "vtkTypeFloat64"; postSig($<str>$); }
-  | IdType { $<str>$ = "vtkIdType"; postSig($<str>$); }
 
 /*
  * An identifier with no side-effects.
@@ -3205,17 +3119,6 @@ type_name:
   | NULLPTR_T { typeSig($<str>1); $<integer>$ = VTK_PARSE_NULLPTR_T; }
   | SSIZE_T { typeSig($<str>1); $<integer>$ = VTK_PARSE_SSIZE_T; }
   | SIZE_T { typeSig($<str>1); $<integer>$ = VTK_PARSE_SIZE_T; }
-  | TypeInt8 { typeSig("vtkTypeInt8"); $<integer>$ = VTK_PARSE_INT8; }
-  | TypeUInt8 { typeSig("vtkTypeUInt8"); $<integer>$ = VTK_PARSE_UINT8; }
-  | TypeInt16 { typeSig("vtkTypeInt16"); $<integer>$ = VTK_PARSE_INT16; }
-  | TypeUInt16 { typeSig("vtkTypeUInt16"); $<integer>$ = VTK_PARSE_UINT16; }
-  | TypeInt32 { typeSig("vtkTypeInt32"); $<integer>$ = VTK_PARSE_INT32; }
-  | TypeUInt32 { typeSig("vtkTypeUInt32"); $<integer>$ = VTK_PARSE_UINT32; }
-  | TypeInt64 { typeSig("vtkTypeInt64"); $<integer>$ = VTK_PARSE_INT64; }
-  | TypeUInt64 { typeSig("vtkTypeUInt64"); $<integer>$ = VTK_PARSE_UINT64; }
-  | TypeFloat32 { typeSig("vtkTypeFloat32"); $<integer>$ = VTK_PARSE_FLOAT32; }
-  | TypeFloat64 { typeSig("vtkTypeFloat64"); $<integer>$ = VTK_PARSE_FLOAT64; }
-  | IdType { typeSig("vtkIdType"); $<integer>$ = VTK_PARSE_ID_TYPE; }
 
 primitive_type:
     AUTO   { postSig("auto "); $<integer>$ = 0; }
@@ -3370,159 +3273,6 @@ attribute_sig:
 attribute_token:
     identifier_sig
   | identifier_sig scope_operator_sig identifier_sig
-
-
-/*
- * VTK Macros
- */
-
-declaration_macro:
-  SetVector2Macro '(' simple_id ',' {startSig(); markSig();} store_type ')'
-   {
-   chopSig();
-   outputSetVectorMacro($<str>3, getType(), copySig(), 2);
-   }
-| GetVector2Macro '(' simple_id ',' {startSig(); markSig();} store_type ')'
-   {
-   chopSig();
-   outputGetVectorMacro($<str>3, getType(), copySig(), 2);
-   }
-| SetVector3Macro '(' simple_id ',' {startSig(); markSig();} store_type ')'
-   {
-   chopSig();
-   outputSetVectorMacro($<str>3, getType(), copySig(), 3);
-   }
-| GetVector3Macro  '(' simple_id ',' {startSig(); markSig();} store_type ')'
-   {
-   chopSig();
-   outputGetVectorMacro($<str>3, getType(), copySig(), 3);
-   }
-| SetVector4Macro '(' simple_id ',' {startSig(); markSig();} store_type ')'
-   {
-   chopSig();
-   outputSetVectorMacro($<str>3, getType(), copySig(), 4);
-   }
-| GetVector4Macro  '(' simple_id ',' {startSig(); markSig();} store_type ')'
-   {
-   chopSig();
-   outputGetVectorMacro($<str>3, getType(), copySig(), 4);
-   }
-| SetVector6Macro '(' simple_id ',' {startSig(); markSig();} store_type ')'
-   {
-   chopSig();
-   outputSetVectorMacro($<str>3, getType(), copySig(), 6);
-   }
-| GetVector6Macro  '(' simple_id ',' {startSig(); markSig();} store_type ')'
-   {
-   chopSig();
-   outputGetVectorMacro($<str>3, getType(), copySig(), 6);
-   }
-| SetVectorMacro  '(' simple_id ',' {startSig(); markSig();}
-     store_type ',' INT_LITERAL ')'
-   {
-   const char *typeText;
-   chopSig();
-   typeText = copySig();
-   currentFunction->Macro = "vtkSetVectorMacro";
-   currentFunction->Name = vtkstrcat("Set", $<str>3);
-   currentFunction->Signature =
-     vtkstrcat7("void ", currentFunction->Name, "(", typeText,
-                " a[", $<str>8, "]);");
-   currentFunction->Comment = vtkstrdup(getComment());
-   add_parameter(currentFunction, (VTK_PARSE_POINTER | getType()),
-                 getTypeId(), (int)strtol($<str>8, NULL, 0));
-   set_return(currentFunction, VTK_PARSE_VOID, "void", 0);
-   output_function();
-   }
-| GetVectorMacro  '(' simple_id ',' {startSig();}
-     store_type ',' INT_LITERAL ')'
-   {
-   chopSig();
-   currentFunction->Macro = "vtkGetVectorMacro";
-   currentFunction->Name = vtkstrcat("Get", $<str>3);
-   postSig(" *");
-   postSig(currentFunction->Name);
-   postSig("();");
-   currentFunction->Comment = vtkstrdup(getComment());
-   set_return(currentFunction, (VTK_PARSE_POINTER | getType()),
-              getTypeId(), (int)strtol($<str>8, NULL, 0));
-   output_function();
-   }
-| ViewportCoordinateMacro '(' simple_id ')'
-   {
-     currentFunction->Macro = "vtkViewportCoordinateMacro";
-     currentFunction->Name = vtkstrcat3("Get", $<str>3, "Coordinate");
-     currentFunction->Signature =
-       vtkstrcat3("vtkCoordinate *", currentFunction->Name, "();");
-     currentFunction->Comment = vtkstrdup(getComment());
-     set_return(currentFunction, VTK_PARSE_OBJECT_PTR, "vtkCoordinate", 0);
-     output_function();
-
-     currentFunction->Macro = "vtkViewportCoordinateMacro";
-     currentFunction->Name = vtkstrcat("Set", $<str>3);
-     currentFunction->Signature =
-       vtkstrcat3("void ", currentFunction->Name, "(double, double);");
-     currentFunction->Comment = vtkstrdup(getComment());
-     add_parameter(currentFunction, VTK_PARSE_DOUBLE, "double", 0);
-     add_parameter(currentFunction, VTK_PARSE_DOUBLE, "double", 0);
-     set_return(currentFunction, VTK_PARSE_VOID, "void", 0);
-     output_function();
-
-     currentFunction->Macro = "vtkViewportCoordinateMacro";
-     currentFunction->Name = vtkstrcat("Set", $<str>3);
-     currentFunction->Signature =
-       vtkstrcat3("void ", currentFunction->Name, "(double a[2]);");
-     currentFunction->Comment = vtkstrdup(getComment());
-     add_parameter(currentFunction, VTK_PARSE_DOUBLE_PTR, "double", 2);
-     set_return(currentFunction, VTK_PARSE_VOID, "void", 0);
-     output_function();
-
-     currentFunction->Macro = "vtkViewportCoordinateMacro";
-     currentFunction->Name = vtkstrcat("Get", $<str>3);
-     currentFunction->Signature =
-       vtkstrcat3("double *", currentFunction->Name, "();");
-     currentFunction->Comment = vtkstrdup(getComment());
-     set_return(currentFunction, VTK_PARSE_DOUBLE_PTR, "double", 2);
-     output_function();
-   }
-| WorldCoordinateMacro '(' simple_id ')'
-   {
-     currentFunction->Macro = "vtkWorldCoordinateMacro";
-     currentFunction->Name = vtkstrcat3("Get", $<str>3, "Coordinate");
-     currentFunction->Signature =
-       vtkstrcat3("vtkCoordinate *", currentFunction->Name, "();");
-     currentFunction->Comment = vtkstrdup(getComment());
-     set_return(currentFunction, VTK_PARSE_OBJECT_PTR, "vtkCoordinate", 0);
-     output_function();
-
-     currentFunction->Macro = "vtkWorldCoordinateMacro";
-     currentFunction->Name = vtkstrcat("Set", $<str>3);
-     currentFunction->Signature =
-       vtkstrcat3("void ", currentFunction->Name, "(double, double, double);");
-     currentFunction->Comment = vtkstrdup(getComment());
-     add_parameter(currentFunction, VTK_PARSE_DOUBLE, "double", 0);
-     add_parameter(currentFunction, VTK_PARSE_DOUBLE, "double", 0);
-     add_parameter(currentFunction, VTK_PARSE_DOUBLE, "double", 0);
-     set_return(currentFunction, VTK_PARSE_VOID, "void", 0);
-     output_function();
-
-     currentFunction->Macro = "vtkWorldCoordinateMacro";
-     currentFunction->Name = vtkstrcat("Set", $<str>3);
-     currentFunction->Signature =
-       vtkstrcat3("void ", currentFunction->Name, "(double a[3]);");
-     currentFunction->Comment = vtkstrdup(getComment());
-     add_parameter(currentFunction, VTK_PARSE_DOUBLE_PTR, "double", 3);
-     set_return(currentFunction, VTK_PARSE_VOID, "void", 0);
-     output_function();
-
-     currentFunction->Macro = "vtkWorldCoordinateMacro";
-     currentFunction->Name = vtkstrcat("Get", $<str>3);
-     currentFunction->Signature =
-       vtkstrcat3("double *", currentFunction->Name, "();");
-     currentFunction->Comment = vtkstrdup(getComment());
-     set_return(currentFunction, VTK_PARSE_DOUBLE_PTR, "double", 3);
-     output_function();
-   }
 
 /*
  * Operators
@@ -3683,28 +3433,7 @@ common_bracket_item_no_scope_operator:
   | keyword { postSig($<str>1); postSig(" "); }
   | literal { postSig($<str>1); postSig(" "); }
   | primitive_type
-  | type_name
-    {
-      int c1 = 0;
-      size_t l;
-      const char *cp;
-      chopSig();
-      cp = getSig();
-      l = getSigLength();
-      if (l != 0) { c1 = cp[l-1]; }
-      while (vtkParse_CharType(c1, CPRE_XID) && l != 0)
-      {
-        --l;
-        c1 = cp[l-1];
-      }
-      if (l < 2 || cp[l-1] != ':' || cp[l-2] != ':')
-      {
-        cp = add_const_scope(&cp[l]);
-        resetSig(l);
-        postSig(cp);
-      }
-      postSig(" ");
-    }
+  | type_name { chopSig(); postSig(" "); }
 
 any_bracket_contents:
   | any_bracket_contents any_bracket_item
@@ -3922,6 +3651,11 @@ void start_class(const char *classname, int is_struct_or_union)
     currentClass->ItemType = VTK_UNION_INFO;
   }
 
+  if (getType() & VTK_PARSE_WRAPEXCLUDE)
+  {
+    currentClass->IsExcluded = 1;
+  }
+
   if (classname && classname[0] != '\0')
   {
     /* if name of class being defined contains "::" or "<..>", then skip it */
@@ -3962,6 +3696,8 @@ void start_class(const char *classname, int is_struct_or_union)
   vtkParse_InitFunction(currentFunction);
   startSig();
   clearComment();
+  clearType();
+  clearTypeId();
 }
 
 /* reached the end of a class definition */
@@ -4280,7 +4016,7 @@ unsigned int guess_constant_type(const char *valstring)
     {
       if (is_unsigned)
       {
-        if ((preproc_uint_t)val <= VTK_UNSIGNED_INT_MAX)
+        if ((preproc_uint_t)val <= UINT_MAX)
         {
           return VTK_PARSE_UNSIGNED_INT;
         }
@@ -4291,7 +4027,7 @@ unsigned int guess_constant_type(const char *valstring)
       }
       else
       {
-        if (val >= VTK_INT_MIN && val <= VTK_INT_MAX)
+        if (val >= INT_MIN && val <= INT_MAX)
         {
           return VTK_PARSE_INT;
         }
@@ -4366,75 +4102,6 @@ void add_constant(const char *name, const char *value,
   }
 }
 
-/* if the name is a const in this namespace, then scope it */
-const char *add_const_scope(const char *name)
-{
-  static char text[256];
-  NamespaceInfo *scope = currentNamespace;
-  TemplateInfo *tparams;
-  const char *classname;
-  int i, j;
-  int addscope = 0;
-
-  strcpy(text, name);
-
-  if (currentClass)
-  {
-    for (j = 0; j < currentClass->NumberOfConstants; j++)
-    {
-      if (strcmp(currentClass->Constants[j]->Name, text) == 0)
-      {
-        classname = currentClass->Name;
-        tparams = currentClass->Template;
-        if (tparams)
-        {
-          classname = vtkstrcat(classname, "<");
-          for (i = 0; i < tparams->NumberOfParameters; i++)
-          {
-            if (i != 0)
-            {
-              classname = vtkstrcat(classname, ",");
-            }
-            classname = vtkstrcat(classname, tparams->Parameters[i]->Name);
-          }
-          classname = vtkstrcat(classname, ">");
-        }
-        prepend_scope(text, classname);
-        addscope = 1;
-        break;
-      }
-    }
-  }
-  i = namespaceDepth;
-  while (scope && scope->Name)
-  {
-    if (addscope)
-    {
-      prepend_scope(text, scope->Name);
-    }
-    else
-    {
-      for (j = 0; j < scope->NumberOfConstants; j++)
-      {
-        if (strcmp(scope->Constants[j]->Name, text) == 0)
-        {
-          prepend_scope(text, scope->Name);
-          addscope = 1;
-          break;
-        }
-      }
-    }
-
-    scope = 0;
-    if (i > 0)
-    {
-      scope = namespaceStack[--i];
-    }
-  }
-
-  return text;
-}
-
 /* guess the type from the ID */
 unsigned int guess_id_type(const char *cp)
 {
@@ -4485,30 +4152,6 @@ void add_template_parameter(
   handle_complex_type(param, datatype, extra, funcSig);
   param->Name = getVarName();
   vtkParse_AddParameterToTemplate(currentTemplate, param);
-}
-
-/* add a parameter to a function */
-void add_parameter(FunctionInfo *func, unsigned int type,
-                   const char *typeclass, int count)
-{
-  char text[64];
-  ValueInfo *param = (ValueInfo *)malloc(sizeof(ValueInfo));
-  vtkParse_InitValue(param);
-
-  param->Type = type;
-  param->Class = type_class(type, typeclass);
-
-  if (count)
-  {
-    param->Count = count;
-    sprintf(text, "%i", count);
-    vtkParse_AddStringToArray(&param->Dimensions, &param->NumberOfDimensions,
-                              vtkstrdup(text));
-  }
-
-  add_legacy_parameter(func, param);
-
-  vtkParse_AddParameterToFunction(func, param);
 }
 
 /* set the return type for the current function */
@@ -4720,6 +4363,12 @@ void handle_attribute(const char *att, int pack)
       print_parser_error("attribute takes no ...", att, l);
       exit(1);
     }
+    else if (l == 16 && strncmp(att, "vtk::wrapexclude", l) == 0 &&
+             !args && (role == VTK_PARSE_ATTRIB_DECL ||
+                       role == VTK_PARSE_ATTRIB_CLASS))
+    {
+      setTypeMod(VTK_PARSE_WRAPEXCLUDE);
+    }
     else if (l == 16 && strncmp(att, "vtk::newinstance", l) == 0 &&
              !args && role == VTK_PARSE_ATTRIB_DECL)
     {
@@ -4863,6 +4512,14 @@ void output_function()
       reject_function();
       return;
     }
+  }
+
+  /* exclude from wrapping */
+  if (currentFunction->ReturnValue &&
+      currentFunction->ReturnValue->Type & VTK_PARSE_WRAPEXCLUDE)
+  {
+    currentFunction->ReturnValue->Type ^= VTK_PARSE_WRAPEXCLUDE;
+    currentFunction->IsExcluded = 1;
   }
 
   /* friend */
@@ -5071,70 +4728,50 @@ void output_friend_function()
   currentClass = tmpc;
 }
 
-void outputSetVectorMacro(const char *var, unsigned int paramType,
-                          const char *typeText, int n)
+/* dump predefined macros to the specified file. */
+void dump_macros(const char *filename)
 {
-  static const char *mnames[] = {
-    NULL, NULL,
-    "vtkSetVector2Macro", "vtkSetVector3Macro", "vtkSetVector4Macro",
-    NULL,
-    "vtkSetVector6Macro",
-    NULL };
-  char ntext[32];
-  int i, m;
-  m = (n > 7 ? 0 : n);
+  MacroInfo *macro = NULL;
+  FILE *ofile = stdout;
+  int i;
 
-  sprintf(ntext, "%i", n);
-
-  currentFunction->Macro = mnames[m];
-  currentFunction->Name = vtkstrcat("Set", var);
-  startSig();
-  postSig("void ");
-  postSig(currentFunction->Name);
-  postSig("(");
-  postSig(typeText);
-  for (i = 1; i < n; i++)
+  if (filename)
   {
-    postSig(", ");
-    postSig(typeText);
+    ofile = fopen(filename, "w");
+    if (!ofile)
+    {
+      fprintf(stderr, "Error opening output file %s\n", filename);
+      return;
+    }
   }
-  postSig(");");
-  for (i = 0; i < n; i++)
+
+  while ((macro = vtkParsePreprocess_NextMacro(preprocessor, macro)) != 0)
   {
-    add_parameter(currentFunction, paramType, getTypeId(), 0);
+    if (macro->IsFunction)
+    {
+      fprintf(ofile, "#define %s(", macro->Name);
+      for (i = 0; i < macro->NumberOfParameters; i++)
+      {
+        fprintf(ofile, "%s%s", (i == 0 ? "" : ","),
+                macro->Parameters[i]);
+      }
+      fprintf(ofile, ")%s%s\n", (macro->Definition ? " " : ""),
+              macro->Definition);
+    }
+    else if (macro->Definition)
+    {
+      fprintf(ofile, "#define %s %s\n", macro->Name, macro->Definition);
+    }
+    else
+    {
+      fprintf(ofile, "#define %s\n", macro->Name);
+    }
   }
-  set_return(currentFunction, VTK_PARSE_VOID, "void", 0);
-  output_function();
 
-  currentFunction->Macro = mnames[m];
-  currentFunction->Name = vtkstrcat("Set", var);
-  currentFunction->Signature =
-    vtkstrcat7("void ", currentFunction->Name, "(", typeText,
-               " a[", ntext, "]);");
-  add_parameter(currentFunction, (VTK_PARSE_POINTER | paramType),
-                getTypeId(), n);
-  set_return(currentFunction, VTK_PARSE_VOID, "void", 0);
-  output_function();
-}
-
-void outputGetVectorMacro(const char *var, unsigned int paramType,
-                          const char *typeText, int n)
-{
-  static const char *mnames[] = {
-    NULL, NULL,
-    "vtkGetVector2Macro", "vtkGetVector3Macro", "vtkGetVector4Macro",
-    NULL,
-    "vtkGetVector6Macro",
-    NULL };
-  int m;
-  m = (n > 7 ? 0 : n);
-
-  currentFunction->Macro = mnames[m];
-  currentFunction->Name = vtkstrcat("Get", var);
-  currentFunction->Signature =
-    vtkstrcat4(typeText, " *", currentFunction->Name, "();");
-  set_return(currentFunction, (VTK_PARSE_POINTER | paramType), getTypeId(), n);
-  output_function();
+  if (filename)
+  {
+    fclose(ofile);
+  }
 }
 
 /* Set a flag to recurse into included files */
@@ -5175,7 +4812,8 @@ FileInfo *vtkParse_ParseFile(
   preprocessor = (PreprocessInfo *)malloc(sizeof(PreprocessInfo));
   vtkParsePreprocess_Init(preprocessor, filename);
   preprocessor->Strings = data->Strings;
-  vtkParsePreprocess_AddStandardMacros(preprocessor, VTK_PARSE_NATIVE);
+  vtkParsePreprocess_AddStandardMacros(preprocessor,
+    PredefinePlatformMacros ? VTK_PARSE_NATIVE : VTK_PARSE_UNDEF);
 
   /* add include files specified on the command line */
   for (i = 0; i < NumberOfIncludeDirectories; i++)
@@ -5211,10 +4849,12 @@ FileInfo *vtkParse_ParseFile(
     }
   }
 
-  /* should explicitly check for vtkConfigure.h, or even explicitly load it */
-#ifdef VTK_USE_64BIT_IDS
-  vtkParsePreprocess_AddMacro(preprocessor, "VTK_USE_64BIT_IDS", NULL);
-#endif
+  /* add include files that contain macros to pre-define */
+  for (i = 0; i < NumberOfMacroIncludes; i++)
+  {
+    vtkParsePreprocess_IncludeFile(
+      preprocessor, MacroIncludes[i], VTK_PARSE_CURDIR_INCLUDE);
+  }
 
   data->FileName = vtkstrdup(filename);
 
@@ -5284,6 +4924,12 @@ FileInfo *vtkParse_ParseFile(
   /* assign doxygen comments to their targets */
   assignComments(data->Contents);
 
+  /* dump macros, for diagnostic purposes */
+  if (DumpMacros)
+  {
+    dump_macros(DumpFileName);
+  }
+
   vtkParsePreprocess_Free(preprocessor);
   preprocessor = NULL;
   macroName = NULL;
@@ -5348,7 +4994,6 @@ int vtkParse_ReadHints(FileInfo *file_info, FILE *hfile, FILE *errfile)
               case VTK_PARSE_FLOAT_PTR:
               case VTK_PARSE_VOID_PTR:
               case VTK_PARSE_DOUBLE_PTR:
-              case VTK_PARSE_ID_TYPE_PTR:
               case VTK_PARSE_LONG_LONG_PTR:
               case VTK_PARSE_UNSIGNED_LONG_LONG_PTR:
               case VTK_PARSE___INT64_PTR:
@@ -5445,6 +5090,31 @@ void vtkParse_UndefineMacro(const char *name)
   vtkParse_AddStringToArray(&Definitions, &NumberOfDefinitions, cp);
 }
 
+/** Do not define any platform-specific macros.  */
+void vtkParse_UndefinePlatformMacros()
+{
+  PredefinePlatformMacros = 0;
+}
+
+/** Add an include file to read macros from, for use with -imacro. */
+void vtkParse_IncludeMacros(const char *filename)
+{
+  size_t n = strlen(filename);
+  char *cp;
+
+  cp = (char *)malloc(n+1);
+  strcpy(cp, filename);
+
+  vtkParse_AddStringToArray(&MacroIncludes, &NumberOfMacroIncludes, cp);
+}
+
+/** Dump macros to the specified file (stdout if NULL). */
+void vtkParse_DumpMacros(const char *filename)
+{
+  DumpMacros = 1;
+  DumpFileName = filename;
+}
+
 /** Add an include directory, for use with the "-I" option.  */
 void vtkParse_IncludeDirectory(const char *dirname)
 {
@@ -5472,7 +5142,7 @@ void vtkParse_IncludeDirectory(const char *dirname)
 const char *vtkParse_FindIncludeFile(const char *filename)
 {
   static StringCache cache = {0, 0, 0, 0};
-  static PreprocessInfo info = {0, 0, 0, 0, 0, 0, &cache, 0, 0, 0};
+  static PreprocessInfo info = {0, 0, 0, 0, 0, 0, &cache, 0, 0, 0, 0};
   int val;
   int i;
 
@@ -5482,5 +5152,6 @@ const char *vtkParse_FindIncludeFile(const char *filename)
     vtkParsePreprocess_IncludeDirectory(&info, IncludeDirectories[i]);
   }
 
-  return vtkParsePreprocess_FindIncludeFile(&info, filename, 0, &val);
+  return vtkParsePreprocess_FindIncludeFile(
+    &info, filename, VTK_PARSE_SOURCE_INCLUDE, &val);
 }

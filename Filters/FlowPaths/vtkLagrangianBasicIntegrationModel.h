@@ -19,11 +19,11 @@
  *
  * This vtkFunctionSet abstract implementation
  * is meant to be used as a parameter of vtkLagrangianParticleTracker.
- * It manages multiples datasets locator in order to evaluate the
+ * It manages multiple dataset locators in order to evaluate the
  * vtkFunctionSet::FunctionValues method.
- * The actual FunctionValues implementation should be found in class inheriting
- * this class
- * Input Array to process are expected as follows :
+ * The actual FunctionValues implementation should be found in the class inheriting
+ * this class.
+ * Input Arrays to process are expected as follows:
  * Index 0 : "SurfaceType" array of surface input of the particle tracker
  *
  * Inherited classes MUST implement
@@ -31,33 +31,37 @@
  *    double * x, double * f);
  * to define how the integration works.
  *
- * Inherited classes could reimplement SetCurrentParticle, InitializeVariablesParticleData, and
- * InsertVariablesParticleData to add new UserVariables to integrate with
+ * Inherited classes could reimplement InitializeVariablesParticleData and
+ * InsertVariablesParticleData to add new UserVariables to integrate with.
  *
- * Inherited classes could reimplement InteractWithSurface or other surface interaction method
- * to changes the way particle interact with surface
+ * Inherited classes could reimplement InteractWithSurface or other surface interaction methods
+ * to change the way particles interact with surfaces.
  *
  * Inherited classes could reimplement IntersectWithLine to use a specific algorithm
  * to intersect particles and surface cells.
  *
- * Inherited class could reimplement CheckFreeFlightTermination to set
- * the way particle terminate in free flight
+ * Inherited classes could reimplement CheckFreeFlightTermination to set
+ * the way particles terminate in free flight.
+ *
+ * Inherited classes could reimplement Initialize*Data and Insert*Data in order
+ * to customize the output of the tracker
  *
  * @sa
  * vtkLagrangianParticleTracker vtkLagrangianParticle
  * vtkLagrangianMatidaIntegrationModel
-*/
+ */
 
 #ifndef vtkLagrangianBasicIntegrationModel_h
 #define vtkLagrangianBasicIntegrationModel_h
 
 #include "vtkFiltersFlowPathsModule.h" // For export macro
-#include "vtkNew.h" // For arrays
-#include "vtkWeakPointer.h" // For weak pointer
 #include "vtkFunctionSet.h"
+#include "vtkNew.h"         // For arrays
+#include "vtkWeakPointer.h" // For weak pointer
 
-#include <queue> // for new particles
 #include <map> // for array indexes
+#include <mutex>  // for mutexes
+#include <queue> // for new particles
 
 class vtkAbstractArray;
 class vtkAbstractCellLocator;
@@ -79,8 +83,7 @@ class vtkPolyData;
 class vtkStringArray;
 class vtkSurfaceType;
 
-class VTKFILTERSFLOWPATHS_EXPORT vtkLagrangianBasicIntegrationModel :
-  public vtkFunctionSet
+class VTKFILTERSFLOWPATHS_EXPORT vtkLagrangianBasicIntegrationModel : public vtkFunctionSet
 {
 public:
   vtkTypeMacro(vtkLagrangianBasicIntegrationModel, vtkFunctionSet);
@@ -102,16 +105,18 @@ public:
     VARIABLE_STEP_NEXT = 1,
   } VariableStep;
 
-  typedef std::pair< unsigned int, vtkLagrangianParticle*> PassThroughParticlesItem;
-  typedef std::queue< PassThroughParticlesItem > PassThroughParticlesType;
+  typedef std::pair<unsigned int, vtkLagrangianParticle*> PassThroughParticlesItem;
+  typedef std::queue<PassThroughParticlesItem> PassThroughParticlesType;
 
+  using Superclass::FunctionValues;
   /**
    * Evaluate integration model velocity f at position x.
-   * Look for the cell containing the position x in all it's added dataset
-   * in found this will call
+   * Look for the cell containing the position x in all its added datasets
+   * if found this will call
    * FunctionValues(vtkDataSet* detaSet, vtkIdType cellId, double* x, double* f)
+   * This method is thread safe.
    */
-  int FunctionValues(double* x, double* f) override;
+  int FunctionValues(double* x, double* f, void* userData) override;
 
   //@{
   /**
@@ -147,8 +152,8 @@ public:
    * surfaceFlatIndex, used only with composite surface, in order to identify the
    * flatIndex of the surface for particle interaction
    */
-  virtual void AddDataSet(vtkDataSet* dataset, bool surface = false,
-    unsigned int surfaceFlatIndex = 0);
+  virtual void AddDataSet(
+    vtkDataSet* dataset, bool surface = false, unsigned int surfaceFlatIndex = 0);
   virtual void ClearDataSets(bool surface = false);
   //@}
 
@@ -159,13 +164,6 @@ public:
   vtkSetMacro(UseInitialIntegrationTime, bool);
   vtkGetMacro(UseInitialIntegrationTime, bool);
   vtkBooleanMacro(UseInitialIntegrationTime, bool);
-  //@}
-
-  //@{
-  /**
-   * Set the current particle
-   */
-  vtkSetMacro(CurrentParticle, vtkLagrangianParticle*);
   //@}
 
   //@{
@@ -193,16 +191,16 @@ public:
    * with no effect on the particle
    */
   virtual vtkLagrangianParticle* ComputeSurfaceInteraction(vtkLagrangianParticle* particle,
-    std::queue<vtkLagrangianParticle*>& particles,
-    unsigned int& interactedSurfaceFlatIndex, PassThroughParticlesType& passThroughParticles);
+    std::queue<vtkLagrangianParticle*>& particles, unsigned int& interactedSurfaceFlatIndex,
+    PassThroughParticlesType& passThroughParticles);
 
   /**
    * Set a input array to process at a specific index, identified by a port,
    * connection, fieldAssociation and a name.
    * Each inherited class can specify their own input array to process
    */
-  virtual void SetInputArrayToProcess(int idx, int port, int connection,
-    int fieldAssociation, const char* name);
+  virtual void SetInputArrayToProcess(
+    int idx, int port, int connection, int fieldAssociation, const char* name);
 
   //@{
   /**
@@ -211,51 +209,21 @@ public:
    * return true and data to recover the cell if in domain.
    * does not filter out ghost cells.
    * convenience method with less outputs.
+   * Provide a particle if a dataset/locator cache can be used.
+   * This method is thread-safe.
    */
-  virtual bool FindInLocators(double* x, vtkDataSet*& dataset, vtkIdType& cellId,
-    vtkAbstractCellLocator*& loc, double*& weights);
-  virtual bool FindInLocators(double* x, vtkDataSet*& dataset, vtkIdType& cellId);
-  virtual bool FindInLocators(double* x);
+  virtual bool FindInLocators(double* x, vtkLagrangianParticle* particle, vtkDataSet*& dataset,
+    vtkIdType& cellId, vtkAbstractCellLocator*& loc, double*& weights);
+  virtual bool FindInLocators(
+    double* x, vtkLagrangianParticle* particle, vtkDataSet*& dataset, vtkIdType& cellId);
+  virtual bool FindInLocators(double* x, vtkLagrangianParticle* particle = nullptr);
   //@}
-
-  /**
-   * Empty method to be reimplemented if necessary
-   * in inherited classes.
-   * Allows a intehrited class to create
-   * Specific array in the output point data
-   * for storing variables.
-   */
-  virtual void InitializeVariablesParticleData(
-    vtkPointData* vtkNotUsed(particleData), int vtkNotUsed(maxTuples) = 0) {}
-
-  /**
-   * Empty method to be reimplemented if necessary in inherited classes.
-   * Allows a inherited class to create specific array in the output point data
-   * for filling point data with variables.
-   */
-  virtual void InsertVariablesParticleData(vtkLagrangianParticle* vtkNotUsed(particle),
-    vtkPointData* vtkNotUsed(particleData), int vtkNotUsed(stepEnum)) {}
-
-  /**
-   * Empty method to be reimplemented if necessary in inherited classes.
-   * Allows an inherited class to create specific array in the outputs
-   * field data associated with each particle path.
-   */
-  virtual void InitializeModelPathData(vtkFieldData* vtkNotUsed(data)) {}
-
-  /**
-   * Empty method to be reimplemented if necessary in inherited classes.
-   * Allows a inherited class to insert data in initialized
-   * array in the outputs field data associated with each particle path.
-   */
-  virtual void InsertModelPathData(vtkLagrangianParticle* vtkNotUsed(particle),
-    vtkFieldData* vtkNotUsed(data)) {}
 
   /**
    * Initialize a particle by setting user variables and perform any user
    * model specific operation. empty in basic implementation.
    */
-  virtual void InitializeParticle(vtkLagrangianParticle* vtkNotUsed(particle)){}
+  virtual void InitializeParticle(vtkLagrangianParticle* vtkNotUsed(particle)) {}
 
   /**
    * Method to be reimplemented if needed in inherited classes.
@@ -265,8 +233,10 @@ public:
    * the current particle is passed as an argument.
    * This method always returns true in this basis class.
    */
-  virtual bool CheckAdaptiveStepReintegration(
-    vtkLagrangianParticle* vtkNotUsed(particle)){return true;}
+  virtual bool CheckAdaptiveStepReintegration(vtkLagrangianParticle* vtkNotUsed(particle))
+  {
+    return true;
+  }
 
   /**
    * Method to be reimplemented if needed in inherited classes.
@@ -274,9 +244,12 @@ public:
    * should be terminated only based on particle parameters.
    * This method should return true if the particle must be terminated, false otherwise.
    * It always returns false in this basis class.
+   * This method is thread-safe, its reimplementation should still be thread-safe.
    */
-  virtual bool CheckFreeFlightTermination(
-    vtkLagrangianParticle* vtkNotUsed(particle)){return false;}
+  virtual bool CheckFreeFlightTermination(vtkLagrangianParticle* vtkNotUsed(particle))
+  {
+    return false;
+  }
 
   //@{
   /**
@@ -363,38 +336,101 @@ public:
    * will be considered actual out of domain error.
    * Return true if manual integration was used, false otherwise
    * Simply return false in vtkLagrangianBasicIntegrationModel
-   * implementation
+   * implementation.
+   * This method is thread-safe, its reimplementation should still be thread-safe.
    */
-  virtual bool ManualIntegration(double* xcur, double* xnext,
-    double t, double& delT, double& delTActual,
-    double minStep, double maxStep,
-    double maxError, double& error, int& integrationResult);
+  virtual bool ManualIntegration(double* xcur, double* xnext, double t, double& delT,
+    double& delTActual, double minStep, double maxStep, double maxError, double cellLength,
+    double& error, int& integrationResult);
 
   /**
    * Method called by parallel algorithm
    * after receiving a particle from stream if PManualShift flag has been set to true
    * on the particle. Does nothing in base implementation
    */
-  virtual void ParallelManualShift(vtkLagrangianParticle* vtkNotUsed(particle)){}
+  virtual void ParallelManualShift(vtkLagrangianParticle* vtkNotUsed(particle)) {}
 
   /**
    * Enable model post process on output
    * Return true if successful, false otherwise
    * Empty and Always return true with basic model
    */
-  virtual bool FinalizeOutputs(vtkPolyData* vtkNotUsed(particlePathsOutput),
-    vtkDataObject* vtkNotUsed(interractionOutput)){return true;}
+  virtual bool FinalizeOutputs(
+    vtkPolyData* vtkNotUsed(particlePathsOutput), vtkDataObject* vtkNotUsed(interractionOutput))
+  {
+    return true;
+  }
 
   /**
    * Enable model to modify particle before integration
    */
-  virtual void PreIntegrate(std::queue<vtkLagrangianParticle*>& vtkNotUsed(particles)){}
+  virtual void PreIntegrate(std::queue<vtkLagrangianParticle*>& vtkNotUsed(particles)) {}
 
   /**
    * Get a seed array, as set in setInputArrayToProcess
    * from the provided seed point data
    */
   virtual vtkAbstractArray* GetSeedArray(int idx, vtkPointData* pointData);
+
+  /**
+   * Set/Get the number of tracked user data attached to the particles.
+   * Tracked user data are data that are related to each particle position
+   * but are not integrated like the user variables.
+   * They are not saved in the particle path.
+   * Default is 0.
+   */
+  vtkSetMacro(NumberOfTrackedUserData, int);
+  vtkGetMacro(NumberOfTrackedUserData, int);
+
+  /**
+   * Method used by the LPT to initialize data insertion in the provided
+   * vtkFieldData. It initializes Id, ParentID, SeedID and Termination.
+   * Reimplement as needed in acccordance with InsertPathData.
+   */
+  virtual void InitializePathData(vtkFieldData* data);
+
+  /**
+   * Method used by the LPT to initialize data insertion in the provided
+   * vtkFieldData. It initializes Interaction.
+   * Reimplement as needed in acccordance with InsertInteractionData.
+   */
+  virtual void InitializeInteractionData(vtkFieldData* data);
+
+  /**
+   * Method used by the LPT to initialize data insertion in the provided
+   * vtkFieldData. It initializes StepNumber, ParticleVelocity, IntegrationTime.
+   * Reimplement as needed in acccordance with InsertParticleData.
+   */
+  virtual void InitializeParticleData(vtkFieldData* particleData, int maxTuples = 0);
+
+  /**
+   * Method used by the LPT to insert data from the partice into
+   * the provided vtkFieldData. It inserts Id, ParentID, SeedID and Termination.
+   * Reimplement as needed in acccordance with InitializePathData.
+   */
+  virtual void InsertPathData(vtkLagrangianParticle* particle, vtkFieldData* data);
+
+  /**
+   * Method used by the LPT to insert data from the partice into
+   * the provided vtkFieldData. It inserts Interaction.
+   * Reimplement as needed in acccordance with InitializeInteractionData.
+   */
+  virtual void InsertInteractionData(vtkLagrangianParticle* particle, vtkFieldData* data);
+
+  /**
+   * Method used by the LPT to insert data from the partice into
+   * the provided vtkFieldData. It inserts StepNumber, ParticleVelocity, IntegrationTime.
+   * stepEnum enables to select which data to insert, Prev, Current or Next.
+   * Reimplement as needed in acccordance with InitializeParticleData.
+   */
+  virtual void InsertParticleData(vtkLagrangianParticle* particle, vtkFieldData* data, int stepEnum);
+
+  /**
+   * Method used by the LPT to insert data from the partice into
+   * the provided vtkFieldData. It insert alls array available in the SeedData.
+   * Reimplement as needed.
+   */
+  virtual void InsertSeedData(vtkLagrangianParticle* particle, vtkFieldData* data);
 
 protected:
   vtkLagrangianBasicIntegrationModel();
@@ -403,44 +439,53 @@ protected:
   /**
    * Actually compute the integration model velocity field
    * pure abstract, to be implemented in inherited class
+   * This method implementation should be thread-safe
    */
-  virtual int FunctionValues(vtkDataSet* detaSet, vtkIdType cellId, double* weights,
-    double * x, double * f) = 0;
+  virtual int FunctionValues(vtkLagrangianParticle* particle, vtkDataSet* dataSet, vtkIdType cellId,
+    double* weights, double* x, double* f) = 0;
 
   /**
    * Look in the given dataset and associated locator to see if it contains
    * the point x, if so return the cellId and output the cell containing the point
    * and the weights of the point in the cell
+   * This method is thread-safe, its reimplementation should also be.
    */
-  virtual vtkIdType FindInLocator(vtkDataSet* dataSet, vtkAbstractCellLocator* locator,
-    double* x, vtkGenericCell* cell, double* weights);
+  virtual vtkIdType FindInLocator(vtkDataSet* dataSet, vtkAbstractCellLocator* locator, double* x,
+    vtkGenericCell* cell, double* weights);
 
   /**
    * Terminate a particle, by positioning flags.
    * Return true to record the interaction, false otherwise
+   * This method is thread-safe.
    */
   virtual bool TerminateParticle(vtkLagrangianParticle* particle);
 
   /**
    * Bounce a particle, using the normal of the cell it bounces on.
    * Return true to record the interaction, false otherwise
+   * This method is thread-safe.
    */
-  virtual bool BounceParticle(vtkLagrangianParticle* particle,
-    vtkDataSet*  surface, vtkIdType cellId);
+  virtual bool BounceParticle(
+    vtkLagrangianParticle* particle, vtkDataSet* surface, vtkIdType cellId);
 
   /**
    * Breakup a particle at intersection point, by terminating it and creating two
    * new particle using the intersected cells normals
    * Return true to record the interaction, false otherwise
+   * This method is thread-safe and uses vtkLagrangianBasicIntegrationModel::ParticleQueueMutex
+   * to access the particles queue, its reimplementation should also be.
    */
-  virtual bool BreakParticle(vtkLagrangianParticle* particle,
-    vtkDataSet*  surface, vtkIdType cellId, std::queue<vtkLagrangianParticle*>& particles);
+  virtual bool BreakParticle(vtkLagrangianParticle* particle, vtkDataSet* surface, vtkIdType cellId,
+    std::queue<vtkLagrangianParticle*>& particles);
 
   /**
    * Call vtkLagrangianBasicIntegrationModel::Terminate
    * This method is to be reimplemented in inherited classes willing
    * to implement specific particle surface interactions
    * Return true to record the interaction, false otherwise
+   * This method is thread-safe and should use
+   * vtkLagrangianBasicIntegrationModel::ParticleQueueMutex
+   *  to add particles to the particles queue,
    */
   virtual bool InteractWithSurface(int surfaceType, vtkLagrangianParticle* particle,
     vtkDataSet* surface, vtkIdType cellId, std::queue<vtkLagrangianParticle*>& particles);
@@ -449,65 +494,76 @@ protected:
    * Call vtkCell::IntersectWithLine
    * This method is to be reimplemented in inherited classes willing
    * to implement specific line/surface intersection
+   * This method is thread-safe.
    */
-  virtual bool IntersectWithLine(vtkCell* cell, double p1[3], double p2[3],
-    double tol, double& t, double x[3]);
+  virtual bool IntersectWithLine(
+    vtkCell* cell, double p1[3], double p2[3], double tol, double& t, double x[3]);
 
   /**
    * compute all particle variables using interpolation factor
+   * This method is thread-safe.
    */
-  virtual void InterpolateNextParticleVariables(vtkLagrangianParticle* particle,
-    double interpolationFactor, bool forceInside = false);
+  virtual void InterpolateNextParticleVariables(
+    vtkLagrangianParticle* particle, double interpolationFactor, bool forceInside = false);
 
   /**
    * Given a particle, check if it perforate a surface cell
    * ie : interact with next step after interacting with it
+   * This method is thread-safe.
    */
-  virtual bool CheckSurfacePerforation(vtkLagrangianParticle* particle,
-    vtkDataSet*  surface, vtkIdType cellId);
+  virtual bool CheckSurfacePerforation(
+    vtkLagrangianParticle* particle, vtkDataSet* surface, vtkIdType cellId);
 
   /**
    * Get a seed array, as set in setInputArrayToProcess
    * from the provided particle seed data
    * Access then the correct tuple using
    * vtkLagrangianParticle::GetSeedArrayTupleIndex()
+   * This method is thread-safe.
    */
   virtual vtkAbstractArray* GetSeedArray(int idx, vtkLagrangianParticle* particle);
 
   /**
    * Directly get a double value from flow or surface data
-   * as defined in SetInputArrayToProcess
-   * data pointer is valid until next call to this method.
+   * as defined in SetInputArrayToProcess.
+   * Make sure that data pointer is large enough using
+   * GetFlowOrSurfaceDataNumberOfComponents if needed.
+   * This method is thread-safe.
    */
-  virtual bool GetFlowOrSurfaceData(int idx, vtkDataSet* flowDataSet,
-    vtkIdType tupleId, double* weights, double*& data, int& nComponents);
+  virtual bool GetFlowOrSurfaceData(
+    int idx, vtkDataSet* flowDataSet, vtkIdType tupleId, double* weights, double* data);
+
+  /**
+   * Recover the number of components for a specified array index
+   * if it has been set using SetInputArrayToProcess,
+   * with provided dataset.
+   * Returns -1 in case of error.
+   * This method is thread-safe.
+   */
+  virtual int GetFlowOrSurfaceDataNumberOfComponents(int idx, vtkDataSet* dataSet);
 
   /**
    * Recover a field association for a specified array index
    * if it has been set using SetInputArrayToProcess
+   * This method is thread-safe.
    */
   virtual int GetFlowOrSurfaceDataFieldAssociation(int idx);
 
   /**
-   * Methods used by ParaView surface helper to get default
+   * Method used by ParaView surface helper to get default
    * values for each leaf of each dataset of surface
    * nComponents could be retrieved with arrayName but is
    * given for simplication purposes.
    * it is your responsibility to initialize all components of
    * defaultValues[nComponent]
    */
-  virtual void ComputeSurfaceDefaultValues(const char* arrayName, vtkDataSet* dataset,
-                                             int nComponent, double* defaultValues);
+  virtual void ComputeSurfaceDefaultValues(
+    const char* arrayName, vtkDataSet* dataset, int nComponent, double* defaultValues);
 
   vtkAbstractCellLocator* Locator;
   bool LocatorsBuilt;
-  vtkAbstractCellLocator* LastLocator;
   vtkLocatorsType* Locators;
-
-  vtkDataSet* LastDataSet;
   vtkDataSetsType* DataSets;
-  vtkGenericCell* Cell;
-  double* LastWeights;
   int WeightsSize;
 
   struct ArrayVal
@@ -521,21 +577,17 @@ protected:
   {
     int nComp;
     int type;
-    std::vector< std::pair< int, std::string > > enumValues;
+    std::vector<std::pair<int, std::string> > enumValues;
   } SurfaceArrayDescription;
   std::map<std::string, SurfaceArrayDescription> SurfaceArrayDescriptions;
-
-  vtkLagrangianParticle* CurrentParticle;
-  vtkLagrangianParticle* TmpParticle;
 
   vtkSurfaceType* Surfaces;
   vtkLocatorsType* SurfaceLocators;
 
-  vtkDataArray* TmpArray;
-
   double Tolerance;
   bool NonPlanarQuadSupport;
   bool UseInitialIntegrationTime;
+  int NumberOfTrackedUserData = 0;
 
   vtkNew<vtkStringArray> SeedArrayNames;
   vtkNew<vtkIntArray> SeedArrayComps;
@@ -547,6 +599,7 @@ protected:
   vtkNew<vtkDoubleArray> SurfaceArrayDefaultValues;
 
   vtkWeakPointer<vtkLagrangianParticleTracker> Tracker;
+  std::mutex ParticleQueueMutex;
 
 private:
   vtkLagrangianBasicIntegrationModel(const vtkLagrangianBasicIntegrationModel&) = delete;

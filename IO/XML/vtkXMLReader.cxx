@@ -52,9 +52,38 @@
 #include <locale> // C++ locale
 #include <sstream>
 #include <vector>
+#include <cctype>
 
 vtkCxxSetObjectMacro(vtkXMLReader,ReaderErrorObserver,vtkCommand);
 vtkCxxSetObjectMacro(vtkXMLReader,ParserErrorObserver,vtkCommand);
+
+//-----------------------------------------------------------------------------
+#define CaseIdTypeMacro(type, size) \
+case type: \
+  if (size == VTK_SIZEOF_ID_TYPE) \
+  { \
+    dataType = VTK_ID_TYPE; \
+  } \
+  else \
+  { \
+    if (size > VTK_SIZEOF_ID_TYPE) \
+    { \
+      vtkWarningMacro("An array named " \
+        << da->GetAttribute("Name") << " was tagged as an IdType array with a type size of " \
+        << size \
+        << " which is bigger then the IdType size on this VTK " \
+        "build. The IdType tag has been ignored."); \
+    } \
+    else \
+    { \
+      vtkDebugMacro("An array named " << da->GetAttribute("Name") \
+        << " was tagged as an IdType array with a type size of " \
+        << size \
+        << " which is smaller then the IdType size on this VTK " \
+        "build. The IdType tag has been ignored."); \
+    } \
+  } \
+  break;
 
 //-----------------------------------------------------------------------------
 static void ReadStringVersion(const char* version, int& major, int& minor)
@@ -442,8 +471,6 @@ void vtkXMLReader::SetupCompressor(const char* type)
   compressor->Delete();
 }
 
-
-
 //----------------------------------------------------------------------------
 int vtkXMLReader::ReadXMLInformation()
 {
@@ -518,7 +545,6 @@ int vtkXMLReader::ReadXMLInformation()
         }
       }
     }
-
 
     // Close the input stream to prevent resource leaks.
     this->CloseStream();
@@ -961,7 +987,7 @@ void vtkXMLReader::ReadFieldData()
 {
   if (this->FieldDataElement) // read the field data information
   {
-    int numTuples;
+    vtkIdType numTuples;
     vtkFieldData *fieldData = this->GetCurrentOutput()->GetFieldData();
     for (int i = 0; i < this->FieldDataElement->GetNumberOfNestedElements() &&
              !this->AbortExecute; i++)
@@ -996,17 +1022,17 @@ namespace {
 
 void ltrim(std::string &s)
 {
-  s.erase(s.begin(),
-          std::find_if(s.begin(),
-                       s.end(),
-                       std::not1(std::ptr_fun<int, int>(isspace))));
+    s.erase(s.begin(),
+            std::find_if(s.begin(),
+                         s.end(),
+                         [] (int ch) { return !std::isspace(ch); }));
 }
 
 void rtrim(std::string &s)
 {
   s.erase(std::find_if(s.rbegin(),
                        s.rend(),
-                       std::not1(std::ptr_fun<int, int>(isspace))).base(),
+                       [] (int ch) { return !std::isspace(ch); }).base(),
           s.end());
 }
 
@@ -1305,6 +1331,32 @@ bool vtkXMLReader::ReadInformation(vtkXMLDataElement *infoRoot,
 }
 
 //----------------------------------------------------------------------------
+int vtkXMLReader::GetLocalDataType(vtkXMLDataElement* da, int dataType)
+{
+  int idType;
+  if (da->GetScalarAttribute("IdType", idType) && idType == 1)
+  {
+    // For now, only uses vtkIdTypeArray when the size of the data is
+    // consistent with the VTK build.
+    // TODO create a smaller size array before converting to vtkIdTypeArray
+    // TODO potentially truncate bigger size array into vtkIdTypeArray
+    switch (dataType)
+    {
+      CaseIdTypeMacro(VTK_SHORT, VTK_SIZEOF_SHORT);
+      CaseIdTypeMacro(VTK_INT, VTK_SIZEOF_INT);
+      CaseIdTypeMacro(VTK_LONG, VTK_SIZEOF_LONG);
+      CaseIdTypeMacro(VTK_LONG_LONG, VTK_SIZEOF_LONG_LONG);
+      default:
+        vtkWarningMacro("An array named " << da->GetAttribute("Name")
+          << " was tagged as an IdType array with an invalid type."
+          "The IdType tag has been ignored.");
+        break;
+    }
+  }
+  return dataType;
+}
+
+//----------------------------------------------------------------------------
 vtkAbstractArray* vtkXMLReader::CreateArray(vtkXMLDataElement* da)
 {
   int dataType = 0;
@@ -1313,10 +1365,10 @@ vtkAbstractArray* vtkXMLReader::CreateArray(vtkXMLDataElement* da)
     return nullptr;
   }
 
+  dataType = this->GetLocalDataType(da, dataType);
   vtkAbstractArray* array = vtkAbstractArray::CreateArray(dataType);
 
   array->SetName(da->GetAttribute("Name"));
-
 
   //if NumberOfComponents fails, we have 1 component
   int components = 1;
@@ -1343,7 +1395,6 @@ vtkAbstractArray* vtkXMLReader::CreateArray(vtkXMLDataElement* da)
     buff.str("");
     buff.clear();
   }
-
 
   // Scan/load for vtkInformationKey data.
   int nElements = da->GetNumberOfNestedElements();
@@ -1575,7 +1626,7 @@ void vtkXMLReader::SetDataArraySelections(
 
 //----------------------------------------------------------------------------
 int vtkXMLReader::SetFieldDataInfo(vtkXMLDataElement *eDSA,
-  int association, int numTuples, vtkInformationVector *(&infoVector))
+  int association, vtkIdType numTuples, vtkInformationVector *(&infoVector))
 {
   if (!eDSA)
   {
@@ -1640,6 +1691,7 @@ int vtkXMLReader::SetFieldDataInfo(vtkXMLDataElement *eDSA,
       this->InformationError = 1;
       break;
     }
+    dataType = this->GetLocalDataType(eNested, dataType);
     info->Set(vtkDataObject::FIELD_ARRAY_TYPE(), dataType);
 
     if (eNested->GetScalarAttribute("NumberOfComponents", components))
@@ -1678,7 +1730,6 @@ int vtkXMLReader::SetFieldDataInfo(vtkXMLDataElement *eDSA,
 
   return 1;
 }
-
 
 //----------------------------------------------------------------------------
 int vtkXMLReader::PointDataArrayIsEnabled(vtkXMLDataElement* ePDA)

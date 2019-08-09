@@ -139,6 +139,23 @@ public:
   vtkBooleanMacro(AutomaticEventHandling, bool);
   //@}
 
+  //@{
+  /**
+   * When doing rendering between multiple processes, it is often easier to have
+   * all ranks do the rendering on a black background. This helps avoid issues
+   * where the background gets over blended as the images are composted
+   * together. If  set to true (default is false), before the rendering begins,
+   * vtkSynchronizedRenderers will change the renderer's background color and
+   * other flags to make it render on a black background and then restore then
+   * on end render. If WriteBackImages is true, then the background will indeed
+   * be restored before the write-back happens, thus ensuring the result
+   * displayed to the user is on correct background.
+   */
+  vtkSetMacro(FixBackground, bool);
+  vtkGetMacro(FixBackground, bool);
+  vtkBooleanMacro(FixBackground, bool);
+  //@}
+
   enum
   {
     SYNC_RENDERER_TAG = 15101,
@@ -178,13 +195,17 @@ public:
     vtkUnsignedCharArray* GetRawPtr()
       { return this->Data; }
 
-    // Pushes the image to the viewport.
-    bool PushToViewport(vtkRenderer*);
+    /**
+     * Pushes the image to the viewport. The OpenGL viewport  and scissor region
+     * is setup using the viewport defined by the renderer.
+     */
+    bool PushToViewport(vtkRenderer* renderer);
 
-    // This is a raw version of PushToViewport() that assumes that the
-    // glViewport() has already been setup externally.
-    // the argument is optional for backwards compat with old OpenGL
-    bool PushToFrameBuffer(vtkRenderer *ren = nullptr);
+    /**
+     * This is a raw version of PushToViewport() that assumes that the
+     * glViewport() has already been setup externally.
+     */
+    bool PushToFrameBuffer(vtkRenderer* ren);
 
     // Captures the image from the viewport.
     // This doesn't trigger a render, just captures what's currently there in
@@ -247,23 +268,19 @@ protected:
 
   /**
    * Can be used in HandleEndRender(), MasterEndRender() or SlaveEndRender()
-   * calls to capture the rendered image. If this->ImageReductionFactor, then
-   * the image will be capture in this->ReducedImage, otherwise it will be
-   * captured in this->FullImage (this->ReducedImage will be pointing to the
-   * same image).
+   * calls to capture the rendered image. The captured image is stored in
+   * `this->Image`.
    */
   virtual vtkRawImage& CaptureRenderedImage();
 
   /**
    * Can be used in HandleEndRender(), MasterEndRender() or SlaveEndRender()
-   * calls to paste back the image from either this->ReducedImage or
-   * this->FullImage info the viewport.
+   * calls to paste back the image from this->Image to the viewport.
    */
   virtual void PushImageToScreen();
 
   vtkSynchronizedRenderers* CaptureDelegate;
-  vtkRawImage ReducedImage;
-  vtkRawImage FullImage;
+  vtkRawImage Image;
 
   bool ParallelRendering;
   int ImageReductionFactor;
@@ -283,6 +300,12 @@ private:
   vtkOpenGLFXAAFilter* FXAAFilter;
 
   double LastViewport[4];
+
+  double LastBackground[3];
+  double LastBackgroundAlpha;
+  bool LastTexturedBackground;
+  bool LastGradientBackground;
+  bool FixBackground;
 };
 
 #endif

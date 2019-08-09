@@ -71,7 +71,15 @@ public:
       this->Points->Delete();
     }
     this->ReleaseGrids();
+    if (this->bids_out)
+    {
+      delete [] this->bids_out[0];
+    }
     delete[] this->bids_out;
+    if (this->cells_out)
+    {
+      delete [] this->cells_out[0];
+    }
     delete[] this->cells_out;
   };
 
@@ -273,7 +281,11 @@ public:
     H5Sclose(dataspace);
 
     //TODO: this is ugly
-    delete[] this->bids_out;
+    if (this->bids_out)
+    {
+      delete [] this->bids_out[0];
+    }
+    delete [] this->bids_out;
     this->bids_out = new int *[dims[0]];
     bids_out[0] = new int[dims[0]*dims[1]];
     for (unsigned int i = 1; i < dims[0]; i++)
@@ -349,7 +361,11 @@ public:
       return false;
     }
 
-    delete[] this->cells_out;
+    if (this->cells_out)
+    {
+      delete [] this->cells_out[0];
+    }
+    delete [] this->cells_out;
     this->cells_out = new int *[dims[0]];
     cells_out[0] = new int[dims[0]*dims[1]];
     for (unsigned int i = 1; i < dims[0]; i++)
@@ -924,7 +940,7 @@ int vtkTRUCHASReader::RequestData(
   }
 
   #define MAX_NAME 1024
-  char array_name[MAX_NAME];
+  char array_name[MAX_NAME + 1];
   std::map<std::string, int>::iterator nit;
   for (nit = this->Internals->array_names.begin();
        nit != this->Internals->array_names.end();

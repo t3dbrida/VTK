@@ -60,13 +60,19 @@ public:
   /**
    * Values used for setting the desired output precision for various
    * algorithms. Currently, the following algorithms support changing their
-   * output precision: vtkAppendFilter, vtkAppendPoints, vtkContourFilter,
-   * vtkContourGrid, vtkCutter, vtkGlyph3D, vtkGeometryFilter,
-   * vtkGridSynchronizedTemplates3D,
-   * vtkPolyDataNormals, vtkSynchronizedTemplatesCutter3D,
-   * vtkTableBasedClipDataSet, vtkThreshold, vtkTransformFilter, and
-   * vtkTransformPolyData.
-
+   * output precision: vtkAppendPolyData, vtkCleanPolyData, vtkClipPolyData,
+   * vtkConnectivityFilter, vtkDecimatePolylineFilter, vtkDecimatePro, vtkDelaunay3D,
+   * vtkFeatureEdges, vtkGlyph3D, vtkHedgeHog, vtkMaskPoints, vtkPolyDataConnectivityFilter,
+   * vtkSmoothPolyDataFilter, vtkStaticCleanPolyData, vtkThresholdPoints, vtkTubeFilter,
+   * vtkAppendPoints, vtkTransformFilter, vtkTransformPolyDataFilter,
+   * vtkLinearToQuadraticCellsFilter, vtkProcrustesAlignmentFilter,
+   * vtkAdaptiveSubdivisionFilter, vtkBoundedPointSource, vtkArcSource, vtkConeSource,
+   * vtkCubeSource, vtkCylinderSource, vtkDiskSource, vtkEllipseArcSource,
+   * vtkEllipticalButtonSource, vtkFrustumSource, vtkGlyphSource2D, vtkLineSource,
+   * vtkOutlineSource, vtkParametricFunctionSource, vtkPlaneSource, vtkPlatonicSolidSource,
+   * vtkPointSource, vtkRectangularButtonSource, vtkRegularPolygonSource, vtkSphereSource,
+   * vtkSuperquadricSource, vtkTessellatedBoxSource, vtkTextSource, vtkTexturedSphereSource,
+   * vtkImageToPoints, vtkDepthImageToPointCloud.
    * SINGLE_PRECISION - Output single-precision floating-point (i.e. float)
    * DOUBLE_PRECISION - Output double-precision floating-point (i.e. double)
    * DEFAULT_PRECISION - Output precision should match the input precision.
@@ -207,11 +213,16 @@ public:
 
   //@{
   /**
-   * Set/Get the execution progress of a process object.
+   * Get the execution progress of a process object.
    */
-  vtkSetClampMacro(Progress,double,0.0,1.0);
   vtkGetMacro(Progress,double);
   //@}
+
+  /**
+   * `SetProgress` is deprecated. Subclasses should use `UpdateProgress` to
+   * report progress updates.
+   */
+  VTK_LEGACY(void SetProgress(double));
 
   /**
    * Update the progress of the process object. If a ProgressMethod exists,
@@ -219,6 +230,24 @@ public:
    * should range between (0,1).
    */
   void UpdateProgress(double amount);
+
+  //@{
+  /**
+   * Specify the shift and scale values to use to apply to the progress amount
+   * when `UpdateProgress` is called. By default shift is set to 0, and scale is
+   * set to 1.0. This is useful when the vtkAlgorithm instance is used as an
+   * internal algorithm to solve only a part of a whole problem.
+   *
+   * If calling on a internal vtkAlgorithm, make sure you take into
+   * consideration that values set of the outer vtkAlgorithm as well since the
+   * outer vtkAlgorithm itself may be nested in another algorithm.
+   *
+   * @note SetProgressShiftScale does not modify the MTime of the algorithm.
+   */
+  void SetProgressShiftScale(double shift, double scale);
+  vtkGetMacro(ProgressShift, double);
+  vtkGetMacro(ProgressScale, double);
+  //@}
 
   //@{
   /**
@@ -931,6 +960,9 @@ private:
 private:
   vtkAlgorithm(const vtkAlgorithm&) = delete;
   void operator=(const vtkAlgorithm&) = delete;
+
+  double ProgressShift;
+  double ProgressScale;
 };
 
 #endif

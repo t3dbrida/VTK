@@ -1,5 +1,3 @@
-/* $Id: tiffiop.h,v 1.95 2017-09-07 14:02:52 erouault Exp $ */
-
 /*
  * Copyright (c) 1988-1997 Sam Leffler
  * Copyright (c) 1991-1997 Silicon Graphics, Inc.
@@ -72,6 +70,7 @@ extern int snprintf(char* str, size_t size, const char* format, ...);
 #endif
 
 #define    streq(a,b)      (strcmp(a,b) == 0)
+#define    strneq(a,b,n)   (strncmp(a,b,n) == 0)
 
 #ifndef TRUE
 #define	TRUE	1
@@ -314,7 +313,7 @@ typedef size_t TIFFIOSize_t;
 #define _TIFF_off_t off_t
 #endif
 
-#if defined(__has_attribute)
+#if defined(__has_attribute) && defined(__clang__)
 #if __has_attribute(no_sanitize)
 #define TIFF_NOSANITIZE_UNSIGNED_INT_OVERFLOW __attribute__((no_sanitize("unsigned-integer-overflow")))
 #else
@@ -427,6 +426,12 @@ vtktiff_EXPORT int TIFFInitSGILog(TIFF*, int);
 #endif
 #ifdef LZMA_SUPPORT
 vtktiff_EXPORT int TIFFInitLZMA(TIFF*, int);
+#endif
+#ifdef ZSTD_SUPPORT
+extern int TIFFInitZSTD(TIFF*, int);
+#endif
+#ifdef WEBP_SUPPORT
+extern int TIFFInitWebP(TIFF*, int);
 #endif
 #ifdef VMS
 vtktiff_EXPORT const TIFFCodec _TIFFBuiltinCODECS[];

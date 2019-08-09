@@ -76,7 +76,7 @@ using namespace vtkTemporalStreamTracerNamespace;
       vtkOStreamWrapper::EndlType endl; \
       vtkOStreamWrapper::UseEndl(endl); \
       vtkOStrStreamWrapper vtkmsg; \
-      vtkmsg << "P(" << this->UpdatePiece << "): " a << "\n"; \
+      vtkmsg << "P(" << this->UpdatePieceId << "): " a << "\n"; \
       OUTPUTTEXT(vtkmsg.str()); \
       vtkmsg.rdbuf()->freeze(0); \
     }
@@ -98,7 +98,7 @@ vtkTemporalStreamTracer::vtkTemporalStreamTracer()
   this->ForceReinjectionEveryNSteps = 1;
   this->ReinjectionFlag             = 0;
   this->ReinjectionCounter          = 0;
-  this->UpdatePiece                 = 0;
+  this->UpdatePieceId               = 0;
   this->UpdateNumPieces             = 0;
   this->AllFixedGeometry            = 1;
   this->StaticMesh                  = 1;
@@ -144,6 +144,9 @@ vtkTemporalStreamTracer::vtkTemporalStreamTracer()
 
   this->SetIntegratorType(RUNGE_KUTTA4);
   this->RequestIndex = 0;
+  VTK_LEGACY_BODY(
+    vtkTemporalStreamTracer::vtkTemporalStreamTracer,
+    "VTK 8.90");
 }
 //---------------------------------------------------------------------------
 vtkTemporalStreamTracer::~vtkTemporalStreamTracer()
@@ -298,7 +301,7 @@ int vtkTemporalStreamTracer::RequestUpdateExtent(
     this->ActualTimeStep = std::find_if(
       this->OutputTimeValues.begin(),
       this->OutputTimeValues.end(),
-      std::bind2nd( WithinTolerance( ), requestedTimeValue ))
+      std::bind( WithinTolerance( ), std::placeholders::_1, requestedTimeValue ))
       - this->OutputTimeValues.begin();
     if (this->ActualTimeStep>=this->OutputTimeValues.size())
     {
@@ -583,7 +586,8 @@ void vtkTemporalStreamTracer::AssignSeedsToProcessors(
 
 #ifndef NDEBUG
   vtkDebugMacro(<< "Tested " << numTested << " LocallyAssigned " << LocalAssignedCount);
-  if (this->UpdatePiece==0) {
+  if (this->UpdatePieceId == 0)
+  {
     vtkDebugMacro(<< "Total Assigned to all processes " << TotalAssigned);
   }
 #endif
@@ -673,7 +677,7 @@ int vtkTemporalStreamTracer::GenerateOutput(vtkInformationVector** inputVector,
   //
   vtkInformation *outInfo = outputVector->GetInformationObject(0);
 
-  this->UpdatePiece =
+  this->UpdatePieceId =
     outInfo->Get(vtkStreamingDemandDrivenPipeline::UPDATE_PIECE_NUMBER());
   this->UpdateNumPieces =
     outInfo->Get(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_PIECES());

@@ -174,6 +174,7 @@ static void vtkWrapPython_PrintProtocol(
   {
     func = finfo->Contents->Functions[i];
     if (func->Name && func->IsOperator &&
+        !func->IsDeleted && !func->IsExcluded &&
         strcmp(func->Name, "operator<<") == 0)
     {
       if (func->NumberOfParameters == 2 &&
@@ -258,7 +259,8 @@ static void vtkWrapPython_RichCompareProtocol(
         continue;
       }
     }
-    if (func->IsOperator && func->Name != NULL)
+    if (func->IsOperator && func->Name != NULL &&
+        !func->IsDeleted && !func->IsExcluded)
     {
       if (strcmp(func->Name, "operator<") == 0)
       {
@@ -407,6 +409,7 @@ static void vtkWrapPython_SequenceProtocol(
     func = data->Functions[i];
 
     if (func->Name && func->IsOperator &&
+        !func->IsDeleted && !func->IsExcluded &&
         strcmp(func->Name, "operator[]") == 0  &&
         vtkWrapPython_MethodCheck(data, func, hinfo))
     {
@@ -665,6 +668,7 @@ void vtkWrapPython_GenerateSpecialType(
   ClassInfo *data, FileInfo *finfo, HierarchyInfo *hinfo)
 {
   char supername[1024];
+  const char *supermodule;
   const char *name;
   SpecialTypeInfo info;
   const char *constructor = NULL;
@@ -683,10 +687,11 @@ void vtkWrapPython_GenerateSpecialType(
   }
 
   /* get the superclass */
-  has_superclass = vtkWrapPython_HasWrappedSuperClass(
+  supermodule = vtkWrapPython_HasWrappedSuperClass(
     hinfo, data->Name, &is_external);
-  if (has_superclass)
+  if (supermodule)
   {
+    has_superclass = 1;
     name = vtkWrapPython_GetSuperClass(data, hinfo);
     vtkWrapText_PythonName(name, supername);
   }
@@ -840,11 +845,11 @@ void vtkWrapPython_GenerateSpecialType(
 
   /* export New method for use by subclasses */
   fprintf(fp,
-    "extern \"C\" { %s PyObject *Py%s_TypeNew(); }\n\n",
-    "VTK_ABI_EXPORT", classname);
+    "extern \"C\" { PyObject *Py%s_TypeNew(); }\n\n",
+    classname);
 
   /* import New method of the superclass */
-  if (has_superclass)
+  if (has_superclass && !is_external)
   {
     fprintf(fp,
       "#ifndef DECLARED_Py%s_TypeNew\n"
@@ -864,7 +869,7 @@ void vtkWrapPython_GenerateSpecialType(
   if (has_copycons)
   {
     fprintf(fp,
-    "  PyVTKSpecialType_Add(\n"
+    "  PyTypeObject *pytype = PyVTKSpecialType_Add(\n"
     "    &Py%s_Type,\n"
     "    Py%s_Methods,\n"
     "    Py%s_%*.*s_Methods,\n"
@@ -877,7 +882,7 @@ void vtkWrapPython_GenerateSpecialType(
   else if (constructor)
   {
     fprintf(fp,
-    "  PyVTKSpecialType_Add(\n"
+    "  PyTypeObject *pytype = PyVTKSpecialType_Add(\n"
     "    &Py%s_Type,\n"
     "    Py%s_Methods,\n"
     "    Py%s_%*.*s_Methods,\n"
@@ -889,7 +894,7 @@ void vtkWrapPython_GenerateSpecialType(
   else
   {
     fprintf(fp,
-    "  PyVTKSpecialType_Add(\n"
+    "  PyTypeObject *pytype = PyVTKSpecialType_Add(\n"
     "    &Py%s_Type,\n"
     "    Py%s_Methods,\n"
     "    nullptr,\n"
@@ -897,10 +902,6 @@ void vtkWrapPython_GenerateSpecialType(
     "\n",
     classname, classname);
   }
-
-  fprintf(fp,
-    "  PyTypeObject *pytype = &Py%s_Type;\n\n",
-    classname);
 
   /* if type is already ready, then return */
   fprintf(fp,
@@ -912,9 +913,19 @@ void vtkWrapPython_GenerateSpecialType(
   /* call the superclass New (initialize in dependency order) */
   if (has_superclass)
   {
-    fprintf(fp,
-      "  pytype->tp_base = (PyTypeObject *)Py%s_TypeNew();\n\n",
-      supername);
+    if (!is_external) /* superclass is in the same module */
+    {
+      fprintf(fp,
+        "  pytype->tp_base = (PyTypeObject *)Py%s_TypeNew();\n\n",
+        supername);
+    }
+    else /* superclass is in a different module */
+    {
+      fprintf(fp,
+        "  pytype->tp_base = vtkPythonUtil::FindSpecialTypeObject("
+        "\"%s\");\n\n",
+        supername);
+    }
   }
 
   /* check whether the class has any constants as members */

@@ -56,6 +56,7 @@ extern "C" {
 #define H5E_NONE_MAJOR       (H5OPEN H5E_NONE_MAJOR_g)
 #define H5E_SLIST            (H5OPEN H5E_SLIST_g)
 #define H5E_ARGS             (H5OPEN H5E_ARGS_g)
+#define H5E_CONTEXT          (H5OPEN H5E_CONTEXT_g)
 #define H5E_EARRAY           (H5OPEN H5E_EARRAY_g)
 #define H5E_PLINE            (H5OPEN H5E_PLINE_g)
 #define H5E_ERROR            (H5OPEN H5E_ERROR_g)
@@ -90,6 +91,7 @@ H5_DLLVAR hid_t H5E_ATOM_g;          /* Object atom */
 H5_DLLVAR hid_t H5E_NONE_MAJOR_g;    /* No error */
 H5_DLLVAR hid_t H5E_SLIST_g;         /* Skip Lists */
 H5_DLLVAR hid_t H5E_ARGS_g;          /* Invalid arguments to routine */
+H5_DLLVAR hid_t H5E_CONTEXT_g;       /* API Context */
 H5_DLLVAR hid_t H5E_EARRAY_g;        /* Extensible Array */
 H5_DLLVAR hid_t H5E_PLINE_g;         /* Data filters */
 H5_DLLVAR hid_t H5E_ERROR_g;         /* Error API */
@@ -290,6 +292,7 @@ H5_DLLVAR hid_t H5E_NOIDS_g;         /* Out of IDs for group */
 #define H5E_CANTDEPEND       (H5OPEN H5E_CANTDEPEND_g)
 #define H5E_CANTUNDEPEND     (H5OPEN H5E_CANTUNDEPEND_g)
 #define H5E_CANTNOTIFY       (H5OPEN H5E_CANTNOTIFY_g)
+#define H5E_LOGGING          (H5OPEN H5E_LOGGING_g)
 #define H5E_LOGFAIL          (H5OPEN H5E_LOGFAIL_g)
 #define H5E_CANTCORK         (H5OPEN H5E_CANTCORK_g)
 #define H5E_CANTUNCORK       (H5OPEN H5E_CANTUNCORK_g)
@@ -317,7 +320,8 @@ H5_DLLVAR hid_t H5E_CANTRESIZE_g;    /* Unable to resize a metadata cache entry 
 H5_DLLVAR hid_t H5E_CANTDEPEND_g;    /* Unable to create a flush dependency */
 H5_DLLVAR hid_t H5E_CANTUNDEPEND_g;  /* Unable to destroy a flush dependency */
 H5_DLLVAR hid_t H5E_CANTNOTIFY_g;    /* Unable to notify object about action */
-H5_DLLVAR hid_t H5E_LOGFAIL_g;       /* Failure in the cache logging framework */
+H5_DLLVAR hid_t H5E_LOGGING_g;       /* Failure in the cache logging framework */
+H5_DLLVAR hid_t H5E_LOGFAIL_g;       /* old H5E_LOGGING_g (maintained for binary compatibility) */
 H5_DLLVAR hid_t H5E_CANTCORK_g;      /* Unable to cork an object */
 H5_DLLVAR hid_t H5E_CANTUNCORK_g;    /* Unable to uncork an object */
 
@@ -337,9 +341,13 @@ H5_DLLVAR hid_t H5E_CANTSORT_g;      /* Can't sort objects */
 #define H5E_MPI              (H5OPEN H5E_MPI_g)
 #define H5E_MPIERRSTR        (H5OPEN H5E_MPIERRSTR_g)
 #define H5E_CANTRECV         (H5OPEN H5E_CANTRECV_g)
+#define H5E_CANTGATHER       (H5OPEN H5E_CANTGATHER_g)
+#define H5E_NO_INDEPENDENT   (H5OPEN H5E_NO_INDEPENDENT_g)
 H5_DLLVAR hid_t H5E_MPI_g;           /* Some MPI function failed */
 H5_DLLVAR hid_t H5E_MPIERRSTR_g;     /* MPI Error String */
 H5_DLLVAR hid_t H5E_CANTRECV_g;      /* Can't receive data */
+H5_DLLVAR hid_t H5E_CANTGATHER_g;    /* Can't gather data */
+H5_DLLVAR hid_t H5E_NO_INDEPENDENT_g; /* Can't perform independent IO */
 
 /* Dataspace errors */
 #define H5E_CANTCLIP         (H5OPEN H5E_CANTCLIP_g)

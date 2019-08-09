@@ -24,6 +24,7 @@
 #include "vtkCamera.h"
 #include "vtkClipDataSet.h"
 #include "vtkDataSetMapper.h"
+#include "vtkHyperTreeGridToDualGrid.h"
 #include "vtkNew.h"
 #include "vtkPlane.h"
 #include "vtkPointData.h"
@@ -40,11 +41,14 @@ int TestHyperTreeGridTernary3DClip( int argc, char* argv[] )
   // Hyper tree grid
   vtkNew<vtkHyperTreeGridSource> htGrid;
   htGrid->SetMaximumLevel( 5 );
-  htGrid->SetGridSize( 3, 3, 2 );
+  htGrid->SetDimensions( 4, 4, 3 ); //GridCell 3, 3, 2
   htGrid->SetGridScale( 1.5, 1., .7 );
-  htGrid->SetDimension( 3 );
   htGrid->SetBranchFactor( 3 );
   htGrid->SetDescriptor( "RRR .R. .RR ..R ..R .R.|R.......................... ........................... ........................... .............R............. ....RR.RR........R......... .....RRRR.....R.RR......... ........................... ........................... ...........................|........................... ........................... ........................... ...RR.RR.......RR.......... ........................... RR......................... ........................... ........................... ........................... ........................... ........................... ........................... ........................... ............RRR............|........................... ........................... .......RR.................. ........................... ........................... ........................... ........................... ........................... ........................... ........................... ...........................|........................... ..........................." );
+
+  // DualGrid
+  vtkNew<vtkHyperTreeGridToDualGrid> dualFilter;
+  dualFilter->SetInputConnection( htGrid->GetOutputPort() );
 
   // To unstructured grid
   vtkNew<vtkHyperTreeGridToUnstructuredGrid> htg2ug;
@@ -55,7 +59,7 @@ int TestHyperTreeGridTernary3DClip( int argc, char* argv[] )
   plane->SetOrigin( 0., .5, .4 );
   plane->SetNormal( -.2, -.6, 1. );
   vtkNew<vtkClipDataSet> clip;
-  clip->SetInputConnection( htGrid->GetOutputPort() );
+  clip->SetInputConnection( dualFilter->GetOutputPort() );
   clip->SetClipFunction( plane );
   clip->Update();
 

@@ -64,6 +64,14 @@ vtkProperty::vtkProperty()
   this->VertexColor[1] = 1.0;
   this->VertexColor[2] = 0.5;
 
+  this->EmissiveFactor[0] = 1.0;
+  this->EmissiveFactor[1] = 1.0;
+  this->EmissiveFactor[2] = 1.0;
+
+  this->NormalScale = 1.0;
+  this->OcclusionStrength = 1.0;
+  this->Metallic = 0.0;
+  this->Roughness = 0.5;
   this->Ambient = 0.0;
   this->Diffuse = 1.0;
   this->Specular = 0.0;
@@ -237,8 +245,26 @@ void vtkProperty::GetColor(double &r, double &g, double &b)
 //----------------------------------------------------------------------------
 void vtkProperty::SetTexture(const char* name, vtkTexture* tex)
 {
-  auto iter =
-    this->Textures.find(std::string(name));
+  if (tex == nullptr)
+  {
+    this->RemoveTexture(name);
+    return;
+  }
+
+  if ((strcmp(name, "albedoTex") == 0 || strcmp(name, "emissiveTex") == 0) &&
+    !tex->GetUseSRGBColorSpace())
+  {
+    vtkErrorMacro("The " << name << " texture is not in sRGB color space.");
+    return;
+  }
+  if ((strcmp(name, "materialTex") == 0 || strcmp(name, "normalTex") == 0) &&
+    tex->GetUseSRGBColorSpace())
+  {
+    vtkErrorMacro("The " << name << " texture is not in linear color space.");
+    return;
+  }
+
+  auto iter = this->Textures.find(std::string(name));
   if (iter != this->Textures.end())
   {
     // same value?
@@ -253,6 +279,7 @@ void vtkProperty::SetTexture(const char* name, vtkTexture* tex)
 
   tex->Register(this);
   this->Textures[name] = tex;
+  this->Modified();
 }
 
 //----------------------------------------------------------------------------
@@ -267,28 +294,6 @@ vtkTexture* vtkProperty::GetTexture(const char* name)
 
   return iter->second;
 }
-
-#ifndef VTK_LEGACY_REMOVE
-//----------------------------------------------------------------------------
-void vtkProperty::SetTexture(int, vtkTexture*)
-{
-  VTK_LEGACY_BODY(vtkProperty::SetTexture, "VTK 8.2");
-}
-
-//----------------------------------------------------------------------------
-vtkTexture* vtkProperty::GetTexture(int)
-{
-  VTK_LEGACY_BODY(vtkProperty::GetTexture, "VTK 8.2");
-  return nullptr;
-}
-
-//----------------------------------------------------------------------------
-void vtkProperty::RemoveTexture(int)
-{
-  VTK_LEGACY_BODY(vtkProperty::RemoveTexture, "VTK 8.2");
-}
-
-#endif
 
 //----------------------------------------------------------------------------
 int vtkProperty::GetNumberOfTextures()
@@ -305,6 +310,7 @@ void vtkProperty::RemoveTexture(const char* name)
   {
     iter->second->UnRegister(this);
     this->Textures.erase(iter);
+    this->Modified();
   }
 }
 
@@ -317,6 +323,7 @@ void vtkProperty::RemoveAllTextures()
     iter->second->UnRegister(this);
     this->Textures.erase(iter);
   }
+  this->Modified();
 }
 
 //----------------------------------------------------------------------------

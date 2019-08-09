@@ -3,7 +3,7 @@
 #include "kwsysPrivate.h"
 
 #if defined(_MSC_VER)
-#pragma warning(disable : 4786)
+#  pragma warning(disable : 4786)
 #endif
 
 #include KWSYS_HEADER(FStream.hxx)
@@ -12,8 +12,8 @@
 // Work-around CMake dependency scanning limitation.  This must
 // duplicate the above list of headers.
 #if 0
-#include "FStream.hxx.in"
-#include "SystemTools.hxx.in"
+#  include "FStream.hxx.in"
+#  include "SystemTools.hxx.in"
 #endif
 
 // Include with <> instead of "" to avoid getting any in-source copy
@@ -25,10 +25,10 @@
 #include <stdlib.h> /* free */
 #include <string.h> /* strcmp */
 #if defined(_WIN32) && !defined(__CYGWIN__)
-#include <io.h> /* _umask (MSVC) / umask (Borland) */
-#ifdef _MSC_VER
-#define umask _umask // Note this is still umask on Borland
-#endif
+#  include <io.h> /* _umask (MSVC) / umask (Borland) */
+#  ifdef _MSC_VER
+#    define umask _umask // Note this is still umask on Borland
+#  endif
 #endif
 #include <sys/stat.h> /* umask (POSIX), _S_I* constants (Windows) */
 // Visual C++ does not define mode_t (note that Borland does, however).
@@ -206,7 +206,7 @@ static bool CheckFileOperations()
     res = false;
   }
 
-  if (!kwsys::SystemTools::Touch(testNewFile.c_str(), true)) {
+  if (!kwsys::SystemTools::Touch(testNewFile, true)) {
     std::cerr << "Problem with Touch for: " << testNewFile << std::endl;
     res = false;
   }
@@ -415,7 +415,7 @@ static bool CheckFileOperations()
     res = false;
   }
 
-  kwsys::SystemTools::Touch(testNewFile.c_str(), true);
+  kwsys::SystemTools::Touch(testNewFile, true);
   if (!kwsys::SystemTools::RemoveADirectory(testNewDir)) {
     std::cerr << "Problem with RemoveADirectory for: " << testNewDir
               << std::endl;
@@ -806,7 +806,7 @@ static bool CheckFind()
   const std::string testFindFile(TEST_SYSTEMTOOLS_BINARY_DIR "/" +
                                  testFindFileName);
 
-  if (!kwsys::SystemTools::Touch(testFindFile.c_str(), true)) {
+  if (!kwsys::SystemTools::Touch(testFindFile, true)) {
     std::cerr << "Problem with Touch for: " << testFindFile << std::endl;
     // abort here as the existence of the file only makes the test meaningful
     return false;
@@ -912,6 +912,122 @@ static bool CheckGetLineFromStream()
   return ret;
 }
 
+static bool CheckGetLineFromStreamLongLine()
+{
+  const std::string fileWithLongLine("longlines.txt");
+  std::string firstLine, secondLine;
+  // First line: large buffer, containing a carriage return for some reason.
+  firstLine.assign(2050, ' ');
+  firstLine += "\rfirst";
+  secondLine.assign(2050, 'y');
+  secondLine += "second";
+
+  // Create file with long lines.
+  {
+    kwsys::ofstream out(fileWithLongLine.c_str(), std::ios::binary);
+    if (!out) {
+      std::cerr << "Problem opening for write: " << fileWithLongLine
+                << std::endl;
+      return false;
+    }
+    out << firstLine << "\r\n\n" << secondLine << "\n";
+  }
+
+  kwsys::ifstream file(fileWithLongLine.c_str(), std::ios::binary);
+  if (!file) {
+    std::cerr << "Problem opening: " << fileWithLongLine << std::endl;
+    return false;
+  }
+
+  std::string line;
+  bool has_newline = false;
+  bool result;
+
+  // Read first line.
+  result = kwsys::SystemTools::GetLineFromStream(file, line, &has_newline, -1);
+  if (!result || line != firstLine) {
+    std::cerr << "First line does not match, expected " << firstLine.size()
+              << " characters, got " << line.size() << std::endl;
+    return false;
+  }
+  if (!has_newline) {
+    std::cerr << "Expected new line to be read from first line" << std::endl;
+    return false;
+  }
+
+  // Read empty line.
+  has_newline = false;
+  result = kwsys::SystemTools::GetLineFromStream(file, line, &has_newline, -1);
+  if (!result || !line.empty()) {
+    std::cerr << "Expected successful read with an empty line, got "
+              << line.size() << " characters" << std::endl;
+    return false;
+  }
+  if (!has_newline) {
+    std::cerr << "Expected new line to be read for an empty line" << std::endl;
+    return false;
+  }
+
+  // Read second line.
+  has_newline = false;
+  result = kwsys::SystemTools::GetLineFromStream(file, line, &has_newline, -1);
+  if (!result || line != secondLine) {
+    std::cerr << "Second line does not match, expected " << secondLine.size()
+              << " characters, got " << line.size() << std::endl;
+    return false;
+  }
+  if (!has_newline) {
+    std::cerr << "Expected new line to be read from second line" << std::endl;
+    return false;
+  }
+
+  return true;
+}
+
+static bool writeFile(const char* fileName, const char* data)
+{
+  kwsys::ofstream out(fileName, std::ios::binary);
+  out << data;
+  if (!out) {
+    std::cerr << "Failed to write file: " << fileName << std::endl;
+    return false;
+  }
+  return true;
+}
+
+static bool CheckTextFilesDiffer()
+{
+  struct
+  {
+    const char* a;
+    const char* b;
+    bool differ;
+  } test_cases[] = { { "one", "one", false },
+                     { "one", "two", true },
+                     { "", "", false },
+                     { "\n", "\r\n", false },
+                     { "one\n", "one\n", false },
+                     { "one\r\n", "one\n", false },
+                     { "one\n", "one", false },
+                     { "one\ntwo", "one\ntwo", false },
+                     { "one\ntwo", "one\r\ntwo", false } };
+  const int num_test_cases = sizeof(test_cases) / sizeof(test_cases[0]);
+  for (int i = 0; i < num_test_cases; ++i) {
+    if (!writeFile("file_a", test_cases[i].a) ||
+        !writeFile("file_b", test_cases[i].b)) {
+      return false;
+    }
+    if (kwsys::SystemTools::TextFilesDiffer("file_a", "file_b") !=
+        test_cases[i].differ) {
+      std::cerr << "Incorrect TextFilesDiffer result for test case " << i + 1
+                << "." << std::endl;
+      return false;
+    }
+  }
+
+  return true;
+}
+
 int testSystemTools(int, char* [])
 {
   bool res = true;
@@ -951,7 +1067,11 @@ int testSystemTools(int, char* [])
 
   res &= CheckGetLineFromStream();
 
+  res &= CheckGetLineFromStreamLongLine();
+
   res &= CheckGetFilenameName();
+
+  res &= CheckTextFilesDiffer();
 
   return res ? 0 : 1;
 }

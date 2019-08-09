@@ -1,5 +1,5 @@
 /*********************************************************************
- *   Copyright 2016, UCAR/Unidata
+ *   Copyright 2018, UCAR/Unidata
  *   See netcdf/COPYRIGHT file for copying and redistribution conditions.
  *********************************************************************/
 
@@ -39,7 +39,6 @@ main(int argc, char** argv)
     int failcount = 0;
 
     for(test=PATHTESTS;test->path;test++) {
-	int ret = 0;
 	char* cvt = NCpathcvt(test->path);
 	if(cvt == NULL) {
 	    fprintf(stderr,"TEST returned NULL: %s\n",test->path);
@@ -51,7 +50,7 @@ main(int argc, char** argv)
 	}
 #ifdef VERBOSE
 	fprintf(stderr,"NCpathcvt:: input: |%s| actual=|%s|\n",test->path,cvt);
-#endif	
+#endif
 	free(cvt);
     }
 

@@ -20,6 +20,7 @@
 #include "vtkHyperTreeGrid.h"
 #include "vtkHyperTreeGridGeometry.h"
 #include "vtkHyperTreeGridSource.h"
+#include "vtkHyperTreeGridToDualGrid.h"
 
 #include "vtkCamera.h"
 #include "vtkCellData.h"
@@ -116,7 +117,6 @@ int TestHyperTreeGridTernary2DFullMaterialBits( int argc, char* argv[] )
 {
   int sx = 10;
   int sy = 10;
-  int sz = 1;
   int depth = 2;
   int branch = 3;
 
@@ -125,14 +125,12 @@ int TestHyperTreeGridTernary2DFullMaterialBits( int argc, char* argv[] )
   vtkNew<vtkHyperTreeGridSource> htGrid;
   int maxLevel = depth;
   htGrid->SetMaximumLevel( maxLevel );
-  htGrid->SetGridSize( sx, sy, sz );
+  htGrid->SetDimensions( sx + 1, sy + 1, 1 ); //Dimension 2 in xy plane GridCell sx, sy, sz = 1
   htGrid->SetGridScale( 1., 1., 1. );
-  htGrid->SetDimension( 2 );
-  htGrid->SetOrientation( 2 ); // in xy plane
   htGrid->SetBranchFactor( branch );
-  htGrid->UseMaterialMaskOn();
+  htGrid->UseMaskOn();
   vtkNew<vtkIdTypeArray> zero;
-  for ( int i = 0; i < sx * sy * sz; i++ )
+  for ( int i = 0; i < sx * sy; i++ )
   {
     zero->InsertNextValue(i);
   }
@@ -141,23 +139,21 @@ int TestHyperTreeGridTernary2DFullMaterialBits( int argc, char* argv[] )
   vtkNew<vtkBitArray> mat;
   timer->StartTimer();
   cout << "Generating descriptors..." << endl;
-  GenerateDescriptorAndMaterial( depth, sx, sy, sz, branch, desc, mat );
+  GenerateDescriptorAndMaterial( depth, sx, sy, 1, branch, desc, mat );
   timer->StopTimer();
   htGrid->SetDescriptorBits( desc );
-  htGrid->SetMaterialMaskBits( mat );
+  htGrid->SetMaskBits( mat );
   cout << " Done in " << timer->GetElapsedTime() << "s (" << desc->GetNumberOfTuples() << " nodes)" << endl;
 
-  cout << "Constructing HTG " << sx << "x" << sy << "x" << sz << "  branch: " << branch << "  depth: " << depth << "..." << endl;
+  cout << "Constructing HTG " << sx << "x" << sy << "x" << 1 << "  branch: " << branch << "  depth: " << depth << "..." << endl;
   timer->StartTimer();
   htGrid->Update();
   timer->StopTimer();
   vtkHyperTreeGrid* ht = htGrid->GetHyperTreeGridOutput();
-  vtkIdType nbCells = ht->GetNumberOfCells();
   cout << " Done in " << timer->GetElapsedTime() << "s" << endl;
-  cout << "#pts " << ht->GetNumberOfPoints() << endl;
+  cout << "#pts " << ht->GetNumberOfVertices() << endl;
   timer->StartTimer();
   timer->StopTimer();
-  cout << "#cells " << nbCells << endl;
 
   cout << "HTG takes " << htGrid->GetOutput()->GetActualMemorySize() << "KB in memory." << endl;
 
@@ -165,7 +161,7 @@ int TestHyperTreeGridTernary2DFullMaterialBits( int argc, char* argv[] )
   vtkNew<vtkIdTypeArray> idArray;
   idArray->SetName( "Ids" );
   idArray->SetNumberOfComponents( 1 );
-  vtkIdType nbPoints = ht->GetNumberOfPoints();
+  vtkIdType nbPoints = ht->GetNumberOfVertices();
   idArray->SetNumberOfValues( nbPoints );
   for ( vtkIdType i = 0; i < nbPoints; ++ i )
   {
@@ -183,6 +179,10 @@ int TestHyperTreeGridTernary2DFullMaterialBits( int argc, char* argv[] )
   timer->StopTimer();
   cout << " Done in " << timer->GetElapsedTime() << "s" << endl;
 
+  vtkNew<vtkHyperTreeGridToDualGrid> h2ug;
+  h2ug->SetInputData( htGrid->GetOutput() );
+  h2ug->Update();
+
   // Mappers
   vtkMapper::SetResolveCoincidentTopologyToPolygonOffset();
   vtkNew<vtkPolyDataMapper> mapper1;
@@ -192,10 +192,10 @@ int TestHyperTreeGridTernary2DFullMaterialBits( int argc, char* argv[] )
   mapper2->SetInputConnection( geometry->GetOutputPort() );
   mapper2->ScalarVisibilityOff();
   vtkNew<vtkDataSetMapper> mapper3;
-  mapper3->SetInputConnection( htGrid->GetOutputPort() );
+  mapper3->SetInputConnection( h2ug->GetOutputPort() );
   mapper3->ScalarVisibilityOff();
   vtkNew<vtkDataSetMapper> mapper4;
-  mapper4->SetInputConnection( htGrid->GetOutputPort() );
+  mapper4->SetInputConnection( h2ug->GetOutputPort() );
   mapper4->ScalarVisibilityOff();
 
   // Actors

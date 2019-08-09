@@ -18,7 +18,7 @@
  * interpolating between times during particle tracing
  *
  * vtkTemporalInterpolatedVelocityField is a general purpose
- * helper for the temporal particle tracing code (vtkTemporalStreamTracer)
+ * helper for the temporal particle tracing code (vtkParticleTracerBase)
  *
  * It maintains two copies of vtkCachingInterpolatedVelocityField internally
  * and uses them to obtain velocity values at time T0 and T1.
@@ -34,14 +34,15 @@
  * A new instance should be created by each thread.
  *
  * @warning
- * Datasets are added in lists. The list for T1 must be idential to that for T0
+ * Datasets are added in lists. The list for T1 must be identical to that for T0
  * in structure/topology and dataset order, and any datasets marked as static,
  * must remain so for all T - changing a dataset from static to dynamic
  * between time steps will result in undefined behaviour (=crash probably)
  *
  *
  * @sa
- * vtkCachingInterpolatedVelocityField vtkTemporalStreamTracer
+ * vtkCachingInterpolatedVelocityField vtkParticleTracerBase
+ * vtkParticleTracer vtkParticlePathFilter vtkStreaklineFilter
 */
 
 #ifndef vtkTemporalInterpolatedVelocityField_h
@@ -77,6 +78,7 @@ public:
    */
   static vtkTemporalInterpolatedVelocityField *New();
 
+  using Superclass::FunctionValues;
   //@{
   /**
    * Evaluate the velocity field, f, at (x, y, z, t).

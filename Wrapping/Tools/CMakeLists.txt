@@ -1,72 +1,76 @@
 # Allow the user to customize their build with some local options
-include(${VTK_SOURCE_DIR}/Wrapping/Tools/LocalUserOptions.cmake OPTIONAL)
+include("${CMAKE_CURRENT_SOURCE_DIR}/LocalUserOptions.cmake" OPTIONAL)
 
-# vtkParse.tab.c has #line markers that break #include with double quotes.
-include_directories(
-  ${CMAKE_CURRENT_BINARY_DIR}
-  ${CMAKE_CURRENT_SOURCE_DIR}
-  ${VTK_BINARY_DIR}/Common/Core
-  ${VTK_SOURCE_DIR}/Common/Core
-  ${VTK_BINARY_DIR}/Utilities/KWSys)
+set(ns "VTK")
+if (VTK_BUILD_COMPILE_TOOLS_ONLY)
+  set(ns "VTKCompileTools")
+endif ()
 
-set(VTK_PARSE_SOURCES
-  vtkParse.h
-  vtkParseType.h
+set(sources
   vtkParse.tab.c
   vtkParseData.c
-  vtkParseMain.c
   vtkParseExtras.c
+  vtkParseHierarchy.c
+  vtkParseMain.c
   vtkParseMangle.c
   vtkParseMerge.c
-  vtkParseString.c
-  vtkParseHierarchy.c
   vtkParsePreprocess.c
+  vtkParseString.c
   vtkWrap.c
-  vtkWrapText.c
-)
+  vtkWrapText.c)
 
-set_source_files_properties(
+set(headers
   vtkParse.h
+  vtkParseData.h
+  vtkParseExtras.h
+  vtkParseHierarchy.h
+  vtkParseMain.h
+  vtkParseMangle.h
+  vtkParseMerge.h
+  vtkParsePreprocess.h
+  vtkParseString.h
   vtkParseType.h
-  HEADER_FILE_ONLY
-)
+  vtkWrap.h)
 
-# get absolute path of each header for install rules
-set(VTK_PARSE_HEADERS)
-foreach(arg ${VTK_PARSE_SOURCES})
-  get_filename_component(src "${arg}" ABSOLUTE)
-  string(REGEX REPLACE "\\.c$" ".h" hdr "${src}")
-  if("${hdr}" MATCHES "\\.h$" AND EXISTS "${hdr}")
-    list(APPEND VTK_PARSE_HEADERS "${hdr}")
-  endif()
-endforeach()
+set_property(SOURCE vtkParseMain.c
+  PROPERTY
+    COMPILE_DEFINITIONS "VTK_PARSE_VERSION=\"${VTK_MAJOR_VERSION}.${VTK_MINOR_VERSION}\"")
 
-# Create a module, but the wrapper tools module is atypical so a lot of
-# customization is done here.
-set(${vtk-module}_LIBRARIES ${vtk-module})
-vtk_module_impl()
+vtk_module_add_module("${ns}::WrappingTools"
+  SOURCES ${sources}
+  HEADERS ${headers}
+  FORCE_STATIC)
+# This is a hard-coded path because `vtkType.h` from `VTK::CommonCore` is
+# used for VTK's integer types. However, it is not a public dependency. In
+# order for the compile tools project to be as minimal as possible, the
+# `VTK::CommonCore` target should also not be created.
+vtk_module_include("${ns}::WrappingTools"
+  PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../Common/Core"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../Utilities/KWIML")
 
-# Wrapper tools must be statically linked
-vtk_add_library(${vtk-module} STATIC ${VTK_PARSE_SOURCES})
-vtk_module_export_info()
+set(vtk_wrapping_tools_no_install)
+if (NOT _vtk_build_INSTALL_HEADERS)
+  set(vtk_wrapping_tools_no_install
+    NO_INSTALL)
+endif ()
 
-if(NOT VTK_INSTALL_NO_DEVELOPMENT)
-  install(FILES ${VTK_PARSE_HEADERS}
-    DESTINATION ${VTK_INSTALL_INCLUDE_DIR}
-    COMPONENT Development
-    )
-endif()
+if (NOT TARGET "${ns}::WrapHierarchy")
+  vtk_module_add_executable(WrapHierarchy
+    ${vtk_wrapping_tools_no_install}
+    BASENAME vtkWrapHierarchy
+    vtkWrapHierarchy.c)
+  target_link_libraries(WrapHierarchy
+    PRIVATE
+      "${ns}::WrappingTools")
+  add_executable("${ns}::WrapHierarchy" ALIAS
+    WrapHierarchy)
+endif ()
 
-set_property(SOURCE vtkParseMain.c PROPERTY COMPILE_DEFINITIONS
-  VTK_PARSE_VERSION="${VTK_MAJOR_VERSION}.${VTK_MINOR_VERSION}")
-
-if(NOT VTK_COMPILE_TOOLS_IMPORTED)
-
-  add_executable(vtkWrapHierarchy vtkWrapHierarchy.c)
-  target_link_libraries(vtkWrapHierarchy vtkWrappingTools)
-  vtk_compile_tools_target(vtkWrapHierarchy)
-
-  add_executable(vtkWrapPython
+if (NOT TARGET WrapPython)
+  vtk_module_add_executable(WrapPython
+    ${vtk_wrapping_tools_no_install}
+    BASENAME vtkWrapPython
     vtkWrapPython.c
     vtkWrapPythonClass.c
     vtkWrapPythonConstant.c
@@ -76,18 +80,39 @@ if(NOT VTK_COMPILE_TOOLS_IMPORTED)
     vtkWrapPythonNamespace.c
     vtkWrapPythonOverload.c
     vtkWrapPythonTemplate.c
-    vtkWrapPythonType.c
-  )
-  target_link_libraries(vtkWrapPython vtkWrappingTools)
-  add_executable(vtkWrapPythonInit vtkWrapPythonInit.c)
-  vtk_compile_tools_target(vtkWrapPython)
-  vtk_compile_tools_target(vtkWrapPythonInit)
+    vtkWrapPythonType.c)
+  target_link_libraries(WrapPython
+    PRIVATE
+      "${ns}::WrappingTools")
+  add_executable("${ns}::WrapPython" ALIAS
+    WrapPython)
 
-  add_executable(vtkParseJava vtkParseJava.c)
-  target_link_libraries(vtkParseJava vtkWrappingTools)
-  add_executable(vtkWrapJava vtkWrapJava.c)
-  target_link_libraries(vtkWrapJava vtkWrappingTools)
-  vtk_compile_tools_target(vtkParseJava)
-  vtk_compile_tools_target(vtkWrapJava)
+  vtk_module_add_executable(WrapPythonInit
+    ${vtk_wrapping_tools_no_install}
+    BASENAME vtkWrapPythonInit
+    vtkWrapPythonInit.c)
+  add_executable("${ns}::WrapPythonInit" ALIAS
+    WrapPythonInit)
+endif ()
 
-endif()
+if (NOT TARGET WrapJava)
+  vtk_module_add_executable(ParseJava
+    ${vtk_wrapping_tools_no_install}
+    BASENAME vtkParseJava
+    vtkParseJava.c)
+  target_link_libraries(ParseJava
+    PRIVATE
+      "${ns}::WrappingTools")
+  add_executable("${ns}::ParseJava" ALIAS
+    ParseJava)
+
+  vtk_module_add_executable(WrapJava
+    ${vtk_wrapping_tools_no_install}
+    BASENAME vtkWrapJava
+    vtkWrapJava.c)
+  target_link_libraries(WrapJava
+    PRIVATE
+      "${ns}::WrappingTools")
+  add_executable("${ns}::WrapJava" ALIAS
+    WrapJava)
+endif ()

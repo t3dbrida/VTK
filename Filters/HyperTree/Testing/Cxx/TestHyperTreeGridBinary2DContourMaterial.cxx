@@ -38,18 +38,15 @@ int TestHyperTreeGridBinary2DContourMaterial( int argc, char* argv[] )
   vtkNew<vtkHyperTreeGridSource> htGrid;
   int maxLevel = 6;
   htGrid->SetMaximumLevel( maxLevel );
-  htGrid->SetGridSize( 2, 3, 1 );
+  htGrid->SetDimensions( 3, 4, 1 ); //Dimension 2 in xy plane GridCell 2, 3
   htGrid->SetGridScale( 1.5, 1., 10. );  // this is to test that orientation fixes scale
-  htGrid->SetDimension( 2 );
-  htGrid->SetOrientation( 2 ); // in xy plane
   htGrid->SetBranchFactor( 2 );
-  htGrid->UseMaterialMaskOn();
+  htGrid->UseMaskOn();
   htGrid->SetDescriptor( "RRRRR.|.... .R.. RRRR R... R...|.R.. ...R ..RR .R.. R... .... ....|.... ...R ..R. .... .R.. R...|.... .... .R.. ....|...." );
-  htGrid->SetMaterialMask( "111111|0000 1111 1111 1111 1111|1111 0001 0111 0101 1011 1111 0111|1111 0111 1111 1111 1111 1111|1111 1111 1111 1111|1111" );
+  htGrid->SetMask( "111111|0000 1111 1111 1111 1111|1111 0001 0111 0101 1011 1111 0111|1111 0111 1111 1111 1111 1111|1111 1111 1111 1111|1111" );
 
   // Contour
   vtkNew<vtkHyperTreeGridContour> contour;
-  contour->SetInputConnection( htGrid->GetOutputPort() );
   int nContours = 3;
   contour->SetNumberOfContours( nContours );
   contour->SetInputConnection( htGrid->GetOutputPort() );

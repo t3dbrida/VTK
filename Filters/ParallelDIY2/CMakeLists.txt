@@ -1,23 +1,33 @@
-if (NOT WIN32)
-  include(vtkMPI)
-  include(vtkObjectFactory)
+vtk_object_factory_declare(
+  BASE      vtkResampleToImage
+  OVERRIDE  vtkPResampleToImage)
+vtk_object_factory_declare(
+  BASE      vtkResampleWithDataSet
+  OVERRIDE  vtkPResampleWithDataSet)
 
-  set(Module_SRCS
-    vtkDIYAggregateDataSetFilter.cxx
-    vtkPResampleToImage.cxx
-    vtkPResampleWithDataSet.cxx
-    )
+set(classes
+  vtkPResampleToImage
+  vtkPResampleWithDataSet)
 
-  vtk_add_override(vtkResampleToImage vtkPResampleToImage)
-  vtk_add_override(vtkResampleWithDataSet vtkPResampleWithDataSet)
-  vtk_add_override(vtkAggregateDataSetFilter vtkDIYAggregateDataSetFilter)
-
-  vtk_object_factory_configure("${vtk_module_overrides}")
-  list(APPEND Module_SRCS
-    ${CMAKE_CURRENT_BINARY_DIR}/${vtk-module}ObjectFactory.cxx)
-
-  add_definitions(-DDIY_NO_THREADS)
-
-  vtk_module_library(vtkFiltersParallelDIY2 ${Module_SRCS})
-  vtk_mpi_link(vtkFiltersParallelDIY2)
+if (TARGET VTK::ParallelMPI)
+  # FIXME: vtkDIYAggregateDataSetFilter should not require MPI
+  # current implementation does (ref: paraview/paraview#19098)
+  vtk_object_factory_declare(
+    BASE      vtkAggregateDataSetFilter
+    OVERRIDE  vtkDIYAggregateDataSetFilter)
+  list(APPEND classes
+    vtkDIYAggregateDataSetFilter)
 endif()
+
+vtk_object_factory_configure(
+  SOURCE_FILE vtk_object_factory_source
+  HEADER_FILE vtk_object_factory_header
+  EXPORT_MACRO "VTKFILTERSPARALLELDIY2_EXPORT")
+
+vtk_module_add_module(VTK::FiltersParallelDIY2
+  CLASSES ${classes}
+  SOURCES ${vtk_object_factory_source}
+  PRIVATE_HEADERS ${vtk_object_factory_header})
+
+vtk_module_definitions(VTK::FiltersParallelDIY2
+  PRIVATE DIY_NO_THREADS)

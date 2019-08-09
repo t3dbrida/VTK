@@ -244,7 +244,8 @@ int vtkExtractSelection::RequestData(
     if (auto anOperator = this->NewSelectionOperator(
           static_cast<vtkSelectionNode::SelectionContent>(node->GetContentType())))
     {
-      anOperator->Initialize(node, name.c_str());
+      anOperator->SetInsidednessArrayName(name.c_str());
+      anOperator->Initialize(node);
       selectors[name] = anOperator;
     }
     else
@@ -270,7 +271,9 @@ int vtkExtractSelection::RequestData(
       auto blockInput = inIter->GetCurrentDataObject();
       if (blockInput)
       {
-        outputCD->SetDataSet(inIter, blockInput->NewInstance());
+        auto clone = blockInput->NewInstance();
+        outputCD->SetDataSet(inIter, clone);
+        clone->FastDelete();
       }
     }
 
@@ -279,7 +282,7 @@ int vtkExtractSelection::RequestData(
     {
       auto name = nodeIter->first;
       auto selector = nodeIter->second;
-      selector->ComputeSelectedElements(inputCD, outputCD);
+      selector->Execute(inputCD, outputCD);
     }
 
     // Now iterate again over the composite dataset and evaluate the expression to
@@ -317,7 +320,6 @@ int vtkExtractSelection::RequestData(
       // Evaluate the map of insidedness arrays
       auto blockInsidedness = selection->Evaluate(arrayMap);
       auto resultDO = this->ExtractElements(inputBlock, assoc, blockInsidedness);
-      outputCD->GetDataSet(inIter)->Delete();
       if (resultDO && resultDO->GetNumberOfElements(assoc) > 0)
       {
         outputCD->SetDataSet(inIter, resultDO);
@@ -335,7 +337,7 @@ int vtkExtractSelection::RequestData(
     {
       auto name = nodeIter->first;
       auto selector = nodeIter->second;
-      selector->ComputeSelectedElements(input, output);
+      selector->Execute(input, output);
 
       // Set up a map from selection node name to insidedness array.
       auto *attributes = output->GetAttributes(assoc);
@@ -388,8 +390,8 @@ vtkSmartPointer<vtkSelector> vtkExtractSelection::NewSelectionOperator(
       return vtkSmartPointer<vtkBlockSelector>::New();
 
     case vtkSelectionNode::USER:
-      return nullptr;
-
+    case vtkSelectionNode::SELECTIONS:
+    case vtkSelectionNode::QUERY:
     default:
       return nullptr;
   }
@@ -465,7 +467,14 @@ void vtkExtractSelection::ExtractSelectedCells(
   vtkPointData *outputPD = output->GetPointData();
   vtkCellData *outputCD = output->GetCellData();
 
+  // To copy points in a type agnostic way later
+  auto pointSet = vtkPointSet::SafeDownCast(input);
+
   vtkNew<vtkPoints> newPts;
+  if (pointSet)
+  {
+    newPts->SetDataType(pointSet->GetPoints()->GetDataType());
+  }
   newPts->Allocate(numPts/4,numPts);
 
   outputPD->SetCopyGlobalIds(1);
@@ -514,8 +523,16 @@ void vtkExtractSelection::ExtractSelectedCells(
           vtkIdType newPointId = pointMap[ptId];
           if (newPointId < 0)
           {
-            input->GetPoint(ptId, x);
-            newPointId = newPts->InsertNextPoint(x);
+            if (pointSet)
+            {
+              newPointId = newPts->GetNumberOfPoints();
+              newPts->InsertPoints(newPointId, 1, ptId, pointSet->GetPoints());
+            }
+            else
+            {
+              input->GetPoint(ptId, x);
+              newPointId = newPts->InsertNextPoint(x);
+            }
             outputPD->CopyData(pd,ptId,newPointId);
             originalPointIds->InsertNextValue(ptId);
             pointMap[ptId] = newPointId;
@@ -555,7 +572,14 @@ void vtkExtractSelection::ExtractSelectedPoints(
   vtkPointData *pd = input->GetPointData();
   vtkPointData *outputPD = output->GetPointData();
 
+  // To copy points in a type agnostic way later
+  auto pointSet = vtkPointSet::SafeDownCast(input);
+
   vtkNew<vtkPoints> newPts;
+  if (pointSet)
+  {
+    newPts->SetDataType(pointSet->GetPoints()->GetDataType());
+  }
   newPts->Allocate(numPts/4,numPts);
 
   vtkNew<vtkIdList> newCellPts;
@@ -579,8 +603,18 @@ void vtkExtractSelection::ExtractSelectedPoints(
     pointInside->GetTypedTuple(ptId, &isInside);
     if (isInside)
     {
-      input->GetPoint(ptId, x);
-      vtkIdType newPointId = newPts->InsertNextPoint(x);
+      vtkIdType newPointId = -1;
+      if (pointSet)
+      {
+        newPointId = newPts->GetNumberOfPoints();
+        newPts->InsertPoints(newPointId, 1, ptId, pointSet->GetPoints());
+      }
+      else
+      {
+        input->GetPoint(ptId, x);
+        newPointId = newPts->InsertNextPoint(x);
+      }
+      assert(newPointId >= 0);
       outputPD->CopyData(pd,ptId,newPointId);
       originalPointIds->InsertNextValue(ptId);
     }
@@ -625,54 +659,3 @@ void vtkExtractSelection::PrintSelf(ostream& os, vtkIndent indent)
   this->Superclass::PrintSelf(os, indent);
   os << indent << "PreserveTopology: " << this->PreserveTopology << endl;
 }
-
-#ifndef VTK_LEGACY_REMOVE
-//----------------------------------------------------------------------------
-void vtkExtractSelection::SetShowBounds(bool)
-{
-  VTK_LEGACY_BODY(vtkExtractSelection::SetShowBounds, "VTK 8.2");
-}
-//----------------------------------------------------------------------------
-bool vtkExtractSelection::GetShowBounds()
-{
-  VTK_LEGACY_BODY(vtkExtractSelection::GetShowBounds, "VTK 8.2");
-  return false;
-}
-
-//----------------------------------------------------------------------------
-void vtkExtractSelection::ShowBoundsOn()
-{
-  VTK_LEGACY_BODY(vtkExtractSelection::ShowBoundsOn, "VTK 8.2");
-}
-
-//----------------------------------------------------------------------------
-void vtkExtractSelection::ShowBoundsOff()
-{
-  VTK_LEGACY_BODY(vtkExtractSelection::ShowBoundsOff, "VTK 8.2");
-}
-
-//----------------------------------------------------------------------------
-void vtkExtractSelection::SetUseProbeForLocations(bool)
-{
-  VTK_LEGACY_BODY(vtkExtractSelection::SetUseProbeForLocations, "VTK 8.2");
-}
-
-//----------------------------------------------------------------------------
-bool vtkExtractSelection::GetUseProbeForLocations()
-{
-  VTK_LEGACY_BODY(vtkExtractSelection::GetUseProbeForLocations, "VTK 8.2");
-  return false;
-}
-
-//----------------------------------------------------------------------------
-void vtkExtractSelection::UseProbeForLocationsOn()
-{
-  VTK_LEGACY_BODY(vtkExtractSelection::UseProbeForLocationsOn, "VTK 8.2");
-}
-
-//----------------------------------------------------------------------------
-void vtkExtractSelection::UseProbeForLocationsOff()
-{
-  VTK_LEGACY_BODY(vtkExtractSelection::UseProbeForLocationsOff, "VTK 8.2");
-}
-#endif

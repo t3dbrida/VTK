@@ -217,6 +217,13 @@ protected:
   // VTKFile element.
   virtual int ReadVTKFile(vtkXMLDataElement* eVTKFile);
 
+  /**
+   * If the IdType argument is present in the provided XMLDataElement
+   * and the provided dataType has the same size with VTK_ID_TYPE on this build of VTK,
+   * returns VTK_ID_TYPE. Returns dataType in any other cases.
+   */
+  int GetLocalDataType(vtkXMLDataElement* da, int datatype);
+
   // Create a vtkAbstractArray from its cooresponding XML representation.
   // Does not allocate.
   vtkAbstractArray* CreateArray(vtkXMLDataElement* da);
@@ -282,7 +289,7 @@ protected:
                               vtkDataArraySelection* sel);
 
   int SetFieldDataInfo(vtkXMLDataElement *eDSA, int association,
-  int numTuples, vtkInformationVector *(&infoVector));
+  vtkIdType numTuples, vtkInformationVector *(&infoVector));
 
   // Check whether the given array element is an enabled array.
   int PointDataArrayIsEnabled(vtkXMLDataElement* ePDA);

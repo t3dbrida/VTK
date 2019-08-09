@@ -3,30 +3,13 @@
    Program: ParaView
    Module:    vtkEDLShading.cxx
 
-   Copyright (c) 2005-2008 Sandia Corporation, Kitware Inc.
-   All rights reserved.
+  Copyright (c) Sandia Corporation, Kitware Inc.
+  All rights reserved.
+  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
 
-   ParaView is a free software; you can redistribute it and/or modify it
-   under the terms of the ParaView license version 1.2.
-
-   See License_v1.2.txt for the full ParaView license.
-   A copy of this license can be obtained by contacting
-   Kitware Inc.
-   28 Corporate Drive
-   Clifton Park, NY 12065
-   USA
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHORS OR
-CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+     This software is distributed WITHOUT ANY WARRANTY; without even
+     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+     PURPOSE.  See the above copyright notice for more information.
 
 =========================================================================*/
 /*----------------------------------------------------------------------
@@ -219,11 +202,9 @@ void vtkEDLShading::EDLInitializeFramebuffers(vtkRenderState &s)
 
   // Apply textures
   // to make things clear, we write all
-  this->ProjectionFBO->AddColorAttachment(
-    this->ProjectionFBO->GetBothMode(), 0, this->ProjectionColorTexture);
+  this->ProjectionFBO->AddColorAttachment(0, this->ProjectionColorTexture);
   this->ProjectionFBO->ActivateDrawBuffer(0);
-  this->ProjectionFBO->AddDepthAttachment(
-    this->ProjectionFBO->GetBothMode(), this->ProjectionDepthTexture);
+  this->ProjectionFBO->AddDepthAttachment(this->ProjectionDepthTexture);
 
   this->ProjectionDepthTexture->SetWrapS(vtkTextureObject::ClampToEdge);
   this->ProjectionDepthTexture->SetWrapT(vtkTextureObject::ClampToEdge);
@@ -257,10 +238,9 @@ void vtkEDLShading::EDLInitializeFramebuffers(vtkRenderState &s)
   }
   this->EDLHighFBO->SaveCurrentBindingsAndBuffers();
   this->EDLHighFBO->Bind();
-  this->EDLHighFBO->AddColorAttachment(
-    GL_DRAW_FRAMEBUFFER, 0, this->EDLHighShadeTexture);
+  this->EDLHighFBO->AddColorAttachment(0, this->EDLHighShadeTexture);
   this->EDLHighFBO->ActivateDrawBuffer(0);
-  this->EDLHighFBO->AddDepthAttachment(GL_DRAW_FRAMEBUFFER);
+  this->EDLHighFBO->AddDepthAttachment();
   this->EDLHighFBO->UnBind();
   this->EDLHighFBO->RestorePreviousBindingsAndBuffers();
 
@@ -300,10 +280,9 @@ void vtkEDLShading::EDLInitializeFramebuffers(vtkRenderState &s)
   }
   this->EDLLowFBO->SaveCurrentBindingsAndBuffers();
   this->EDLLowFBO->Bind();
-  this->EDLLowFBO->AddColorAttachment(
-    GL_DRAW_FRAMEBUFFER, 0, this->EDLLowShadeTexture);
+  this->EDLLowFBO->AddColorAttachment(0, this->EDLLowShadeTexture);
   this->EDLLowFBO->ActivateDrawBuffer(0);
-  this->EDLLowFBO->AddDepthAttachment(GL_DRAW_FRAMEBUFFER);
+  this->EDLLowFBO->AddDepthAttachment();
 
   this->EDLLowShadeTexture->SetWrapS(vtkTextureObject::ClampToEdge);
   this->EDLLowShadeTexture->SetWrapT(vtkTextureObject::ClampToEdge);
@@ -398,8 +377,8 @@ bool vtkEDLShading::EDLShadeHigh(
   s.SetFrameBuffer(this->EDLHighFBO);
   this->EDLHighShadeTexture->Activate();
   this->EDLHighFBO->SaveCurrentBindingsAndBuffers();
-  this->EDLHighFBO->AddColorAttachment(
-    GL_DRAW_FRAMEBUFFER, 0, this->EDLHighShadeTexture);
+  this->EDLHighFBO->Bind();
+  this->EDLHighFBO->AddColorAttachment(0, this->EDLHighShadeTexture);
   this->EDLHighFBO->ActivateDrawBuffer(0);
   this->EDLHighFBO->Start(this->W, this->H);
 
@@ -490,8 +469,8 @@ bool vtkEDLShading::EDLShadeLow(
   this->EDLLowShadeTexture->SetLinearMagnification(true);
   this->EDLLowShadeTexture->SendParameters();
   this->EDLLowFBO->SaveCurrentBindingsAndBuffers();
-  this->EDLLowFBO->AddColorAttachment(
-    GL_DRAW_FRAMEBUFFER, 0, this->EDLLowShadeTexture);
+  this->EDLLowFBO->Bind();
+  this->EDLLowFBO->AddColorAttachment(0, this->EDLLowShadeTexture);
   this->EDLLowFBO->ActivateDrawBuffer(0);
   this->EDLLowFBO->Start(this->W / this->EDLLowResFactor,
     this->H / this->EDLLowResFactor);
@@ -549,8 +528,8 @@ bool vtkEDLShading::EDLBlurLow(vtkRenderState &s,
   s.SetFrameBuffer(this->EDLLowFBO);
   this->EDLLowBlurTexture->Activate();
   this->EDLLowFBO->SaveCurrentBindingsAndBuffers();
-  this->EDLLowFBO->AddColorAttachment(
-    GL_DRAW_FRAMEBUFFER, 0, this->EDLLowBlurTexture);
+  this->EDLLowFBO->Bind();
+  this->EDLLowFBO->AddColorAttachment(0, this->EDLLowBlurTexture);
   this->EDLLowFBO->ActivateDrawBuffer(0);
   this->EDLLowFBO->Start(this->W / EDLLowResFactor, this->H / EDLLowResFactor);
 

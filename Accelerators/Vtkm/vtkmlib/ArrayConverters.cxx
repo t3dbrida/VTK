@@ -13,9 +13,10 @@
 //  the U.S. Government retains certain rights in this software.
 //
 //=============================================================================
-#include "ArrayConverters.h"
+#include "ArrayConverters.hxx"
 
 #include "Storage.h"
+#include "vtkmDataArray.h"
 #include "vtkmFilterPolicy.h"
 
 #include <vtkm/cont/ArrayHandle.h>
@@ -28,7 +29,6 @@
 #include "vtkDataSet.h"
 #include "vtkPointData.h"
 #include "vtkPoints.h"
-#include "vtkTypedDataArray.h"
 
 namespace tovtkm {
 
@@ -70,137 +70,21 @@ void ProcessFields(vtkDataSet *input, vtkm::cont::DataSet &dataset,
   }
 }
 
-template <typename DataArrayType>
-vtkm::cont::Field ConvertPointField(DataArrayType* input)
-{
-  typedef typename DataArrayType::ValueType ValueType;
-  typedef
-      typename tovtkm::ArrayContainerTagType<DataArrayType>::TagType TagType;
-  // We know the ValueType now, so all that is left is to deduce
-  // the number of components
-  int numComps = input->GetNumberOfComponents();
-  std::string name(input->GetName());
-  switch (numComps)
-  {
-  case 1:
-  {
-    typedef ValueType VType;
-    typedef vtkm::cont::internal::Storage<VType, TagType> StorageType;
-    StorageType storage(input);
-    vtkm::cont::ArrayHandle<VType, TagType> handle(storage);
-    vtkm::cont::DynamicArrayHandle dhandle(handle);
-    return vtkm::cont::Field(name, vtkm::cont::Field::Association::POINTS, dhandle);
-  }
-  case 2:
-  {
-    typedef vtkm::Vec<ValueType, 2> VType;
-    typedef vtkm::cont::internal::Storage<VType, TagType> StorageType;
-    StorageType storage(input);
-    vtkm::cont::ArrayHandle<VType, TagType> handle(storage);
-    vtkm::cont::DynamicArrayHandle dhandle(handle);
-    return vtkm::cont::Field(name, vtkm::cont::Field::Association::POINTS, dhandle);
-  }
-  case 3:
-  {
-    typedef vtkm::Vec<ValueType, 3> VType;
-    typedef vtkm::cont::internal::Storage<VType, TagType> StorageType;
-    StorageType storage(input);
-    vtkm::cont::ArrayHandle<VType, TagType> handle(storage);
-    vtkm::cont::DynamicArrayHandle dhandle(handle);
-    return vtkm::cont::Field(name, vtkm::cont::Field::Association::POINTS, dhandle);
-  }
-  case 4:
-  {
-    typedef vtkm::Vec<ValueType, 4> VType;
-    typedef vtkm::cont::internal::Storage<VType, TagType> StorageType;
-    StorageType storage(input);
-    vtkm::cont::ArrayHandle<VType, TagType> handle(storage);
-    vtkm::cont::DynamicArrayHandle dhandle(handle);
-    return vtkm::cont::Field(name, vtkm::cont::Field::Association::POINTS, dhandle);
-  }
-  default:
-    break;
-  }
-  return vtkm::cont::Field();
-}
-
-template <typename DataArrayType>
-vtkm::cont::Field ConvertCellField(DataArrayType* input)
-{
-  typedef typename DataArrayType::ValueType ValueType;
-  typedef
-      typename tovtkm::ArrayContainerTagType<DataArrayType>::TagType TagType;
-  // We know the ValueType now, so all that is left is to deduce
-  // the number of components
-  int numComps = input->GetNumberOfComponents();
-  std::string name(input->GetName());
-
-  // todo: FIX-ME
-  // currently you can't get the name of a dynamic cell set so we just use
-  // the default name
-  // cellset.CastAndCall();
-  std::string cname("cells");
-  switch (numComps)
-  {
-  case 1:
-  {
-    typedef ValueType VType;
-    typedef vtkm::cont::internal::Storage<VType, TagType> StorageType;
-    StorageType storage(input);
-    vtkm::cont::ArrayHandle<VType, TagType> handle(storage);
-    vtkm::cont::DynamicArrayHandle dhandle(handle);
-    return vtkm::cont::Field(name, vtkm::cont::Field::Association::CELL_SET, cname,
-                             dhandle);
-  }
-  case 2:
-  {
-    typedef vtkm::Vec<ValueType, 2> VType;
-    typedef vtkm::cont::internal::Storage<VType, TagType> StorageType;
-    StorageType storage(input);
-    vtkm::cont::ArrayHandle<VType, TagType> handle(storage);
-    vtkm::cont::DynamicArrayHandle dhandle(handle);
-    return vtkm::cont::Field(name, vtkm::cont::Field::Association::CELL_SET, cname,
-                             dhandle);
-  }
-  case 3:
-  {
-    typedef vtkm::Vec<ValueType, 3> VType;
-    typedef vtkm::cont::internal::Storage<VType, TagType> StorageType;
-    StorageType storage(input);
-    vtkm::cont::ArrayHandle<VType, TagType> handle(storage);
-    vtkm::cont::DynamicArrayHandle dhandle(handle);
-    return vtkm::cont::Field(name, vtkm::cont::Field::Association::CELL_SET, cname,
-                             dhandle);
-  }
-  case 4:
-  {
-    typedef vtkm::Vec<ValueType, 4> VType;
-    typedef vtkm::cont::internal::Storage<VType, TagType> StorageType;
-    StorageType storage(input);
-    vtkm::cont::ArrayHandle<VType, TagType> handle(storage);
-    vtkm::cont::DynamicArrayHandle dhandle(handle);
-    return vtkm::cont::Field(name, vtkm::cont::Field::Association::CELL_SET, cname,
-                             dhandle);
-  }
-  default:
-    break;
-  }
-  return vtkm::cont::Field();
-}
-
-template <typename DataArrayType>
-vtkm::cont::Field Convert(DataArrayType* input, int association)
+template <typename T>
+vtkm::cont::Field Convert(vtkmDataArray<T>* input, int association)
 {
   // we need to switch on if we are a cell or point field first!
   // The problem is that the constructor signature for fields differ based
   // on if they are a cell or point field.
   if (association == vtkDataObject::FIELD_ASSOCIATION_POINTS)
   {
-    return ConvertPointField(input);
+    return vtkm::cont::Field(input->GetName(), vtkm::cont::Field::Association::POINTS,
+                             input->GetVtkmVariantArrayHandle());
   }
   else if (association == vtkDataObject::FIELD_ASSOCIATION_CELLS)
   {
-    return ConvertCellField(input);
+    return vtkm::cont::Field(input->GetName(), vtkm::cont::Field::Association::CELL_SET, "cells",
+                             input->GetVtkmVariantArrayHandle());
   }
 
   return vtkm::cont::Field();
@@ -224,14 +108,17 @@ vtkm::cont::Field Convert(vtkDataArray* input, int association)
   switch (input->GetDataType())
   {
     vtkTemplateMacro(
-        vtkAOSDataArrayTemplate<VTK_TT>* typedIn =
+        vtkAOSDataArrayTemplate<VTK_TT>* typedIn1 =
             vtkAOSDataArrayTemplate<VTK_TT>::FastDownCast(input);
-        if (typedIn) { field = Convert(typedIn, association); } else {
+        if (typedIn1) { field = Convert(typedIn1, association); }
+        else {
           vtkSOADataArrayTemplate<VTK_TT>* typedIn2 =
               vtkSOADataArrayTemplate<VTK_TT>::FastDownCast(input);
-          if (typedIn2)
-          {
-            field = Convert(typedIn2, association);
+          if (typedIn2) { field = Convert(typedIn2, association); }
+          else {
+            vtkmDataArray<VTK_TT>* typedIn3 =
+                vtkmDataArray<VTK_TT>::SafeDownCast(input);
+            if (typedIn3) { field = Convert(typedIn3, association); }
           }
         });
     // end vtkTemplateMacro
@@ -245,42 +132,9 @@ namespace fromvtkm {
 
 namespace {
 
-template <int Components> struct CopyArrayContents
-{
-  template <typename IteratorType, typename U>
-  void operator()(IteratorType iter, U* array, vtkIdType numValues) const
-  {
-    typedef typename IteratorType::value_type T;
-    // slow path for N component arrays, should be optimized once
-    // the vtk soa/aos layouts get merged
-    vtkIdType index = 0;
-    for (vtkIdType i = 0; i < numValues; ++i, ++iter)
-    {
-      T t = *iter;
-      for (vtkm::IdComponent j = 0; j < Components; ++j, ++index)
-      {
-        array->SetValue(index, t[j]);
-      }
-    }
-  }
-};
-
-template <> struct CopyArrayContents<1>
-{
-  template <typename IteratorType, typename U>
-  void operator()(IteratorType iter, U* array, vtkIdType numValues) const
-  {
-    // fast path for single component arrays, can't steal the memory
-    // since the storage types isn't one we know
-    for (vtkIdType i = 0; i < numValues; ++i, ++iter)
-    {
-      array->SetValue(i, *iter);
-    }
-  }
-};
-
 struct ArrayConverter
 {
+public:
   mutable vtkDataArray* Data;
 
   ArrayConverter() : Data(nullptr) {}
@@ -288,61 +142,60 @@ struct ArrayConverter
   // CastAndCall always passes a const array handle. Just shallow copy to a
   // local array handle by taking by value.
 
-  // default version just performs a deep copy.
   template <typename T, typename S>
   void operator()(vtkm::cont::ArrayHandle<T, S> handle) const
   {
-    using vtkm::cont::ArrayHandle;
-    using vtkm::cont::ArrayPortalToIterators;
-    using vtkm::cont::ArrayPortalToIteratorBegin;
-
-    // we need to make a copy
-    using Traits = tovtkm::vtkPortalTraits<T>;
-    using ValueType = typename Traits::ComponentType;
-    using VTKArrayType = vtkAOSDataArrayTemplate<ValueType>;
-
-    const vtkIdType numValues = handle.GetNumberOfValues();
-    const vtkIdType numComps = Traits::NUM_COMPONENTS;
-    VTKArrayType* array = VTKArrayType::New();
-    array->SetNumberOfComponents(numComps);
-    array->SetNumberOfTuples(numValues);
-
-    // copy directly into the vtkarray
-    typedef vtkm::cont::ArrayHandle<T, S> HandleType;
-    typedef ArrayPortalToIterators<typename HandleType::PortalConstControl>
-        PortalToIter;
-
-    PortalToIter iterators(handle.GetPortalConstControl());
-    typename PortalToIter::IteratorType iter = iterators.GetBegin();
-
-    // Need to do a compile time switch for copying a single component
-    // array versus a multiple component array
-    CopyArrayContents<Traits::NUM_COMPONENTS> copier;
-    copier(iter, array, numValues);
-    this->Data = array;
+    this->Data = make_vtkmDataArray(handle);
   }
+
+  template <typename T>
+  void operator()(vtkm::cont::ArrayHandle<T, vtkm::cont::StorageTagVirtual> handle) const
+  {
+    using AOSHandle = vtkm::cont::ArrayHandle<T, tovtkm::vtkAOSArrayContainerTag>;
+    using SOAHandle = vtkm::cont::ArrayHandle<T, tovtkm::vtkSOAArrayContainerTag>;
+    using BasicHandle = vtkm::cont::ArrayHandle<T, vtkm::cont::StorageTagBasic>;
+    if (vtkm::cont::IsType<AOSHandle>(handle))
+    {
+      this->operator()( vtkm::cont::Cast<AOSHandle>(handle) );
+    }
+    else if(vtkm::cont::IsType<SOAHandle>(handle))
+    {
+      this->operator()( vtkm::cont::Cast<SOAHandle>(handle) );
+    }
+    else if(vtkm::cont::IsType<BasicHandle>(handle))
+    {
+      this->operator()( vtkm::cont::Cast<BasicHandle>(handle) );
+    }
+    else
+    {
+      this->Data = make_vtkmDataArray(handle);
+    }
+  }
+
 
   template <typename T>
   void operator()(
     vtkm::cont::ArrayHandle<T, vtkm::cont::StorageTagBasic> handle) const
   {
     // we can steal this array!
-    using Traits = tovtkm::vtkPortalTraits<T>;
+    using Traits = tovtkm::vtkPortalTraits<T>; //Handles Vec<Vec<T,N,N> properly
     using ValueType = typename Traits::ComponentType;
     using VTKArrayType = vtkAOSDataArrayTemplate<ValueType>;
-
-    const vtkm::Id size = handle.GetNumberOfValues() * Traits::NUM_COMPONENTS;
 
     VTKArrayType* array = VTKArrayType::New();
     array->SetNumberOfComponents(Traits::NUM_COMPONENTS);
 
     handle.SyncControlArray();
-    ValueType* stolenMemory = reinterpret_cast<ValueType*>(handle.GetStorage().StealArray());
+    const vtkm::Id size = handle.GetNumberOfValues() * Traits::NUM_COMPONENTS;
 
-    //VTK-m allocations are all aligned
+    //stealing the array clears the delete function, so we need to get the function first.
+    //VTK-m allocations are aligned or done with cuda uvm memory so we need to propagate
+    //the proper free function to VTK
+    auto stolenState = handle.GetStorage().StealArray();
+    auto stolenMemory = reinterpret_cast<ValueType*>(stolenState.first);
     array->SetVoidArray(
       stolenMemory, size, 0, vtkAbstractArray::VTK_DATA_ARRAY_USER_DEFINED);
-    array->SetArrayFreeFunction(handle.GetStorage().GetDeleteFunction());
+    array->SetArrayFreeFunction(stolenState.second);
 
     this->Data = array;
   }

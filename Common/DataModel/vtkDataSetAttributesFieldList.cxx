@@ -149,7 +149,7 @@ struct FieldInfo
       int cc = 0;
       for (const auto& cname : this->ComponentNames)
       {
-        if (cname.size())
+        if (!cname.empty())
         {
           array->SetComponentName(cc, cname.c_str());
         }
@@ -717,57 +717,24 @@ void vtkDataSetAttributesFieldList::InterpolatePoint(int inputIndex, vtkDataSetA
 }
 
 //----------------------------------------------------------------------------
-int vtkDataSetAttributesFieldList::GetNumberOfFields() const
+void vtkDataSetAttributesFieldList::TransformData(int inputIndex, vtkDataSetAttributes* input,
+  vtkDataSetAttributes* output, std::function<void(vtkAbstractArray*, vtkAbstractArray*)> op) const
 {
   auto& internals = *this->Internals;
-  internals.Prune();
-  return vtkDataSetAttributes::NUM_ATTRIBUTES + static_cast<int>(internals.Fields.size());
-}
-
-//----------------------------------------------------------------------------
-int vtkDataSetAttributesFieldList::GetFieldIndex(int i) const
-{
-  const auto& internals = *this->Internals;
-  const auto* finfo = internals.GetLegacyFieldForIndex(i);
-  return finfo ? finfo->OutputLocation : -1;
-}
-
-//----------------------------------------------------------------------------
-const char* vtkDataSetAttributesFieldList::GetFieldName(int i) const
-{
-  const auto& internals = *this->Internals;
-  const auto* finfo = internals.GetLegacyFieldForIndex(i);
-  return finfo && finfo->Name.size() ? finfo->Name.c_str() : nullptr;
-}
-
-//----------------------------------------------------------------------------
-int vtkDataSetAttributesFieldList::GetDSAIndex(int index, int i) const
-{
-  const auto& internals = *this->Internals;
-  const auto* finfo = internals.GetLegacyFieldForIndex(i);
-  return finfo && index >= 0 && index < static_cast<int>(finfo->Location.size())
-    ? finfo->Location[index]
-    : -1;
-}
-
-//----------------------------------------------------------------------------
-int vtkDataSetAttributesFieldList::GetFieldComponents(int i) const
-{
-  const auto& internals = *this->Internals;
-  const auto* finfo = internals.GetLegacyFieldForIndex(i);
-  return finfo ? finfo->NumberOfComponents : 0;
-}
-
-//----------------------------------------------------------------------------
-int vtkDataSetAttributesFieldList::IsAttributePresent(int attrType) const
-{
-  const auto& internals = *this->Internals;
-  if (attrType >= 0 && attrType <= vtkDataSetAttributes::NUM_ATTRIBUTES)
+  for (auto& pair : internals.Fields)
   {
-    const auto* finfo = internals.GetLegacyFieldForIndex(attrType);
-    return finfo != nullptr ? 1 : 0;
+    auto& fieldInfo = pair.second;
+    if (inputIndex < 0 || inputIndex > static_cast<int>(fieldInfo.Location.size()))
+    {
+      vtkGenericWarningMacro("Incorrect/unknown inputIndex specified : " << inputIndex);
+      return;
+    }
+    else if (fieldInfo.OutputLocation != -1 && fieldInfo.Location[inputIndex] != -1)
+    {
+      op(input->GetAbstractArray(fieldInfo.Location[inputIndex]),
+        output->GetAbstractArray(fieldInfo.OutputLocation));
+    }
   }
-  return 0;
 }
 
 //----------------------------------------------------------------------------

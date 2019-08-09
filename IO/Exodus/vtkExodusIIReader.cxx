@@ -24,9 +24,11 @@
 #include "vtkCellType.h"
 #include "vtkCharArray.h"
 #include "vtkDoubleArray.h"
+#include "vtkExodusIIReaderParser.h"
 #include "vtkFloatArray.h"
 #include "vtkIdTypeArray.h"
 #include "vtkInformation.h"
+#include "vtkInformationIntegerKey.h"
 #include "vtkInformationVector.h"
 #include "vtkIntArray.h"
 #include "vtkMath.h"
@@ -37,17 +39,16 @@
 #include "vtkPointData.h"
 #include "vtkPoints.h"
 #include "vtkPolyData.h"
+#include "vtkSmartPointer.h"
 #include "vtkSortDataArray.h"
 #include "vtkStdString.h"
 #include "vtkStreamingDemandDrivenPipeline.h"
-#include "vtkTypeInt64Array.h"
-#include "vtkUnstructuredGrid.h"
-#include "vtkXMLParser.h"
 #include "vtkStringArray.h"
+#include "vtkTypeInt64Array.h"
 #include "vtkUnsignedCharArray.h"
+#include "vtkUnstructuredGrid.h"
 #include "vtkVariantArray.h"
-#include "vtkSmartPointer.h"
-#include "vtkExodusIIReaderParser.h"
+#include "vtkXMLParser.h"
 
 #include <algorithm>
 #include <vector>
@@ -1748,6 +1749,9 @@ vtkDataArray* vtkExodusIIReaderPrivate::GetCacheOrRead( vtkExodusIICacheKey key 
       arr->Delete();
       arr = nullptr;
     }
+    auto info = arr->GetInformation();
+    // add the `GLOBAL_VARIABLE` key so filters may use it.
+    info->Set(vtkExodusIIReader::GLOBAL_VARIABLE(), 1);
   }
   else if ( key.ObjectType == vtkExodusIIReader::NODAL )
   {
@@ -1878,6 +1882,9 @@ vtkDataArray* vtkExodusIIReaderPrivate::GetCacheOrRead( vtkExodusIICacheKey key 
       arr->Delete();
       arr = nullptr;
     }
+    auto info = arr->GetInformation();
+    // add the `GLOBAL_TEMPORAL_VARIABLE` key so filters may use it.
+    info->Set(vtkExodusIIReader::GLOBAL_TEMPORAL_VARIABLE(), 1);
   }
   else if ( key.ObjectType == vtkExodusIIReader::NODAL_TEMPORAL )
   {
@@ -3704,6 +3711,7 @@ void vtkExodusIIReader::PrintSelf( ostream& os, vtkIndent indent )
     << this->GetModeShapesRange()[0] << ", " << this->GetModeShapesRange()[1] << "]\n";
   os << indent << "IgnoreFileTime: " << this->GetIgnoreFileTime() << "\n";
   os << indent << "SILUpdateStamp: " << this->SILUpdateStamp << "\n";
+  os << indent << "UseLegacyBlockNames: " << this->UseLegacyBlockNames << "\n";
   if ( this->Metadata )
   {
     os << indent << "Metadata:\n";
@@ -3847,6 +3855,12 @@ int vtkExodusIIReaderPrivate::OpenFile( const char* filename )
 
   this->Exoid = ex_open( filename, EX_READ,
     &this->AppWordSize, &this->DiskWordSize, &this->ExodusVersion );
+  if ( this->Exoid <= 0 )
+  {
+    vtkErrorMacro( "Unable to open \"" << filename << "\" for reading" );
+    return 0;
+  }
+
 #ifdef VTK_USE_64BIT_IDS
   // Set the exodus API to always return integer types as 64-bit
   // without this call, large exodus files are not supported (which
@@ -3859,12 +3873,6 @@ int vtkExodusIIReaderPrivate::OpenFile( const char* filename )
   // this is because in our current version of the ExodusII libraries the exo Id isn't used
   // in the ex_set_max_name_length() function.
   ex_set_max_name_length(this->Exoid, this->Parent->GetMaxNameLength());
-
-  if ( this->Exoid <= 0 )
-  {
-    vtkErrorMacro( "Unable to open \"" << filename << "\" for reading" );
-    return 0;
-  }
 
   vtkIdType numNodesInFile;
   char dummyChar;
@@ -4161,13 +4169,24 @@ int vtkExodusIIReaderPrivate::RequestInformation()
         blockEntryFileOffset += binfo.Size;
         if (binfo.Name.length() == 0)
         {
-          snprintf( tmpName, sizeof(tmpName),
+          if (this->Parent->GetUseLegacyBlockNames())
+          {
+            snprintf(tmpName, sizeof(tmpName),
 #ifdef VTK_USE_64BIT_IDS
               "Unnamed block ID: %lld Type: %s",
 #else
               "Unnamed block ID: %d Type: %s",
 #endif
               ids[obj], binfo.TypeName.length() ? binfo.TypeName.c_str() : "nullptr");
+          }
+          else
+          {
+#ifdef VTK_USE_64BIT_IDS
+            snprintf(tmpName, sizeof(tmpName), "Unnamed block ID: %lld", ids[obj]);
+#else
+            snprintf(tmpName, sizeof(tmpName), "Unnamed block ID: %d", ids[obj]);
+#endif
+          }
           binfo.Name = tmpName;
         }
         binfo.OriginalName = binfo.Name;
@@ -5263,7 +5282,8 @@ vtkDataArray* vtkExodusIIReaderPrivate::FindDisplacementVectors( int timeStep )
 
 vtkStandardNewMacro(vtkExodusIIReader);
 vtkCxxSetObjectMacro(vtkExodusIIReader,Metadata,vtkExodusIIReaderPrivate);
-
+vtkInformationKeyMacro(vtkExodusIIReader, GLOBAL_VARIABLE, Integer);
+vtkInformationKeyMacro(vtkExodusIIReader, GLOBAL_TEMPORAL_VARIABLE, Integer);
 vtkExodusIIReader::vtkExodusIIReader()
 {
   this->FileName = nullptr;
@@ -5279,7 +5299,7 @@ vtkExodusIIReader::vtkExodusIIReader()
   this->DisplayType = 0;
   this->DisplayType = 0;
   this->SILUpdateStamp = -1;
-
+  this->UseLegacyBlockNames = false;
   this->SetNumberOfInputPorts( 0 );
 }
 
@@ -5826,12 +5846,16 @@ int vtkExodusIIReader::GetObjectIndex( int objectType, const char* objectName )
     vtkDebugMacro( "No objects of that type (" << objectType << ") to find index for given name " << objectName << "." );
     return -1;
   }
+
   vtkStdString objectRealName(objectName);
-  size_t i = objectRealName.find(" Size: ");
-  if(i!= vtkStdString::npos)
+
+  // handle legacy block names.
+  vtksys::RegularExpression regex("^(Unnamed block ID: [0-9]+)( Type: [0-9a-zA-Z]+)?( Size: [0-9]+)?$");
+  if (regex.find(objectRealName))
   {
-    objectRealName.erase(i);
+    objectRealName = regex.match(1);
   }
+
   for ( int obj = 0; obj < nObj; ++obj )
   {
     const char* storedObjName = this->GetObjectName( objectType, obj );

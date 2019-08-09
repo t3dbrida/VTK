@@ -21,7 +21,6 @@
 #include "vtkCutter.h"
 #include "vtkDataObject.h"
 #include "vtkHyperTreeGrid.h"
-#include "vtkHyperTreeGridCursor.h"
 #include "vtkInformation.h"
 #include "vtkIdList.h"
 #include "vtkObjectFactory.h"
@@ -31,6 +30,9 @@
 #include "vtkPolyData.h"
 #include "vtkUnstructuredGrid.h"
 
+#include "vtkHyperTreeGridNonOrientedGeometryCursor.h"
+#include "vtkHyperTreeGridNonOrientedMooreSuperCursor.h"
+
 vtkIdType First8Integers[] = {
   0, 1, 2, 3, 4, 5, 6, 7 };
 
@@ -38,7 +40,6 @@ static const unsigned int MooreCursors3D[26] = {
   0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26 };
 
 vtkStandardNewMacro(vtkHyperTreeGridPlaneCutter);
-vtkCxxSetObjectMacro(vtkHyperTreeGridPlaneCutter, PlaneObj, vtkPlane)
 
 //-----------------------------------------------------------------------------
 vtkHyperTreeGridPlaneCutter::vtkHyperTreeGridPlaneCutter()
@@ -60,7 +61,6 @@ vtkHyperTreeGridPlaneCutter::vtkHyperTreeGridPlaneCutter()
   this->Centers = nullptr;
   this->Cutter = nullptr;
   this->Leaves = nullptr;
-  this->PlaneObj = nullptr;
 }
 
 //-----------------------------------------------------------------------------
@@ -95,10 +95,11 @@ vtkHyperTreeGridPlaneCutter::~vtkHyperTreeGridPlaneCutter()
     this->Cutter->Delete();
     this->Cutter = nullptr;
   }
-  if (this->PlaneObj)
+
+  if ( this->SelectedCells )
   {
-    this->PlaneObj->Delete();
-    this->PlaneObj = nullptr;
+    this->SelectedCells->Delete();
+    this->SelectedCells = nullptr;
   }
 }
 
@@ -112,16 +113,6 @@ void vtkHyperTreeGridPlaneCutter::PrintSelf( ostream& os, vtkIndent indent )
      << this->Plane[1] << " ) * Y + ( "
      << this->Plane[2] << " ) * Z = "
      << this->Plane[3] << "\n";
-
-  if ( this->PlaneObj )
-  {
-    os << indent << "PlaneObj:\n";
-    this->PlaneObj->PrintSelf( os, indent.GetNextIndent() );
-  }
-  else
-  {
-    os << indent << "PlaneObj: ( none )\n";
-  }
 
   if ( this->Dual )
   {
@@ -184,17 +175,6 @@ void vtkHyperTreeGridPlaneCutter::PrintSelf( ostream& os, vtkIndent indent )
 }
 
 //----------------------------------------------------------------------------
-vtkMTimeType vtkHyperTreeGridPlaneCutter::GetMTime()
-{
-  vtkMTimeType result = this->Superclass::GetMTime();
-  if (this->PlaneObj)
-  {
-    result = std::max(result, this->PlaneObj->GetMTime());
-  }
-  return result;
-}
-
-//----------------------------------------------------------------------------
 int vtkHyperTreeGridPlaneCutter::FillOutputPortInformation( int,
                                                             vtkInformation* info )
 {
@@ -206,12 +186,6 @@ int vtkHyperTreeGridPlaneCutter::FillOutputPortInformation( int,
 int vtkHyperTreeGridPlaneCutter::ProcessTrees( vtkHyperTreeGrid* input,
                                                vtkDataObject* outputDO )
 {
-  // empty input, empty output.
-  if (input->GetNumberOfLeaves() == 0)
-  {
-    return 1;
-  }
-
   // Downcast output data object to polygonal data set
   vtkPolyData* output = vtkPolyData::SafeDownCast( outputDO );
   if ( ! output )
@@ -228,20 +202,38 @@ int vtkHyperTreeGridPlaneCutter::ProcessTrees( vtkHyperTreeGrid* input,
     return 0;
   }
 
-  // Sync plane parameters with equation, giving preference to the object
-  if (this->PlaneObj)
-  {
-    double n[3];
-    double o[3];
-    this->PlaneObj->GetNormal(n);
-    this->PlaneObj->GetOrigin(o);
-    std::copy_n(n, 3, this->Plane);
-    this->Plane[3] = vtkMath::Dot(n, o);
-  }
-  else
-  {
-    this->PlaneObj = vtkPlane::New();
+  // Retrieve input point data
+  this->InData = input->GetPointData();
 
+  // Retrieve material mask
+  this->InMask = input->HasMask() ? input->GetMask() : nullptr;
+
+  // Reset PolyData
+  this->Points->SetNumberOfPoints(0);
+  this->Cells->SetNumberOfCells(0);
+
+  // Compute cut on dual or primal input depending on specification
+  if ( this->Dual )
+  {
+    // Initialize output point data
+    this->OutData = output->GetPointData();
+    this->OutData->CopyAllocate( this->InData );
+
+    // Storage for leaf indices
+    if (this->Leaves == nullptr)
+    {
+      this->Leaves = vtkIdList::New();
+    }
+    this->Leaves->SetNumberOfIds( 8 );
+
+    // Initialize storage for dual geometry
+    if (this->Centers == nullptr)
+    {
+      this->Centers = vtkPoints::New();
+    }
+    this->Centers->SetNumberOfPoints( 8 );
+
+    // Convert plane parameters into normal/origin specification
     unsigned int maxId = 0;
     if ( fabs( this->Plane[1] ) > fabs( this->Plane[0] ) )
     {
@@ -253,39 +245,27 @@ int vtkHyperTreeGridPlaneCutter::ProcessTrees( vtkHyperTreeGrid* input,
     }
     double origin[] = { 0., 0., 0. };
     origin[maxId] = this->Plane[3] / this->Plane[maxId];
-    this->PlaneObj->SetOrigin( origin );
-    this->PlaneObj->SetNormal( this->Plane[0], this->Plane[1], this->Plane[2] );
-  }
-
-  // Retrieve input point data
-  this->InData  = input->GetPointData();
-
-  // Retrieve material mask
-  vtkBitArray* mask = input->HasMaterialMask() ? input->GetMaterialMask() : nullptr;
-
-  // Compute cut on dual or primal input depending on specification
-  if ( this->Dual )
-  {
-    // Initialize output point data
-    this->OutData = output->GetPointData();
-    this->OutData->CopyAllocate( this->InData );
-
-    // Storage for leaf indices
-    this->Leaves = vtkIdList::New();
-    this->Leaves->SetNumberOfIds( 8 );
-
-    // Initialize storage for dual geometry
-    this->Centers = vtkPoints::New();
-    this->Centers->SetNumberOfPoints( 8 );
+    vtkPlane* plane = vtkPlane::New();
+    plane->SetOrigin( origin );
+    plane->SetNormal( this->Plane[0], this->Plane[1], this->Plane[2] );
 
     // Initialize plane cutter
-    this->Cutter = vtkCutter::New();
+    if (this->Cutter == nullptr)
+    {
+      this->Cutter = vtkCutter::New();
+    }
     this->Cutter->GenerateTrianglesOff();
-    this->Cutter->SetCutFunction( this->PlaneObj );
+    this->Cutter->SetCutFunction( plane );
+
+    // Clean up
+    plane->Delete();
 
     // Create storage to keep track of selected cells
-    this->SelectedCells = vtkBitArray::New();
-    vtkIdType numCells = input->GetNumberOfPoints();
+    if (this->SelectedCells == nullptr)
+    {
+      this->SelectedCells = vtkBitArray::New();
+    }
+    vtkIdType numCells = input->GetNumberOfVertices();
     this->SelectedCells->SetNumberOfTuples( numCells );
     for ( vtkIdType i = 0; i < numCells; ++ i )
     {
@@ -297,33 +277,29 @@ int vtkHyperTreeGridPlaneCutter::ProcessTrees( vtkHyperTreeGrid* input,
     vtkIdType index;
     vtkHyperTreeGrid::vtkHyperTreeGridIterator it;
     input->InitializeTreeIterator( it );
+    vtkNew<vtkHyperTreeGridNonOrientedGeometryCursor> cursor;
     while ( it.GetNextTree( index ) )
     {
       // Initialize new geometric cursor at root of current input tree
-      vtkHyperTreeGridCursor* cursor = input->NewGeometricCursor( index );
-
+      input->InitializeNonOrientedGeometryCursor( cursor, index );
       // Pre-process tree recursively
-      this->RecursivelyPreProcessTree( cursor, mask );
-      // Clean up
-      cursor->Delete();
+      this->RecursivelyPreProcessTree( cursor );
     } // it
 
     // Second pass across tree roots: now compute isocontours recursively
     input->InitializeTreeIterator( it );
+    vtkNew<vtkHyperTreeGridNonOrientedMooreSuperCursor> supercursor;
     while ( it.GetNextTree( index ) )
     {
       // Initialize new Moore cursor at root of current tree
-      vtkHyperTreeGridCursor* cursor = input->NewMooreSuperCursor( index );
-
+      input->InitializeNonOrientedMooreSuperCursor( supercursor, index );
       // Generate leaf cell centers recursively
-      this->RecursivelyProcessTreeDual( cursor, mask );
-
-      // Clean up
-      cursor->Delete();
+      this->RecursivelyProcessTreeDual( supercursor );
     } // it
 
     // Clean up
     this->SelectedCells->Delete();
+    this->SelectedCells = nullptr;
   } // if ( this->Dual )
   else
   {
@@ -335,16 +311,13 @@ int vtkHyperTreeGridPlaneCutter::ProcessTrees( vtkHyperTreeGrid* input,
     vtkIdType index;
     vtkHyperTreeGrid::vtkHyperTreeGridIterator it;
     input->InitializeTreeIterator( it );
+    vtkNew<vtkHyperTreeGridNonOrientedGeometryCursor> cursor;
     while ( it.GetNextTree( index ) )
     {
       // Initialize new geometric cursor at root of current tree
-      vtkHyperTreeGridCursor* cursor = input->NewGeometricCursor( index );
-
+      input->InitializeNonOrientedGeometryCursor( cursor, index );
       // Generate leaf cell centers recursively
-      this->RecursivelyProcessTreePrimal( cursor, mask );
-
-      // Clean up
-      cursor->Delete();
+      this->RecursivelyProcessTreePrimal( cursor );
     } // it
   } // else
 
@@ -359,38 +332,19 @@ int vtkHyperTreeGridPlaneCutter::ProcessTrees( vtkHyperTreeGrid* input,
   cleaner->Update();
   output->ShallowCopy( cleaner->GetOutput() );
   output->Squeeze();
-
-  // Clean up
   cleaner->Delete();
-
-  // Reset intermediate objects so subsequent executions of the filter behave:
-  if ( this->Points )
-  {
-    this->Points->Delete();
-    this->Points = vtkPoints::New();
-  }
-  if ( this->Cells )
-  {
-    this->Cells->Delete();
-    this->Cells = vtkCellArray::New();
-  }
-
   return 1;
 }
 
 //----------------------------------------------------------------------------
-void vtkHyperTreeGridPlaneCutter::RecursivelyProcessTreePrimal( vtkHyperTreeGridCursor* cursor,
-                                                                vtkBitArray* mask )
+void vtkHyperTreeGridPlaneCutter::RecursivelyProcessTreePrimal( vtkHyperTreeGridNonOrientedGeometryCursor* cursor )
 {
   // If cursor is at a masked cell stop recursion
   vtkIdType inId = cursor->GetGlobalNodeIndex();
-  if ( mask && mask->GetValue( inId ) )
+  if ( this->InMask && this->InMask->GetValue( inId ) )
   {
     return;
   }
-
-  // Retrieve input grid
-  vtkHyperTreeGrid* input = cursor->GetGrid();
 
   // Retrieve cursor geometry
   double* origin = cursor->GetOrigin();
@@ -469,40 +423,30 @@ void vtkHyperTreeGridPlaneCutter::RecursivelyProcessTreePrimal( vtkHyperTreeGrid
     else
     {
       // Cursor is not at leaf, recurse to all children
-      int numChildren = input->GetNumberOfChildren();
-      for ( int child = 0; child < numChildren; ++ child )
+      int numChildren = cursor->GetNumberOfChildren();
+      for ( int ichild = 0; ichild < numChildren; ++ ichild )
       {
-        // Create child cursor from parent
-        vtkHyperTreeGridCursor* childCursor = cursor->Clone();
-        childCursor->ToChild( child );
-
+        cursor->ToChild( ichild );
         // Recurse
-        this->RecursivelyProcessTreePrimal( childCursor, mask );
-
-        // Clean up
-        childCursor->Delete();
-        childCursor = nullptr;
-      } // child
+        this->RecursivelyProcessTreePrimal( cursor );
+        cursor->ToParent();
+      } // ichild
     } // else
   } // CheckIntersection
 }
 
 //-----------------------------------------------------------------------------
-bool vtkHyperTreeGridPlaneCutter::RecursivelyPreProcessTree( vtkHyperTreeGridCursor* cursor,
-                                                             vtkBitArray* mask )
+bool vtkHyperTreeGridPlaneCutter::RecursivelyPreProcessTree( vtkHyperTreeGridNonOrientedGeometryCursor* cursor )
 {
   // If cursor is at a masked cell stop recursion
   vtkIdType id = cursor->GetGlobalNodeIndex();
-  if ( mask && mask->GetValue( id ) )
+  if ( this->InMask && this->InMask->GetValue( id ) )
   {
     return false;
   }
 
   // A node is not selected until proven otherwise
   bool selected = false;
-
-  // Retrieve input grid
-  vtkHyperTreeGrid* input = cursor->GetGrid();
 
   // Retrieve cursor geometry
   double* origin = cursor->GetOrigin();
@@ -528,20 +472,14 @@ bool vtkHyperTreeGridPlaneCutter::RecursivelyPreProcessTree( vtkHyperTreeGridCur
     else
     {
       // Cursor is not at leaf, recurse to all children
-      int numChildren = input->GetNumberOfChildren();
-      for ( int child = 0; child < numChildren; ++ child )
+      int numChildren = cursor->GetNumberOfChildren();
+      for ( int ichild = 0; ichild < numChildren; ++ ichild )
       {
-        // Create child cursor from parent
-        vtkHyperTreeGridCursor* childCursor = cursor->Clone();
-        childCursor->ToChild( child );
-
+        cursor->ToChild( ichild );
         // Recurse and keep track of whether this branch is selected
-        selected |= this->RecursivelyPreProcessTree( childCursor, mask );
-
-        // Clean up
-        childCursor->Delete();
-        childCursor = nullptr;
-      } // child
+        selected |= this->RecursivelyPreProcessTree( cursor );
+        cursor->ToParent();
+      } // ichild
     } // else
   } // if ( this->CheckIntersection )
 
@@ -553,12 +491,11 @@ bool vtkHyperTreeGridPlaneCutter::RecursivelyPreProcessTree( vtkHyperTreeGridCur
 }
 
 //----------------------------------------------------------------------------
-void vtkHyperTreeGridPlaneCutter::RecursivelyProcessTreeDual( vtkHyperTreeGridCursor* cursor,
-                                                              vtkBitArray* mask )
+void vtkHyperTreeGridPlaneCutter::RecursivelyProcessTreeDual( vtkHyperTreeGridNonOrientedMooreSuperCursor* cursor )
 {
   // If cursor is at a masked cell stop recursion
   vtkIdType id = cursor->GetGlobalNodeIndex();
-  if ( mask && mask->GetValue( id ) )
+  if ( this->InMask && this->InMask->GetValue( id ) )
   {
     return;
   }
@@ -576,10 +513,16 @@ void vtkHyperTreeGridPlaneCutter::RecursivelyProcessTreeDual( vtkHyperTreeGridCu
       for( unsigned int neighbor = 0; neighbor < 26 && ! selected; ++ neighbor )
       {
         // Retrieve global index of neighbor
-        vtkIdType idN = cursor->GetCursor( MooreCursors3D[neighbor] )->GetGlobalNodeIndex();
+        unsigned int indN = MooreCursors3D[neighbor];
+        if ( cursor->HasTree( indN ) )
+        {
+          vtkIdType idN = cursor->GetGlobalNodeIndex( indN );
 
-        // Decide whether neighbor was selected
-        selected = (this->SelectedCells->GetTuple1( idN ) != 0.0);
+          // Decide whether neighbor was selected
+          selected = (this->SelectedCells->GetTuple1( idN ) != 0.0);
+        } else {
+          selected = false;
+        }
       } // neighbor
 
       // No dual cell with a corner at cursor center will be intersected
@@ -590,20 +533,14 @@ void vtkHyperTreeGridPlaneCutter::RecursivelyProcessTreeDual( vtkHyperTreeGridCu
     } // if ( this->SelectedCells->GetTuple1( id ) )
 
     // Recurse to all children
-    int numChildren = cursor->GetGrid()->GetNumberOfChildren();
-    for ( int child = 0; child < numChildren; ++ child )
+    int numChildren = cursor->GetNumberOfChildren();
+    for ( int ichild = 0; ichild < numChildren; ++ ichild )
     {
-      // Create child cursor from parent in input grid
-      vtkHyperTreeGridCursor* childCursor = cursor->Clone();
-      childCursor->ToChild( child );
-
+      cursor->ToChild( ichild );
       // Recurse
-      this->RecursivelyProcessTreeDual( childCursor, mask );
-
-      // Clean up
-      childCursor->Delete();
-      childCursor = nullptr;
-    } // child
+      this->RecursivelyProcessTreeDual( cursor );
+      cursor->ToParent();
+    } // ichild
   } // if ( ! cursor->IsLeaf() )
   else
   {
@@ -634,14 +571,13 @@ void vtkHyperTreeGridPlaneCutter::RecursivelyProcessTreeDual( vtkHyperTreeGridCu
         {
           // Get cursor corresponding to this corner
           vtkIdType cursorId = this->Leaves->GetId( _cornerIdx );
-          vtkHyperTreeGridCursor* cursorN = cursor->GetCursor( cursorId );
 
           // Retrieve neighbor coordinates and store them
-          cursorN->GetPoint( x );
+          cursor->GetPoint( cursorId, x );
           this->Centers->SetPoint( _cornerIdx, x );
 
           // Retrieve neighbor index and corresponding input scalar value
-          vtkIdType idN = cursorN->GetGlobalNodeIndex();
+          vtkIdType idN = cursor->GetGlobalNodeIndex( cursorId );
 
           // Assign scalar value attached to this cell corner
           dual->GetPointData()->CopyData( this->InData, idN, _cornerIdx );

@@ -373,6 +373,7 @@ void vtkShadowMapBakerPass::Render(const vtkRenderState *s)
         this->FrameBufferObject->SetContext(context);
         this->FrameBufferObject->SaveCurrentBindingsAndBuffers();
         this->FrameBufferObject->Resize(this->Resolution, this->Resolution);
+        this->FrameBufferObject->Bind();
         this->FrameBufferObject->AddDepthAttachment();
       }
       else
@@ -433,6 +434,10 @@ void vtkShadowMapBakerPass::Render(const vtkRenderState *s)
       while ((prop = props->GetNextProp(cookie)) != nullptr)
       {
         const double* bounds = prop->GetBounds();
+        if (!bounds)
+        {
+          continue;
+        }
         if (first)
         {
           bb[0] = bounds[0];
@@ -493,8 +498,7 @@ void vtkShadowMapBakerPass::Render(const vtkRenderState *s)
           r->SetActiveCamera(lightCamera);
 
           //map->Activate();
-          this->FrameBufferObject->AddColorAttachment(
-            this->FrameBufferObject->GetBothMode(), 0, map);
+          this->FrameBufferObject->AddColorAttachment(0, map);
           this->FrameBufferObject->ActivateBuffer(0);
           this->FrameBufferObject->Resize(
             static_cast<int>(this->Resolution),

@@ -58,7 +58,7 @@ public:
 
 // ClampToBorder is not supported in ES 2.0
 // Wrap values.
-#if GL_ES_VERSION_3_0 != 1
+#ifndef GL_ES_VERSION_3_0
   enum
   {
     ClampToEdge=0,
@@ -170,7 +170,7 @@ public:
   /**
    * Activate and Bind the texture
    */
-  void Activate();
+  virtual void Activate();
 
   /**
    * Deactivate and UnBind the texture
@@ -180,7 +180,7 @@ public:
   /**
    * Deactivate and UnBind the texture
    */
-  void ReleaseGraphicsResources(vtkWindow *win);
+  virtual void ReleaseGraphicsResources(vtkWindow *win);
 
   /**
    * Tells if the texture object is bound to the active texture image unit.
@@ -210,6 +210,7 @@ public:
   /**
    * Create a 2D depth texture using a raw pointer.
    * This is a blocking call. If you can, use PBO instead.
+   * raw can be null in order to allocate texture without initialization.
    */
   bool CreateDepthFromRaw(unsigned int width, unsigned int height,
                           int internalFormat, int rawType,
@@ -231,7 +232,7 @@ public:
                          int numComps, int dataType, void *data[6]);
 
 // 1D  textures are not supported in ES 2.0 or 3.0
-#if GL_ES_VERSION_3_0 != 1
+#ifndef GL_ES_VERSION_3_0
 
   /**
    * Create a 1D texture using the PBO.
@@ -315,6 +316,11 @@ public:
                      int internalFormat);
 
   /**
+   * Create a 2D septh stencil texture but does not initialize its values.
+   */
+  bool AllocateDepthStencil(unsigned int width, unsigned int height);
+
+  /**
    * Create a 1D color texture but does not initialize its values.
    * Internal format is deduced from numComps and vtkType.
    */
@@ -325,7 +331,7 @@ public:
    * Internal format is deduced from numComps and vtkType.
    */
   bool Allocate2D(unsigned int width, unsigned int height, int numComps,
-                  int vtkType);
+                  int vtkType, int level = 0);
 
   /**
    * Create a 3D color texture but does not initialize its values.
@@ -742,6 +748,15 @@ public:
   vtkBooleanMacro(UseSRGBColorSpace, bool);
   //@}
 
+  /**
+   * Assign the TextureObject to a externally provided
+   * Handle and Target. This class will not delete the texture
+   * referenced by the handle upon releasing. That is up to
+   * whoever created it originally. Note that activating
+   * and binding will work. Properties such as wrap/interpolate
+   * will also work. But width/height/format etc are left unset.
+   */
+  void AssignToExistingTexture(unsigned int handle, unsigned int target);
 
 protected:
   vtkTextureObject();
@@ -774,6 +789,7 @@ protected:
 
   vtkWeakPointer<vtkOpenGLRenderWindow> Context;
   unsigned int Handle;
+  bool OwnHandle;
   bool RequireTextureInteger;
   bool SupportsTextureInteger;
   bool RequireTextureFloat;

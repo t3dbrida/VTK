@@ -36,6 +36,7 @@ class vtkCellArray;
 class vtkGenericOpenGLResourceFreeCallback;
 class vtkMatrix4x4;
 class vtkMatrix3x3;
+class vtkOpenGLCellToVTKCellMap;
 class vtkOpenGLRenderTimer;
 class vtkOpenGLTexture;
 class vtkOpenGLBufferObject;
@@ -45,6 +46,7 @@ class vtkPoints;
 class vtkTexture;
 class vtkTextureObject;
 class vtkTransform;
+class vtkOpenGLShaderProperty;
 
 
 class VTKRENDERINGOPENGL2_EXPORT vtkOpenGLPolyDataMapper : public vtkPolyDataMapper
@@ -140,7 +142,7 @@ public:
   vtkGetStringMacro(CompositeIdArrayName);
   //@}
 
-
+#ifndef VTK_LEGACY_REMOVE
   //@{
   /**
    * This function enables you to apply your own substitutions
@@ -148,19 +150,21 @@ public:
    * is created by applying a bunch of string replacements to a
    * shader template. Using this function you can apply your
    * own string replacements to add features you desire.
+   *
+   * @deprecated Replaced By vtkShaderProperty::{Add,Clear,ClearAll}ShaderReplacements as of VTK 9.0.
    */
-  void AddShaderReplacement(
+  VTK_LEGACY(void AddShaderReplacement(
     vtkShader::Type shaderType, // vertex, fragment, etc
     const std::string& originalValue,
     bool replaceFirst,  // do this replacement before the default
     const std::string& replacementValue,
-    bool replaceAll);
-  void ClearShaderReplacement(
+    bool replaceAll);)
+  VTK_LEGACY(void ClearShaderReplacement(
     vtkShader::Type shaderType, // vertex, fragment, etc
     const std::string& originalValue,
-    bool replaceFirst);
-  void ClearAllShaderReplacements(vtkShader::Type shaderType);
-  void ClearAllShaderReplacements();
+    bool replaceFirst);)
+  VTK_LEGACY(void ClearAllShaderReplacements(vtkShader::Type shaderType);)
+  VTK_LEGACY(void ClearAllShaderReplacements();)
   //@}
 
   //@{
@@ -169,48 +173,22 @@ public:
    * instead of using the built in templates. Be aware, if
    * set, this template will be used for all cases,
    * primitive types, picking etc.
+   *
+   * @deprecated Replaced By vtkShaderProperty::Get*ShaderCode as of VTK 9.0.
    */
-  vtkSetStringMacro(VertexShaderCode);
-  vtkGetStringMacro(VertexShaderCode);
-  vtkSetStringMacro(FragmentShaderCode);
-  vtkGetStringMacro(FragmentShaderCode);
-  vtkSetStringMacro(GeometryShaderCode);
-  vtkGetStringMacro(GeometryShaderCode);
+  VTK_LEGACY(virtual void SetVertexShaderCode(const char* code);)
+  VTK_LEGACY(virtual char* GetVertexShaderCode();)
+  VTK_LEGACY(virtual void SetFragmentShaderCode(const char* code);)
+  VTK_LEGACY(virtual char* GetFragmentShaderCode();)
+  VTK_LEGACY(virtual void SetGeometryShaderCode(const char* code);)
+  VTK_LEGACY(virtual char* GetGeometryShaderCode();)
   //@}
-
-  // the following is all extra stuff to work around the
-  // fact that gl_PrimitiveID does not work correctly on
-  // Apple Macs with AMD graphics hardware (before macOS 10.11).
-  // See <rdar://20747550>.
-  static vtkPolyData *HandleAppleBug(
-    vtkPolyData *poly,
-    std::vector<float> &buffData);
+#endif
 
   /**
    * Make a shallow copy of this mapper.
    */
-  void ShallowCopy(vtkAbstractMapper *m);
-
-  //@{
-  /**
-   * Override the normal test for the apple bug
-   */
-  void ForceHaveAppleBugOff()
-  {
-    this->HaveAppleBugForce = 1;
-    this->Modified();
-  }
-  void ForceHaveAppleBugOn()
-  {
-    this->HaveAppleBugForce = 2;
-    this->Modified();
-  }
-  //@}
-
-  /**
-   * Get the value of HaveAppleBug
-   */
-  bool GetHaveAppleBug() { return this->HaveAppleBug; }
+  void ShallowCopy(vtkAbstractMapper *m) override;
 
   /// Return the mapper's vertex buffer objects.
   vtkGetObjectMacro(VBOs, vtkOpenGLVertexBufferObjectGroup);
@@ -231,22 +209,6 @@ public:
     PrimitiveVertices,
     PrimitiveEnd
   };
-
-  void UpdateCellMaps(
-    bool HaveAppleBug,
-    vtkPolyData *poly,
-    vtkCellArray **prims, int representation,
-    vtkPoints *points);
-
-  /**
-   * Get access to the map of glprim to vtkcell ids
-   */
-  static void MakeCellCellMap(
-    std::vector<vtkIdType> &cellCellMap,
-    bool HaveAppleBug,
-    vtkPolyData *poly,
-    vtkCellArray **prims, int representation,
-    vtkPoints *points);
 
   /**
    * Select a data array from the point/cell data
@@ -308,15 +270,6 @@ protected:
   // what coordinate should be used for this texture
   std::string GetTextureCoordinateName(const char *tname);
 
-  // the following is all extra stuff to work around the
-  // fact that gl_PrimitiveID does not work correctly on
-  // Apple Macs with AMD graphics hardware (before macOS 10.11).
-  // See <rdar://20747550>.
-  bool HaveAppleBug;
-  int HaveAppleBugForce; // 0 = default 1 = 0ff 2 = on
-  std::vector<float> AppleBugPrimIDs;
-  vtkOpenGLBufferObject *AppleBugPrimIDBuffer;
-
   /**
    * helper function to get the appropriate coincident params
    */
@@ -372,6 +325,9 @@ protected:
   virtual void ReplaceShaderRenderPass(
     std::map<vtkShader::Type, vtkShader *> shaders,
     vtkRenderer *ren, vtkActor *act, bool prePass);
+  virtual void ReplaceShaderCustomUniforms(
+    std::map<vtkShader::Type, vtkShader *> shaders,
+    vtkActor *act);
   virtual void ReplaceShaderColor(
     std::map<vtkShader::Type, vtkShader *> shaders,
     vtkRenderer *ren, vtkActor *act);
@@ -403,6 +359,11 @@ protected:
     std::map<vtkShader::Type, vtkShader *> shaders,
     vtkRenderer *ren, vtkActor *act);
   //@}
+
+  /**
+   * Set the value of user-defined uniform variables, called by UpdateShader
+   */
+  virtual void SetCustomUniforms( vtkOpenGLHelper & cellBO, vtkActor *actor);
 
   /**
    * Set the shader parameters related to the mapper/input data, called by UpdateShader
@@ -524,7 +485,8 @@ protected:
     int representation,
     std::vector<unsigned char> &colors,
     std::vector<float> &normals,
-    vtkPolyData *pd);
+    vtkPolyData *pd,
+    vtkOpenGLCellToVTKCellMap *ccmap);
 
   vtkTextureObject *CellScalarTexture;
   vtkOpenGLBufferObject *CellScalarBuffer;
@@ -539,9 +501,6 @@ protected:
   char* ProcessIdArrayName;
   char* CompositeIdArrayName;
 
-  std::map<const vtkShader::ReplacementSpec, vtkShader::ReplacementValue>
-    UserShaderReplacements;
-
   class ExtraAttributeValue
   {
     public:
@@ -552,9 +511,13 @@ protected:
   };
   std::map<std::string,ExtraAttributeValue> ExtraAttributes;
 
-  char *VertexShaderCode;
-  char *FragmentShaderCode;
-  char *GeometryShaderCode;
+  // Store shader properties on this class by legacy shader replacement functions
+  // This should disappear when the functions are deprecated
+#ifndef VTK_LEGACY_REMOVE
+  vtkOpenGLShaderProperty * GetLegacyShaderProperty();
+  vtkSmartPointer<vtkOpenGLShaderProperty> LegacyShaderProperty;
+#endif
+
   vtkOpenGLRenderTimer *TimerQuery;
 
   // are we currently drawing spheres/tubes
@@ -573,9 +536,7 @@ protected:
   unsigned int TimerQueryCounter;
 
   // stores the mapping from vtk cells to gl_PrimitiveId
-  std::vector<vtkIdType> CellCellMap;
-  std::vector<vtkIdType> PointCellMap;
-  std::string CellMapsBuildString;
+  vtkNew<vtkOpenGLCellToVTKCellMap> CellCellMap;
 
   // compute and set the maximum point and cell ID used in selection
   virtual void UpdateMaximumPointCellIds(vtkRenderer* ren, vtkActor *actor);

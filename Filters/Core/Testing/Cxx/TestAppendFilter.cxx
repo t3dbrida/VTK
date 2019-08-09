@@ -15,9 +15,10 @@
 
 #include <vtkAppendFilter.h>
 #include <vtkCellData.h>
-#include <vtkDataSet.h>
 #include <vtkDataSetAttributes.h>
+#include <vtkDataSet.h>
 #include <vtkIdList.h>
+#include <vtkIdTypeArray.h>
 #include <vtkIntArray.h>
 #include <vtkMath.h>
 #include <vtkNew.h>
@@ -25,6 +26,8 @@
 #include <vtkPolyData.h>
 #include <vtkSmartPointer.h>
 #include <vtkUnstructuredGrid.h>
+
+#include <numeric> // for iota
 
 //////////////////////////////////////////////////////////////////////////////
 namespace {
@@ -111,6 +114,29 @@ void CreateDataset(vtkPolyData* dataset,
   }
 
   dataset->SetPoints( points );
+
+  // Add global point and cell ids.
+  static int next_point_gid = 0;
+  if (auto nodeids = vtkSmartPointer<vtkIntArray>::New())
+  {
+    nodeids->SetName("GlobalNodeIds");
+    nodeids->SetNumberOfTuples(numberOfPoints);
+    std::iota(nodeids->GetPointer(0), nodeids->GetPointer(0) + numberOfPoints, next_point_gid);
+    dataset->GetPointData()->SetGlobalIds(nodeids);
+
+    next_point_gid += numberOfPoints;
+  }
+
+  static int next_cell_gid = 0;
+  if (auto elementids = vtkSmartPointer<vtkIntArray>::New())
+  {
+    elementids->SetName("GlobalElementIds");
+    elementids->SetNumberOfTuples(numberOfCells);
+    std::iota(elementids->GetPointer(0), elementids->GetPointer(0) + numberOfCells, next_cell_gid);
+    dataset->GetCellData()->SetGlobalIds(elementids);
+
+    next_cell_gid += numberOfCells;
+  }
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -135,10 +161,9 @@ int strcmp_null(const char* s1, const char* s2)
 //////////////////////////////////////////////////////////////////////////////
 // Prints and checks point/cell data
 //////////////////////////////////////////////////////////////////////////////
-int PrintAndCheck(const std::vector<vtkPolyData*>& inputs, vtkDataSet* output,
-                  vtkDataSetAttributes*(*selector)(vtkDataSet*))
+int PrintAndCheck(const std::vector<vtkPolyData*>& inputs, vtkDataSet* output, int fieldType)
 {
-  vtkDataSetAttributes* dataArrays = selector(output);
+  vtkDataSetAttributes* dataArrays = output->GetAttributes(fieldType);
   std::cout << "Evaluating '" << dataArrays->GetClassName() << "'\n";
 
   for (int arrayIndex = 0; arrayIndex < dataArrays->GetNumberOfArrays(); ++arrayIndex)
@@ -180,7 +205,7 @@ int PrintAndCheck(const std::vector<vtkPolyData*>& inputs, vtkDataSet* output,
     vtkIdType numInputTuples = 0;
     for (size_t inputIndex = 0; inputIndex < inputs.size(); ++inputIndex)
     {
-      vtkDataArray* array = selector(inputs[inputIndex])->GetArray(arrayName);
+      vtkDataArray* array = inputs[inputIndex]->GetAttributes(fieldType)->GetArray(arrayName);
       if (!array)
       {
         std::cerr << "No array named '" << arrayName << "' in input " << inputIndex << "\n";
@@ -198,7 +223,7 @@ int PrintAndCheck(const std::vector<vtkPolyData*>& inputs, vtkDataSet* output,
     vtkIdType offset = 0;
     for (size_t inputIndex = 0; inputIndex < inputs.size(); ++inputIndex)
     {
-      vtkDataArray* array = selector(inputs[inputIndex])->GetArray(arrayName);
+      vtkDataArray* array = inputs[inputIndex]->GetAttributes(fieldType)->GetArray(arrayName);
       for (int i = 0; i < array->GetNumberOfTuples(); ++i)
       {
         for (int j = 0; j < array->GetNumberOfComponents(); ++j)
@@ -233,7 +258,7 @@ int PrintAndCheck(const std::vector<vtkPolyData*>& inputs, vtkDataSet* output,
     for (size_t inputIndex = 0; inputIndex < inputs.size(); ++inputIndex)
     {
       vtkAbstractArray* inputAttributeArray =
-        selector(inputs[inputIndex])->GetAbstractAttribute(attributeIndex);
+        inputs[inputIndex]->GetAttributes(fieldType)->GetAbstractAttribute(attributeIndex);
 
       if (outputAttributeArray && !inputAttributeArray)
       {
@@ -258,7 +283,7 @@ int PrintAndCheck(const std::vector<vtkPolyData*>& inputs, vtkDataSet* output,
     for (size_t inputIndex = 0; inputIndex < inputs.size(); ++inputIndex)
     {
       vtkAbstractArray* inputAttributeArray =
-        selector(inputs[inputIndex])->GetAbstractAttribute(attributeIndex);
+        inputs[inputIndex]->GetAttributes(fieldType)->GetAbstractAttribute(attributeIndex);
       if (!inputAttributeArray)
       {
         allInputsHaveAttribute = false;
@@ -268,11 +293,11 @@ int PrintAndCheck(const std::vector<vtkPolyData*>& inputs, vtkDataSet* output,
     if (allInputsHaveAttribute)
     {
       vtkAbstractArray* firstAttributeArray =
-        selector(inputs[0])->GetAbstractAttribute(attributeIndex);
+        inputs[0]->GetAttributes(fieldType)->GetAbstractAttribute(attributeIndex);
       for (size_t inputIndex = 1; inputIndex < inputs.size(); ++inputIndex)
       {
         vtkAbstractArray* inputAttributeArray =
-          selector(inputs[inputIndex])->GetAbstractAttribute(attributeIndex);
+          inputs[inputIndex]->GetAttributes(fieldType)->GetAbstractAttribute(attributeIndex);
         if (strcmp_null(firstAttributeArray->GetName(), inputAttributeArray->GetName()) != 0)
         {
           allInputsHaveSameName = false;
@@ -284,7 +309,7 @@ int PrintAndCheck(const std::vector<vtkPolyData*>& inputs, vtkDataSet* output,
     if (allInputsHaveAttribute && allInputsHaveSameName)
     {
       const char* attributeArrayName =
-        selector(inputs[0])->GetAbstractAttribute(attributeIndex)->GetName();
+        inputs[0]->GetAttributes(fieldType)->GetAbstractAttribute(attributeIndex)->GetName();
       if (!outputAttributeArray)
       {
         std::cerr << "Inputs all have the attribute '" << attributeName << "' set to the name '"
@@ -306,7 +331,7 @@ int PrintAndCheck(const std::vector<vtkPolyData*>& inputs, vtkDataSet* output,
         vtkIdType offset = 0;
         for (size_t inputIndex = 0; inputIndex < inputs.size(); ++inputIndex)
         {
-          vtkDataArray* attributeArray = selector(inputs[inputIndex])->GetAttribute(attributeIndex);
+          vtkDataArray* attributeArray = inputs[inputIndex]->GetAttributes(fieldType)->GetAttribute(attributeIndex);
           if (!attributeArray)
           {
             continue;
@@ -332,30 +357,42 @@ int PrintAndCheck(const std::vector<vtkPolyData*>& inputs, vtkDataSet* output,
   return 1;
 }
 
-
 //////////////////////////////////////////////////////////////////////////////
-// Selectors for point and cell data
+// Returns 1 on success, 0 otherwise
 //////////////////////////////////////////////////////////////////////////////
-vtkDataSetAttributes* PointDataSelector(vtkDataSet* ds)
+int AppendDatasetsAndCheckMergedArrayLengths(vtkAppendFilter* append)
 {
-  if (ds)
+  append->MergePointsOn();
+  append->Update();
+  vtkUnstructuredGrid * output = append->GetOutput();
+
+  if (output->GetPointData()->GetNumberOfArrays() > 0 &&
+      output->GetPointData()->GetArray(0)->GetNumberOfTuples() != output->GetNumberOfPoints())
   {
-    return ds->GetPointData();
+    std::cerr << "Wrong number of tuples in output point data arrays\n";
+    return 0;
   }
 
-  return nullptr;
-}
-
-vtkDataSetAttributes* CellDataSelector(vtkDataSet* ds)
-{
-  if (ds)
+  if (output->GetCellData()->GetNumberOfArrays() > 0 &&
+      output->GetCellData()->GetArray(0)->GetNumberOfTuples() != output->GetNumberOfCells())
   {
-    return ds->GetCellData();
+    std::cerr << "Wrong number of tuples in output cell data arrays\n";
+    return 0;
   }
 
-  return nullptr;
-}
+  if (output->GetPointData()->GetGlobalIds() != nullptr)
+  {
+    std::cerr << "Point global ids should have been discarded after merge!\n";
+    return 0;
+  }
+  if (output->GetCellData()->GetGlobalIds() == nullptr)
+  {
+    std::cerr << "Cell global ids should have been preserved after merge!\n";
+    return 0;
+  }
 
+  return 1;
+}
 
 //////////////////////////////////////////////////////////////////////////////
 // Returns 1 on success, 0 otherwise
@@ -369,18 +406,104 @@ int AppendDatasetsAndPrint(const std::vector<vtkPolyData*>& inputs)
   }
   append->Update();
   vtkUnstructuredGrid * output = append->GetOutput();
-  if (!PrintAndCheck(inputs, output, PointDataSelector))
-  {
-    return 0;
-  }
-#if 1
-  if (!PrintAndCheck(inputs, output, CellDataSelector))
-  {
-    return 0;
-  }
-#endif
 
-  return 1;
+  if (!PrintAndCheck(inputs, output, vtkDataObject::POINT))
+  {
+    return 0;
+  }
+  if (!PrintAndCheck(inputs, output, vtkDataObject::CELL))
+  {
+    return 0;
+  }
+
+  if (output->GetPointData()->GetGlobalIds() == nullptr)
+  {
+    std::cerr << "Point global ids should have been preserved!\n";
+    return 0;
+  }
+
+  if (output->GetCellData()->GetGlobalIds() == nullptr)
+  {
+    std::cerr << "Cell global ids should have been preserved!\n";
+    return 0;
+  }
+
+  return AppendDatasetsAndCheckMergedArrayLengths(append);
+}
+
+bool TestToleranceModes()
+{
+  vtkNew<vtkPoints> points1;
+  points1->InsertNextPoint(0.0, 0.0, 0.0);
+  points1->InsertNextPoint(0.0, 1.0, 0.0);
+
+  vtkNew<vtkPoints> points2;
+  points2->InsertNextPoint(0.0, 1.0, 0.0);
+  points2->InsertNextPoint(0.0, 4.0, 0.0);
+
+  vtkIdType ptIds[] = {0, 1};
+
+  vtkNew<vtkPolyData> polydata1;
+  polydata1->Allocate(3, 10);
+  polydata1->SetPoints(points1);
+  polydata1->InsertNextCell(VTK_LINE, 2, ptIds);
+
+  vtkNew<vtkPolyData> polydata2;
+  polydata2->Allocate(3, 10);
+  polydata2->SetPoints(points2);
+  polydata2->InsertNextCell(VTK_LINE, 2, ptIds);
+
+  // Set the tolerance to one quarter of the length of the data set, which is 4.0.
+  // This equates to an absolute tolerance of 1.0, which should cause the first two
+  // points in the dataset to be merged.
+
+  std::cout << "Testing merging with relative tolerance." << std::endl;
+
+  double tolerance = 0.25;
+  vtkNew<vtkAppendFilter> append;
+  append->MergePointsOn();
+  append->SetTolerance(tolerance);
+  append->ToleranceIsAbsoluteOff();
+  append->AddInputData(polydata1);
+  append->AddInputData(polydata2);
+  append->Update();
+
+  auto output = append->GetOutput();
+  for (vtkIdType i = 0; i < output->GetNumberOfPoints(); ++i)
+  {
+    double point[3];
+    output->GetPoint(i, point);
+    std::cout << "Point " << i << ": " << point[0] << ", " << point[1] << ", " << point[2] << std::endl;
+  }
+
+  if (output->GetNumberOfPoints() != 2)
+  {
+    std::cerr << "Point merging with relative tolerance yielded "
+      << output->GetNumberOfPoints() << " points instead of 2.\n";
+    return false;
+  }
+
+  // Test out absolute tolerance
+  std::cout << "Testing merging with absolute tolerance." << std::endl;
+  append->ToleranceIsAbsoluteOn();
+  append->Update();
+
+  output = append->GetOutput();
+  for (vtkIdType i = 0; i < output->GetNumberOfPoints(); ++i)
+  {
+    double point[3];
+    output->GetPoint(i, point);
+    std::cout << "Point " << i << ": " << point[0] << ", " << point[1] << ", " << point[2] << std::endl;
+  }
+
+  if (output->GetNumberOfPoints() != 3)
+  {
+    std::cerr << "Point merging with absolute tolerance yielded "
+      << output->GetNumberOfPoints() << " points instead of 3.\n";
+    return false;
+  }
+
+  return true;
 }
 
 } // end anonymous namespace
@@ -655,6 +778,25 @@ int TestAppendFilter( int, char* [])
   if (!AppendDatasetsAndPrint(inputs))
   {
     std::cerr << "vtkAppendFilter failed with scalar arrays with same name but different components\n";
+    return EXIT_FAILURE;
+  }
+
+  std::cout << "===========================================================\n";
+  std::cout << "Append result of deep copied dataset: " << std::endl;
+  inputs[0] = d7;
+  d8->DeepCopy(d7);
+  inputs[1] = d8;
+  if (!AppendDatasetsAndPrint(inputs))
+  {
+    std::cerr << "vtkAppendFilter failed with deep copied datasets\n";
+    return EXIT_FAILURE;
+  }
+
+  std::cout << "===========================================================\n";
+  std::cout << "Testing tolerance modes.\n";
+  if (!TestToleranceModes())
+  {
+    std::cerr << "vtkAppendFilter failed testing tolerances.\n";
     return EXIT_FAILURE;
   }
 

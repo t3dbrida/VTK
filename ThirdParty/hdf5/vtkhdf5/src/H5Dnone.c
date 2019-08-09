@@ -145,7 +145,7 @@ H5D__none_idx_create(const H5D_chk_idx_info_t *idx_info)
     nbytes = idx_info->layout->max_nchunks * idx_info->layout->size;
 
     /* Allocate space for max dataset chunks */
-    addr = H5MF_alloc(idx_info->f, H5FD_MEM_DRAW, idx_info->dxpl_id, nbytes);
+    addr = H5MF_alloc(idx_info->f, H5FD_MEM_DRAW, nbytes);
     if(!H5F_addr_defined(addr))
 	HGOTO_ERROR(H5E_DATASET, H5E_CANTALLOC, FAIL, "file allocation failed")
 
@@ -242,7 +242,7 @@ H5D__none_idx_iterate(const H5D_chk_idx_info_t *idx_info,
     unsigned u;		/* Local index variable */
     int curr_dim;       /* Current rank */
     hsize_t idx;    	/* Array index of chunk */
-    int ret_value = -1; /* Return value */
+    int ret_value = H5_ITER_CONT; /* Return value */
 
     FUNC_ENTER_STATIC_NOERR
 
@@ -266,7 +266,7 @@ H5D__none_idx_iterate(const H5D_chk_idx_info_t *idx_info,
     HDassert(ndims > 0);
 
     /* Iterate over all the chunks in the dataset's dataspace */
-    for(u = 0; u < idx_info->layout->nchunks; u++) {
+    for(u = 0; u < idx_info->layout->nchunks && ret_value == H5_ITER_CONT; u++) {
 	/* Calculate the index of this chunk */
 	idx = H5VM_array_offset_pre(ndims, idx_info->layout->max_down_chunks, chunk_rec.scaled);
 
@@ -355,7 +355,7 @@ H5D__none_idx_delete(const H5D_chk_idx_info_t *idx_info)
 
     /* chunk size * max # of chunks */
     nbytes = idx_info->layout->max_nchunks * idx_info->layout->size;
-    if(H5MF_xfree(idx_info->f, H5FD_MEM_DRAW, idx_info->dxpl_id, idx_info->storage->idx_addr, nbytes) < 0)
+    if(H5MF_xfree(idx_info->f, H5FD_MEM_DRAW, idx_info->storage->idx_addr, nbytes) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTFREE, H5_ITER_ERROR, "unable to free dataset chunks")
 
     idx_info->storage->idx_addr = HADDR_UNDEF;
@@ -401,14 +401,14 @@ H5D__none_idx_copy_setup(const H5D_chk_idx_info_t *idx_info_src,
     HDassert(idx_info_dst->storage);
 
     /* Set copied metadata tag */
-    H5_BEGIN_TAG(idx_info_dst->dxpl_id, H5AC__COPIED_TAG, FAIL);
+    H5_BEGIN_TAG(H5AC__COPIED_TAG);
 
     /* Allocate dataset chunks in the dest. file */
     if(H5D__none_idx_create(idx_info_dst) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "unable to initialize chunked storage")
 
     /* Reset metadata tag */
-    H5_END_TAG(FAIL);
+    H5_END_TAG
 
 done:
     FUNC_LEAVE_NOAPI(ret_value)

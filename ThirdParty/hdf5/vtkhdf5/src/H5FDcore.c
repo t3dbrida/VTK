@@ -343,14 +343,17 @@ H5FD__core_write_to_bstore(H5FD_core_t *file, haddr_t addr, size_t size)
 
     HDassert(file);
 
-    /* Write to backing store */
-    if((off_t)addr != HDlseek(file->fd, (off_t)addr, SEEK_SET))
+#ifndef H5_HAVE_PREADWRITE
+    /* Seek to the correct location (if we don't have pwrite) */
+    if((HDoff_t)addr != HDlseek(file->fd, (off_t)addr, SEEK_SET))
         HGOTO_ERROR(H5E_IO, H5E_SEEKERROR, FAIL, "error seeking in backing store")
+#endif /* H5_HAVE_PREADWRITE */
 
     while (size > 0) {
 
         h5_posix_io_t       bytes_in        = 0;    /* # of bytes to write  */
         h5_posix_io_ret_t   bytes_wrote     = -1;   /* # of bytes written   */
+        HDoff_t             offset          = (HDoff_t)addr;
 
         /* Trying to write more bytes than the return type can handle is
          * undefined behavior in POSIX.
@@ -361,15 +364,21 @@ H5FD__core_write_to_bstore(H5FD_core_t *file, haddr_t addr, size_t size)
             bytes_in = (h5_posix_io_t)size;
 
         do {
+#ifdef H5_HAVE_PREADWRITE
+            bytes_wrote = HDpwrite(file->fd, ptr, bytes_in, offset);
+            offset += bytes_wrote;
+#else
             bytes_wrote = HDwrite(file->fd, ptr, bytes_in);
+#endif /* H5_HAVE_PREADWRITE */
         } while(-1 == bytes_wrote && EINTR == errno);
 
         if(-1 == bytes_wrote) { /* error */
             int myerrno = errno;
             time_t mytime = HDtime(NULL);
-            HDoff_t myoffset = HDlseek(file->fd, (HDoff_t)0, SEEK_CUR);
 
-            HGOTO_ERROR(H5E_IO, H5E_WRITEERROR, FAIL, "write to backing store failed: time = %s, filename = '%s', file descriptor = %d, errno = %d, error message = '%s', ptr = %p, total write size = %llu, bytes this sub-write = %llu, bytes actually written = %llu, offset = %llu", HDctime(&mytime), file->name, file->fd, myerrno, HDstrerror(myerrno), ptr, (unsigned long long)size, (unsigned long long)bytes_in, (unsigned long long)bytes_wrote, (unsigned long long)myoffset);
+            offset = HDlseek(file->fd, (HDoff_t)0, SEEK_CUR);
+
+            HGOTO_ERROR(H5E_IO, H5E_WRITEERROR, FAIL, "write to backing store failed: time = %s, filename = '%s', file descriptor = %d, errno = %d, error message = '%s', ptr = %p, total write size = %llu, bytes this sub-write = %llu, bytes actually written = %llu, offset = %llu", HDctime(&mytime), file->name, file->fd, myerrno, HDstrerror(myerrno), ptr, (unsigned long long)size, (unsigned long long)bytes_in, (unsigned long long)bytes_wrote, (unsigned long long)offset);
         } /* end if */
 
         HDassert(bytes_wrote > 0);
@@ -598,7 +607,7 @@ H5FD__core_open(const char *name, unsigned flags, hid_t fapl_id, haddr_t maxaddr
 {
     int                 o_flags;
     H5FD_core_t         *file = NULL;
-    H5FD_core_fapl_t    *fa = NULL;
+    const H5FD_core_fapl_t    *fa = NULL;
     H5P_genplist_t      *plist;         /* Property list pointer */
 #ifdef H5_HAVE_WIN32_API
     struct _BY_HANDLE_FILE_INFORMATION fileinfo;
@@ -620,7 +629,7 @@ H5FD__core_open(const char *name, unsigned flags, hid_t fapl_id, haddr_t maxaddr
     HDassert(H5P_DEFAULT != fapl_id);
     if(NULL == (plist = (H5P_genplist_t *)H5I_object(fapl_id)))
         HGOTO_ERROR(H5E_ARGS, H5E_BADTYPE, NULL, "not a file access property list")
-    if(NULL == (fa = (H5FD_core_fapl_t *)H5P_peek_driver_info(plist)))
+    if(NULL == (fa = (const H5FD_core_fapl_t *)H5P_peek_driver_info(plist)))
         HGOTO_ERROR(H5E_PLIST, H5E_BADVALUE, NULL, "bad VFL driver info")
 
     /* Build the open flags */
@@ -638,7 +647,7 @@ H5FD__core_open(const char *name, unsigned flags, hid_t fapl_id, haddr_t maxaddr
              ((file_image_info.buffer == NULL) && (file_image_info.size == 0)));
     HDmemset(&sb, 0, sizeof(sb));
     if((file_image_info.buffer != NULL) && !(H5F_ACC_CREAT & flags)) {
-        if(HDopen(name, o_flags, 0666) >= 0)
+        if(HDopen(name, o_flags, H5_POSIX_CREATE_MODE_RW) >= 0)
             HGOTO_ERROR(H5E_FILE, H5E_FILEEXISTS, NULL, "file already exists")
         
         /* If backing store is requested, create and stat the file
@@ -646,7 +655,7 @@ H5FD__core_open(const char *name, unsigned flags, hid_t fapl_id, haddr_t maxaddr
          * technically an open.
          */
         if(fa->backing_store) {
-            if((fd = HDopen(name, o_flags | O_CREAT, 0666)) < 0)
+            if((fd = HDopen(name, o_flags | O_CREAT, H5_POSIX_CREATE_MODE_RW)) < 0)
                 HGOTO_ERROR(H5E_FILE, H5E_CANTOPENFILE, NULL, "unable to create file")
             if(HDfstat(fd, &sb) < 0)
                 HSYS_GOTO_ERROR(H5E_FILE, H5E_BADFILE, NULL, "unable to fstat file")
@@ -656,7 +665,7 @@ H5FD__core_open(const char *name, unsigned flags, hid_t fapl_id, haddr_t maxaddr
      * store is off is when  the backing_store flag is off and H5F_ACC_CREAT is
      * on. */
     else if(fa->backing_store || !(H5F_ACC_CREAT & flags)) {
-        if((fd = HDopen(name, o_flags, 0666)) < 0)
+        if((fd = HDopen(name, o_flags, H5_POSIX_CREATE_MODE_RW)) < 0)
             HGOTO_ERROR(H5E_FILE, H5E_CANTOPENFILE, NULL, "unable to open file")
         if(HDfstat(fd, &sb) < 0)
             HSYS_GOTO_ERROR(H5E_FILE, H5E_BADFILE, NULL, "unable to fstat file")
@@ -745,6 +754,7 @@ H5FD__core_open(const char *name, unsigned flags, hid_t fapl_id, haddr_t maxaddr
                 while(size > 0) {
                     h5_posix_io_t       bytes_in        = 0;    /* # of bytes to read       */
                     h5_posix_io_ret_t   bytes_read      = -1;   /* # of bytes actually read */
+                    HDoff_t             offset          = (HDoff_t)0;
                     
                     /* Trying to read more bytes than the return type can handle is
                      * undefined behavior in POSIX.
@@ -755,15 +765,21 @@ H5FD__core_open(const char *name, unsigned flags, hid_t fapl_id, haddr_t maxaddr
                         bytes_in = (h5_posix_io_t)size;
                     
                     do {
+#ifdef H5_HAVE_PREADWRITE
+                        bytes_read = HDpread(file->fd, mem, bytes_in, offset);
+                        offset += bytes_read;
+#else
                         bytes_read = HDread(file->fd, mem, bytes_in);
+#endif /* H5_HAVE_PREADWRITE */
                     } while(-1 == bytes_read && EINTR == errno);
                     
                     if(-1 == bytes_read) { /* error */
                         int myerrno = errno;
                         time_t mytime = HDtime(NULL);
-                        HDoff_t myoffset = HDlseek(file->fd, (HDoff_t)0, SEEK_CUR);
 
-                        HGOTO_ERROR(H5E_IO, H5E_READERROR, NULL, "file read failed: time = %s, filename = '%s', file descriptor = %d, errno = %d, error message = '%s', file->mem = %p, total read size = %llu, bytes this sub-read = %llu, bytes actually read = %llu, offset = %llu", HDctime(&mytime), file->name, file->fd, myerrno, HDstrerror(myerrno), file->mem, (unsigned long long)size, (unsigned long long)bytes_in, (unsigned long long)bytes_read, (unsigned long long)myoffset);
+                        offset = HDlseek(file->fd, (HDoff_t)0, SEEK_CUR);
+
+                        HGOTO_ERROR(H5E_IO, H5E_READERROR, NULL, "file read failed: time = %s, filename = '%s', file descriptor = %d, errno = %d, error message = '%s', file->mem = %p, total read size = %llu, bytes this sub-read = %llu, bytes actually read = %llu, offset = %llu", HDctime(&mytime), file->name, file->fd, myerrno, HDstrerror(myerrno), file->mem, (unsigned long long)size, (unsigned long long)bytes_in, (unsigned long long)bytes_read, (unsigned long long)offset);
                     } /* end if */
                     
                     HDassert(bytes_read >= 0);
@@ -982,9 +998,11 @@ H5FD__core_query(const H5FD_t * _file, unsigned long *flags /* out */)
         *flags |= H5FD_FEAT_ALLOW_FILE_IMAGE;               /* OK to use file image feature with this VFD                       */
         *flags |= H5FD_FEAT_CAN_USE_FILE_IMAGE_CALLBACKS;   /* OK to use file image callbacks with this VFD                     */
 
-        /* If the backing store is open, a POSIX file handle is available */
-        if(file && file->fd >= 0 && file->backing_store)
-            *flags |= H5FD_FEAT_POSIX_COMPAT_HANDLE; /* VFD handle is POSIX I/O call compatible */
+        /* These feature flags are only applicable if the backing store is enabled */
+        if(file && file->fd >= 0 && file->backing_store) {
+            *flags |= H5FD_FEAT_POSIX_COMPAT_HANDLE;        /* get_handle callback returns a POSIX file descriptor              */
+            *flags |= H5FD_FEAT_DEFAULT_VFD_COMPATIBLE;     /* VFD creates a file which can be opened with the default VFD      */
+        }
     } /* end if */
 
     FUNC_LEAVE_NOAPI(SUCCEED)

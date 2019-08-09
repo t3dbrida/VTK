@@ -191,44 +191,35 @@ void vtkWin32OpenGLRenderWindow::MakeCurrent()
   HGLRC current = wglGetCurrentContext();
   if (this->ContextId != current)
   {
-    if(this->IsPicking && current)
+    if (wglMakeCurrent(this->DeviceContext, this->ContextId) != TRUE)
     {
-      vtkErrorMacro("Attempting to call MakeCurrent for a different window"
-                    " than the one doing the picking, this can causes crashes"
-                    " and/or bad pick results");
-    }
-    else
-    {
-      if (wglMakeCurrent(this->DeviceContext, this->ContextId) != TRUE)
+      LPVOID lpMsgBuf;
+      ::FormatMessage(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER |
+        FORMAT_MESSAGE_FROM_SYSTEM |
+        FORMAT_MESSAGE_IGNORE_INSERTS,
+        nullptr,
+        GetLastError(),
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), // Default language
+        (LPTSTR) &lpMsgBuf,
+        0,
+        nullptr
+        );
+      if(lpMsgBuf)
       {
-        LPVOID lpMsgBuf;
-        ::FormatMessage(
-          FORMAT_MESSAGE_ALLOCATE_BUFFER |
-          FORMAT_MESSAGE_FROM_SYSTEM |
-          FORMAT_MESSAGE_IGNORE_INSERTS,
-          nullptr,
-          GetLastError(),
-          MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), // Default language
-          (LPTSTR) &lpMsgBuf,
-          0,
-          nullptr
-          );
-        if(lpMsgBuf)
-        {
 #ifdef UNICODE
-          wchar_t *wmsg = new wchar_t [mbstowcs(nullptr, (const char*)lpMsgBuf, 32000)+1];
-          wchar_t *wtemp = new wchar_t [mbstowcs(nullptr, "wglMakeCurrent failed in MakeCurrent(), error: ", 32000)+1];
-          mbstowcs(wmsg, (const char*)lpMsgBuf, 32000);
-          mbstowcs(wtemp, "wglMakeCurrent failed in MakeCurrent(), error: ", 32000);
-          vtkErrorMacro(<< wcscat(wtemp, wmsg));
-          delete [] wmsg;
-          delete [] wtemp;
+        wchar_t *wmsg = new wchar_t [mbstowcs(nullptr, (const char*)lpMsgBuf, 32000)+1];
+        wchar_t *wtemp = new wchar_t [mbstowcs(nullptr, "wglMakeCurrent failed in MakeCurrent(), error: ", 32000)+1];
+        mbstowcs(wmsg, (const char*)lpMsgBuf, 32000);
+        mbstowcs(wtemp, "wglMakeCurrent failed in MakeCurrent(), error: ", 32000);
+        vtkErrorMacro(<< wcscat(wtemp, wmsg));
+        delete [] wmsg;
+        delete [] wtemp;
 #else
-          vtkErrorMacro("wglMakeCurrent failed in MakeCurrent(), error: "
-                        << (LPCTSTR)lpMsgBuf);
+        vtkErrorMacro("wglMakeCurrent failed in MakeCurrent(), error: "
+                      << (LPCTSTR)lpMsgBuf);
 #endif
-          ::LocalFree( lpMsgBuf );
-        }
+        ::LocalFree( lpMsgBuf );
       }
     }
   }
@@ -320,21 +311,7 @@ void vtkWin32OpenGLRenderWindow::SetSize(int x, int y)
       this->Interactor->SetSize(x, y);
     }
 
-    if (this->OffScreenRendering)
-    {
-      if(!this->CreatingOffScreenWindow)
-      {
-        if (!resizing)
-        {
-          resizing = true;
-          this->CleanUpOffScreenRendering();
-          this->CreateOffScreenWindow(x,y);
-          resizing = false;
-        }
-      }
-    }
-
-    else if (this->Mapped)
+    if (!this->UseOffScreenBuffers)
     {
       if (!resizing)
       {
@@ -393,7 +370,7 @@ void vtkWin32OpenGLRenderWindow::Frame(void)
   if (!this->AbortRender && this->DoubleBuffer && this->SwapBuffers)
   {
     // If this check is not enforced, we crash in offscreen rendering
-    if (this->DeviceContext)
+    if (this->DeviceContext && !this->UseOffScreenBuffers)
     {
       // use global scope to get Win32 API SwapBuffers and not be
       // confused with this->SwapBuffers
@@ -919,6 +896,21 @@ void vtkWin32OpenGLRenderWindow::InitializeApplication()
   }
 }
 
+void vtkWin32OpenGLRenderWindow::SetShowWindow(bool val)
+{
+  if (val == this->ShowWindow)
+  {
+    return;
+  }
+
+  if (this->WindowId)
+  {
+    ::ShowWindow(this->WindowId, val ? SW_SHOW : SW_HIDE);
+    this->Mapped = val;
+  }
+  this->Superclass::SetShowWindow(val);
+}
+
 void vtkWin32OpenGLRenderWindow::CreateAWindow()
 {
   this->VTKRegisterClass();
@@ -1003,9 +995,9 @@ void vtkWin32OpenGLRenderWindow::CreateAWindow()
       // extract the create info
 
       /* display window */
-      if(!this->OffScreenRendering)
+      if (this->ShowWindow)
       {
-        ShowWindow(this->WindowId, SW_SHOW);
+        ::ShowWindow(this->WindowId, SW_SHOW);
       }
       //UpdateWindow(this->WindowId);
       this->OwnWindow = 1;
@@ -1062,20 +1054,9 @@ void vtkWin32OpenGLRenderWindow::WindowInitialize()
 void vtkWin32OpenGLRenderWindow::Initialize (void)
 {
   // make sure we haven't already been initialized
-  if (!this->OffScreenRendering && !this->ContextId)
+  if (!this->ContextId)
   {
     this->WindowInitialize();
-  }
-  else
-  {
-    if(this->OffScreenRendering && !(this->ContextId ||
-                                     this->OffScreenUseFrameBuffer))
-    {
-      this->InitializeApplication();
-      int width = ((this->Size[0] > 0) ? this->Size[0] : 300);
-      int height = ((this->Size[1] > 0) ? this->Size[1] : 300);
-      this->CreateOffScreenWindow(width,height);
-    }
   }
 
   if (this->SharedRenderWindow)
@@ -1102,10 +1083,6 @@ void vtkWin32OpenGLRenderWindow::Finalize (void)
     this->ShowCursor();
   }
 
-  if (this->OffScreenRendering)
-  {
-    this->CleanUpOffScreenRendering();
-  }
   this->DestroyWindow();
 }
 
@@ -1130,6 +1107,7 @@ void vtkWin32OpenGLRenderWindow::DestroyWindow()
           ::DestroyWindow(this->WindowId); // windows api
           this->WindowId=0;
         }
+        this->Mapped = 0;
       }
     }
   }
@@ -1139,7 +1117,7 @@ void vtkWin32OpenGLRenderWindow::DestroyWindow()
 int *vtkWin32OpenGLRenderWindow::GetSize(void)
 {
   // if we aren't mapped then just return the ivar
-  if (this->Mapped)
+  if (this->WindowId && !this->UseOffScreenBuffers)
   {
     RECT rect;
 
@@ -1398,59 +1376,6 @@ void vtkWin32OpenGLRenderWindow::SetNextWindowId(HWND arg)
 void vtkWin32OpenGLRenderWindow::SetNextWindowId(void *arg)
 {
   this->SetNextWindowId((HWND)arg);
-}
-
-// Begin the rendering process.
-void vtkWin32OpenGLRenderWindow::Start(void)
-{
-  // if the renderer has not been initialized, do so now
-  if (!this->ContextId)
-  {
-    this->Initialize();
-  }
-
-  // set the current window
-  this->MakeCurrent();
-}
-
-
-void vtkWin32OpenGLRenderWindow::SetOffScreenRendering(vtkTypeBool offscreen)
-{
-  if (offscreen == this->OffScreenRendering)
-  {
-    return;
-  }
-
-  this->vtkRenderWindow::SetOffScreenRendering(offscreen);
-
-  if (offscreen)
-  {
-    int size[2];
-    size[0] = (this->Size[0] > 0) ? this->Size[0] : 300;
-    size[1] = (this->Size[1] > 0) ? this->Size[1] : 300;
-    this->CreateOffScreenWindow(size[0],size[1]);
-  }
-  else
-  {
-    this->CleanUpOffScreenRendering();
-  }
-}
-
-void vtkWin32OpenGLRenderWindow::CreateOffScreenWindow(int width,
-                                                       int height)
-{
-  int status = this->CreatingOffScreenWindow;
-  this->CreatingOffScreenWindow = 1;
-  this->CreateHardwareOffScreenWindow(width,height);
-  this->CreatingOffScreenWindow = status;
-}
-
-void vtkWin32OpenGLRenderWindow::CleanUpOffScreenRendering(void)
-{
-  if(this->OffScreenUseFrameBuffer)
-  {
-    this->DestroyHardwareOffScreenWindow();
-  }
 }
 
 //----------------------------------------------------------------------------

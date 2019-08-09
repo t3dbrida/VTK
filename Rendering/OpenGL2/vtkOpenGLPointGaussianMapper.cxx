@@ -719,11 +719,6 @@ int getPickState(vtkRenderer *ren)
     return selector->GetCurrentPass();
   }
 
-  if (ren->GetRenderWindow()->GetIsPicking())
-  {
-    return vtkHardwareSelector::ACTOR_PASS;
-  }
-
   return vtkHardwareSelector::MIN_KNOWN_PASS - 1;
 }
 }
@@ -832,38 +827,42 @@ void vtkOpenGLPointGaussianMapper::Render(
     return;
   }
 
+  // update tables
+  if (this->GetScaleFunction() && this->GetScaleArray())
+  {
+    if (this->ScaleTableUpdateTime < this->GetScaleFunction()->GetMTime() ||
+        this->ScaleTableUpdateTime < this->GetMTime())
+    {
+      this->BuildScaleTable();
+      this->ScaleTableUpdateTime.Modified();
+    }
+  }
+  else
+  {
+    delete [] this->ScaleTable;
+    this->ScaleTable = nullptr;
+  }
+
+  if (this->GetScalarOpacityFunction() && this->GetOpacityArray())
+  {
+    if (this->OpacityTableUpdateTime < this->GetScalarOpacityFunction()->GetMTime() ||
+        this->OpacityTableUpdateTime < this->GetMTime())
+    {
+      this->BuildOpacityTable();
+      this->OpacityTableUpdateTime.Modified();
+    }
+  }
+  else
+  {
+    delete [] this->OpacityTable;
+    this->OpacityTable = nullptr;
+  }
+
   // the first step is to update the helpers if needed
   if (this->HelperUpdateTime < this->GetInputDataObject(0, 0)->GetMTime() ||
       this->HelperUpdateTime < this->GetInputAlgorithm()->GetMTime() ||
       this->HelperUpdateTime < this->GetMTime())
   {
-    // update tables
-    if (this->GetScaleFunction() && this->GetScaleArray() != nullptr)
-    {
-      this->BuildScaleTable();
-    }
-    else
-    {
-      if (this->ScaleTable)
-      {
-        delete [] this->ScaleTable;
-        this->ScaleTable = nullptr;
-      }
-    }
-
-    if (this->GetScalarOpacityFunction() && this->GetOpacityArray() != nullptr)
-    {
-      this->BuildOpacityTable();
-    }
-    else
-    {
-      if (this->OpacityTable)
-      {
-        delete [] this->OpacityTable;
-        this->OpacityTable = nullptr;
-      }
-    }
-
     // clear old helpers
     for (auto hiter = this->Helpers.begin(); hiter != this->Helpers.end(); ++hiter)
     {
@@ -938,7 +937,7 @@ void vtkOpenGLPointGaussianMapper::RenderInternal(
   vtkRenderer *ren, vtkActor *actor)
 {
   // Set the PointSize
-#if GL_ES_VERSION_3_0 != 1
+#ifndef GL_ES_VERSION_3_0
   glPointSize(actor->GetProperty()->GetPointSize()); // not on ES2
 #endif
 
@@ -1043,6 +1042,7 @@ void vtkOpenGLPointGaussianMapper::BuildScaleTable()
     this->ScaleScale = (tableSize - 1.0)/(range[1] - range[0]);
     this->ScaleOffset = range[0];
   }
+  this->Modified();
 }
 
 //-------------------------------------------------------------------------
@@ -1066,7 +1066,7 @@ void vtkOpenGLPointGaussianMapper::BuildOpacityTable()
     this->OpacityScale = (tableSize - 1.0)/(range[1] - range[0]);
     this->OpacityOffset = range[0];
   }
-
+  this->Modified();
 }
 
 //----------------------------------------------------------------------------
@@ -1139,7 +1139,7 @@ void vtkOpenGLPointGaussianMapper::ProcessSelectorPixelBuffers(
     return;
   }
 
-  if (PickPixels.size() == 0 && pixeloffsets.size())
+  if (PickPixels.empty() && !pixeloffsets.empty())
   {
     // preprocess the image to find matching pixels and
     // store them in a map of vectors based on flat index
@@ -1179,7 +1179,7 @@ void vtkOpenGLPointGaussianMapper::ProcessSelectorPixelBuffers(
   // for each block update the image
   for (auto hiter = this->Helpers.begin(); hiter != this->Helpers.end(); ++hiter)
   {
-    if (this->PickPixels[(*hiter)->FlatIndex].size())
+    if (!this->PickPixels[(*hiter)->FlatIndex].empty())
     {
       (*hiter)->ProcessSelectorPixelBuffers(sel,
         this->PickPixels[(*hiter)->FlatIndex], prop);

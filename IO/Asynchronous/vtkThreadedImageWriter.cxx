@@ -21,7 +21,6 @@
 #include "vtkImageData.h"
 #include "vtkJPEGWriter.h"
 #include "vtkMultiThreader.h"
-#include "vtkMutexLock.h"
 #include "vtkNew.h"
 #include "vtkObjectFactory.h"
 #include "vtkPNGWriter.h"
@@ -174,7 +173,7 @@ public:
     do
     {
       // Check if we have an input available, if so, return it.
-      if (this->Inputs.size() > 0)
+      if (!this->Inputs.empty())
       {
         InputValueType& input = this->Inputs.front();
         image = input.Image;

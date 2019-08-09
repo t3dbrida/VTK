@@ -17,6 +17,7 @@
  * @brief   Convert hyper tree grid to
  * unstructured grid.
  *
+ JB Primal mesh
  * Make explicit all leaves of a hyper tree grid by converting them to cells
  * of an unstructured grid.
  * Produces segments in 1D, rectangles in 2D, right hexahedra in 3D.
@@ -28,9 +29,12 @@
  *
  * @par Thanks:
  * This class was written by Philippe Pebay, Joachim Pouderoux, and Charles Law, Kitware 2012
- * This class was modified by Guénolé Harel and Jacques-Bernard Lekien, 2014
+ * This class was modified by Guenole Harel and Jacques-Bernard Lekien, 2014
  * This class was rewritten by Philippe Pebay, 2016
- * This work was supported by Commissariat a l'Energie Atomique (CEA/DIF)
+ * This class was modified by Jacques-Bernard Lekien, 2018
+ * This class was corriged (used orientation) by Jacques-Bernard Lekien, 2018
+ * This work was supported by Commissariat a l'Energie Atomique
+ * CEA, DAM, DIF, F-91297 Arpajon, France.
 */
 
 #ifndef vtkHyperTreeGridToUnstructuredGrid_h
@@ -42,9 +46,9 @@
 class vtkBitArray;
 class vtkCellArray;
 class vtkHyperTreeGrid;
-class vtkHyperTreeGridCursor;
 class vtkPoints;
 class vtkUnstructuredGrid;
+class vtkHyperTreeGridNonOrientedGeometryCursor;
 
 class VTKFILTERSHYPERTREE_EXPORT vtkHyperTreeGridToUnstructuredGrid : public vtkHyperTreeGridAlgorithm
 {
@@ -70,7 +74,7 @@ protected:
   /**
    * Recursively descend into tree down to leaves
    */
-  void RecursivelyProcessTree( vtkHyperTreeGridCursor*, vtkBitArray* );
+  void RecursivelyProcessTree( vtkHyperTreeGridNonOrientedGeometryCursor* );
 
   /**
    * Helper method to generate a 2D or 3D cell
@@ -88,9 +92,11 @@ protected:
   vtkCellArray* Cells;
 
   /**
-   * Storage for dimension of underlying tree
+   * Storage of underlying tree
    */
   unsigned int Dimension;
+  unsigned int Orientation;
+  const unsigned int* Axes;
 
 private:
   vtkHyperTreeGridToUnstructuredGrid(const vtkHyperTreeGridToUnstructuredGrid&) = delete;

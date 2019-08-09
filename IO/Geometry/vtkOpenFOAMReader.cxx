@@ -795,11 +795,11 @@ public:
                                : static_cast<float>(this->Double);
   }
 
-  const vtkStdString ToString() const
+  vtkStdString ToString() const
   {
     return *this->String;
   }
-  const vtkStdString ToIdentifier() const
+  vtkStdString ToIdentifier() const
   {
     return *this->String;
   }
@@ -1259,11 +1259,11 @@ public:
   {
     return this->InputMode;
   }
-  const vtkStdString GetCasePath() const
+  vtkStdString GetCasePath() const
   {
     return this->CasePath;
   }
-  const vtkStdString GetFilePath() const
+  vtkStdString GetFilePath() const
   {
     return this->ExtractPath(this->FileName);
   }
@@ -3347,16 +3347,33 @@ public:
   {
     return this->UpperDictPtr;
   }
-  vtkFoamEntry *Lookup(const vtkStdString& keyword) const
+  vtkFoamEntry *Lookup(const vtkStdString& keyword, bool regex = false) const
   {
     if (this->Token.GetType() == vtkFoamToken::UNDEFINED)
     {
+      int lastMatch = -1;
       for (size_t i = 0; i < this->Superclass::size(); i++)
       {
+        vtksys::RegularExpression rex;
         if (this->operator[](i)->GetKeyword() == keyword) // found
         {
           return this->operator[](i);
         }
+        else if
+        (
+            regex &&
+            rex.compile(this->operator[](i)->GetKeyword()) &&
+            rex.find(keyword) &&
+            rex.start(0) == 0 && rex.end(0) == keyword.size()
+        )
+        {
+          // regular expression matches full keyword
+          lastMatch = static_cast<int>(i);
+        }
+      }
+      if (lastMatch >= 0)
+      {
+        return this->operator[](lastMatch);
       }
     }
 
@@ -4320,7 +4337,7 @@ void vtkFoamEntry::Read(vtkFoamIOobject& io)
         // keyword nor list type specifier (i. e. `0()';
         // e. g. simpleEngine/0/polyMesh/pointZones) requires special
         // care (one with nonuniform prefix is treated within
-        // vtkFoamEntryValue::read()). still this causes errornous
+        // vtkFoamEntryValue::read()). still this causes erroneous
         // behavior for `0 nonuniform 0()' but this should be extremely
         // rare
         if (lastValue.GetType() == vtkFoamToken::EMPTYLIST && secondLastValue
@@ -7344,16 +7361,11 @@ void vtkOpenFOAMReaderPrivate::InterpolateCellToPoint(vtkFloatArray *pData,
   mesh->GetPointCells(0, pointCells);
   pointCells->Delete();
 
-  // since vtkPolyData and vtkUnstructuredGrid do not share common
-  // overloaded GetCellLink() or GetPointCells() functions we have to
-  // do a tedious task
+  // Set up to grab point cells
   vtkUnstructuredGrid *ug = vtkUnstructuredGrid::SafeDownCast(mesh);
   vtkPolyData *pd = vtkPolyData::SafeDownCast(mesh);
-  vtkCellLinks *cl = nullptr;
-  if (ug)
-  {
-    cl = ug->GetCellLinks();
-  }
+  vtkIdType nCells;
+  vtkIdType *cells;
 
   const int nComponents = iData->GetNumberOfComponents();
 
@@ -7365,18 +7377,15 @@ void vtkOpenFOAMReaderPrivate::InterpolateCellToPoint(vtkFloatArray *pData,
     {
       vtkTypeInt64 pI = pointList
           ? GetLabelValue(pointList, pointI, use64BitLabels) : pointI;
-      unsigned short nCells;
-      vtkIdType *cells;
-      if (cl)
+      if ( ug )
       {
-        const vtkCellLinks::Link &l = cl->GetLink(pI);
-        nCells = l.ncells;
-        cells = l.cells;
+        ug->GetPointCells(pI, nCells, cells);
       }
       else
       {
         pd->GetPointCells(pI, nCells, cells);
       }
+
       // use double intermediate variable for precision
       double interpolatedValue = 0.0;
       for (int cellI = 0; cellI < nCells; cellI++)
@@ -7396,18 +7405,15 @@ void vtkOpenFOAMReaderPrivate::InterpolateCellToPoint(vtkFloatArray *pData,
     {
       vtkTypeInt64 pI = pointList
           ? GetLabelValue(pointList, pointI, use64BitLabels) : pointI;
-      unsigned short nCells;
-      vtkIdType *cells;
-      if (cl)
+      if ( ug )
       {
-        const vtkCellLinks::Link &l = cl->GetLink(pI);
-        nCells = l.ncells;
-        cells = l.cells;
+        ug->GetPointCells(pI, nCells, cells);
       }
       else
       {
         pd->GetPointCells(pI, nCells, cells);
       }
+
       // use double intermediate variables for precision
       const double weight = (nCells ? 1.0 / static_cast<double>(nCells) : 0.0);
       double summedValue0 = 0.0, summedValue1 = 0.0, summedValue2 = 0.0;
@@ -7434,18 +7440,15 @@ void vtkOpenFOAMReaderPrivate::InterpolateCellToPoint(vtkFloatArray *pData,
     {
       vtkTypeInt64 pI = pointList
           ? GetLabelValue(pointList, pointI, use64BitLabels) : pointI;
-      unsigned short nCells;
-      vtkIdType *cells;
-      if (cl)
+      if ( ug )
       {
-        const vtkCellLinks::Link &l = cl->GetLink(pI);
-        nCells = l.ncells;
-        cells = l.cells;
+        ug->GetPointCells(pI, nCells, cells);
       }
       else
       {
         pd->GetPointCells(pI, nCells, cells);
       }
+
       // use double intermediate variables for precision
       const double weight = (nCells ? 1.0 / static_cast<double>(nCells) : 0.0);
       float *interpolatedValue = &pDataPtr[nComponents * pI];
@@ -7885,7 +7888,7 @@ void vtkOpenFOAMReaderPrivate::GetVolFieldAtTimeStep(
     const vtkFoamBoundaryEntry &beI = this->BoundaryDict[boundaryI];
     const vtkStdString &boundaryNameI = beI.BoundaryName;
 
-    const vtkFoamEntry *bEntryI = bEntry->Dictionary().Lookup(boundaryNameI);
+    const vtkFoamEntry *bEntryI = bEntry->Dictionary().Lookup(boundaryNameI, true);
     if (bEntryI == nullptr)
     {
       vtkWarningMacro(<< "boundaryField " << boundaryNameI.c_str()

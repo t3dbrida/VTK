@@ -41,9 +41,10 @@
 #ifndef vtkRenderWindow_h
 #define vtkRenderWindow_h
 
+#include "vtkNew.h"                 // For vtkNew
 #include "vtkRenderingCoreModule.h" // For export macro
+#include "vtkSmartPointer.h"        // For vtkSmartPointer
 #include "vtkWindow.h"
-#include "vtkNew.h" // For vtkNew
 
 class vtkFloatArray;
 class vtkProp;
@@ -52,6 +53,7 @@ class vtkRenderTimerLog;
 class vtkRenderWindowInteractor;
 class vtkRenderer;
 class vtkRendererCollection;
+class vtkStereoCompositor;
 class vtkUnsignedCharArray;
 
 // lets define the different types of stereo
@@ -65,6 +67,7 @@ class vtkUnsignedCharArray;
 #define VTK_STEREO_CHECKERBOARD 8
 #define VTK_STEREO_SPLITVIEWPORT_HORIZONTAL 9
 #define VTK_STEREO_FAKE 10
+#define VTK_STEREO_EMULATE 11
 
 #define VTK_CURSOR_DEFAULT   0
 #define VTK_CURSOR_ARROW     1
@@ -298,7 +301,10 @@ public:
    * interleaving. Fake simply causes the window to render twice without
    * actually swapping the camera from left eye to right eye. This is useful in
    * certain applications that want to emulate the rendering passes without
-   * actually rendering in stereo mode.
+   * actually rendering in stereo mode. Emulate is similar to Fake, except that
+   * it does render left and right eye. There is no compositing of the resulting
+   * images from the two eyes at the end of each render in this mode, hence the
+   * result onscreen will be the right eye.
    */
   vtkGetMacro(StereoType,int);
   void SetStereoType(int);
@@ -322,9 +328,16 @@ public:
     {this->SetStereoType(VTK_STEREO_SPLITVIEWPORT_HORIZONTAL);}
   void SetStereoTypeToFake()
     {this->SetStereoType(VTK_STEREO_FAKE);}
+  void SetStereoTypeToEmulate() { this->SetStereoType(VTK_STEREO_EMULATE); }
   //@}
 
+  //@{
+  /**
+   * Returns the stereo type as a string.
+   */
   const char *GetStereoTypeAsString();
+  static const char* GetStereoTypeAsString(int type);
+  //@}
 
   /**
    * Update the system, if needed, due to stereo rendering. For some stereo
@@ -478,9 +491,15 @@ public:
   virtual int CheckAbortStatus();
   //@}
 
-  vtkGetMacro(IsPicking,vtkTypeBool);
-  vtkSetMacro(IsPicking,vtkTypeBool);
-  vtkBooleanMacro(IsPicking,vtkTypeBool);
+  //@{
+  /**
+   * @deprecated in VTK 8.3
+   */
+  VTK_LEGACY(vtkTypeBool GetIsPicking());
+  VTK_LEGACY(void SetIsPicking(vtkTypeBool));
+  VTK_LEGACY(void IsPickingOn());
+  VTK_LEGACY(void IsPickingOff());
+  //@}
 
   /**
    * Check to see if a mouse button has been pressed.  All other events
@@ -669,17 +688,6 @@ public:
     return 0;
   }
 
-  /**
-   * Create and bind offscreen rendering buffers without destroying the current
-   * OpenGL context. This allows to temporary switch to offscreen rendering
-   * (ie. to make a screenshot even if the window is hidden).
-   * Return if the creation was successful (1) or not (0).
-   * Note: This function requires that the device supports OpenGL framebuffer extension.
-   * The function has no effect if OffScreenRendering is ON.
-   */
-  virtual int SetUseOffScreenBuffers(bool) { return 0; }
-  virtual bool GetUseOffScreenBuffers() { return false; }
-
   //@{
   /**
    * Set/Get if we want this window to use the sRGB color space.
@@ -709,10 +717,8 @@ protected:
   vtkTypeBool StereoCapableWindow;
   vtkTypeBool AlphaBitPlanes;
   vtkRenderWindowInteractor *Interactor;
-  unsigned char* StereoBuffer; // used for red blue stereo
-  float *AccumulationBuffer;   // used for many techniques
-  unsigned int AccumulationBufferSize;
-  unsigned char *ResultFrame;
+  vtkSmartPointer<vtkUnsignedCharArray> StereoBuffer; // used for red blue stereo
+  vtkSmartPointer<vtkUnsignedCharArray> ResultFrame;
   vtkTypeBool   SwapBuffers;
   double DesiredUpdateRate;
   int   AbortRender;
@@ -721,7 +727,6 @@ protected:
   int   NeverRendered;
   int   NumberOfLayers;
   int CurrentCursor;
-  vtkTypeBool IsPicking;
   float AnaglyphColorSaturation;
   int AnaglyphColorMask[2];
   int MultiSamples;
@@ -741,6 +746,8 @@ protected:
 private:
   vtkRenderWindow(const vtkRenderWindow&) = delete;
   void operator=(const vtkRenderWindow&) = delete;
+
+  vtkNew<vtkStereoCompositor> StereoCompositor;
 };
 
 #endif

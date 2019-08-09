@@ -21,9 +21,6 @@
 #include "vtkWrapText.h"
 #include "vtkParseExtras.h"
 
-/* required for VTK_LEGACY_REMOVE */
-#include "vtkConfigure.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -266,7 +263,9 @@ int vtkWrapPython_WrapTemplatedClass(
       {
         types = vtkParse_GetArrayTypes();
       }
-      else if (strcmp(entry->Name, "vtkSOADataArrayTemplate") == 0)
+      else if (strcmp(entry->Name, "vtkSOADataArrayTemplate") == 0
+               || strcmp(entry->Name, "vtkScaledSOADataArrayTemplate") == 0
+        )
       {
         types = vtkParse_GetTemplateMacroTypes();
       }

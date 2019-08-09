@@ -31,11 +31,12 @@
 #include "vtkSystemIncludes.h"
 #include <math.h>
 #include <typeinfo>
+#include <type_traits> // for std::underlying type.
 
 //----------------------------------------------------------------------------
 // Check for unsupported old compilers.
-#if defined(_MSC_VER) && _MSC_VER < 1800
-# error VTK requires MSVC++ 12.0 aka Visual Studio 2013 or newer
+#if defined(_MSC_VER) && _MSC_VER < 1900
+# error VTK requires MSVC++ 14.0 aka Visual Studio 2015 or newer
 #endif
 
 #if !defined(__clang__) && defined(__GNUC__) && (__GNUC__ < 4 || (__GNUC__ == 4 && __GNUC_MINOR__ < 8))
@@ -74,6 +75,47 @@
 (((type) == VTK_VARIANT) ? "variant" : \
 (((type) == VTK_OBJECT) ? "object" : \
 "Undefined"))))))))))))))))))))))
+
+
+/* Various compiler-specific performance hints. */
+#if defined(VTK_COMPILER_GCC) //------------------------------------------------
+
+#define VTK_ALWAYS_INLINE __attribute__((always_inline)) inline
+#define VTK_ALWAYS_OPTIMIZE_START \
+  _Pragma("GCC push_options") \
+  _Pragma("GCC optimize (\"O3\")")
+#define VTK_ALWAYS_OPTIMIZE_END _Pragma("GCC pop_options")
+
+#elif defined(VTK_COMPILER_CLANG) //--------------------------------------------
+
+#define VTK_ALWAYS_INLINE __attribute__((always_inline)) inline
+// Clang doesn't seem to support temporarily increasing optimization level,
+// only decreasing it.
+#define VTK_ALWAYS_OPTIMIZE_START
+#define VTK_ALWAYS_OPTIMIZE_END
+
+#elif defined(VTK_COMPILER_ICC) //----------------------------------------------
+
+#define VTK_ALWAYS_INLINE __attribute((always_inline)) inline
+// ICC doesn't seem to support temporarily increasing optimization level,
+// only decreasing it.
+#define VTK_ALWAYS_OPTIMIZE_START
+#define VTK_ALWAYS_OPTIMIZE_END
+
+#elif defined(VTK_COMPILER_MSVC) //---------------------------------------------
+
+#define VTK_ALWAYS_INLINE __forceinline
+#define VTK_ALWAYS_OPTIMIZE_START _Pragma("optimize(\"tgs\", on)")
+// optimize("", on) resets to command line settings
+#define VTK_ALWAYS_OPTIMIZE_END _Pragma("optimize(\"\", on)")
+
+#else //------------------------------------------------------------------------
+
+#define VTK_ALWAYS_INLINE inline
+#define VTK_ALWAYS_OPTIMIZE_START
+#define VTK_ALWAYS_OPTIMIZE_END
+
+#endif
 
 //
 // Set built-in type.  Creates member Set"name"() (e.g., SetVisibility());
@@ -275,12 +317,14 @@ virtual type *Get##name () VTK_SIZEHINT(2) \
   vtkDebugMacro(<< this->GetClassName() << " (" << this << "): returning " << #name " pointer " << this->name); \
   return this->name; \
 } \
+VTK_WRAPEXCLUDE \
 virtual void Get##name (type &_arg1, type &_arg2) \
 { \
     _arg1 = this->name[0]; \
     _arg2 = this->name[1]; \
   vtkDebugMacro(<< this->GetClassName() << " (" << this << "): returning " << #name " = (" << _arg1 << "," << _arg2 << ")"); \
 } \
+VTK_WRAPEXCLUDE \
 virtual void Get##name (type _arg[2]) \
 { \
   this->Get##name (_arg[0], _arg[1]);\
@@ -309,6 +353,7 @@ virtual type *Get##name () VTK_SIZEHINT(3) \
   vtkDebugMacro(<< this->GetClassName() << " (" << this << "): returning " << #name " pointer " << this->name); \
   return this->name; \
 } \
+VTK_WRAPEXCLUDE \
 virtual void Get##name (type &_arg1, type &_arg2, type &_arg3) \
 { \
     _arg1 = this->name[0]; \
@@ -316,6 +361,7 @@ virtual void Get##name (type &_arg1, type &_arg2, type &_arg3) \
     _arg3 = this->name[2]; \
   vtkDebugMacro(<< this->GetClassName() << " (" << this << "): returning " << #name " = (" << _arg1 << "," << _arg2 << "," << _arg3 << ")"); \
 } \
+VTK_WRAPEXCLUDE \
 virtual void Get##name (type _arg[3]) \
 { \
   this->Get##name (_arg[0], _arg[1], _arg[2]);\
@@ -346,6 +392,7 @@ virtual type *Get##name () VTK_SIZEHINT(4) \
   vtkDebugMacro(<< this->GetClassName() << " (" << this << "): returning " << #name " pointer " << this->name); \
   return this->name; \
 } \
+VTK_WRAPEXCLUDE \
 virtual void Get##name (type &_arg1, type &_arg2, type &_arg3, type &_arg4) \
 { \
     _arg1 = this->name[0]; \
@@ -354,6 +401,7 @@ virtual void Get##name (type &_arg1, type &_arg2, type &_arg3, type &_arg4) \
     _arg4 = this->name[3]; \
   vtkDebugMacro(<< this->GetClassName() << " (" << this << "): returning " << #name " = (" << _arg1 << "," << _arg2 << "," << _arg3 << "," << _arg4 << ")"); \
 } \
+VTK_WRAPEXCLUDE \
 virtual void Get##name (type _arg[4]) \
 { \
   this->Get##name (_arg[0], _arg[1], _arg[2], _arg[3]);\
@@ -385,6 +433,7 @@ virtual type *Get##name () VTK_SIZEHINT(6) \
   vtkDebugMacro(<< this->GetClassName() << " (" << this << "): returning " << #name " pointer " << this->name); \
   return this->name; \
 } \
+VTK_WRAPEXCLUDE \
 virtual void Get##name (type &_arg1, type &_arg2, type &_arg3, type &_arg4, type &_arg5, type &_arg6) \
 { \
     _arg1 = this->name[0]; \
@@ -395,6 +444,7 @@ virtual void Get##name (type &_arg1, type &_arg2, type &_arg3, type &_arg4, type
     _arg6 = this->name[5]; \
   vtkDebugMacro(<< this->GetClassName() << " (" << this << "): returning " << #name " = (" << _arg1 << "," << _arg2 << "," << _arg3 << "," << _arg4 << "," << _arg5 <<"," << _arg6 << ")"); \
 } \
+VTK_WRAPEXCLUDE \
 virtual void Get##name (type _arg[6]) \
 { \
   this->Get##name (_arg[0], _arg[1], _arg[2], _arg[3], _arg[4], _arg[5]);\
@@ -429,6 +479,7 @@ virtual type *Get##name () VTK_SIZEHINT(count)\
   vtkDebugMacro(<< this->GetClassName() << " (" << this << "): returning " << #name " pointer " << this->name); \
   return this->name; \
 } \
+VTK_WRAPEXCLUDE \
 virtual void Get##name (type data[count]) \
 { \
   for (int i=0; i<count; i++) { data[i] = this->name[i]; }\
@@ -445,6 +496,14 @@ extern VTKCOMMONCORE_EXPORT void vtkOutputWindowDisplayWarningText(const char*);
 extern VTKCOMMONCORE_EXPORT void vtkOutputWindowDisplayGenericWarningText(const char*);
 extern VTKCOMMONCORE_EXPORT void vtkOutputWindowDisplayDebugText(const char*);
 
+// overloads that allow providing information about the filename and lineno
+// generating the message.
+class vtkObject;
+extern VTKCOMMONCORE_EXPORT void vtkOutputWindowDisplayErrorText(const char*, int, const char*, vtkObject* sourceObj);
+extern VTKCOMMONCORE_EXPORT void vtkOutputWindowDisplayWarningText(const char*, int, const char*, vtkObject* sourceObj);
+extern VTKCOMMONCORE_EXPORT void vtkOutputWindowDisplayGenericWarningText(const char*, int, const char*);
+extern VTKCOMMONCORE_EXPORT void vtkOutputWindowDisplayDebugText(const char*, int, const char*, vtkObject* sourceObj);
+
 //
 // This macro is used for any output that may not be in an instance method
 // vtkGenericWarningMacro(<< "this is debug info" << this->SomeVariable);
@@ -454,9 +513,8 @@ extern VTKCOMMONCORE_EXPORT void vtkOutputWindowDisplayDebugText(const char*);
       vtkOStreamWrapper::EndlType endl; \
       vtkOStreamWrapper::UseEndl(endl); \
       vtkOStrStreamWrapper vtkmsg; \
-      vtkmsg << "Generic Warning: In " __FILE__ ", line " << __LINE__ << "\n" x \
-      << "\n\n"; \
-      vtkOutputWindowDisplayGenericWarningText(vtkmsg.str());\
+      vtkmsg << "" x; \
+      vtkOutputWindowDisplayGenericWarningText(__FILE__, __LINE__, vtkmsg.str()); \
       vtkmsg.rdbuf()->freeze(0);}}
 
 //
@@ -489,27 +547,24 @@ extern VTKCOMMONCORE_EXPORT void vtkOutputWindowDisplayDebugText(const char*);
 //
 #define vtkErrorWithObjectMacro(self, x)                             \
 {                                                                    \
-  vtkObject* _object = const_cast<vtkObject*>(static_cast            \
-<const vtkObject*>(self));                                           \
   if (vtkObject::GetGlobalWarningDisplay())                          \
   {                                                                  \
     vtkOStreamWrapper::EndlType endl;                                \
     vtkOStreamWrapper::UseEndl(endl);                                \
     vtkOStrStreamWrapper vtkmsg;                                     \
-    vtkmsg << "ERROR: In " __FILE__ ", line " << __LINE__ << "\n";   \
+    vtkObject* _object = const_cast<vtkObject*>(static_cast          \
+       <const vtkObject*>(self));                                    \
     if (_object)                                                     \
     {                                                                \
       vtkmsg << _object->GetClassName() << " (" << _object << "): "; \
     }                                                                \
-    vtkmsg << "" x << "\n\n";                                        \
-    if (_object && _object->HasObserver("ErrorEvent") )              \
-    {                                                                \
-      _object->InvokeEvent("ErrorEvent", vtkmsg.str());              \
-    }                                                                \
     else                                                             \
     {                                                                \
-      vtkOutputWindowDisplayErrorText(vtkmsg.str());                 \
+      vtkmsg << "(nullptr): ";                                       \
     }                                                                \
+    vtkmsg << "" x;                                                  \
+    vtkOutputWindowDisplayErrorText(                                 \
+        __FILE__, __LINE__, vtkmsg.str(), _object);                  \
     vtkmsg.rdbuf()->freeze(0); vtkObject::BreakOnError();            \
   }                                                                  \
 }
@@ -523,28 +578,24 @@ extern VTKCOMMONCORE_EXPORT void vtkOutputWindowDisplayDebugText(const char*);
 //
 #define vtkWarningWithObjectMacro(self, x)                           \
 {                                                                    \
-  vtkObject* _object = const_cast<vtkObject*>(static_cast            \
-<const vtkObject*>(self));                                           \
   if (vtkObject::GetGlobalWarningDisplay())                          \
   {                                                                  \
     vtkOStreamWrapper::EndlType endl;                                \
     vtkOStreamWrapper::UseEndl(endl);                                \
     vtkOStrStreamWrapper vtkmsg;                                     \
-    vtkmsg << "Warning: In " __FILE__ ", line " << __LINE__ << "\n"; \
+    vtkObject* _object = const_cast<vtkObject*>(static_cast          \
+       <const vtkObject*>(self));                                    \
     if (_object)                                                     \
     {                                                                \
       vtkmsg << _object->GetClassName() << " (" << _object << "): "; \
     }                                                                \
-    vtkmsg << "" x << "\n\n";                                        \
-                                                                     \
-    if (_object && _object->HasObserver("WarningEvent"))             \
-    {                                                                \
-      _object->InvokeEvent("WarningEvent", vtkmsg.str());            \
-    }                                                                \
     else                                                             \
     {                                                                \
-      vtkOutputWindowDisplayWarningText(vtkmsg.str());               \
+      vtkmsg << "(nullptr): ";                                       \
     }                                                                \
+    vtkmsg << "" x;                                                  \
+    vtkOutputWindowDisplayWarningText(                               \
+        __FILE__, __LINE__, vtkmsg.str(), _object);                  \
     vtkmsg.rdbuf()->freeze(0);                                       \
   }                                                                  \
 }
@@ -568,13 +619,16 @@ extern VTKCOMMONCORE_EXPORT void vtkOutputWindowDisplayDebugText(const char*);
     vtkOStreamWrapper::EndlType endl;                                            \
     vtkOStreamWrapper::UseEndl(endl);                                            \
     vtkOStrStreamWrapper vtkmsg;                                                 \
-    vtkmsg << "Debug: In " __FILE__ ", line " << __LINE__ << "\n";               \
     if (_object)                                                                 \
     {                                                                            \
       vtkmsg << _object->GetClassName() << " (" << _object << "): ";             \
     }                                                                            \
-    vtkmsg << "" x << "\n\n";                                                    \
-    vtkOutputWindowDisplayDebugText(vtkmsg.str());                               \
+    else                                                                         \
+    {                                                                            \
+      vtkmsg << "(nullptr): ";                                                   \
+    }                                                                            \
+    vtkmsg << "" x;                                                              \
+    vtkOutputWindowDisplayDebugText(__FILE__, __LINE__, vtkmsg.str(), _object);  \
     vtkmsg.rdbuf()->freeze(0);                                                   \
   }                                                                              \
 }
@@ -912,6 +966,38 @@ virtual double *Get##name() VTK_SIZEHINT(2)\
   vtkGenericWarningMacro(#method " was deprecated for " version " and will be removed in a future version.  Use " #replace " instead.")
 #endif
 
+
+//----------------------------------------------------------------------------
+// Deprecation attribute.
+
+#if !defined(VTK_DEPRECATED) && !defined(VTK_WRAPPING_CXX)
+# if __cplusplus >= 201402L && defined(__has_cpp_attribute)
+#  if __has_cpp_attribute(deprecated)
+#   define VTK_DEPRECATED [[deprecated]]
+#  endif
+# elif defined(_MSC_VER)
+#  define VTK_DEPRECATED __declspec(deprecated)
+# elif defined(__GNUC__) && !defined(__INTEL_COMPILER)
+#  define VTK_DEPRECATED __attribute__((deprecated))
+# endif
+#endif
+
+#ifndef VTK_DEPRECATED
+# define VTK_DEPRECATED
+#endif
+
+//----------------------------------------------------------------------------
+// format string checking.
+
+#if !defined(VTK_FORMAT_PRINTF)
+# if defined(__GNUC__)
+#  define VTK_FORMAT_PRINTF(a,b) __attribute__((format (printf, a, b)))
+# else
+#  define VTK_FORMAT_PRINTF(a,b)
+# endif
+#endif
+
+
 // Qualifiers used for function arguments and return types indicating that the
 // class is wrapped externally.
 #define VTK_WRAP_EXTERN
@@ -934,6 +1020,46 @@ virtual double *Get##name() VTK_SIZEHINT(2)\
 #ifndef VTK_FALLTHROUGH
 # define VTK_FALLTHROUGH ((void)0)
 #endif
+
+//----------------------------------------------------------------------------
+// Macro to generate bitflag operators for C++11 scoped enums.
+
+#define VTK_GENERATE_BITFLAG_OPS(EnumType) \
+  inline EnumType operator|(EnumType f1, EnumType f2) \
+  { \
+    using T = typename std::underlying_type<EnumType>::type; \
+    return static_cast<EnumType>(static_cast<T>(f1) | static_cast<T>(f2)); \
+  } \
+  inline EnumType operator&(EnumType f1, EnumType f2) \
+  { \
+    using T = typename std::underlying_type<EnumType>::type; \
+    return static_cast<EnumType>(static_cast<T>(f1) & static_cast<T>(f2)); \
+  } \
+  inline EnumType operator^(EnumType f1, EnumType f2) \
+  { \
+    using T = typename std::underlying_type<EnumType>::type; \
+    return static_cast<EnumType>(static_cast<T>(f1) ^ static_cast<T>(f2)); \
+  } \
+  inline EnumType operator~(EnumType f1) \
+  { \
+    using T = typename std::underlying_type<EnumType>::type; \
+    return static_cast<EnumType>(~static_cast<T>(f1)); \
+  } \
+  inline EnumType& operator|=(EnumType &f1, EnumType f2) \
+  { \
+    using T = typename std::underlying_type<EnumType>::type; \
+    return f1 = static_cast<EnumType>(static_cast<T>(f1) | static_cast<T>(f2)); \
+  } \
+  inline EnumType& operator&=(EnumType &f1, EnumType f2) \
+  { \
+    using T = typename std::underlying_type<EnumType>::type; \
+    return f1 = static_cast<EnumType>(static_cast<T>(f1) & static_cast<T>(f2)); \
+  } \
+  inline EnumType& operator^=(EnumType &f1, EnumType f2) \
+  { \
+    using T = typename std::underlying_type<EnumType>::type; \
+    return f1 = static_cast<EnumType>(static_cast<T>(f1) ^ static_cast<T>(f2)); \
+  }
 
 #endif
 // VTK-HeaderTest-Exclude: vtkSetGet.h

@@ -24,7 +24,7 @@
  * and to save and restore OpenGL state that you change. The former
  * makes your code work, the latter hels prevent your code from
  * breaking something else. The problem is that the former results
- * in tons of redundent OpenGL calls and the later is done by querying
+ * in tons of redundant OpenGL calls and the later is done by querying
  * the OpenGL state which can cause a pipeline sync/stall which is
  * very slow.
  *
@@ -96,16 +96,16 @@ public:
   //@{
   // Methods to reset the state to the current OpenGL context value.
   //
-  void ResetGlClearColorState();
-  void ResetGlClearDepthState();
-  void ResetGlDepthFuncState();
-  void ResetGlDepthMaskState();
-  void ResetGlColorMaskState();
-  void ResetGlViewportState();
-  void ResetGlScissorState();
-  void ResetGlBlendFuncState();
-  void ResetGlBlendEquationState();
-  void ResetGlCullFaceState();
+  void ResetGLClearColorState();
+  void ResetGLClearDepthState();
+  void ResetGLDepthFuncState();
+  void ResetGLDepthMaskState();
+  void ResetGLColorMaskState();
+  void ResetGLViewportState();
+  void ResetGLScissorState();
+  void ResetGLBlendFuncState();
+  void ResetGLBlendEquationState();
+  void ResetGLCullFaceState();
   //@}
 
   //@{
@@ -174,6 +174,9 @@ public:
   class VTKRENDERINGOPENGL2_EXPORT ScopedglBlendFuncSeparate
     : public ScopedValue<std::array<unsigned int, 4> > {
     public: ScopedglBlendFuncSeparate(vtkOpenGLState *state); };
+  class VTKRENDERINGOPENGL2_EXPORT ScopedglDepthFunc
+    : public ScopedValue<unsigned int> {
+    public: ScopedglDepthFunc(vtkOpenGLState *state); };
 
   class ScopedglEnableDisable
   {

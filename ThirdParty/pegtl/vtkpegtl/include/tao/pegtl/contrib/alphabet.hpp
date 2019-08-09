@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2018 Dr. Colin Hirsch and Daniel Frey
+// Copyright (c) 2015-2019 Dr. Colin Hirsch and Daniel Frey
 // Please see LICENSE for license or visit https://github.com/taocpp/PEGTL/
 
 #ifndef TAO_PEGTL_CONTRIB_ALPHABET_HPP
@@ -10,7 +10,7 @@ namespace tao
 {
    namespace TAO_PEGTL_NAMESPACE
    {
-      inline namespace alphabet
+      namespace alphabet
       {
          static const int a = 'a';
          static const int b = 'b';

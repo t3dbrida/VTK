@@ -1,25 +1,45 @@
-/*
- *  VTK_FREETYPE_CHANGE this file is totally changed for VTK.
+/****************************************************************************
  *
- *  This is used to override the default module headers.
+ * ft2build.h
  *
- *  This file is based on freetype's ft2build.h.
+ *   FreeType 2 build and setup macros.
  *
- *  Please read `docs/CUSTOMIZE' section IV-3 for more information.
+ * Copyright (C) 1996-2019 by
+ * David Turner, Robert Wilhelm, and Werner Lemberg.
+ *
+ * This file is part of the FreeType project, and may only be used,
+ * modified, and distributed under the terms of the FreeType project
+ * license, LICENSE.TXT.  By continuing to use, modify, or distribute
+ * this file you indicate that you have read the license and
+ * understand and accept it fully.
  *
  */
 
-#ifndef __FT2_BUILD_VTK_H__
-#define __FT2_BUILD_VTK_H__
+
+  /**************************************************************************
+   *
+   * This is the 'entry point' for FreeType header file inclusions.  It is
+   * the only header file which should be included directly; all other
+   * FreeType header files should be accessed with macro names (after
+   * including `ft2build.h`).
+   *
+   * A typical example is
+   *
+   * ```
+   *   #include <ft2build.h>
+   *   #include FT_FREETYPE_H
+   * ```
+   *
+   */
+
+
+#ifndef FT2BUILD_H_
+#define FT2BUILD_H_
 
 #include <vtkfreetype/include/vtk_freetype_mangle.h>
-
-#ifndef FT_CONFIG_MODULES_H
-#define FT_CONFIG_MODULES_H  <vtkfreetype/include/vtk_ftmodule.h>
-#endif
-
 #include <vtkfreetype/include/freetype/config/ftheader.h>
 
-#include <vtkfreetype/include/vtkFreeTypeConfig.h>
+#endif /* FT2BUILD_H_ */
 
-#endif /* __FT2_BUILD_VTK_H__ */
+
+/* END */

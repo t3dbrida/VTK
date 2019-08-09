@@ -15,6 +15,7 @@
 
 #include "vtkDualDepthPeelingPass.h"
 
+#include "vtkAbstractVolumeMapper.h"
 #include "vtkOpenGLFramebufferObject.h"
 #include "vtkInformation.h"
 #include "vtkInformationKey.h"
@@ -396,6 +397,8 @@ bool vtkDualDepthPeelingPass::PostReplaceTranslucentShaderValues(
             );
       break;
 
+    case vtkDualDepthPeelingPass::Inactive:
+    case vtkDualDepthPeelingPass::NumberOfPasses:
     default:
       break;
   }
@@ -406,9 +409,15 @@ bool vtkDualDepthPeelingPass::PostReplaceTranslucentShaderValues(
 //------------------------------------------------------------------------------
 bool vtkDualDepthPeelingPass::PreReplaceVolumetricShaderValues(
     std::string &, std::string &, std::string &fragmentShader,
-    vtkAbstractMapper *, vtkProp *)
+    vtkAbstractMapper *mapper, vtkProp *)
 {
-  const std::string rayInit =
+  auto vmapper = vtkAbstractVolumeMapper::SafeDownCast(mapper);
+  if (!vmapper)
+  { // not a volume
+    return true;
+  }
+
+  std::string rayInit =
     "  // Transform zStart and zEnd to texture_coordinates\n"
     "  mat4 NDCToTextureCoords = ip_inverseTextureDataAdjusted * in_inverseVolumeMatrix[0] *\n"
     "    in_inverseModelViewMatrix * in_inverseProjectionMatrix;\n"
@@ -434,21 +443,20 @@ bool vtkDualDepthPeelingPass::PreReplaceVolumetricShaderValues(
 
     "\n"
     "  // Initialize g_dataPos as if startPoint lies Inside (b.)\n"
-    "  vec3 rayOrigin = ip_textureCoords;\n"
     "  g_dataPos = startPoint.xyz + g_rayJitter;\n"
     "\n"
     "  bool isInsideBBox = !(any(greaterThan(g_dataPos, in_texMax[0])) ||\n"
     "                        any(lessThan(g_dataPos, in_texMin[0])));\n"
     "  if (!isInsideBBox)\n"
     "  {\n"
-    "    vec3 distStartTexCoord = rayOrigin - g_dataPos;\n"
+    "    vec3 distStartTexCoord = g_rayOrigin - g_dataPos;\n"
     "    if (dot(distStartTexCoord, g_dirStep) < 0)\n"
     "    {\n"
     "      // startPoint lies behind the bounding box (c.)\n"
     "      return vec4(0.0);\n"
     "    }\n"
     "    // startPoint lies in-front (a.)\n"
-    "    g_dataPos = rayOrigin + g_rayJitter;\n"
+    "    g_dataPos = g_rayOrigin + g_rayJitter;\n"
     "  }\n"
     "\n"
     "  // End point\n"
@@ -459,12 +467,27 @@ bool vtkDualDepthPeelingPass::PreReplaceVolumetricShaderValues(
     "  }\n"
     "\n";
 
-  // Clipping (vtkVolumeShaderComposer::ClippingImplementation) goes between
-  // rayInit and pathCheck
+  if (vmapper->GetClippingPlanes())
+  {
+    rayInit +=
+        "  // Adjust the ray segment to account for clipping range:\n"
+        "  if (!AdjustSampleRangeForClipping(g_dataPos.xyz, g_terminatePos.xyz))\n"
+        "  {\n"
+        "    return vec4(0.);\n"
+        "  }\n"
+        "\n";
+  }
+  rayInit +=
+      "  // Update the number of ray marching steps to account for the clipped entry point (\n"
+      "  // this is necessary in case the ray hits geometry after marching behind the plane,\n"
+      "  // given that the number of steps was assumed to be from the not-clipped entry).\n"
+      "  g_terminatePointMax = length(g_terminatePos.xyz - g_dataPos.xyz) /\n"
+      "    length(g_dirStep);\n"
+      "\n";
 
   const std::string pathCheck =
     "  // Make sure that we're sampling consistently across boundaries:\n"
-    "  g_dataPos = ClampToSampleLocation(rayOrigin, g_dirStep, g_dataPos, true /*ceil*/);\n"
+    "  g_dataPos = ClampToSampleLocation(g_rayOrigin, g_dirStep, g_dataPos, true /*ceil*/);\n"
     "\n"
     "  // Ensure end is not located before start. This could be the case\n"
     "  // if end lies outside of the volume's bounding box. In those cases\n"
@@ -728,6 +751,8 @@ bool vtkDualDepthPeelingPass::PreReplaceVolumetricShaderValues(
 
       break;
 
+    case vtkDualDepthPeelingPass::Inactive:
+    case vtkDualDepthPeelingPass::NumberOfPasses:
     default:
       break;
   }
@@ -763,6 +788,8 @@ bool vtkDualDepthPeelingPass::SetTranslucentShaderParameters(
             this->Textures[this->DepthSource]->GetTextureUnit());
       break;
 
+    case vtkDualDepthPeelingPass::Inactive:
+    case vtkDualDepthPeelingPass::NumberOfPasses:
     default:
       break;
   }
@@ -806,6 +833,8 @@ bool vtkDualDepthPeelingPass::SetVolumetricShaderParameters(
             this->Textures[this->DepthSource]->GetTextureUnit());
       break;
 
+    case vtkDualDepthPeelingPass::Inactive:
+    case vtkDualDepthPeelingPass::NumberOfPasses:
     default:
       break;
   }
@@ -1037,8 +1066,7 @@ void vtkDualDepthPeelingPass::ActivateDrawBuffers(const TextureName *ids,
   this->Framebuffer->DeactivateDrawBuffers();
   for (size_t i = 0; i < numTex; ++i)
   {
-    this->Framebuffer->AddColorAttachment(GL_DRAW_FRAMEBUFFER,
-                                          static_cast<unsigned int>(i),
+    this->Framebuffer->AddColorAttachment(static_cast<unsigned int>(i),
                                           this->Textures[ids[i]]);
   }
 
@@ -1573,7 +1601,7 @@ void vtkDualDepthPeelingPass::StartTranslucentOcclusionQuery()
   // ES 3.0 only supports checking if *any* samples passed. We'll just use
   // that query to stop peeling once all frags are processed, and ignore the
   // requested occlusion ratio.
-#if GL_ES_VERSION_3_0 == 1
+#ifdef GL_ES_VERSION_3_0
   glBeginQuery(GL_ANY_SAMPLES_PASSED, this->TranslucentOcclusionQueryId);
 #else // GL ES 3.0
   glBeginQuery(GL_SAMPLES_PASSED, this->TranslucentOcclusionQueryId);
@@ -1587,7 +1615,7 @@ void vtkDualDepthPeelingPass::EndTranslucentOcclusionQuery()
   // sync the stream.
   TIME_FUNCTION(vtkDualDepthPeelingPass::EndTranslucentOcclusionQuery);
 
-#if GL_ES_VERSION_3_0 == 1
+#ifdef GL_ES_VERSION_3_0
   glEndQuery(GL_ANY_SAMPLES_PASSED);
   GLuint anySamplesPassed;
   glGetQueryObjectuiv(this->TranslucentOcclusionQueryId, GL_QUERY_RESULT,
@@ -1607,7 +1635,7 @@ void vtkDualDepthPeelingPass::StartVolumetricOcclusionQuery()
   // ES 3.0 only supports checking if *any* samples passed. We'll just use
   // that query to stop peeling once all frags are processed, and ignore the
   // requested occlusion ratio.
-#if GL_ES_VERSION_3_0 == 1
+#ifdef GL_ES_VERSION_3_0
   glBeginQuery(GL_ANY_SAMPLES_PASSED, this->VolumetricOcclusionQueryId);
 #else // GL ES 3.0
   glBeginQuery(GL_SAMPLES_PASSED, this->VolumetricOcclusionQueryId);
@@ -1621,7 +1649,7 @@ void vtkDualDepthPeelingPass::EndVolumetricOcclusionQuery()
   // sync the stream.
   TIME_FUNCTION(vtkDualDepthPeelingPass::EndVolumetricOcclusionQuery);
 
-#if GL_ES_VERSION_3_0 == 1
+#ifdef GL_ES_VERSION_3_0
   glEndQuery(GL_ANY_SAMPLES_PASSED);
   GLuint anySamplesPassed;
   glGetQueryObjectuiv(this->VolumetricOcclusionQueryId, GL_QUERY_RESULT,

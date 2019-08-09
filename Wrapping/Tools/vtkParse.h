@@ -40,6 +40,21 @@ void vtkParse_DefineMacro(const char *name, const char *definition);
 void vtkParse_UndefineMacro(const char *name);
 
 /**
+ * Do not pre-define any macros related to the system or platform.
+ */
+void vtkParse_UndefinePlatformMacros(void);
+
+/**
+ * Read macros from the provided header file.
+ */
+void vtkParse_IncludeMacros(const char *filename);
+
+/**
+ * Dump macros to the specified file (stdout if NULL).
+ */
+void vtkParse_DumpMacros(const char *filename);
+
+/**
  * Add an include directory, for use with the "-I" option.
  */
 void vtkParse_IncludeDirectory(const char *dirname);
@@ -75,3 +90,4 @@ void vtkParse_Free(FileInfo *data);
 #endif
 
 #endif
+/* VTK-HeaderTest-Exclude: vtkParse.h */

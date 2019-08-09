@@ -21,7 +21,7 @@
 #include "vtk_glew.h"
 
 // glQueryCounter unavailable in OpenGL ES:
-#if defined(GL_ES_VERSION_3_0)
+#ifdef GL_ES_VERSION_3_0
 #define NO_TIMESTAMP_QUERIES
 #endif
 
@@ -62,6 +62,15 @@ bool vtkOpenGLRenderTimer::IsSupported()
 void vtkOpenGLRenderTimer::Reset()
 {
 #ifndef NO_TIMESTAMP_QUERIES
+  if (this->StartQuery == 0 && this->EndQuery == 0)
+  {
+    // short-circuit to avoid checking if queries weren't initialized at all.
+    // this is necessary since `IsSupported` may make OpenGL calls on APPLE
+    // through `HaveAppleQueryAllocationBug` invocation and that may be not be
+    // correct when timers are being destroyed.
+    return;
+  }
+
   if (!this->IsSupported())
   {
     return;

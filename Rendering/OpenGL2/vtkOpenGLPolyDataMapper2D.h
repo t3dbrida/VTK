@@ -39,6 +39,7 @@ class vtkActor2D;
 class vtkGenericOpenGLResourceFreeCallback;
 class vtkMatrix4x4;
 class vtkOpenGLBufferObject;
+class vtkOpenGLCellToVTKCellMap;
 class vtkOpenGLHelper;
 class vtkOpenGLVertexBufferObjectGroup;
 class vtkPoints;
@@ -70,14 +71,6 @@ protected:
   ~vtkOpenGLPolyDataMapper2D() override;
 
   vtkGenericOpenGLResourceFreeCallback *ResourceCallback;
-
-  // the following is all extra stuff to work around the
-  // fact that gl_PrimitiveID does not work correctly on
-  // Apple Macs with AMD graphics hardware (before macOS 10.11).
-  // See <rdar://20747550>.
-  bool HaveAppleBug;
-  std::vector<float> AppleBugPrimIDs;
-  vtkOpenGLBufferObject *AppleBugPrimIDBuffer;
 
   /**
    * Does the shader source need to be recomputed
@@ -153,6 +146,9 @@ protected:
 
   // do we have wide lines that require special handling
   virtual bool HaveWideLines(vtkViewport *, vtkActor2D *);
+
+  // stores the mapping from vtk cells to gl_PrimitiveId
+  vtkNew<vtkOpenGLCellToVTKCellMap> CellCellMap;
 
 private:
   vtkOpenGLPolyDataMapper2D(const vtkOpenGLPolyDataMapper2D&) = delete;

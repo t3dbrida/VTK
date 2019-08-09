@@ -52,6 +52,7 @@ vtkCxxSetObjectMacro(vtkRenderer, BackgroundTexture, vtkTexture);
 vtkCxxSetObjectMacro(vtkRenderer, RightBackgroundTexture, vtkTexture);
 vtkCxxSetObjectMacro(vtkRenderer, Pass, vtkRenderPass);
 vtkCxxSetObjectMacro(vtkRenderer, FXAAOptions, vtkFXAAOptions);
+vtkCxxSetObjectMacro(vtkRenderer, EnvironmentCubeMap, vtkTexture);
 
 //----------------------------------------------------------------------------
 // Return NULL if no override is supplied.
@@ -147,6 +148,9 @@ vtkRenderer::vtkRenderer()
   this->Information = vtkInformation::New();
   this->Information->Register(this);
   this->Information->Delete();
+
+  this->UseImageBasedLighting = false;
+  this->EnvironmentCubeMap = nullptr;
 }
 
 vtkRenderer::~vtkRenderer()
@@ -198,6 +202,11 @@ vtkRenderer::~vtkRenderer()
   }
 
   this->SetInformation(nullptr);
+
+  if (this->EnvironmentCubeMap != nullptr)
+  {
+    this->EnvironmentCubeMap->Delete();
+  }
 }
 
 void vtkRenderer::SetLeftBackgroundTexture(vtkTexture* texture)
@@ -232,7 +241,7 @@ void vtkRenderer::ReleaseGraphicsResources(vtkWindow *renWin)
 }
 
 // Concrete render method.
-void vtkRenderer::Render(void)
+void vtkRenderer::Render()
 {
   vtkRenderTimerLog *timer = this->RenderWindow->GetRenderTimer();
   VTK_SCOPED_RENDER_EVENT("vtkRenderer::Render this=@" << std::hex << this
@@ -426,7 +435,7 @@ void vtkRenderer::Render(void)
 }
 
 // ----------------------------------------------------------------------------
-void vtkRenderer::DeviceRenderOpaqueGeometry()
+void vtkRenderer::DeviceRenderOpaqueGeometry(vtkFrameBufferObjectBase* vtkNotUsed(fbo))
 {
   this->UpdateOpaquePolygonalGeometry();
 }
@@ -437,7 +446,7 @@ void vtkRenderer::DeviceRenderOpaqueGeometry()
 // UpdateTranslucentPolygonalGeometry().
 // Subclasses of vtkRenderer that can deal with depth peeling must
 // override this method.
-void vtkRenderer::DeviceRenderTranslucentPolygonalGeometry()
+void vtkRenderer::DeviceRenderTranslucentPolygonalGeometry(vtkFrameBufferObjectBase* vtkNotUsed(fbo))
 {
   // Have to be set before a call to UpdateTranslucentPolygonalGeometry()
   // because UpdateTranslucentPolygonalGeometry() will eventually call
@@ -610,7 +619,7 @@ void vtkRenderer::AllocateTime()
 
 // Ask actors to render themselves. As a side effect will cause
 // visualization network to update.
-int vtkRenderer::UpdateGeometry()
+int vtkRenderer::UpdateGeometry(vtkFrameBufferObjectBase* vtkNotUsed(fbo))
 {
   int        i;
 
@@ -935,7 +944,7 @@ vtkLight *vtkRenderer::MakeLight()
   return vtkLight::New();
 }
 
-void vtkRenderer::CreateLight(void)
+void vtkRenderer::CreateLight()
 {
   if ( !this->AutomaticLightCreation )
   {
@@ -1101,7 +1110,7 @@ void vtkRenderer::ResetCamera(double bounds[6])
   }
   else
   {
-    vtkErrorMacro(<< "Trying to reset non-existant camera");
+    vtkErrorMacro(<< "Trying to reset non-existent camera");
     return;
   }
 
@@ -1221,7 +1230,7 @@ void vtkRenderer::ResetCameraClippingRange( double bounds[6] )
   this->GetActiveCameraAndResetIfCreated();
   if ( this->ActiveCamera == nullptr )
   {
-    vtkErrorMacro(<< "Trying to reset clipping range of non-existant camera");
+    vtkErrorMacro(<< "Trying to reset clipping range of non-existent camera");
     return;
   }
 

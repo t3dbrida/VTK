@@ -20,12 +20,12 @@
 ## validity based on VTK coding standard. It checks for proper super
 ## classes, number and style of include files, type macro, private
 ## copy constructor and assignment operator, broken constructors, and
-## exsistence of PrintSelf method. This script should be run as a part
+## existence of PrintSelf method. This script should be run as a part
 ## of the dashboard checking of the Visualization Toolkit and related
 ## projects.
 
 ## .SECTION See Also
-## http://www.vtk.org http://public.kitware.com/Dart/HTML/Index.shtml
+## http://www.vtk.org https://www.cdash.org/
 ## http://www.vtk.org/contribute.php#coding-standards
 
 import sys
@@ -43,10 +43,10 @@ else:
 exec(compile(open(os.path.join(selfpath, 'WindowsMangleList.py')).read(),
      os.path.join(selfpath, 'WindowsMangleList.py'), 'exec'))
 
-## If tested from dart, make sure to fix all the output strings
-test_from_dart = 0
-if "DART_TEST_FROM_DART" in os.environ:
-    test_from_dart = 1
+## If tested from ctest, make sure to fix all the output strings
+test_from_ctest = False
+if "DASHBOARD_TEST_FROM_CTEST" in os.environ:
+    test_from_ctest = True
 
 ## For backward compatibility
 def StringEndsWith(str1, str2):
@@ -83,7 +83,7 @@ class TestVTKFiles:
         self.Export = export
     def Print(self, text=""):
         rtext = text
-        if test_from_dart:
+        if test_from_ctest:
             rtext = rtext.replace("<", "&lt;")
             rtext = rtext.replace(">", "&gt;")
         print(rtext)
@@ -128,10 +128,18 @@ class TestVTKFiles:
 
     def CheckExclude(self):
         prefix = '// VTK-HeaderTest-Exclude:'
+        prefix_c = '/* VTK-HeaderTest-Exclude:'
+        suffix_c = ' */'
         exclude = 0
         for l in self.FileLines:
             if l.startswith(prefix):
                 e = l[len(prefix):].strip()
+                if e == os.path.basename(self.FileName):
+                    exclude += 1
+                else:
+                    self.Error("Wrong exclusion: "+l.rstrip())
+            elif l.startswith(prefix_c) and l.rstrip().endswith(suffix_c):
+                e = l[len(prefix_c):-len(suffix_c)].strip()
                 if e == os.path.basename(self.FileName):
                     exclude += 1
                 else:
@@ -222,7 +230,7 @@ class TestVTKFiles:
             self.Error("Guard does not match the filename")
 
     def CheckParent(self):
-        classre = "^class(\s+[^\s]*_EXPORT)?\s+(vtk[A-Z0-9_][^ :\n]*)\s*:\s*public\s+(vtk[^ \n\{]*)"
+        classre = "^class(\s+VTK_DEPRECATED)?(\s+[^\s]*_EXPORT)?\s+(vtk[A-Z0-9_][^ :\n]*)\s*:\s*public\s+(vtk[^ \n\{]*)"
         cname = ""
         pname = ""
         classlines = []
@@ -235,11 +243,11 @@ class TestVTKFiles:
             if not rm and not cname:
                 rm = regx.match(lastline + line)
             if rm:
-                export = rm.group(1)
+                export = rm.group(2)
                 if export:
                     export = export.strip()
-                cname = rm.group(2)
-                pname = rm.group(3)
+                cname = rm.group(3)
+                pname = rm.group(4)
                 classlines.append(" %4d: %s" % (cc, line))
                 if not export:
                     self.Print("File: %s defines 1 class with no export macro:" % self.FileName)

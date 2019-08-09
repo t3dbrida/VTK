@@ -52,6 +52,7 @@ class vtkPointData;
 class vtkDataArray;
 class vtkFloatArray;
 class vtkDoubleArray;
+struct vtkBandedPolyDataContourFilterInternals;
 
 #define VTK_SCALAR_MODE_INDEX 0
 #define VTK_SCALAR_MODE_VALUE 1
@@ -161,8 +162,6 @@ protected:
 
   int RequestData(vtkInformation *, vtkInformationVector **, vtkInformationVector *) override;
 
-  int ComputeScalarIndex(double);
-  int IsContourValue(double val);
   int ClipEdge(int v1, int v2, vtkPoints *pts, vtkDataArray *inScalars,
                vtkDoubleArray *outScalars,
                vtkPointData *inPD, vtkPointData *outPD, vtkIdType edgePts[]);
@@ -178,16 +177,11 @@ protected:
   vtkTypeBool Clipping;
   int ScalarMode;
   int Component;
-
-  // sorted and cleaned contour values
-  double *ClipValues;
-  int   NumberOfClipValues;
-  int ClipIndex[2]; //indices outside of this range (inclusive) are clipped
   double ClipTolerance; //specify numerical accuracy during clipping
-  double InternalClipTolerance; //used to clean up numerical problems
-
   //the second output
   vtkTypeBool GenerateContourEdges;
+
+  vtkBandedPolyDataContourFilterInternals* Internal;
 
 private:
   vtkBandedPolyDataContourFilter(const vtkBandedPolyDataContourFilter&) = delete;
