@@ -480,7 +480,8 @@ namespace vtkvolume
     const bool hasGradientOp = HasGradientOpacity(inputs);
 
     std::string shaderStr;
-    if (hasLighting || hasGradientOp)
+    //if (hasLighting || hasGradientOp)
+    if (hasLighting && !hasGradientOp)
     {
       shaderStr += std::string(
         "// c is short for component\n"
