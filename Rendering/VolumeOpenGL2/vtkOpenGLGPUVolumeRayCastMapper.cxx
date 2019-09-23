@@ -21,8 +21,8 @@
 #include "vtkVolumeStateRAII.h"
 
 // Include compiled shader code
-#include <raycasterfs.h>
-#include <raycastervs.h>
+#include "raycasterfs.h"
+#include "raycastervs.h"
 
 // VTK includes
 #include "vtkInformation.h"
@@ -3800,6 +3800,8 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetAdvancedShaderParameters(
     this->SetPickingId(ren);
   }
 
+  if (block)
+  {
       auto blockExt = block->Extents;
       float fvalue3[3];
       vtkInternal::ToFloat(blockExt[0], blockExt[2], blockExt[4], fvalue3);
@@ -3847,19 +3849,23 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetAdvancedShaderParameters(
   //--------------------------------------------------------------------------
   if (this->Parent->BlendMode == vtkVolumeMapper::ISOSURFACE_BLEND)
   {
-    vtkIdType nbContours = volProperty->GetIsoSurfaceValues()->GetNumberOfContours();
+      int idx = 0;
+      for (auto in : this->Parent->AssembledInputs)
+      {
+          auto property = in.second.Volume->GetProperty();
+          int nbContours = property->GetIsoSurfaceValues()->GetNumberOfContours();
 
-        std::vector<float> values(nbContours);
-        for (int i = 0; i < nbContours; i++)
-        {
-          values[i] = static_cast<float>(property->GetIsoSurfaceValues()->GetValue(i));
-        }
+          std::vector<float> values(nbContours);
+          for (int i = 0; i < nbContours; i++)
+          {
+              values[i] = static_cast<float>(property->GetIsoSurfaceValues()->GetValue(i));
+          }
 
-        // The shader expect (for efficiency purposes) the isovalues to be sorted.
-        std::sort(values.begin(), values.end());
+          // The shader expect (for efficiency purposes) the isovalues to be sorted.
+          std::sort(values.begin(), values.end());
 
-        prog->SetUniform1fv(("in_isosurfacesValues_" + std::to_string(idx)).c_str(), nbContours, values.data());
-        idx++;
+          prog->SetUniform1fv(("in_isosurfacesValues_" + std::to_string(idx)).c_str(), nbContours, values.data());
+          idx++;
       }
   }
 }
@@ -3952,7 +3958,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderMultipleInputs(vtkRende
   this->SetLightingShaderParameters(ren, prog, this->MultiVolume, numSamplers);
   this->SetCameraShaderParameters(prog, ren, cam);
   this->SetAdvancedShaderParameters(ren, prog, vol, nullptr, numComp);
-  this->RenderVolumeGeometry(ren, prog, this->MultiVolume, bounds);
+  this->RenderVolumeGeometry(ren, prog, this->MultiVolume, geometry);
   this->FinishRendering(numComp);
 }
 
