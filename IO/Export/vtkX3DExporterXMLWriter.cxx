@@ -24,6 +24,9 @@
 
 #include <sstream>
 #include <fstream>
+#include <iomanip>
+#include <ios>
+#include <limits>
 #include <string>
 #include <cassert>
 
@@ -84,6 +87,7 @@ int vtkX3DExporterXMLWriter::OpenFile(const char* file)
   else
   {
     this->OutputStream = fileStream;
+    *this->OutputStream << std::scientific << std::setprecision(std::numeric_limits<double>::max_digits10);
     return 1;
   }
 }
@@ -109,7 +113,7 @@ void vtkX3DExporterXMLWriter::CloseFile()
         static_cast<std::ostringstream*>(this->OutputStream);
 
       delete [] this->OutputString;
-      this->OutputStringLength = static_cast<int>(ostr->str().size());
+      this->OutputStringLength = static_cast<vtkIdType>(ostr->str().size());
       this->OutputString = new char[ostr->str().size()];
       memcpy(this->OutputString, ostr->str().c_str(),
              this->OutputStringLength);
@@ -356,4 +360,3 @@ void vtkX3DExporterXMLWriter::SubDepth()
 {
   this->ActTab.erase(0, 2);
 }
-

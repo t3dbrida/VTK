@@ -23,6 +23,7 @@
 #ifndef VTK_WRAPPING_CXX
 
 #include "vtkmTags.h"
+#include "vtkmlib/Storage.h"
 
 #include <vtkm/CellShape.h>
 #include <vtkm/TopologyElementTag.h>
@@ -39,11 +40,11 @@ namespace exec {
 
 template <typename Device> class VTKM_ALWAYS_EXPORT ConnectivityVTKAOS
 {
-  typedef vtkm::cont::ArrayHandle<vtkm::UInt8, tovtkm::vtkAOSArrayContainerTag>
+  typedef vtkm::cont::ArrayHandle<vtkm::UInt8>
       ShapeHandleType;
   typedef vtkm::cont::ArrayHandle<vtkm::Id, tovtkm::vtkCellArrayContainerTag>
       ConnectivityHandleType;
-  typedef vtkm::cont::ArrayHandle<vtkm::Id, tovtkm::vtkAOSArrayContainerTag>
+  typedef vtkm::cont::ArrayHandle<vtkm::Id>
       OffsetHandleType;
 
   typedef typename ShapeHandleType::template ExecutionTypes<Device>::PortalConst

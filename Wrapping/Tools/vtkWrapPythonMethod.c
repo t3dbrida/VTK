@@ -145,6 +145,13 @@ void vtkWrapPython_DeclareVariables(
               "  %s *save%d = (size%d == 0 ? nullptr : temp%d + size%d);\n",
               vtkWrap_GetTypeName(arg), i, i, i, i);
         }
+        else if (vtkWrap_IsConst(arg) &&
+                 vtkWrap_IsRef(arg))
+        {
+          fprintf(fp,
+              "  const %s *temp%dc = temp%d;\n",
+              vtkWrap_GetTypeName(arg), i, i);
+        }
       }
       else if (vtkWrap_IsArray(arg) && arg->Value)
       {
@@ -643,6 +650,28 @@ void vtkWrapPython_ReturnValue(
             "      result = Py%s_%s_FromEnum(tempr);\n",
             pythonname, val->Class);
   }
+  else if (val->IsEnum)
+  {
+    const char *cp = val->Class;
+    size_t l;
+    /* search for scope operator */
+    for (l = 0; cp[l] != '\0'; l++)
+    {
+      if (cp[l] == ':') { break; }
+    }
+    if (cp[l] == ':' && cp[l+1] == ':')
+    {
+      fprintf(fp,
+              "      result = %sBuildEnumValue(tempr, \"%*.*s.%s\");\n",
+              prefix, (int)l, (int)l, cp, &cp[l+2]);
+    }
+    else
+    {
+      fprintf(fp,
+              "      result = %sBuildEnumValue(tempr, \"%s\");\n",
+              prefix, cp);
+    }
+  }
   else if (vtkWrap_IsPythonObject(val))
   {
     fprintf(fp,
@@ -973,6 +1002,11 @@ static void vtkWrapPython_GenerateMethodCall(
       {
         fprintf(fp, "*temp%i", i);
       }
+      else if (vtkWrap_IsConst(arg) && vtkWrap_IsRef(arg) &&
+               (arg->CountHint || vtkWrap_IsPODPointer(arg)))
+      {
+        fprintf(fp, "temp%ic", i);
+      }
       else
       {
         fprintf(fp, "temp%i", i);
@@ -1069,8 +1103,8 @@ static void vtkWrapPython_WriteBackToArgs(
           vtkWrap_IsPODPointer(arg))
       {
         fprintf(fp,
-              "      ap.SetArgValue(%d, temp%d, ",
-              i, i);
+              "      ap.SetArgValue(%d, temp%d%s, ",
+              i, i, (vtkWrap_IsConst(arg) ? "c" : ""));
         if (arg->CountHint)
         {
           vtkWrapPython_SubstituteCode(fp, data, currentFunction,

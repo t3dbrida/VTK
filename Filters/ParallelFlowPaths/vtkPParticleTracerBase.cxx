@@ -222,7 +222,7 @@ void vtkPParticleTracerBase::AssignUniqueIds(
   }
 
   vtkIdType particleCountOffset = 0;
-  vtkIdType numParticles = localSeedPoints.size();
+  vtkIdType numParticles = static_cast<vtkIdType>(localSeedPoints.size());
 
   if (this->Controller->GetNumberOfProcesses()>1)
   {
@@ -412,13 +412,15 @@ int vtkPParticleTracerBase::RequestUpdateExtent(
   vtkInformation* request, vtkInformationVector** inputVector,
   vtkInformationVector* outputVector)
 {
-  vtkInformation *sourceInfo = inputVector[1]->GetInformationObject(0);
-  if (sourceInfo)
+  int numSources = inputVector[1]->GetNumberOfInformationObjects();
+  for (int i=0; i<numSources; i++)
   {
-    sourceInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_PIECE_NUMBER(),
-                    0);
-    sourceInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_PIECES(),
-                    1);
+    vtkInformation *sourceInfo = inputVector[1]->GetInformationObject(i);
+    if (sourceInfo)
+    {
+      sourceInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_PIECE_NUMBER(), 0);
+      sourceInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_PIECES(), 1);
+    }
   }
 
   return Superclass::RequestUpdateExtent(request,inputVector,outputVector);
@@ -446,14 +448,12 @@ bool vtkPParticleTracerBase::UpdateParticleListFromOtherProcesses()
   for(size_t i=0;i<received.size();i++)
   {
     RemoteParticleInfo& info(received[i]);
-    info.Current.UniqueParticleId++;
-    info.Previous.UniqueParticleId++;
     info.Current.PointId = -1;
     info.Current.CachedDataSetId[0] = info.Current.CachedDataSetId[1] = -1;
     info.Current.CachedCellId[0] = info.Current.CachedCellId[1] = -1;
     info.Previous.CachedDataSetId[0] = info.Previous.CachedDataSetId[1] = -1;
     info.Previous.CachedCellId[0] = info.Previous.CachedCellId[1] = -1;
-    info.Current.TailPointId = info.Previous.TailPointId = this->Tail.size();
+    info.Current.TailPointId = info.Previous.TailPointId = static_cast<vtkIdType>(this->Tail.size());
     this->Tail.push_back(info);
     this->ParticleHistories.push_back(info.Current);
   }

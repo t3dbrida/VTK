@@ -24,6 +24,7 @@
 #include "UnstructuredGridConverter.h"
 
 #include "vtkmCellSetSingleType.h"
+#include "vtkmDataArray.h"
 
 // datasets we support
 #include "vtkCellArray.h"
@@ -54,10 +55,7 @@ vtkm::cont::CoordinateSystem deduce_container(vtkPoints *points)
       vtkAOSDataArrayTemplate<T>::FastDownCast(points->GetData());
   if (typedIn)
   {
-    typedef tovtkm::vtkAOSArrayContainerTag TagType;
-    typedef vtkm::cont::internal::Storage<Vec3, TagType> StorageType;
-    StorageType storage(typedIn);
-    vtkm::cont::ArrayHandle<Vec3, TagType> p(storage);
+    auto p = DataArrayToArrayHandle<vtkAOSDataArrayTemplate<T>, 3>::Wrap(typedIn);
     return vtkm::cont::CoordinateSystem("coords", p);
   }
 
@@ -70,6 +68,13 @@ vtkm::cont::CoordinateSystem deduce_container(vtkPoints *points)
     StorageType storage(typedIn2);
     vtkm::cont::ArrayHandle<Vec3, TagType> p(storage);
     return vtkm::cont::CoordinateSystem("coords", p);
+  }
+
+  vtkmDataArray<T> *typedIn3 =
+      vtkmDataArray<T>::SafeDownCast(points->GetData());
+  if (typedIn3)
+  {
+    return vtkm::cont::CoordinateSystem("coords", typedIn3->GetVtkmVariantArrayHandle());
   }
 
   typedef vtkm::Vec<T, 3> Vec3;

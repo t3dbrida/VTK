@@ -36,7 +36,7 @@ namespace
 template <typename Device>
 struct ExplicitRConnToConn
 {
-  using OffsetsArray = vtkm::cont::ArrayHandle<vtkm::Id, tovtkm::vtkAOSArrayContainerTag>;
+  using OffsetsArray = vtkm::cont::ArrayHandle<vtkm::Id>;
   using OffsetsPortal = decltype(std::declval<OffsetsArray>().PrepareForInput(Device()));
 
   // Functor that modifies the offsets array so we can compute point id indices
@@ -132,7 +132,7 @@ private:
 template <typename Device>
 struct ExplicitCellIdCalc
 {
-  using OffsetsArray = vtkm::cont::ArrayHandle<vtkm::Id, tovtkm::vtkAOSArrayContainerTag>;
+  using OffsetsArray = vtkm::cont::ArrayHandle<vtkm::Id>;
   using OffsetsPortal = decltype(std::declval<OffsetsArray>().PrepareForInput(Device()));
 
   vtkm::Id ConnSize;
@@ -209,13 +209,52 @@ namespace vtkm {
 namespace cont {
 
 //------------------------------------------------------------------------------
+vtkm::IdComponent vtkmCellSetExplicitAOS::GetNumberOfPointsInCell(vtkm::Id index) const
+{
+  return this->Connectivity.GetPortalConstControl().Get(
+           this->IndexOffsets.GetPortalConstControl().Get(index));
+}
+
+vtkm::UInt8 vtkmCellSetExplicitAOS::GetCellShape(vtkm::Id index) const
+{
+  return this->Shapes.GetPortalConstControl().Get(index);
+}
+
+void vtkmCellSetExplicitAOS::GetCellPointIds(vtkm::Id id, vtkm::Id *ptids) const
+{
+  auto connPortal = this->Connectivity.GetPortalConstControl();
+  auto start = this->IndexOffsets.GetPortalConstControl().Get(id);
+  auto count = connPortal.Get(start++);
+  for (vtkm::Id i = 0; i < count; ++i)
+  {
+    ptids[i] = connPortal.Get(i + start);
+  }
+}
+
+std::shared_ptr<CellSet> vtkmCellSetExplicitAOS::NewInstance() const
+{
+  return std::make_shared<vtkmCellSetExplicitAOS>();
+}
+
+void vtkmCellSetExplicitAOS::DeepCopy(const CellSet* src)
+{
+  const auto* other = dynamic_cast<const vtkmCellSetExplicitAOS*>(src);
+  if (!other)
+  {
+    throw vtkm::cont::ErrorBadType("Incorrect type passed to CellSetExplicit::DeepCopy");
+  }
+
+  this->Fill(other->NumberOfPoints, other->Shapes, other->Connectivity, other->IndexOffsets);
+}
+
+//------------------------------------------------------------------------------
 void vtkmCellSetExplicitAOS::Fill(
     vtkm::Id numberOfPoints,
-    const vtkm::cont::ArrayHandle<vtkm::UInt8, tovtkm::vtkAOSArrayContainerTag>&
+    const vtkm::cont::ArrayHandle<vtkm::UInt8>&
         cellTypes,
     const vtkm::cont::ArrayHandle<vtkm::Id, tovtkm::vtkCellArrayContainerTag>&
         connectivity,
-    const vtkm::cont::ArrayHandle<vtkm::Id, tovtkm::vtkAOSArrayContainerTag>&
+    const vtkm::cont::ArrayHandle<vtkm::Id>&
         offsets)
 {
   this->Shapes = cellTypes;
@@ -240,8 +279,8 @@ void vtkmCellSetExplicitAOS::PrintSummary(std::ostream& out) const
 template <typename Device>
 typename vtkm::exec::ConnectivityVTKAOS<Device>
     vtkmCellSetExplicitAOS::PrepareForInput(Device,
-                                            vtkm::TopologyElementTagPoint,
-                                            vtkm::TopologyElementTagCell) const
+                                            vtkm::TopologyElementTagCell,
+                                            vtkm::TopologyElementTagPoint) const
 {
   return vtkm::exec::ConnectivityVTKAOS<Device>(
       this->Shapes.PrepareForInput(Device()),
@@ -253,8 +292,8 @@ typename vtkm::exec::ConnectivityVTKAOS<Device>
 template <typename Device>
 typename vtkm::exec::ReverseConnectivityVTK<Device>
     vtkmCellSetExplicitAOS::PrepareForInput(Device,
-                                            vtkm::TopologyElementTagCell,
-                                            vtkm::TopologyElementTagPoint) const
+                                            vtkm::TopologyElementTagPoint,
+                                            vtkm::TopologyElementTagCell) const
 {
   //One of the biggest questions when computing the reverse connectivity
   //is how are we going to layout the results.
@@ -308,36 +347,47 @@ typename vtkm::exec::ReverseConnectivityVTK<Device>
 template VTKACCELERATORSVTKM_EXPORT
   vtkm::exec::ConnectivityVTKAOS<vtkm::cont::DeviceAdapterTagSerial>
     vtkmCellSetExplicitAOS::PrepareForInput(vtkm::cont::DeviceAdapterTagSerial,
-      vtkm::TopologyElementTagPoint, vtkm::TopologyElementTagCell) const;
+      vtkm::TopologyElementTagCell, vtkm::TopologyElementTagPoint) const;
 
 template VTKACCELERATORSVTKM_EXPORT
   vtkm::exec::ReverseConnectivityVTK<vtkm::cont::DeviceAdapterTagSerial>
     vtkmCellSetExplicitAOS::PrepareForInput(vtkm::cont::DeviceAdapterTagSerial,
-      vtkm::TopologyElementTagCell, vtkm::TopologyElementTagPoint) const;
+      vtkm::TopologyElementTagPoint, vtkm::TopologyElementTagCell) const;
 
 #ifdef VTKM_ENABLE_TBB
 template VTKACCELERATORSVTKM_EXPORT
   vtkm::exec::ConnectivityVTKAOS<vtkm::cont::DeviceAdapterTagTBB>
     vtkmCellSetExplicitAOS::PrepareForInput(vtkm::cont::DeviceAdapterTagTBB,
-      vtkm::TopologyElementTagPoint, vtkm::TopologyElementTagCell) const;
+      vtkm::TopologyElementTagCell, vtkm::TopologyElementTagPoint) const;
 
 template VTKACCELERATORSVTKM_EXPORT
   vtkm::exec::ReverseConnectivityVTK<vtkm::cont::DeviceAdapterTagTBB>
     vtkmCellSetExplicitAOS::PrepareForInput(vtkm::cont::DeviceAdapterTagTBB,
-      vtkm::TopologyElementTagCell, vtkm::TopologyElementTagPoint) const;
+      vtkm::TopologyElementTagPoint, vtkm::TopologyElementTagCell) const;
 #endif
 
 #ifdef VTKM_ENABLE_OPENMP
 template VTKACCELERATORSVTKM_EXPORT
   vtkm::exec::ConnectivityVTKAOS<vtkm::cont::DeviceAdapterTagOpenMP>
     vtkmCellSetExplicitAOS::PrepareForInput(vtkm::cont::DeviceAdapterTagOpenMP,
-      vtkm::TopologyElementTagPoint, vtkm::TopologyElementTagCell) const;
+      vtkm::TopologyElementTagCell, vtkm::TopologyElementTagPoint) const;
 
 template VTKACCELERATORSVTKM_EXPORT
   vtkm::exec::ReverseConnectivityVTK<vtkm::cont::DeviceAdapterTagOpenMP>
     vtkmCellSetExplicitAOS::PrepareForInput(vtkm::cont::DeviceAdapterTagOpenMP,
-      vtkm::TopologyElementTagCell, vtkm::TopologyElementTagPoint) const;
+      vtkm::TopologyElementTagPoint, vtkm::TopologyElementTagCell) const;
 #endif
 
+#ifdef VTKM_ENABLE_CUDA
+template VTKACCELERATORSVTKM_EXPORT
+  vtkm::exec::ConnectivityVTKAOS<vtkm::cont::DeviceAdapterTagCuda>
+    vtkmCellSetExplicitAOS::PrepareForInput(vtkm::cont::DeviceAdapterTagCuda,
+      vtkm::TopologyElementTagCell, vtkm::TopologyElementTagPoint) const;
+
+template VTKACCELERATORSVTKM_EXPORT
+  vtkm::exec::ReverseConnectivityVTK<vtkm::cont::DeviceAdapterTagCuda>
+    vtkmCellSetExplicitAOS::PrepareForInput(vtkm::cont::DeviceAdapterTagCuda,
+      vtkm::TopologyElementTagPoint, vtkm::TopologyElementTagCell) const;
+#endif
 }
 }

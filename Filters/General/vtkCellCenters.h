@@ -28,9 +28,13 @@
  * Vertex cells are drawn during rendering; points are not. Use the ivar
  * VertexCells to generate cells.
  *
+ * @note
+ * Empty cells will be ignored but will require a one by one cell to
+ * point data copy that will make the processing slower.
+ *
  * @sa
  * vtkGlyph3D vtkLabeledDataMapper
-*/
+ */
 
 #ifndef vtkCellCenters_h
 #define vtkCellCenters_h
@@ -41,32 +45,45 @@
 class VTKFILTERSGENERAL_EXPORT vtkCellCenters : public vtkPolyDataAlgorithm
 {
 public:
-  vtkTypeMacro(vtkCellCenters,vtkPolyDataAlgorithm);
+  vtkTypeMacro(vtkCellCenters, vtkPolyDataAlgorithm);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
   /**
    * Construct object with vertex cell generation turned off.
    */
-  static vtkCellCenters *New();
+  static vtkCellCenters* New();
 
   //@{
   /**
    * Enable/disable the generation of vertex cells. The default
    * is Off.
    */
-  vtkSetMacro(VertexCells,vtkTypeBool);
-  vtkGetMacro(VertexCells,vtkTypeBool);
-  vtkBooleanMacro(VertexCells,vtkTypeBool);
+  vtkSetMacro(VertexCells, bool);
+  vtkGetMacro(VertexCells, bool);
+  vtkBooleanMacro(VertexCells, bool);
+  //@}
+
+  //@{
+  /**
+   * Enable/disable whether input cell data arrays should be passed through (or
+   * copied) as output point data arrays. Default is `true` i.e. the arrays will
+   * be propagated.
+   */
+  vtkSetMacro(CopyArrays, bool);
+  vtkGetMacro(CopyArrays, bool);
+  vtkBooleanMacro(CopyArrays, bool);
   //@}
 
 protected:
-  vtkCellCenters();
-  ~vtkCellCenters() override {}
+  vtkCellCenters() = default;
+  ~vtkCellCenters() override = default;
 
-  int RequestData(vtkInformation *, vtkInformationVector **, vtkInformationVector *) override;
-  int FillInputPortInformation(int port, vtkInformation *info) override;
+  int RequestData(vtkInformation*, vtkInformationVector**, vtkInformationVector*) override;
+  int FillInputPortInformation(int port, vtkInformation* info) override;
 
-  vtkTypeBool VertexCells;
+  bool VertexCells = false;
+  bool CopyArrays = true;
+
 private:
   vtkCellCenters(const vtkCellCenters&) = delete;
   void operator=(const vtkCellCenters&) = delete;

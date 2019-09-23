@@ -88,7 +88,7 @@ namespace {
     vtkIdType last=start, numInserted=0;
     double t = 0.0;
     bool terminated=false;
-    unsigned short ncells;
+    vtkIdType ncells;
     vtkIdType npts, *pts, *cells, nei, lastCell=lineId;
     polyData->GetCellPoints(lineId,npts,pts);
 
@@ -370,7 +370,7 @@ int vtkContourLoopExtraction::RequestData(
 
 //----------------------------------------------------------------------------
 const char *vtkContourLoopExtraction::
-GetLoopClosureAsString(void)
+GetLoopClosureAsString()
 {
   if ( this->LoopClosure == VTK_LOOP_CLOSURE_OFF )
   {
@@ -388,7 +388,7 @@ GetLoopClosureAsString(void)
 
 //----------------------------------------------------------------------------
 const char *vtkContourLoopExtraction::
-GetOutputModeAsString(void)
+GetOutputModeAsString()
 {
   if ( this->OutputMode == VTK_OUTPUT_POLYGONS )
   {

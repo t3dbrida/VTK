@@ -16,7 +16,6 @@
 
 #ifndef vtkmlib_Portals_h
 #define vtkmlib_Portals_h
-#ifndef __VTK_WRAP__
 
 #include "vtkAcceleratorsVTKmModule.h"
 #include "vtkmConfig.h" //required for general vtkm setup
@@ -40,8 +39,10 @@ public:
   using ValueType = typename vtkPortalTraits<Type>::Type;
   using ComponentType = typename vtkPortalTraits<Type>::ComponentType;
 
+  VTKM_EXEC_CONT
   vtkArrayPortal();
 
+  VTKM_CONT
   vtkArrayPortal(VTKDataArrayType* array, vtkm::Id size);
 
   VTKM_SUPPRESS_EXEC_WARNINGS
@@ -62,16 +63,19 @@ public:
   typedef vtkm::cont::internal::IteratorFromArrayPortal<vtkArrayPortal>
       IteratorType;
 
+  VTKM_CONT
   IteratorType GetIteratorBegin() const
   {
     return IteratorType(*this, 0);
   }
 
+  VTKM_CONT
   IteratorType GetIteratorEnd() const
   {
     return IteratorType(*this, this->Size);
   }
 
+  VTKM_CONT
   VTKDataArrayType* GetVtkData() const
   {
     return this->VTKData;
@@ -90,8 +94,10 @@ public:
   using ValueType = typename vtkPortalTraits<Type>::Type;
   using ComponentType = typename vtkPortalTraits<Type>::ComponentType;
 
+  VTKM_EXEC_CONT
   vtkPointsPortal();
 
+  VTKM_CONT
   vtkPointsPortal(vtkPoints* points, vtkm::Id size);
 
   VTKM_SUPPRESS_EXEC_WARNINGS
@@ -112,16 +118,19 @@ public:
   typedef vtkm::cont::internal::IteratorFromArrayPortal<vtkPointsPortal>
       IteratorType;
 
+  VTKM_CONT
   IteratorType GetIteratorBegin() const
   {
     return IteratorType(*this, 0);
   }
 
+  VTKM_CONT
   IteratorType GetIteratorEnd() const
   {
     return IteratorType(*this, this->Size);
   }
 
+  VTKM_CONT
   vtkPoints* GetVtkData() const
   {
     return Points;
@@ -171,18 +180,6 @@ private:
 #include <vtkm/cont/internal/ArrayPortalFromIterators.h>
 namespace tovtkm {
 // T extern template instantiations
-VTKM_TEMPLATE_EXPORT_ArrayPortal(char, vtkAOSDataArrayTemplate);
-VTKM_TEMPLATE_EXPORT_ArrayPortal(vtkm::Int8, vtkAOSDataArrayTemplate);
-VTKM_TEMPLATE_EXPORT_ArrayPortal(vtkm::UInt8, vtkAOSDataArrayTemplate);
-VTKM_TEMPLATE_EXPORT_ArrayPortal(vtkm::Int16, vtkAOSDataArrayTemplate);
-VTKM_TEMPLATE_EXPORT_ArrayPortal(vtkm::UInt16, vtkAOSDataArrayTemplate);
-VTKM_TEMPLATE_EXPORT_ArrayPortal(vtkm::Int32, vtkAOSDataArrayTemplate);
-VTKM_TEMPLATE_EXPORT_ArrayPortal(vtkm::UInt32, vtkAOSDataArrayTemplate);
-VTKM_TEMPLATE_EXPORT_ArrayPortal(vtkm::Int64, vtkAOSDataArrayTemplate);
-VTKM_TEMPLATE_EXPORT_ArrayPortal(vtkm::UInt64, vtkAOSDataArrayTemplate);
-VTKM_TEMPLATE_EXPORT_ArrayPortal(vtkm::Float32, vtkAOSDataArrayTemplate);
-VTKM_TEMPLATE_EXPORT_ArrayPortal(vtkm::Float64, vtkAOSDataArrayTemplate);
-
 VTKM_TEMPLATE_EXPORT_ArrayPortal(char, vtkSOADataArrayTemplate);
 VTKM_TEMPLATE_EXPORT_ArrayPortal(vtkm::Int8, vtkSOADataArrayTemplate);
 VTKM_TEMPLATE_EXPORT_ArrayPortal(vtkm::UInt8, vtkSOADataArrayTemplate);
@@ -196,9 +193,6 @@ VTKM_TEMPLATE_EXPORT_ArrayPortal(vtkm::Float32, vtkSOADataArrayTemplate);
 VTKM_TEMPLATE_EXPORT_ArrayPortal(vtkm::Float64, vtkSOADataArrayTemplate);
 
 #if VTKM_SIZE_LONG_LONG == 8
-VTKM_TEMPLATE_EXPORT_ArrayPortal(long, vtkAOSDataArrayTemplate);
-VTKM_TEMPLATE_EXPORT_ArrayPortal(unsigned long, vtkAOSDataArrayTemplate);
-
 VTKM_TEMPLATE_EXPORT_ArrayPortal(long, vtkSOADataArrayTemplate);
 VTKM_TEMPLATE_EXPORT_ArrayPortal(unsigned long, vtkSOADataArrayTemplate);
 #endif
@@ -216,5 +210,4 @@ extern template class VTKACCELERATORSVTKM_TEMPLATE_EXPORT
 #endif // defined vtkmlib_Portals_cxx
 
 #include "Portals.hxx"
-#endif
 #endif // vtkmlib_Portals_h

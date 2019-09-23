@@ -169,22 +169,22 @@ void vtkGDALRasterConverter::vtkGDALRasterConverterInternal::CopyToVTK(
       int numEntries = gdalTable->GetColorEntryCount();
       colorTable->SetNumberOfTableValues(numEntries);
       std::stringstream ss;
-      for (int i = 0; i < numEntries; ++i)
+      for (int j = 0; j < numEntries; ++j)
       {
-        const GDALColorEntry* gdalEntry = gdalTable->GetColorEntry(i);
+        const GDALColorEntry* gdalEntry = gdalTable->GetColorEntry(j);
         double r = static_cast<double>(gdalEntry->c1) / 255.0;
         double g = static_cast<double>(gdalEntry->c2) / 255.0;
         double b = static_cast<double>(gdalEntry->c3) / 255.0;
         double a = static_cast<double>(gdalEntry->c4) / 255.0;
-        colorTable->SetTableValue(i, r, g, b, a);
+        colorTable->SetTableValue(j, r, g, b, a);
 
         // Copy category name to lookup table annotation
         if (categoryNames)
         {
           // Only use non-empty names
-          if (strlen(categoryNames[i]) > 0)
+          if (strlen(categoryNames[j]) > 0)
           {
-            colorTable->SetAnnotation(vtkVariant(i), categoryNames[i]);
+            colorTable->SetAnnotation(vtkVariant(j), categoryNames[j]);
           }
         }
         else
@@ -192,8 +192,8 @@ void vtkGDALRasterConverter::vtkGDALRasterConverterInternal::CopyToVTK(
           // Create default annotation
           ss.str("");
           ss.clear();
-          ss << "Category " << i;
-          colorTable->SetAnnotation(vtkVariant(i), ss.str());
+          ss << "Category " << j;
+          colorTable->SetAnnotation(vtkVariant(j), ss.str());
         }
       }
 
@@ -355,7 +355,7 @@ void vtkGDALRasterConverter::PrintSelf(ostream& os, vtkIndent indent)
 //----------------------------------------------------------------------------
 // Copy image data contents, origin, & spacing to GDALDataset
 bool vtkGDALRasterConverter::CopyToGDAL(vtkImageData* input,
-                                        GDALDataset* output)
+                                        GDALDataset* output, int flipAxis[3])
 {
   // Check that both images have the same dimensions
   int* inputDimensions = input->GetDimensions();
@@ -369,7 +369,7 @@ bool vtkGDALRasterConverter::CopyToGDAL(vtkImageData* input,
   // Initialize geo transform
   double* origin = input->GetOrigin();
   double* spacing = input->GetSpacing();
-  this->SetGDALGeoTransform(output, origin, spacing);
+  this->SetGDALGeoTransform(output, origin, spacing, flipAxis);
 
   // Check for NO_DATA_VALUE array
   int index = -1;
@@ -404,7 +404,7 @@ bool vtkGDALRasterConverter::CopyToGDAL(vtkImageData* input,
 //----------------------------------------------------------------------------
 GDALDataset* vtkGDALRasterConverter::CreateGDALDataset(
   vtkImageData* imageData,
-  const char* mapProjection)
+  const char* mapProjection, int flipAxis[3])
 {
   int* dimensions = imageData->GetDimensions();
   vtkDataArray* array = imageData->GetCellData()->GetScalars();
@@ -412,10 +412,10 @@ GDALDataset* vtkGDALRasterConverter::CreateGDALDataset(
   int rasterCount = array->GetNumberOfComponents();
   GDALDataset* dataset = this->CreateGDALDataset(
     dimensions[0] - 1, dimensions[1] - 1, vtkDataType, rasterCount);
-  this->CopyToGDAL(imageData, dataset);
+  this->CopyToGDAL(imageData, dataset, flipAxis);
   this->SetGDALProjection(dataset, mapProjection);
   this->SetGDALGeoTransform(
-    dataset, imageData->GetOrigin(), imageData->GetSpacing());
+    dataset, imageData->GetOrigin(), imageData->GetSpacing(), flipAxis);
   return dataset;
 }
 
@@ -560,15 +560,16 @@ void vtkGDALRasterConverter::SetGDALProjection(GDALDataset* dataset,
 //----------------------------------------------------------------------------
 void vtkGDALRasterConverter::SetGDALGeoTransform(GDALDataset* dataset,
                                                  double origin[2],
-                                                 double spacing[2])
+                                                 double spacing[2],
+                                                 int flipAxis[2])
 {
   double geoTransform[6];
   geoTransform[0] = origin[0];
-  geoTransform[1] = spacing[0];
+  geoTransform[1] = flipAxis[0] ? - spacing[0] : spacing[0];
   geoTransform[2] = 0.0;
   geoTransform[3] = origin[1];
   geoTransform[4] = 0.0;
-  geoTransform[5] = spacing[1];
+  geoTransform[5] = flipAxis[1] ? - spacing[1] : spacing[1];
   dataset->SetGeoTransform(geoTransform);
 }
 

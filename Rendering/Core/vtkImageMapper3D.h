@@ -160,6 +160,9 @@ public:
   vtkBooleanMacro(Streaming, vtkTypeBool);
   //@}
 
+  // return the bounds in index space
+  virtual void GetIndexBounds(double extent[6]) = 0;
+
 protected:
   vtkImageMapper3D();
   ~vtkImageMapper3D() override;
@@ -175,7 +178,7 @@ protected:
   /**
    * Handle requests from the pipeline executive.
    */
-  int ProcessRequest(vtkInformation* request,
+  vtkTypeBool ProcessRequest(vtkInformation* request,
                              vtkInformationVector** inInfo,
                              vtkInformationVector* outInfo) override;
 
@@ -253,6 +256,7 @@ protected:
   // Information about the image, updated by UpdateInformation
   double DataSpacing[3];
   double DataOrigin[3];
+  double DataDirection[9];
   int DataWholeExtent[6];
 
   // Set by vtkImageStack when doing multi-pass rendering

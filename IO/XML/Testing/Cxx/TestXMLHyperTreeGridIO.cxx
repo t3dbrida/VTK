@@ -44,16 +44,16 @@ int TestXMLHyperTreeGridIO(int argc, char* argv[])
   reader->Update();
 
   vtkHyperTreeGrid *read_in = reader->GetOutput();
-  unsigned int size[3];
+  int size[3];
   vtkDataArray *coords;
   int ntp;
 
   std::string read1;
 
-  read_in->GetGridSize(size);
+  read_in->GetDimensions(size);
   read1 += "SIZE "+std::to_string(size[0])+","+std::to_string(size[1])+","+std::to_string(size[2])+"\n";
   read1 +="DIMS "+std::to_string(read_in->GetDimension())+"\n";
-  read1 +="#TREES "+std::to_string(read_in->GetNumberOfTrees())+"\n";
+  read1 +="#TREES "+std::to_string(read_in->GetMaxNumberOfTrees())+"\n";
   read1 +="ORIENTATION "+std::to_string(read_in->GetOrientation())+"\n";
   read1 +="BRANCHFACTOR "+std::to_string(read_in->GetBranchFactor())+"\n";
   coords = read_in->GetXCoordinates();
@@ -70,8 +70,6 @@ int TestXMLHyperTreeGridIO(int argc, char* argv[])
   read1 +="#LEVELS "+std::to_string(read_in->GetNumberOfLevels())+"\n";
   read1 +="#VERTS "+std::to_string(read_in->GetNumberOfVertices())+"\n";
   read1 +="#LEAVES "+std::to_string(read_in->GetNumberOfLeaves())+"\n";
-  read1 +="#CELLS "+std::to_string(read_in->GetNumberOfCells())+"\n";
-  read1 +="#POINTS "+std::to_string(read_in->GetNumberOfPoints())+"\n";
   cout << read1 << endl;
 
   std::string output_dir = temp_dir;
@@ -89,15 +87,16 @@ int TestXMLHyperTreeGridIO(int argc, char* argv[])
   writer->SetDataModeToBinary();
   writer->Write();
 
-  reader->SetFileName(ofname.c_str());
-  reader->Update();
-  vtkHyperTreeGrid *wrote_out = reader->GetOutput();
+  vtkNew<vtkXMLHyperTreeGridReader> reader2;
+  reader2->SetFileName(ofname.c_str());
+  reader2->Update();
+  vtkHyperTreeGrid *wrote_out = reader2->GetOutput();
 
   std::string read2;
-  wrote_out->GetGridSize(size);
+  wrote_out->GetDimensions(size);
   read2 += "SIZE "+std::to_string(size[0])+","+std::to_string(size[1])+","+std::to_string(size[2])+"\n";
   read2 +="DIMS "+std::to_string(wrote_out->GetDimension())+"\n";
-  read2 +="#TREES "+std::to_string(wrote_out->GetNumberOfTrees())+"\n";
+  read2 +="#TREES "+std::to_string(wrote_out->GetMaxNumberOfTrees())+"\n";
   read2 +="ORIENTATION "+std::to_string(wrote_out->GetOrientation())+"\n";
   read2 +="BRANCHFACTOR "+std::to_string(wrote_out->GetBranchFactor())+"\n";
   coords = wrote_out->GetXCoordinates();
@@ -114,8 +113,6 @@ int TestXMLHyperTreeGridIO(int argc, char* argv[])
   read2 +="#LEVELS "+std::to_string(wrote_out->GetNumberOfLevels())+"\n";
   read2 +="#VERTS "+std::to_string(wrote_out->GetNumberOfVertices())+"\n";
   read2 +="#LEAVES "+std::to_string(wrote_out->GetNumberOfLeaves())+"\n";
-  read2 +="#CELLS "+std::to_string(wrote_out->GetNumberOfCells())+"\n";
-  read2 +="#POINTS "+std::to_string(wrote_out->GetNumberOfPoints())+"\n";
   cout << read2 << endl;
 
   cout << "- WRITE APPENDED --------------------------------" << endl;
@@ -123,14 +120,14 @@ int TestXMLHyperTreeGridIO(int argc, char* argv[])
   writer->SetDataModeToAppended();
   writer->Write();
 
-  reader->Update();
-  wrote_out = reader->GetOutput();
+  reader2->Update();
+  wrote_out = reader2->GetOutput();
 
   std::string read3;
-  wrote_out->GetGridSize(size);
+  wrote_out->GetDimensions(size);
   read3 += "SIZE "+std::to_string(size[0])+","+std::to_string(size[1])+","+std::to_string(size[2])+"\n";
   read3 +="DIMS "+std::to_string(wrote_out->GetDimension())+"\n";
-  read3 +="#TREES "+std::to_string(wrote_out->GetNumberOfTrees())+"\n";
+  read3 +="#TREES "+std::to_string(wrote_out->GetMaxNumberOfTrees())+"\n";
   read3 +="ORIENTATION "+std::to_string(wrote_out->GetOrientation())+"\n";
   read3 +="BRANCHFACTOR "+std::to_string(wrote_out->GetBranchFactor())+"\n";
   coords = wrote_out->GetXCoordinates();
@@ -147,8 +144,6 @@ int TestXMLHyperTreeGridIO(int argc, char* argv[])
   read3 +="#LEVELS "+std::to_string(wrote_out->GetNumberOfLevels())+"\n";
   read3 +="#VERTS "+std::to_string(wrote_out->GetNumberOfVertices())+"\n";
   read3 +="#LEAVES "+std::to_string(wrote_out->GetNumberOfLeaves())+"\n";
-  read3 +="#CELLS "+std::to_string(wrote_out->GetNumberOfCells())+"\n";
-  read3 +="#POINTS "+std::to_string(wrote_out->GetNumberOfPoints())+"\n";
   cout << read3 << endl;
 
   bool ret = VTK_FAILURE;

@@ -17,9 +17,12 @@
 
 #include "vtkOpenGLRenderWindow.h"
 #include "vtkRenderer.h"
+#include "vtkTextureUnitManager.h"
 
 // must be included after a vtkObject subclass
 #include "vtkOpenGLError.h"
+
+#include <cmath>
 
 // If you define NO_CACHE then all state->vtkgl* calls
 // will get passed down to OpenGL regardless of the current
@@ -40,47 +43,6 @@
 #ifdef VTK_REPORT_OPENGL_ERRORS
 #include "vtksys/SystemInformation.hxx"
 
-// on msvc add in stack trace info as systeminformation
-// does not seem to include it.
-//
-#if defined(VTK_COMPILER_MSVC) && defined(WIN32)
-#define TRACE_MAX_STACK_FRAMES 1024
-#define TRACE_MAX_FUNCTION_NAME_LENGTH 1024
-#include "dbghelp.h"
-std::string getProgramStack()
-{
-  void *stack[TRACE_MAX_STACK_FRAMES];
-  HANDLE process = GetCurrentProcess();
-  SymInitialize(process, NULL, TRUE);
-  WORD numberOfFrames = CaptureStackBackTrace(0, TRACE_MAX_STACK_FRAMES, stack, NULL);
-  SYMBOL_INFO *symbol = (SYMBOL_INFO *)malloc(sizeof(SYMBOL_INFO)+(TRACE_MAX_FUNCTION_NAME_LENGTH - 1) * sizeof(TCHAR));
-  symbol->MaxNameLen = TRACE_MAX_FUNCTION_NAME_LENGTH;
-  symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
-  DWORD displacement;
-  IMAGEHLP_LINE64 *line = (IMAGEHLP_LINE64 *)malloc(sizeof(IMAGEHLP_LINE64));
-  line->SizeOfStruct = sizeof(IMAGEHLP_LINE64);
-  std::ostringstream oss;
-  for (int i = 1; i < numberOfFrames - 2; i++)
-  {
-    DWORD64 address = (DWORD64)(stack[i]);
-    SymFromAddr(process, address, NULL, symbol);
-    if (SymGetLineFromAddr64(process, address, &displacement, line))
-    {
-      oss << " at " << symbol->Name << " in " <<  line->FileName << " line " << line->LineNumber << "\n";
-    }
-    else
-    {
-      oss << "\tSymGetLineFromAddr64 returned error code " << GetLastError() << "\n";
-      oss << "\tat " << symbol->Name << "\n";
-    }
-  }
-  return oss.str();
-}
-
-#else
-#define getProgramStack()  vtksys::SystemInformation::GetProgramStack(0, 0)
-#endif
-
 // this method checks all the cached state to make sure
 // nothing is out of sync. It can be slow.
 void vtkOpenGLState::CheckState()
@@ -93,6 +55,7 @@ void vtkOpenGLState::CheckState()
   if (params[0] != this->CurrentState.DepthMask)
   {
     vtkGenericWarningMacro("Error in cache state for GL_DEPTH_WRITEMASK");
+    this->ResetGLDepthMaskState();
     error = true;
   }
   ::glGetBooleanv(GL_COLOR_WRITEMASK, params);
@@ -104,24 +67,28 @@ void vtkOpenGLState::CheckState()
       )
   {
     vtkGenericWarningMacro("Error in cache state for GL_COLOR_WRITEMASK");
+    this->ResetGLColorMaskState();
     error = true;
   }
   ::glGetBooleanv(GL_BLEND, params);
   if ((params[0] != 0) != this->CurrentState.Blend)
   {
     vtkGenericWarningMacro("Error in cache state for GL_BLEND");
+    this->ResetEnumState(GL_BLEND);
     error = true;
   }
   ::glGetBooleanv(GL_DEPTH_TEST, params);
   if ((params[0] != 0) != this->CurrentState.DepthTest)
   {
     vtkGenericWarningMacro("Error in cache state for GL_DEPTH_TEST");
+    this->ResetEnumState(GL_DEPTH_TEST);
     error = true;
   }
   ::glGetBooleanv(GL_CULL_FACE, params);
   if ((params[0] != 0) != this->CurrentState.CullFace)
   {
     vtkGenericWarningMacro("Error in cache state for GL_CULL_FACE");
+    this->ResetEnumState(GL_CULL_FACE);
     error = true;
   }
 #ifdef GL_MULTISAMPLE
@@ -129,6 +96,7 @@ void vtkOpenGLState::CheckState()
   if ((params[0] != 0) != this->CurrentState.MultiSample)
   {
     vtkGenericWarningMacro("Error in cache state for GL_MULTISAMPLE");
+    this->ResetEnumState(GL_MULTISAMPLE);
     error = true;
   }
 #endif
@@ -136,12 +104,14 @@ void vtkOpenGLState::CheckState()
   if ((params[0] != 0) != this->CurrentState.ScissorTest)
   {
     vtkGenericWarningMacro("Error in cache state for GL_SCISSOR_TEST");
+    this->ResetEnumState(GL_SCISSOR_TEST);
     error = true;
   }
   ::glGetBooleanv(GL_STENCIL_TEST, params);
   if ((params[0] != 0) != this->CurrentState.StencilTest)
   {
     vtkGenericWarningMacro("Error in cache state for GL_STENCIL_TEST");
+    this->ResetEnumState(GL_STENCIL_TEST);
     error = true;
   }
 
@@ -149,7 +119,7 @@ void vtkOpenGLState::CheckState()
 #if defined(__APPLE__)
   // OSX systems seem to change the glViewport upon a window resize
   // under the hood, so our viewport cache cannot be trusted
-  this->ResetGlViewportState();
+  this->ResetGLViewportState();
 #endif
   ::glGetIntegerv(GL_VIEWPORT, iparams);
   if (
@@ -160,6 +130,7 @@ void vtkOpenGLState::CheckState()
       )
   {
     vtkGenericWarningMacro("Error in cache state for GL_VIEWPORT");
+    this->ResetGLViewportState();
     error = true;
   }
   ::glGetIntegerv(GL_SCISSOR_BOX, iparams);
@@ -171,61 +142,74 @@ void vtkOpenGLState::CheckState()
       )
   {
     vtkGenericWarningMacro("Error in cache state for GL_SCISSOR_BOX");
+    this->ResetGLScissorState();
     error = true;
   }
   ::glGetIntegerv(GL_CULL_FACE_MODE, iparams);
   if (iparams[0] != static_cast<int>(this->CurrentState.CullFaceMode))
   {
     vtkGenericWarningMacro("Error in cache state for GL_CULL_FACE_MODE");
+    this->ResetGLCullFaceState();
     error = true;
   }
   ::glGetIntegerv(GL_DEPTH_FUNC, iparams);
   if (iparams[0] != static_cast<int>(this->CurrentState.DepthFunc))
   {
     vtkGenericWarningMacro("Error in cache state for GL_DEPTH_FUNC");
+    this->ResetGLDepthFuncState();
     error = true;
   }
   ::glGetIntegerv(GL_BLEND_SRC_RGB, iparams);
   if (iparams[0] != static_cast<int>(this->CurrentState.BlendFunc[0]))
   {
     vtkGenericWarningMacro("Error in cache state for GL_BLEND_SRC_RGB");
+    this->ResetGLBlendFuncState();
     error = true;
   }
   ::glGetIntegerv(GL_BLEND_SRC_ALPHA, iparams);
   if (iparams[0] != static_cast<int>(this->CurrentState.BlendFunc[2]))
   {
     vtkGenericWarningMacro("Error in cache state for GL_BLEND_SRC_ALPHA");
+    this->ResetGLBlendFuncState();
     error = true;
   }
   ::glGetIntegerv(GL_BLEND_DST_RGB, iparams);
   if (iparams[0] != static_cast<int>(this->CurrentState.BlendFunc[1]))
   {
     vtkGenericWarningMacro("Error in cache state for GL_BLEND_DST_RGB");
+    this->ResetGLBlendFuncState();
     error = true;
   }
   ::glGetIntegerv(GL_BLEND_DST_ALPHA, iparams);
   if (iparams[0] != static_cast<int>(this->CurrentState.BlendFunc[3]))
   {
     vtkGenericWarningMacro("Error in cache state for GL_BLEND_DST_ALPHA");
+    this->ResetGLBlendFuncState();
     error = true;
   }
 
   GLfloat fparams[4];
+  // note people do set this to nan
   ::glGetFloatv(GL_COLOR_CLEAR_VALUE, fparams);
   if (
-      fparams[0] != this->CurrentState.ClearColor[0] ||
-      fparams[1] != this->CurrentState.ClearColor[1] ||
-      fparams[2] != this->CurrentState.ClearColor[2] ||
-      fparams[3] != this->CurrentState.ClearColor[3]
+      (!(std::isnan(fparams[0]) && std::isnan(this->CurrentState.ClearColor[0]))
+        && fparams[0] != this->CurrentState.ClearColor[0]) ||
+      (!(std::isnan(fparams[1]) && std::isnan(this->CurrentState.ClearColor[1]))
+        && fparams[1] != this->CurrentState.ClearColor[1]) ||
+      (!(std::isnan(fparams[2]) && std::isnan(this->CurrentState.ClearColor[2]))
+        && fparams[2] != this->CurrentState.ClearColor[2]) ||
+      (!(std::isnan(fparams[3]) && std::isnan(this->CurrentState.ClearColor[3]))
+        && fparams[3] != this->CurrentState.ClearColor[3])
       )
   {
     vtkGenericWarningMacro("Error in cache state for GL_COLOR_CLEAR_VALUE");
+    this->ResetGLClearColorState();
     error = true;
   }
 
   if (error)
   {
-    std::string msg = getProgramStack();
+    std::string msg = vtksys::SystemInformation::GetProgramStack(0, 0);
     vtkGenericWarningMacro("at stack loc\n" << msg);
   }
 }
@@ -235,7 +219,7 @@ bool reportOpenGLErrors(std::string &result)
 {
   const int maxErrors = 16;
   unsigned int errCode[maxErrors] = {0};
-  const char *errDesc[maxErrors] = {NULL};
+  const char *errDesc[maxErrors] = {nullptr};
 
   int numErrors
     = vtkGetOpenGLErrors(
@@ -253,7 +237,7 @@ bool reportOpenGLErrors(std::string &result)
           errCode,
           errDesc);
 
-    oss << "\n with stack trace of\n" << getProgramStack();
+    oss << "\n with stack trace of\n" << vtksys::SystemInformation::GetProgramStack(0, 0);
     result = oss.str();
     return true;
   }
@@ -285,6 +269,7 @@ bool reportOpenGLErrors(std::string &result)
 //
 //////////////////////////////////////////////////////////////////////////////
 
+
 vtkOpenGLState::ScopedglDepthMask::ScopedglDepthMask(vtkOpenGLState *s)
 {
   this->State = s;
@@ -297,6 +282,13 @@ vtkOpenGLState::ScopedglColorMask::ScopedglColorMask(vtkOpenGLState *s)
   this->State = s;
   this->Value = this->State->CurrentState.ColorMask;
   this->Method = &vtkOpenGLState::ColorMask;
+}
+
+vtkOpenGLState::ScopedglDepthFunc::ScopedglDepthFunc(vtkOpenGLState *s)
+{
+  this->State = s;
+  this->Value = this->State->CurrentState.DepthFunc;
+  this->Method = &vtkOpenGLState::vtkglDepthFunc;
 }
 
 vtkOpenGLState::ScopedglClearColor::ScopedglClearColor(vtkOpenGLState *s)
@@ -392,7 +384,7 @@ void vtkOpenGLState::vtkglClearDepth(double val)
 #endif
   {
     this->CurrentState.ClearDepth = val;
-#if GL_ES_VERSION_3_0 == 1
+#ifdef GL_ES_VERSION_3_0
     ::glClearDepthf(static_cast<GLclampf>(val));
 #else
     ::glClearDepth(val);
@@ -403,6 +395,8 @@ void vtkOpenGLState::vtkglClearDepth(double val)
 
 void vtkOpenGLState::vtkglDepthFunc(GLenum val)
 {
+  vtkOpenGLCheckStateMacro();
+
 #ifndef NO_CACHE
   if (this->CurrentState.DepthFunc != val)
 #endif
@@ -749,7 +743,7 @@ void vtkOpenGLState::vtkglGetIntegerv(GLenum pname, GLint *params)
   vtkCheckOpenGLErrorsWithStack("glGetInteger");
 }
 
-#if GL_ES_VERSION_3_0 == 1
+#ifdef GL_ES_VERSION_3_0
 void vtkOpenGLState::vtkglGetDoublev(GLenum pname, double *)
 {
   vtkGenericWarningMacro("glGetDouble not supported on OpenGL ES, requested: " << pname);
@@ -824,6 +818,8 @@ void vtkOpenGLState::vtkglDisable(GLenum cap)
 // state ivars
 void vtkOpenGLState::Initialize(vtkOpenGLRenderWindow *)
 {
+  this->TextureUnitManager->Initialize();
+
   this->CurrentState.Blend
     ? ::glEnable(GL_BLEND) : ::glDisable(GL_BLEND);
   this->CurrentState.DepthTest
@@ -860,7 +856,7 @@ void vtkOpenGLState::Initialize(vtkOpenGLRenderWindow *)
 
   ::glDepthFunc( this->CurrentState.DepthFunc );
 
-#if GL_ES_VERSION_3_0 == 1
+#ifdef GL_ES_VERSION_3_0
   ::glClearDepthf(this->CurrentState.ClearDepth);
 #else
   ::glClearDepth(this->CurrentState.ClearDepth);
@@ -895,7 +891,7 @@ void vtkOpenGLState::Initialize(vtkOpenGLRenderWindow *)
     &this->CurrentState.MinorVersion);
 }
 
-void vtkOpenGLState::ResetGlClearColorState()
+void vtkOpenGLState::ResetGLClearColorState()
 {
   GLfloat fparams[4];
   ::glGetFloatv(GL_COLOR_CLEAR_VALUE, fparams);
@@ -905,28 +901,28 @@ void vtkOpenGLState::ResetGlClearColorState()
   this->CurrentState.ClearColor[3] = fparams[3];
 }
 
-void vtkOpenGLState::ResetGlClearDepthState()
+void vtkOpenGLState::ResetGLClearDepthState()
 {
   GLfloat fparams;
   ::glGetFloatv(GL_DEPTH_CLEAR_VALUE, &fparams);
   this->CurrentState.ClearDepth = fparams;
 }
 
-void vtkOpenGLState::ResetGlDepthFuncState()
+void vtkOpenGLState::ResetGLDepthFuncState()
 {
   GLint iparams;
   ::glGetIntegerv(GL_DEPTH_FUNC, &iparams);
   this->CurrentState.DepthFunc = static_cast<unsigned int>(iparams);
 }
 
-void vtkOpenGLState::ResetGlDepthMaskState()
+void vtkOpenGLState::ResetGLDepthMaskState()
 {
   GLboolean params;
   ::glGetBooleanv(GL_DEPTH_WRITEMASK, &params);
   this->CurrentState.DepthMask = params;
 }
 
-void vtkOpenGLState::ResetGlColorMaskState()
+void vtkOpenGLState::ResetGLColorMaskState()
 {
   GLboolean params[4];
   ::glGetBooleanv(GL_COLOR_WRITEMASK, params);
@@ -937,7 +933,7 @@ void vtkOpenGLState::ResetGlColorMaskState()
 
 }
 
-void vtkOpenGLState::ResetGlViewportState()
+void vtkOpenGLState::ResetGLViewportState()
 {
   GLint iparams[4];
   ::glGetIntegerv(GL_VIEWPORT, iparams);
@@ -947,7 +943,7 @@ void vtkOpenGLState::ResetGlViewportState()
   this->CurrentState.Viewport[3] = iparams[3];
 }
 
-void vtkOpenGLState::ResetGlScissorState()
+void vtkOpenGLState::ResetGLScissorState()
 {
   GLint iparams[4];
   ::glGetIntegerv(GL_SCISSOR_BOX, iparams);
@@ -957,7 +953,7 @@ void vtkOpenGLState::ResetGlScissorState()
   this->CurrentState.Scissor[3] = iparams[3];
 }
 
-void vtkOpenGLState::ResetGlBlendFuncState()
+void vtkOpenGLState::ResetGLBlendFuncState()
 {
   GLint iparams;
   ::glGetIntegerv(GL_BLEND_SRC_RGB, &iparams);
@@ -970,7 +966,7 @@ void vtkOpenGLState::ResetGlBlendFuncState()
   this->CurrentState.BlendFunc[3] = static_cast<unsigned int>(iparams);
 }
 
-void vtkOpenGLState::ResetGlBlendEquationState()
+void vtkOpenGLState::ResetGLBlendEquationState()
 {
   GLint iparams;
   ::glGetIntegerv(GL_BLEND_EQUATION_RGB, &iparams);
@@ -979,7 +975,7 @@ void vtkOpenGLState::ResetGlBlendEquationState()
   this->CurrentState.BlendEquationValue2 = static_cast<unsigned int>(iparams);
 }
 
-void vtkOpenGLState::ResetGlCullFaceState()
+void vtkOpenGLState::ResetGLCullFaceState()
 {
   GLint iparams;
   ::glGetIntegerv(GL_CULL_FACE_MODE, &iparams);
@@ -989,6 +985,92 @@ void vtkOpenGLState::ResetGlCullFaceState()
 void vtkOpenGLState::vtkglClear(GLbitfield val)
 {
   ::glClear(val);
+}
+
+// ----------------------------------------------------------------------------
+// Description:
+// Returns its texture unit manager object.
+vtkTextureUnitManager *vtkOpenGLState::GetTextureUnitManager()
+{
+  return this->TextureUnitManager;
+}
+
+void vtkOpenGLState::SetTextureUnitManager(vtkTextureUnitManager *tum)
+{
+  if (this->TextureUnitManager == tum)
+  {
+    return;
+  }
+  if (tum)
+  {
+    tum->Register(nullptr);
+  }
+  if (this->TextureUnitManager)
+  {
+    this->TextureUnitManager->Delete();
+  }
+  this->TextureUnitManager = tum;
+}
+
+void vtkOpenGLState::ActivateTexture(vtkTextureObject *texture)
+{
+  // Only add if it isn't already there
+  typedef std::map<const vtkTextureObject *, int>::const_iterator TRIter;
+  TRIter found = this->TextureResourceIds.find(texture);
+  if (found == this->TextureResourceIds.end())
+  {
+    int activeUnit =  this->GetTextureUnitManager()->Allocate();
+    if (activeUnit < 0)
+    {
+      vtkGenericWarningMacro("Hardware does not support the number of textures defined.");
+      return;
+    }
+    this->TextureResourceIds.insert(std::make_pair(texture, activeUnit));
+    glActiveTexture(GL_TEXTURE0 + activeUnit);
+  }
+  else
+  {
+    glActiveTexture(GL_TEXTURE0 + found->second);
+  }
+}
+
+void vtkOpenGLState::DeactivateTexture(vtkTextureObject *texture)
+{
+  // Only deactivate if it isn't already there
+  typedef std::map<const vtkTextureObject *, int>::iterator TRIter;
+  TRIter found = this->TextureResourceIds.find(texture);
+  if (found != this->TextureResourceIds.end())
+  {
+    this->GetTextureUnitManager()->Free(found->second);
+    this->TextureResourceIds.erase(found);
+  }
+}
+
+int vtkOpenGLState::GetTextureUnitForTexture(vtkTextureObject *texture)
+{
+  // Only deactivate if it isn't already there
+  typedef std::map<const vtkTextureObject *, int>::const_iterator TRIter;
+  TRIter found = this->TextureResourceIds.find(texture);
+  if (found != this->TextureResourceIds.end())
+  {
+    return found->second;
+  }
+
+  return -1;
+}
+
+void vtkOpenGLState::VerifyNoActiveTextures()
+{
+  if (!this->TextureResourceIds.empty())
+  {
+    vtkGenericWarningMacro("There are still active textures when there should not be.");
+    typedef std::map<const vtkTextureObject *, int>::const_iterator TRIter;
+    TRIter found = this->TextureResourceIds.begin();
+    for ( ; found != this->TextureResourceIds.end(); ++found)
+    {
+      vtkGenericWarningMacro("Leaked for texture object: " << const_cast<vtkTextureObject *>(found->first));
+    }
+  }
 }
 
 // initialize all state values. This is important so that in
@@ -1013,6 +1095,8 @@ void vtkOpenGLState::vtkglClear(GLbitfield val)
 //
 vtkOpenGLState::vtkOpenGLState()
 {
+  this->TextureUnitManager = vtkTextureUnitManager::New();
+
   this->CurrentState.Blend = true;
   this->CurrentState.DepthTest = true;
   this->CurrentState.StencilTest = false;
@@ -1057,4 +1141,10 @@ vtkOpenGLState::vtkOpenGLState()
 
   this->CurrentState.BlendEquationValue1 = GL_FUNC_ADD;
   this->CurrentState.BlendEquationValue2 = GL_FUNC_ADD;
+}
+
+vtkOpenGLState::~vtkOpenGLState()
+{
+  this->TextureResourceIds.clear();
+  this->SetTextureUnitManager(nullptr);
 }

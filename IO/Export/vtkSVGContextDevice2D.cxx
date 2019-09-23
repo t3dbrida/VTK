@@ -1104,6 +1104,7 @@ void vtkSVGContextDevice2D::DrawColoredPolygon(float *points, int numPoints,
                                                int nc_comps)
 {
   assert(numPoints > 0);
+  assert(nc_comps >= 3 && nc_comps <= 4);
   assert(points != nullptr);
 
   // Just use the standard draw method if there is a texture or colors are not
@@ -1148,12 +1149,16 @@ void vtkSVGContextDevice2D::DrawColoredPolygon(float *points, int numPoints,
   const vtkVector2f p0(points);
   const vtkColor4ub c0(colors);
 
+  // We may have 3 or 4 components, so initialize these with a sane alpha value:
+  vtkColor4ub c1{0, 0, 0, 255};
+  vtkColor4ub c2{0, 0, 0, 255};
+
   for (int i = 1; i < numPoints - 1; ++i)
   {
     const vtkVector2f p1(points + 2 * i);
-    const vtkColor4ub c1(colors + nc_comps * i);
     const vtkVector2f p2(points + 2 * (i + 1));
-    const vtkColor4ub c2(colors + nc_comps * (i + 1));
+    std::copy_n(colors + nc_comps * i, nc_comps, c1.GetData());
+    std::copy_n(colors + nc_comps * (i + 1), nc_comps, c2.GetData());
 
     this->DrawTriangleGradient(p0, c0, p1, c1, p2, c2, useAlpha);
   }
@@ -1402,7 +1407,7 @@ void vtkSVGContextDevice2D::DrawString(float *point,
     text->SetFloatAttribute("y", 0.f);
 
     std::string utf8String = string.utf8_str();
-    text->SetCharacterData(utf8String.c_str(), utf8String.size());
+    text->SetCharacterData(utf8String.c_str(), static_cast<int>(utf8String.size()));
   }
   else
   {
@@ -1823,6 +1828,10 @@ void vtkSVGContextDevice2D::ApplyPenStippleToNode(vtkXMLDataElement *node)
     case vtkPen::DASH_DOT_DOT_LINE:
       // This is dash-dot-dash, but eh. It matches the OpenGL2 0x1C47 pattern.
       node->SetAttribute("stroke-dasharray", "3,3,1,3,3,3");
+      break;
+
+    case vtkPen::DENSE_DOT_LINE:
+      node->SetAttribute("stroke-dasharray", "1,3");
       break;
   }
 }

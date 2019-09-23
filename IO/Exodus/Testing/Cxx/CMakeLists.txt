@@ -1,12 +1,3 @@
-# Tests with data
-# VS6 builds do not handle out-of-range double assignment to float
-# properly. Do not run TestMultiBlockExodusWrite on VS6 builds.
-#
-if(NOT CMAKE_GENERATOR MATCHES "Visual Studio 6")
-  set(extra_tests
-    TestMultiBlockExodusWrite.cxx
-    )
-endif()
 
 # We need typed arrays to be supported by the dispatcher to run the insitu test:
 if(VTK_DISPATCH_TYPED_ARRAYS)
@@ -19,6 +10,7 @@ vtk_add_test_cxx(vtkIOExodusCxxTests tests
   TestExodusAttributes.cxx,NO_VALID,NO_OUTPUT
   TestExodusIgnoreFileTime.cxx,NO_VALID,NO_OUTPUT
   TestExodusSideSets.cxx,NO_VALID,NO_OUTPUT
+  TestMultiBlockExodusWrite.cxx
   ${extra_tests}
   )
 
@@ -31,7 +23,7 @@ vtk_test_cxx_executable(vtkIOExodusCxxTests tests
   RENDERING_FACTORY)
 
 ExternalData_add_test(VTKData
-  NAME vtkIOExodusCxx-Tetra15
+  NAME VTK::IOExodusCxx-Tetra15
   COMMAND vtkIOExodusCxxTests TestExodusTetra15
     -D ${VTK_TEST_DATA_DIR}
     -V DATA{../Data/Baseline/TestExodusTetra15.png}
@@ -40,7 +32,7 @@ ExternalData_add_test(VTKData
 )
 
 ExternalData_add_test(VTKData
-  NAME vtkIOExodusCxx-Wedge21
+  NAME VTK::IOExodusCxx-Wedge21
   COMMAND vtkIOExodusCxxTests TestExodusWedge21
     -D ${VTK_TEST_DATA_DIR}
     -V DATA{../Data/Baseline/TestExodusWedge21.png}

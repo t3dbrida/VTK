@@ -20,30 +20,27 @@
 #include "vtkCompositeDataSet.h"
 #include "vtkDataArrayAccessor.h"
 #include "vtkDataSetAttributes.h"
+#include "vtkDIYUtilities.h"
 #include "vtkExtentTranslator.h"
 #include "vtkIdList.h"
 #include "vtkImageData.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
-#include "vtkMPI.h"
-#include "vtkMPIController.h"
-#include "vtkMPICommunicator.h"
 #include "vtkNew.h"
 #include "vtkObjectFactory.h"
 #include "vtkPointData.h"
 #include "vtkStreamingDemandDrivenPipeline.h"
 #include "vtkUnsignedCharArray.h"
+#include "vtkMultiProcessController.h"
 
 #include "vtk_diy2.h"   // must include this before any diy header
-VTKDIY2_PRE_INCLUDE
-#include VTK_DIY2_HEADER(diy/assigner.hpp)
-#include VTK_DIY2_HEADER(diy/link.hpp)
-#include VTK_DIY2_HEADER(diy/master.hpp)
-#include VTK_DIY2_HEADER(diy/mpi.hpp)
-#include VTK_DIY2_HEADER(diy/reduce.hpp)
-#include VTK_DIY2_HEADER(diy/partners/swap.hpp)
-#include VTK_DIY2_HEADER(diy/decomposition.hpp)
-VTKDIY2_POST_INCLUDE
+#include VTK_DIY2(diy/assigner.hpp)
+#include VTK_DIY2(diy/link.hpp)
+#include VTK_DIY2(diy/master.hpp)
+#include VTK_DIY2(diy/mpi.hpp)
+#include VTK_DIY2(diy/reduce.hpp)
+#include VTK_DIY2(diy/partners/swap.hpp)
+#include VTK_DIY2(diy/decomposition.hpp)
 
 #include <algorithm>
 
@@ -176,7 +173,7 @@ inline void SerializeFieldData(vtkFieldData *field, vtkIdType tuple,
   for (int i = 0; i < numFields; ++i)
   {
     vtkDataArray *da = field->GetArray(i);
-    std::size_t numComponents = static_cast<std::size_t>(da->GetNumberOfComponents());
+    int numComponents = da->GetNumberOfComponents();
     SerializeWorklet worklet(tuple, numComponents, bb);
     if (!vtkArrayDispatch::Dispatch::Execute(da, worklet))
     {
@@ -218,7 +215,7 @@ inline void DeserializeFieldData(diy::MemoryBuffer &bb, vtkFieldData *field,
   for (int i = 0; i < numFields; ++i)
   {
     vtkDataArray *da = field->GetArray(i);
-    std::size_t numComponents = static_cast<std::size_t>(da->GetNumberOfComponents());
+    int numComponents = da->GetNumberOfComponents();
     DeserializeWorklet worklet(tuple, numComponents, bb);
     if (!vtkArrayDispatch::Dispatch::Execute(da, worklet))
     {
@@ -473,15 +470,6 @@ void Redistribute(void* blockp, const diy::ReduceProxy& srp,
   b->Extent[2*axis + 1] = std::min(b->Extent[2*axis] + length, maxIdx);
 }
 
-
-//----------------------------------------------------------------------------
-inline diy::mpi::communicator GetDiyCommunicator(vtkMPIController *controller)
-{
-  vtkMPICommunicator *vtkcomm = vtkMPICommunicator::SafeDownCast(
-    controller->GetCommunicator());
-  return diy::mpi::communicator(*vtkcomm->GetMPIComm()->GetHandle());
-}
-
 } // anonymous namespace
 
 
@@ -513,8 +501,7 @@ int vtkPResampleToImage::RequestData(vtkInformation *request,
                                      vtkInformationVector **inputVector,
                                      vtkInformationVector *outputVector)
 {
-  vtkMPIController *mpiCont = vtkMPIController::SafeDownCast(this->Controller);
-  if (!mpiCont || mpiCont->GetNumberOfProcesses() == 1)
+  if (!this->Controller || this->Controller->GetNumberOfProcesses() == 1)
   {
     return this->Superclass::RequestData(request, inputVector, outputVector);
   }
@@ -528,8 +515,7 @@ int vtkPResampleToImage::RequestData(vtkInformation *request,
   vtkImageData *output = vtkImageData::SafeDownCast(
     outInfo->Get(vtkDataObject::DATA_OBJECT()));
 
-
-  diy::mpi::communicator comm = GetDiyCommunicator(mpiCont);
+  diy::mpi::communicator comm = vtkDIYUtilities::GetCommunicator(this->Controller);
 
   double localBounds[6];
   ComputeDataBounds(input, localBounds);
@@ -558,7 +544,7 @@ int vtkPResampleToImage::RequestData(vtkInformation *request,
   diy::RoundRobinAssigner assigner(comm.size(), comm.size());
 
   int *updateExtent = this->GetUpdateExtent();
-  diy::DiscreteBounds domain;
+  diy::DiscreteBounds domain(3);
   for (int i = 0; i < 3; ++i)
   {
     domain.min[i] = updateExtent[2*i];

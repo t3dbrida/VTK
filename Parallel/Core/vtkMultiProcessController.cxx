@@ -15,20 +15,19 @@
 // This will be the default.
 #include "vtkMultiProcessController.h"
 
+#include "vtkBoundingBox.h"
 #include "vtkByteSwap.h"
 #include "vtkCollection.h"
 #include "vtkCommand.h"
 #include "vtkDummyController.h"
+#include "vtkNew.h"
 #include "vtkObjectFactory.h"
 #include "vtkOutputWindow.h"
+#include "vtkProcess.h"
 #include "vtkProcessGroup.h"
 #include "vtkSubCommunicator.h"
 #include "vtkToolkits.h"
-#include "vtkProcess.h"
-#include "vtkSmartPointer.h"
 #include "vtkWeakPointer.h"
-#define VTK_CREATE(type, name) \
-  vtkSmartPointer<type> name = vtkSmartPointer<type>::New()
 
 #include <list>
 #include <unordered_map>
@@ -329,7 +328,7 @@ vtkMultiProcessController *vtkMultiProcessController::PartitionController(
       partitionIds.insert(iter, j);
     }
     // Copy list into process group.
-    VTK_CREATE(vtkProcessGroup, group);
+    vtkNew<vtkProcessGroup> group;
     group->Initialize(this);
     group->RemoveAllProcessIds();
     for (std::list<int>::iterator iter = partitionIds.begin();
@@ -767,6 +766,64 @@ void vtkMultiProcessController::ProcessRMI(int remoteProcessId,
   {
     (*citer->Function)(citer->LocalArgument, arg, argLength, remoteProcessId);
   }
+}
+//----------------------------------------------------------------------------
+int vtkMultiProcessController::Reduce(
+  const vtkBoundingBox& sendBuffer, vtkBoundingBox& recvBuffer, int destProcessId)
+{
+  if (this->GetNumberOfProcesses() <= 1)
+  {
+    recvBuffer = sendBuffer;
+    return 1;
+  }
+
+  double send_min[3] = { VTK_DOUBLE_MAX, VTK_DOUBLE_MAX, VTK_DOUBLE_MAX };
+  double send_max[3] = { VTK_DOUBLE_MIN, VTK_DOUBLE_MIN, VTK_DOUBLE_MIN };
+  if (sendBuffer.IsValid())
+  {
+    sendBuffer.GetMinPoint(send_min);
+    sendBuffer.GetMaxPoint(send_max);
+  }
+  double recv_min[3], recv_max[3];
+  if (this->Reduce(send_min, recv_min, 3, vtkCommunicator::MIN_OP, destProcessId) &&
+      this->Reduce(send_max, recv_max, 3, vtkCommunicator::MAX_OP, destProcessId))
+  {
+    if (this->GetLocalProcessId() == destProcessId)
+    {
+      const double bds[6] = {recv_min[0], recv_max[0], recv_min[1], recv_max[1], recv_min[2], recv_max[2]};
+      recvBuffer.SetBounds(bds);
+    }
+    return 1;
+  }
+  return 0;
+}
+
+//----------------------------------------------------------------------------
+int vtkMultiProcessController::AllReduce(
+  const vtkBoundingBox& sendBuffer, vtkBoundingBox& recvBuffer)
+{
+  if (this->GetNumberOfProcesses() <= 1)
+  {
+    recvBuffer = sendBuffer;
+    return 1;
+  }
+
+  double send_min[3] = { VTK_DOUBLE_MAX, VTK_DOUBLE_MAX, VTK_DOUBLE_MAX };
+  double send_max[3] = { VTK_DOUBLE_MIN, VTK_DOUBLE_MIN, VTK_DOUBLE_MIN };
+  if (sendBuffer.IsValid())
+  {
+    sendBuffer.GetMinPoint(send_min);
+    sendBuffer.GetMaxPoint(send_max);
+  }
+  double recv_min[3], recv_max[3];
+  if (this->AllReduce(send_min, recv_min, 3, vtkCommunicator::MIN_OP) &&
+      this->AllReduce(send_max, recv_max, 3, vtkCommunicator::MAX_OP))
+  {
+    const double bds[6] = {recv_min[0], recv_max[0], recv_min[1], recv_max[1], recv_min[2], recv_max[2]};
+    recvBuffer.SetBounds(bds);
+    return 1;
+  }
+  return 0;
 }
 
 //============================================================================

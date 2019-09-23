@@ -45,6 +45,7 @@ class vtkCuller;
 class vtkActor;
 class vtkActor2D;
 class vtkCamera;
+class vtkFrameBufferObjectBase;
 class vtkInformation;
 class vtkLightCollection;
 class vtkCullerCollection;
@@ -169,7 +170,7 @@ public:
    * (for instance, Headlights or CameraLights that are attached to the
    * camera) to update their geometry to match the active camera.
    */
-  virtual int UpdateLightsGeometryToFollowCamera(void);
+  virtual vtkTypeBool UpdateLightsGeometryToFollowCamera(void);
 
   /**
    * Return the collection of volumes.
@@ -295,7 +296,7 @@ public:
    * Subclasses of vtkRenderer that can deal with, e.g. hidden line removal must
    * override this method.
    */
-  virtual void DeviceRenderOpaqueGeometry();
+  virtual void DeviceRenderOpaqueGeometry(vtkFrameBufferObjectBase* fbo = nullptr);
 
   /**
    * Render translucent polygonal geometry. Default implementation just call
@@ -306,7 +307,7 @@ public:
    * will be rendered here as well.
    * It updates boolean ivar LastRenderingUsedDepthPeeling.
    */
-  virtual void DeviceRenderTranslucentPolygonalGeometry();
+  virtual void DeviceRenderTranslucentPolygonalGeometry(vtkFrameBufferObjectBase* fbo = nullptr);
 
   /**
    * Internal method temporarily removes lights before reloading them
@@ -569,7 +570,7 @@ public:
    * Compute the aspect ratio of this renderer for the current tile. When
    * tiled displays are used the aspect ratio of the renderer for a given
    * tile may be different that the aspect ratio of the renderer when rendered
-   * in it entirity
+   * in it entirety
    */
   double GetTiledAspectRatio();
 
@@ -637,7 +638,7 @@ public:
    * actually used depth peeling.
    * Initial value is false.
    */
-  vtkGetMacro(LastRenderingUsedDepthPeeling,int);
+  vtkGetMacro(LastRenderingUsedDepthPeeling,vtkTypeBool);
   //@}
 
   //@{
@@ -744,6 +745,30 @@ public:
   virtual void SetInformation(vtkInformation*);
   //@}
 
+  //@{
+  /**
+   * If this flag is true and the rendering engine supports it, image based
+   * lighting is enabled and surface rendering displays environment reflections.
+   * The input cube map have to be set with SetEnvironmentCubeMap.
+   * If not cubemap is specified, this feature is disable.
+   */
+  vtkSetMacro(UseImageBasedLighting, bool)
+  vtkGetMacro(UseImageBasedLighting, bool)
+  vtkBooleanMacro(UseImageBasedLighting, bool)
+  //@}
+
+  //@{
+  /**
+   * Set/Get the environment cubemap used for image based lighting.
+   * Warning, this cubemap must be expressed in linear color space.
+   * If the cubemap is in sRGB color space, set the color flag on the texture or
+   * set the argument isSRGB to true.
+   * @sa vtkTexture::UseSRGBColorSpaceOn
+   */
+  vtkGetObjectMacro(EnvironmentCubeMap, vtkTexture);
+  virtual void SetEnvironmentCubeMap(vtkTexture* cubemap, bool isSRGB = false);
+  //@}
+
 protected:
   vtkRenderer();
   ~vtkRenderer() override;
@@ -767,7 +792,7 @@ protected:
   double              AllocatedRenderTime;
   double              TimeFactor;
   vtkTypeBool         TwoSidedLighting;
-  int                 AutomaticLightCreation;
+  vtkTypeBool         AutomaticLightCreation;
   vtkTypeBool         BackingStore;
   unsigned char      *BackingImage;
   int                 BackingStoreSize[2];
@@ -843,7 +868,7 @@ protected:
    * geometry. This includes both vtkActors and vtkVolumes
    * Returns the number of props that rendered geometry.
    */
-  virtual int UpdateGeometry();
+  virtual int UpdateGeometry(vtkFrameBufferObjectBase* fbo = nullptr);
 
   /**
    * Ask all props to update and draw any translucent polygonal
@@ -872,7 +897,7 @@ protected:
    * space (for instance, Headlights or CameraLights that are attached to the
    * camera).
    */
-  virtual int UpdateLightGeometry(void);
+  virtual vtkTypeBool UpdateLightGeometry(void);
 
   /**
    * Ask all lights to load themselves into rendering pipeline.
@@ -947,7 +972,7 @@ protected:
    * actually used depth peeling.
    * Initial value is false.
    */
-  int LastRenderingUsedDepthPeeling;
+  vtkTypeBool LastRenderingUsedDepthPeeling;
 
   // HARDWARE SELECTION ----------------------------------------
   friend class vtkHardwareSelector;
@@ -974,6 +999,9 @@ protected:
 
   // Arbitrary extra information associated with this renderer
   vtkInformation* Information;
+
+  bool UseImageBasedLighting;
+  vtkTexture* EnvironmentCubeMap;
 
 private:
   vtkRenderer(const vtkRenderer&) = delete;

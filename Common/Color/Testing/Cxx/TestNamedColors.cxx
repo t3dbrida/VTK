@@ -27,7 +27,7 @@
 
 const int NUMBER_OF_SYNONYMS = 81;
 const int NUMBER_OF_COLORS = 283;
-const int PRINT_SELF_STRING_SIZE = 9243;
+const int PRINT_SELF_STRING_SIZE = 9242;
 // For comparing unsigned char converted to double precision.
 const double EPS1 = 0.004; // 1/255 = 0.0039
 // For comparing two double precision numbers.
@@ -894,12 +894,11 @@ bool TestRGBToHTMLColor()
   vtkSmartPointer<vtkNamedColors> color = vtkSmartPointer<vtkNamedColors>::New();
 
   vtkStdString outputString;
-  const char* expectedOutput = "";
   unsigned int i = 0;
   while ( dataList[i].colorString[0] != '\n' )
   {
     vtkColor3ub inputColor(dataList[i].colorVector);
-    expectedOutput = dataList[i].colorString;
+    const char *expectedOutput = dataList[i].colorString;
     outputString = color->RGBToHTMLColor(inputColor);
     if (outputString.compare(expectedOutput) != 0)
     {
@@ -938,12 +937,11 @@ bool TestRGBAToHTMLColor()
   vtkSmartPointer<vtkNamedColors> color = vtkSmartPointer<vtkNamedColors>::New();
 
   vtkStdString outputString;
-  const char* expectedOutput = "";
   unsigned int i = 0;
   while ( dataList[i].colorString[0] != '\n' )
   {
     vtkColor4ub inputColor(dataList[i].colorVector);
-    expectedOutput = dataList[i].colorString;
+    char const *expectedOutput = dataList[i].colorString;
     outputString = color->RGBAToHTMLColor(inputColor);
     if (outputString.compare(expectedOutput) != 0)
     {
@@ -1116,14 +1114,6 @@ int TestNamedColors(int vtkNotUsed(argc), char* vtkNotUsed(argv)[])
   {
     vtkGenericWarningMacro(
       << "Fail: TestHTMLColorToRGBA()"
-      );
-  }
-
-  testResult &= TestRGBToHTMLColor();
-  if ( !testResult )
-  {
-    vtkGenericWarningMacro(
-      << "Fail: TestRGBToHTMLColor()"
       );
   }
 

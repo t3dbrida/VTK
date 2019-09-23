@@ -18,7 +18,6 @@
 =========================================================================
 '''
 
-import tempfile
 import os
 import vtk
 import vtk.test.Testing
@@ -652,9 +651,8 @@ class cells(vtk.test.Testing.vtkTest):
         ren.AddActor(aPentaActor);aPentaActor.GetProperty().SetDiffuseColor(.2, .4, .7)
         ren.AddActor(aHexaActor);aHexaActor.GetProperty().SetDiffuseColor(.7, .5, 1)
 
-        if hasattr(vtk, 'vtkRIBLight'):
-            aRIBLight = vtk.vtkRIBLight()
-            aRIBLight.SetIntensity(0.7)
+        aRIBLight = vtk.vtkRIBLight()
+        aRIBLight.SetIntensity(0.7)
 
         ren.AddLight(aRIBLight)
         aLight = vtk.vtkLight()

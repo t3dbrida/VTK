@@ -81,6 +81,8 @@ vtkImplicitPlaneRepresentation::vtkImplicitPlaneRepresentation()
   this->Box = vtkImageData::New();
   this->Box->SetDimensions(2,2,2);
   this->Outline = vtkOutlineFilter::New();
+  this->Outline->SetOutputPointsPrecision(
+    vtkAlgorithm::DOUBLE_PRECISION);
   this->Outline->SetInputData(this->Box);
   this->OutlineMapper = vtkPolyDataMapper::New();
   this->OutlineMapper->SetInputConnection(
@@ -93,9 +95,13 @@ vtkImplicitPlaneRepresentation::vtkImplicitPlaneRepresentation()
   this->ConstrainToWidgetBounds = 1;
 
   this->Cutter = vtkCutter::New();
+  this->Cutter->SetOutputPointsPrecision(
+    vtkAlgorithm::DOUBLE_PRECISION);
   this->Cutter->SetInputData(this->Box);
   this->Cutter->SetCutFunction(this->Plane);
   this->PlaneSource = vtkPlaneSource::New();
+  this->PlaneSource->SetOutputPointsPrecision(
+    vtkAlgorithm::DOUBLE_PRECISION);
   this->CutMapper = vtkPolyDataMapper::New();
   this->CutMapper->SetInputConnection(
     this->Cutter->GetOutputPort());
@@ -105,9 +111,13 @@ vtkImplicitPlaneRepresentation::vtkImplicitPlaneRepresentation()
   this->DrawOutline = 1;
 
   this->Edges = vtkFeatureEdges::New();
+  this->Edges->SetOutputPointsPrecision(
+    vtkAlgorithm::DOUBLE_PRECISION);
   this->Edges->SetInputConnection(
     this->Cutter->GetOutputPort());
   this->EdgesTuber = vtkTubeFilter::New();
+  this->EdgesTuber->SetOutputPointsPrecision(
+    vtkAlgorithm::DOUBLE_PRECISION);
   this->EdgesTuber->SetInputConnection(
     this->Edges->GetOutputPort());
   this->EdgesTuber->SetNumberOfSides(12);
@@ -121,6 +131,8 @@ vtkImplicitPlaneRepresentation::vtkImplicitPlaneRepresentation()
   // Create the + plane normal
   this->LineSource = vtkLineSource::New();
   this->LineSource->SetResolution(1);
+  this->LineSource->SetOutputPointsPrecision(
+    vtkAlgorithm::DOUBLE_PRECISION);
   this->LineMapper = vtkPolyDataMapper::New();
   this->LineMapper->SetInputConnection(
     this->LineSource->GetOutputPort());
@@ -128,6 +140,8 @@ vtkImplicitPlaneRepresentation::vtkImplicitPlaneRepresentation()
   this->LineActor->SetMapper(this->LineMapper);
 
   this->ConeSource = vtkConeSource::New();
+  this->ConeSource->SetOutputPointsPrecision(
+    vtkAlgorithm::DOUBLE_PRECISION);
   this->ConeSource->SetResolution(12);
   this->ConeSource->SetAngle(25.0);
   this->ConeMapper = vtkPolyDataMapper::New();
@@ -138,6 +152,8 @@ vtkImplicitPlaneRepresentation::vtkImplicitPlaneRepresentation()
 
   // Create the - plane normal
   this->LineSource2 = vtkLineSource::New();
+  this->LineSource2->SetOutputPointsPrecision(
+    vtkAlgorithm::DOUBLE_PRECISION);
   this->LineSource2->SetResolution(1);
   this->LineMapper2 = vtkPolyDataMapper::New();
   this->LineMapper2->SetInputConnection(
@@ -146,6 +162,8 @@ vtkImplicitPlaneRepresentation::vtkImplicitPlaneRepresentation()
   this->LineActor2->SetMapper(this->LineMapper2);
 
   this->ConeSource2 = vtkConeSource::New();
+  this->ConeSource2->SetOutputPointsPrecision(
+    vtkAlgorithm::DOUBLE_PRECISION);
   this->ConeSource2->SetResolution(12);
   this->ConeSource2->SetAngle(25.0);
   this->ConeMapper2 = vtkPolyDataMapper::New();
@@ -156,6 +174,8 @@ vtkImplicitPlaneRepresentation::vtkImplicitPlaneRepresentation()
 
   // Create the origin handle
   this->Sphere = vtkSphereSource::New();
+  this->Sphere->SetOutputPointsPrecision(
+    vtkAlgorithm::DOUBLE_PRECISION);
   this->Sphere->SetThetaResolution(16);
   this->Sphere->SetPhiResolution(8);
   this->SphereMapper = vtkPolyDataMapper::New();
@@ -206,6 +226,9 @@ vtkImplicitPlaneRepresentation::vtkImplicitPlaneRepresentation()
   this->BoundingBox = vtkBox::New();
 
   this->RepresentationState = vtkImplicitPlaneRepresentation::Outside;
+
+  this->TranslationAxis = Axis::NONE;
+  this->AlwaysSnapToNearestAxis = false;
 }
 
 //----------------------------------------------------------------------------
@@ -1078,10 +1101,22 @@ void vtkImplicitPlaneRepresentation::Rotate3D(double *p1, double *p2)
 void vtkImplicitPlaneRepresentation::TranslateOutline(double *p1, double *p2)
 {
   //Get the motion vector
-  double v[3];
-  v[0] = p2[0] - p1[0];
-  v[1] = p2[1] - p1[1];
-  v[2] = p2[2] - p1[2];
+  double v[3] = {0,0,0};
+
+  if (!this->IsTranslationConstrained())
+  {
+    v[0] = p2[0] - p1[0];
+    v[1] = p2[1] - p1[1];
+    v[2] = p2[2] - p1[2];
+  }
+  else
+  {
+    assert(this->TranslationAxis > -1 && this->TranslationAxis < 3 &&
+      "this->TranslationAxis out of bounds");
+    v[this->TranslationAxis] = p2[this->TranslationAxis] - p1[this->TranslationAxis];
+  }
+
+
 
   //Translate the bounding box
   double *origin = this->Box->GetOrigin();
@@ -1107,10 +1142,20 @@ void vtkImplicitPlaneRepresentation::TranslateOutline(double *p1, double *p2)
 void vtkImplicitPlaneRepresentation::TranslateOrigin(double *p1, double *p2)
 {
   //Get the motion vector
-  double v[3];
-  v[0] = p2[0] - p1[0];
-  v[1] = p2[1] - p1[1];
-  v[2] = p2[2] - p1[2];
+  double v[3] = {0,0,0};
+
+  if (!this->IsTranslationConstrained())
+  {
+    v[0] = p2[0] - p1[0];
+    v[1] = p2[1] - p1[1];
+    v[2] = p2[2] - p1[2];
+  }
+  else
+  {
+    assert(this->TranslationAxis > -1 && this->TranslationAxis < 3 &&
+      "this->TranslationAxis out of bounds");
+    v[this->TranslationAxis] = p2[this->TranslationAxis] - p1[this->TranslationAxis];
+  }
 
   //Add to the current point, project back down onto plane
   double *o = this->Plane->GetOrigin();
@@ -1455,6 +1500,16 @@ void vtkImplicitPlaneRepresentation::GetOrigin(double xyz[3])
 // Set the normal to the plane.
 void vtkImplicitPlaneRepresentation::SetNormal(double x, double y, double z)
 {
+  if (this->AlwaysSnapToNearestAxis)
+  {
+    x = std::abs(x) >= std::abs(y) && std::abs(x) >= std::abs(z) ? 1.0 : 0.0;
+    y = std::abs(y) >= std::abs(x) && std::abs(y) >= std::abs(z) ? 1.0 : 0.0;
+    z = std::abs(z) >= std::abs(y) && std::abs(z) >= std::abs(x) ? 1.0 : 0.0;
+    this->Plane->SetNormal(x, y, z);
+    this->Modified();
+    return;
+  }
+
   double n[3], n2[3];
   n[0] = x;
   n[1] = y;

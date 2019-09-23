@@ -20,9 +20,11 @@
 #include "vtkCompositeDataDisplayAttributes.h"
 #include "vtkCompositeDataIterator.h"
 #include "vtkCompositeDataSet.h"
+#include "vtkCompositeDataSetRange.h"
 #include "vtkDataArray.h"
 #include "vtkDataObjectTree.h"
 #include "vtkDataObjectTreeIterator.h"
+#include "vtkDataObjectTreeRange.h"
 #include "vtkDataSetAttributes.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
@@ -76,7 +78,7 @@ vtkGlyph3DMapper::vtkGlyph3DMapper()
 
   this->BlockAttributes = nullptr;
   this->Scaling = true;
-  this->ScaleMode = SCALE_BY_MAGNITUDE;
+  this->ScaleMode = NO_DATA_SCALING;
   this->ScaleFactor = 1.0;
   this->Range[0] = 0.0;
   this->Range[1] = 1.0;
@@ -476,7 +478,7 @@ int vtkGlyph3DMapper::FillInputPortInformation(int port,
 // ---------------------------------------------------------------------------
 // Description:
 // Return the method of scaling as a descriptive character string.
-const char *vtkGlyph3DMapper::GetScaleModeAsString(void)
+const char *vtkGlyph3DMapper::GetScaleModeAsString()
 {
   if ( this->ScaleMode == SCALE_BY_MAGNITUDE)
   {
@@ -619,23 +621,17 @@ bool vtkGlyph3DMapper::GetBoundsInternal(vtkDataSet* ds, double ds_bounds[6])
   {
     if (sourceTableTree)
     {
-      vtkDataObjectTreeIterator *sTTIter = sourceTableTree->NewTreeIterator();
-      sTTIter->SetTraverseSubTree(false);
-      sTTIter->SetVisitOnlyLeaves(false);
-      sTTIter->SetSkipEmptyNodes(false);
+      auto sTTRange = vtk::Range(sourceTableTree);
+      auto sTTIter = sTTRange.begin();
 
       // Advance to first indexed dataset:
-      sTTIter->InitTraversal();
-      int idx = 0;
-      for (; idx < indexRange[0]; ++idx)
-      {
-        sTTIter->GoToNextItem();
-      }
+      int idx = indexRange[0];
+      std::advance(sTTIter, idx);
 
       // Add the bounds from the appropriate datasets:
       while (idx <= indexRange[1])
       {
-        vtkDataObject *sourceDObj = sTTIter->GetCurrentDataObject();
+        vtkDataObject *sourceDObj = *sTTIter;
 
         // The source table tree may have composite nodes:
         vtkCompositeDataSet *sourceCDS =
@@ -692,10 +688,9 @@ bool vtkGlyph3DMapper::GetBoundsInternal(vtkDataSet* ds, double ds_bounds[6])
         }
 
         // Move to the next node in the source table tree.
-        sTTIter->GoToNextItem();
+        ++sTTIter;
         ++idx;
       }
-      sTTIter->Delete();
     }
   }
   else // non-source-table-tree table
@@ -803,11 +798,11 @@ double* vtkGlyph3DMapper::GetBounds()
   }
 
   vtkBoundingBox bbox;
-  vtkCompositeDataIterator* iter = cd->NewIterator();
-  for (iter->InitTraversal(); !iter->IsDoneWithTraversal();
-    iter->GoToNextItem())
+
+  using Opts = vtk::CompositeDataSetOptions;
+  for (vtkDataObject *dObj : vtk::Range(cd, Opts::SkipEmptyNodes))
   {
-    ds = vtkDataSet::SafeDownCast(iter->GetCurrentDataObject());
+    ds = vtkDataSet::SafeDownCast(dObj);
     if (ds)
     {
       double tmpBounds[6];
@@ -816,9 +811,8 @@ double* vtkGlyph3DMapper::GetBounds()
     }
   }
   bbox.GetBounds(this->Bounds);
-  iter->Delete();
-  return this->Bounds;
 
+  return this->Bounds;
 }
 
 //-------------------------------------------------------------------------

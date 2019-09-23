@@ -56,6 +56,8 @@ public:
   void PrintSelf(ostream& os, vtkIndent indent) override;
   //@}
 
+  using vtkHandleRepresentation::Translate;
+
   //@{
   /**
    * Specify the cursor shape with an instance of vtkPolyData. Note that
@@ -117,6 +119,14 @@ public:
    */
   void SetPointPlacer ( vtkPointPlacer * ) override;
 
+  /**
+   * Override to ensure that the internal actor's visibility is consistent with
+   * this representation's visibility. Inconsistency between the two would cause
+   * issues in picking logic which relies on individual view prop visibility to
+   * determine whether the prop is pickable.
+   */
+  void SetVisibility(vtkTypeBool visible) override;
+
 protected:
   vtkPointHandleRepresentation2D();
   ~vtkPointHandleRepresentation2D() override;
@@ -135,9 +145,8 @@ protected:
   double LastEventPosition[2];
 
   // Methods to manipulate the cursor
-  int  ConstraintAxis;
-  void Translate(double eventPos[2]);
-  void Scale(double eventPos[2]);
+  virtual void Translate(const double* eventPos) override;
+  void Scale(const double eventPos[2]);
 
   // Properties used to control the appearance of selected objects and
   // the manipulator in general.
@@ -146,7 +155,6 @@ protected:
   void           CreateDefaultProperties();
 
   // The size of the hot spot.
-  int    DetermineConstraintAxis(int constraint, double eventPos[2]);
   int    WaitingForMotion;
   int    WaitCount;
 

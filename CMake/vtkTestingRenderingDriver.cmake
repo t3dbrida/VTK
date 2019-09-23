@@ -1,9 +1,14 @@
 SET(CMAKE_TESTDRIVER_BEFORE_TESTMAIN
 "
+    vtksys::SystemInformation::SetStackTraceOnError(1);
+#ifndef NDEBUG
+    vtkFloatingPointExceptions::Enable();
+#endif
+
     // Set defaults
     vtkTestingInteractor::ValidBaseline = \"Use_-V_for_Baseline\";
     vtkTestingInteractor::TempDirectory =
-      std::string(\"${VTK_TEST_OUTPUT_DIR}\");
+      std::string(\"${_vtk_build_TEST_OUTPUT_DIRECTORY}\");
     vtkTestingInteractor::DataDirectory = std::string(\"Use_-D_for_Data\");
 
     int interactive = 0;
@@ -35,7 +40,19 @@ SET(CMAKE_TESTDRIVER_BEFORE_TESTMAIN
             static_cast<double>(atof(av[++ii]));
         continue;
         }
+      if (ii < ac-1 && strcmp(av[ii], \"-v\") == 0)
+        {
+        vtkLogger::SetStderrVerbosity(static_cast<vtkLogger::Verbosity>(atoi(av[++ii])));
+        continue;
+        }
       }
+
+    // init logging
+    vtkLogger::Init(ac, av, nullptr);
+
+    // turn on windows stack traces if applicable
+    vtkWindowsTestUtilitiesSetupForTesting();
+
     vtkSmartPointer<vtkTestingObjectFactory> factory = vtkSmartPointer<vtkTestingObjectFactory>::New();
     if (!interactive)
       {

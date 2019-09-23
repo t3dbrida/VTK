@@ -1,27 +1,3 @@
-# Tests with data
-ExternalData_Expand_Arguments(VTKData _
-  "DATA{${VTK_TEST_INPUT_DIR}/OpenFOAM/cavity/,REGEX:.*}"
-  "DATA{${VTK_TEST_INPUT_DIR}/OpenFOAM/cavity/0/,REGEX:.*}"
-  "DATA{${VTK_TEST_INPUT_DIR}/OpenFOAM/cavity/0.5/,REGEX:.*}"
-  "DATA{${VTK_TEST_INPUT_DIR}/OpenFOAM/cavity/0.5/uniform/,REGEX:.*}"
-  "DATA{${VTK_TEST_INPUT_DIR}/OpenFOAM/cavity/1/,REGEX:.*}"
-  "DATA{${VTK_TEST_INPUT_DIR}/OpenFOAM/cavity/1/uniform/,REGEX:.*}"
-  "DATA{${VTK_TEST_INPUT_DIR}/OpenFOAM/cavity/1.5/,REGEX:.*}"
-  "DATA{${VTK_TEST_INPUT_DIR}/OpenFOAM/cavity/1.5/uniform/,REGEX:.*}"
-  "DATA{${VTK_TEST_INPUT_DIR}/OpenFOAM/cavity/2/,REGEX:.*}"
-  "DATA{${VTK_TEST_INPUT_DIR}/OpenFOAM/cavity/2/uniform/,REGEX:.*}"
-  "DATA{${VTK_TEST_INPUT_DIR}/OpenFOAM/cavity/2.5/,REGEX:.*}"
-  "DATA{${VTK_TEST_INPUT_DIR}/OpenFOAM/cavity/2.5/uniform/,REGEX:.*}"
-  "DATA{${VTK_TEST_INPUT_DIR}/OpenFOAM/cavity/constant/,REGEX:.*}"
-  "DATA{${VTK_TEST_INPUT_DIR}/OpenFOAM/cavity/constant/polyMesh/,REGEX:.*}"
-  "DATA{${VTK_TEST_INPUT_DIR}/OpenFOAM/cavity/system/,REGEX:.*}"
-  "DATA{${VTK_TEST_INPUT_DIR}/OpenFOAM/64BitFloats/,REGEX:.*}"
-  "DATA{${VTK_TEST_INPUT_DIR}/OpenFOAM/64BitFloats/0/,REGEX:.*}"
-  "DATA{${VTK_TEST_INPUT_DIR}/OpenFOAM/64BitFloats/constant/,REGEX:.*}"
-  "DATA{${VTK_TEST_INPUT_DIR}/OpenFOAM/64BitFloats/constant/polyMesh/,REGEX:.*}"
-  "DATA{${VTK_TEST_INPUT_DIR}/OpenFOAM/64BitFloats/system/,REGEX:.*}"
-  "DATA{${VTK_TEST_INPUT_DIR}/TecPlot/,REGEX:.*}"
-  )
 vtk_add_test_cxx(vtkIOGeometryCxxTests tests
   TestDataObjectIO.cxx,NO_VALID
   TestIncrementalOctreePointLocator.cxx,NO_VALID
@@ -38,6 +14,7 @@ vtk_add_test_cxx(vtkIOGeometryCxxTests tests
   TestOBJReaderSingleTexture.cxx,NO_VALID
   TestOpenFOAMReader.cxx
   TestOpenFOAMReader64BitFloats.cxx
+  TestOpenFOAMReaderRegEx.cxx,NO_VALID
   TestProStarReader.cxx
   TestTecplotReader.cxx
   TestTecplotReader2.cxx,NO_VALID
@@ -48,42 +25,104 @@ vtk_add_test_cxx(vtkIOGeometryCxxTests tests
   )
 
 vtk_add_test_cxx(vtkIOGeometryCxxTests tests
-  TestSTLReaderSinglePatch,TestSTLReader.cxx DATA{${VTK_TEST_INPUT_DIR}/42400-IDGH.stl}
+  TestSTLReaderSinglePatch,TestSTLReader.cxx DATA{${_vtk_build_TEST_INPUT_DATA_DIRECTORY}/Data/42400-IDGH.stl}
 )
 
 vtk_add_test_cxx(vtkIOGeometryCxxTests tests
-  TestSTLReaderMultiplePatches,TestSTLReader.cxx DATA{${VTK_TEST_INPUT_DIR}/multiple_patches.stl}
+  TestSTLReaderMultiplePatches,TestSTLReader.cxx DATA{${_vtk_build_TEST_INPUT_DATA_DIRECTORY}/Data/multiple_patches.stl}
 )
 
 vtk_add_test_cxx(vtkIOGeometryCxxTests tests
-  TestPTSReader,TestPTSReader.cxx DATA{${VTK_TEST_INPUT_DIR}/samplePTS.pts}
+  TestPTSReader,TestPTSReader.cxx DATA{${_vtk_build_TEST_INPUT_DATA_DIRECTORY}/Data/samplePTS.pts}
 )
 
 vtk_add_test_cxx(vtkIOGeometryCxxTests tests
-  TestAVSucdReaderContiguousASCII,TestAVSucdReader.cxx DATA{${VTK_TEST_INPUT_DIR}/cellsnd.ascii.inp}
+  TestAVSucdReaderContiguousASCII,TestAVSucdReader.cxx DATA{${_vtk_build_TEST_INPUT_DATA_DIRECTORY}/Data/cellsnd.ascii.inp}
 )
 vtk_add_test_cxx(vtkIOGeometryCxxTests tests
-  TestAVSucdReaderNonContiguousASCII,TestAVSucdReader.cxx DATA{${VTK_TEST_INPUT_DIR}/cellsnd.noncontiguous.ascii.inp}
+  TestAVSucdReaderNonContiguousASCII,TestAVSucdReader.cxx DATA{${_vtk_build_TEST_INPUT_DATA_DIRECTORY}/Data/cellsnd.noncontiguous.ascii.inp}
 )
 vtk_add_test_cxx(vtkIOGeometryCxxTests tests
-  TestAVSucdReaderBinary,TestAVSucdReader.cxx DATA{${VTK_TEST_INPUT_DIR}/cellsnd.bin.inp}
+  TestAVSucdReaderBinary,TestAVSucdReader.cxx DATA{${_vtk_build_TEST_INPUT_DATA_DIRECTORY}/Data/cellsnd.bin.inp}
 )
 
-set(_known_little_endian FALSE)
-if (DEFINED VTK_WORDS_BIGENDIAN)
-  if (NOT VTK_WORDS_BIGENDIAN)
-    set(_known_little_endian TRUE)
-  endif()
-endif()
-if(VTK_USE_LARGE_DATA AND _known_little_endian)
-  # Tell ExternalData to fetch test input at build time.
-  ExternalData_Expand_Arguments(VTKData _
-    "DATA{${VTK_TEST_INPUT_DIR}/WindBladeReader/,REGEX:.*}"
-    "DATA{${VTK_TEST_INPUT_DIR}/WindBladeReader/field/,REGEX:.*}"
-    "DATA{${VTK_TEST_INPUT_DIR}/WindBladeReader/turbine/,REGEX:.*}"
-    "DATA{${VTK_TEST_INPUT_DIR}/MFIXReader/,REGEX:.*}"
-    )
+vtk_add_test_cxx(vtkIOGeometryCxxTests tests
+  TestGLTFReaderGeometry,TestGLTFReaderGeometry.cxx DATA{../Data/glTF/Triangle/Triangle.gltf,simpleTriangle.bin}
+)
 
+vtk_add_test_cxx(vtkIOGeometryCxxTests tests
+  TestGLTFReaderEmbeddedGeometry,TestGLTFReaderGeometry.cxx DATA{../Data/glTF/Triangle/EmbeddedTriangle.gltf}
+)
+
+vtk_add_test_cxx(vtkIOGeometryCxxTests tests
+  TestGLTFReaderGLBGeometry,TestGLTFReaderGeometry.cxx DATA{../Data/glTF/Triangle/Triangle.glb}
+)
+
+vtk_add_test_cxx(vtkIOGeometryCxxTests tests
+  TestGLTFReaderAnimation,TestGLTFReaderAnimation.cxx 200 DATA{../Data/glTF/BoxAnimated/BoxAnimated.gltf,BoxAnimated0.bin}
+)
+
+vtk_add_test_cxx(vtkIOGeometryCxxTests tests
+  TestGLTFReaderMorphing,TestGLTFReaderAnimation.cxx 200 DATA{../Data/glTF/AnimatedMorphCube/AnimatedMorphCube.gltf,AnimatedMorphCube.bin}
+)
+
+vtk_add_test_cxx(vtkIOGeometryCxxTests tests
+  TestGLTFReaderSkinning,TestGLTFReaderAnimation.cxx 200 DATA{../Data/glTF/SimpleSkin/SimpleSkin.gltf}
+)
+
+vtk_add_test_cxx(vtkIOGeometryCxxTests tests
+  TestGLTFReaderMultipleAnimations,TestGLTFReaderAnimation.cxx 75 DATA{../Data/glTF/InterpolationTest/InterpolationTest.gltf,interpolation.bin,InterpolationTest_data.bin}
+)
+
+vtk_add_test_cxx(vtkIOGeometryCxxTests tests
+  TestGLTFReaderGeneratePointIndices,TestGLTFReaderGeometry.cxx DATA{../Data/glTF/PrimitiveModes/Mesh_PrimitiveMode_POINTS.gltf,Mesh_PrimitiveMode_00.bin}
+)
+
+vtk_add_test_cxx(vtkIOGeometryCxxTests tests
+  TestGLTFReaderReadPointIndices,TestGLTFReaderGeometry.cxx DATA{../Data/glTF/PrimitiveModes/Mesh_PrimitiveMode_POINTS_2.gltf,Mesh_PrimitiveMode_07.bin}
+)
+
+vtk_add_test_cxx(vtkIOGeometryCxxTests tests
+  TestGLTFReaderGenerateLineIndices,TestGLTFReaderGeometry.cxx DATA{../Data/glTF/PrimitiveModes/Mesh_PrimitiveMode_LINES.gltf,Mesh_PrimitiveMode_01.bin}
+)
+
+vtk_add_test_cxx(vtkIOGeometryCxxTests tests
+  TestGLTFReaderReadLineIndices,TestGLTFReaderGeometry.cxx DATA{../Data/glTF/PrimitiveModes/Mesh_PrimitiveMode_LINES_2.gltf,Mesh_PrimitiveMode_08.bin}
+)
+
+vtk_add_test_cxx(vtkIOGeometryCxxTests tests
+  TestGLTFReaderGenerateLineLoopIndices,TestGLTFReaderGeometry.cxx DATA{../Data/glTF/PrimitiveModes/Mesh_PrimitiveMode_LINE_LOOP.gltf,Mesh_PrimitiveMode_02.bin}
+)
+
+vtk_add_test_cxx(vtkIOGeometryCxxTests tests
+  TestGLTFReaderReadLineLoopIndices,TestGLTFReaderGeometry.cxx DATA{../Data/glTF/PrimitiveModes/Mesh_PrimitiveMode_LINE_LOOP_2.gltf,Mesh_PrimitiveMode_09.bin}
+)
+
+vtk_add_test_cxx(vtkIOGeometryCxxTests tests
+  TestGLTFReaderGenerateLineStripIndices,TestGLTFReaderGeometry.cxx DATA{../Data/glTF/PrimitiveModes/Mesh_PrimitiveMode_LINE_STRIP.gltf,Mesh_PrimitiveMode_03.bin}
+)
+
+vtk_add_test_cxx(vtkIOGeometryCxxTests tests
+  TestGLTFReaderReadLineStripIndices,TestGLTFReaderGeometry.cxx DATA{../Data/glTF/PrimitiveModes/Mesh_PrimitiveMode_LINE_STRIP_2.gltf,Mesh_PrimitiveMode_10.bin}
+)
+
+vtk_add_test_cxx(vtkIOGeometryCxxTests tests
+  TestGLTFReaderGenerateTriangleFanIndices,TestGLTFReaderGeometry.cxx DATA{../Data/glTF/PrimitiveModes/Mesh_PrimitiveMode_TRIANGLE_FAN.gltf,Mesh_PrimitiveMode_05.bin}
+)
+
+vtk_add_test_cxx(vtkIOGeometryCxxTests tests
+  TestGLTFReaderReadTriangleFanIndices,TestGLTFReaderGeometry.cxx DATA{../Data/glTF/PrimitiveModes/Mesh_PrimitiveMode_TRIANGLE_FAN_2.gltf,Mesh_PrimitiveMode_12.bin}
+)
+
+vtk_add_test_cxx(vtkIOGeometryCxxTests tests
+  TestGLTFReaderGenerateTriangleStripIndices,TestGLTFReaderGeometry.cxx DATA{../Data/glTF/PrimitiveModes/Mesh_PrimitiveMode_TRIANGLE_STRIP.gltf,Mesh_PrimitiveMode_04.bin}
+)
+
+vtk_add_test_cxx(vtkIOGeometryCxxTests tests
+  TestGLTFReaderReadTriangleStripIndices,TestGLTFReaderGeometry.cxx DATA{../Data/glTF/PrimitiveModes/Mesh_PrimitiveMode_TRIANGLE_STRIP_2.gltf,Mesh_PrimitiveMode_11.bin}
+)
+
+if(enable_large_data_tests)
   vtk_add_test_cxx(vtkIOGeometryCxxTests large_data_tests
     TestWindBladeReader.cxx
     TestMFIXReader.cxx,NO_VALID

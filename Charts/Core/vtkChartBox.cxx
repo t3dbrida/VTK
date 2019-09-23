@@ -462,10 +462,17 @@ void vtkChartBox::CalculatePlotTransform()
   // system, where the range is from 0.0 to 1.0 in the y axis, and in screen
   // coordinates along the x axis.
   vtkAxis* axis = this->Storage->YAxis;
-  float *min = axis->GetPoint1();
-  float *max = axis->GetPoint2();
-  float yScale = 1.0f / (max[1] - min[1]);
-
+  float yMin = axis->GetPoint1()[1];
+  float yMax = axis->GetPoint2()[1];
+  float yScale;
+  if (yMin != yMax)
+  {
+    yScale = 1.0f / (yMax - yMin);
+  }
+  else
+  {
+    yScale = 1.0f;
+  }
   this->Storage->Transform->Identity();
   this->Storage->Transform->Translate(0, axis->GetPoint1()[1]);
   // Get the scale for the plot area from the x and y axes
@@ -604,21 +611,11 @@ int vtkChartBox::LocatePointInPlot(const vtkVector2f &position,
                                    const vtkVector2f &tolerance,
                                    vtkVector2f &plotPos,
                                    vtkPlot *plot,
-                                   vtkIdType &)
+                                   vtkIdType & segmentId)
 {
   if (plot && plot->GetVisible())
   {
-    vtkPlotBox* plotBar = vtkPlotBox::SafeDownCast(plot);
-    if (plotBar)
-    {
-      // If the plot is a vtkPlotBar, get the segment index too
-      return plotBar->GetNearestPoint(position, tolerance,
-                                      &plotPos);
-    }
-    else
-    {
-      return plot->GetNearestPoint(position, tolerance, &plotPos);
-    }
+    return plot->GetNearestPoint(position, tolerance, &plotPos, &segmentId);
   }
   return -1;
 }

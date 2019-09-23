@@ -58,8 +58,8 @@
 
 #include <vtksys/SystemTools.hxx>
 
-#include <sstream>
 #include <cctype>
+#include <sstream>
 
 // I need a safe way to read a line of arbitrary length.  It exists on
 // some platforms but not others so I'm afraid I have to write it
@@ -447,6 +447,10 @@ size_t vtkDataReader::Peek(char *str, size_t n)
 // Open a vtk data file. Returns zero if error.
 int vtkDataReader::OpenVTKFile(const char* fname)
 {
+  // Save current locale settings and set standard one to
+  // avoid locale issues - for instance with the decimal separator.
+  this->CurrentLocale = std::locale::global(std::locale::classic());
+
   if(!fname && this->GetNumberOfFileNames() >0)
   {
     fname = this->GetFileName(0);
@@ -1685,13 +1689,20 @@ vtkAbstractArray *vtkDataReader::ReadArray(const char *dataType, vtkIdType numTu
 
   else if ( ! strncmp(type, "long", 4) )
   {
+    // vtkDataWriter does not write "long" data anymore
+    // as data size is not certain
+    // we keep this for retro compatibility
     array = vtkLongArray::New();
     array->SetNumberOfComponents(numComp);
     long *ptr = ((vtkLongArray *)array)->WritePointer(0,numTuples*numComp);
     if ( this->FileType == VTK_BINARY )
     {
       vtkReadBinaryData(this->IS, ptr, numTuples, numComp);
-      vtkByteSwap::Swap4BERange((int *)ptr,numTuples*numComp);
+#if VTK_SIZEOF_LONG == 4
+      vtkByteSwap::Swap4BERange(ptr, numTuples * numComp);
+#else // VTK_SIZEOF_LONG == 8
+      vtkByteSwap::Swap8BERange(ptr, numTuples * numComp);
+#endif
     }
 
     else
@@ -1708,7 +1719,11 @@ vtkAbstractArray *vtkDataReader::ReadArray(const char *dataType, vtkIdType numTu
     if ( this->FileType == VTK_BINARY )
     {
       vtkReadBinaryData(this->IS, ptr, numTuples, numComp);
-      vtkByteSwap::Swap4BERange((int *)ptr,numTuples*numComp);
+#if VTK_SIZEOF_LONG == 4
+      vtkByteSwap::Swap4BERange(ptr, numTuples * numComp);
+#else // VTK_SIZEOF_LONG == 8
+      vtkByteSwap::Swap8BERange(ptr, numTuples * numComp);
+#endif
     }
     else
     {
@@ -3406,6 +3421,10 @@ char *vtkDataReader::LowerCase(char *str, const size_t len)
 void vtkDataReader::CloseVTKFile()
 {
   vtkDebugMacro(<<"Closing vtk file");
+
+  // Restore the previous locale settings
+  std::locale::global(this->CurrentLocale);
+
   delete this->IS;
   this->IS = nullptr;
 }
@@ -3651,7 +3670,7 @@ const char *vtkDataReader::GetFieldDataNameInFile(int i)
   }
 }
 
-int vtkDataReader::ProcessRequest(vtkInformation* request,
+vtkTypeBool vtkDataReader::ProcessRequest(vtkInformation* request,
                                   vtkInformationVector** inputVector,
                                   vtkInformationVector* outputVector)
 {

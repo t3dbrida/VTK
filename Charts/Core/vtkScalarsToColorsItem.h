@@ -31,10 +31,12 @@
 #define vtkScalarsToColorsItem_h
 
 #include "vtkChartsCoreModule.h" // For export macro
+#include "vtkNew.h" // For vtkNew
 #include "vtkPlot.h"
 
 class vtkCallbackCommand;
 class vtkImageData;
+class vtkPlotBar;
 class vtkPoints2D;
 
 class VTKCHARTSCORE_EXPORT vtkScalarsToColorsItem: public vtkPlot
@@ -77,6 +79,14 @@ public:
 
   //@{
   /**
+   * Set/Get the vtkTable displayed as an histogram using a vtkPlotBar
+   */
+  void SetHistogramTable(vtkTable* histogramTable);
+  vtkGetObjectMacro(HistogramTable, vtkTable);
+  //@}
+
+  //@{
+  /**
    * Don't fill in the part above the transfer function.
    * If true texture is not visible above the shape provided by subclasses,
    * otherwise the whole rectangle defined by the bounds is filled with the
@@ -86,6 +96,29 @@ public:
   vtkSetMacro(MaskAboveCurve, bool);
   vtkGetMacro(MaskAboveCurve, bool);
   //@}
+
+  /**
+   * Function to query a plot for the nearest point to the specified coordinate.
+   * Returns the index of the data series with which the point is associated or
+   * -1.
+   * If a vtkIdType* is passed, its referent will be set to index of the bar
+   * segment with which a point is associated, or -1.
+   */
+  virtual vtkIdType GetNearestPoint(const vtkVector2f& point,
+                                    const vtkVector2f&,
+                                    vtkVector2f* location,
+                                    vtkIdType* segmentIndex) override;
+#ifndef VTK_LEGACY_REMOVE
+  using vtkPlot::GetNearestPoint;
+#endif // VTK_LEGACY_REMOVE
+
+  /**
+   * Generate and return the tooltip label string for this plot
+   * The segmentIndex is implemented here.
+   */
+  vtkStdString GetTooltipLabel(const vtkVector2d &plotPos,
+                                       vtkIdType seriesIndex,
+                                       vtkIdType segmentIndex) override;
 
 protected:
   vtkScalarsToColorsItem();
@@ -112,6 +145,13 @@ protected:
   void TransformScreenToData(const double screenX, const double screenY,
                              double &dataX, double &dataY);
 
+  /**
+   * Method to configure the plotbar histogram before painting it
+   * can be reimplemented by subclasses.
+   * Return true if the histogram should be painted, false otherwise.
+   */
+  virtual bool ConfigurePlotBar();
+
   //@{
   /**
    * Called whenever the ScalarsToColors function(s) is modified. It internally
@@ -121,16 +161,19 @@ protected:
   static void OnScalarsToColorsModified(vtkObject* caller, unsigned long eid, void *clientdata, void* calldata);
   //@}
 
-  double              UserBounds[4];
+  double UserBounds[4];
 
-  int                 TextureWidth;
-  vtkImageData*       Texture;
-  bool                Interpolate;
-  vtkPoints2D*        Shape;
-  vtkCallbackCommand* Callback;
+  bool Interpolate = true;
+  int TextureWidth;
+  vtkImageData* Texture = nullptr;
+  vtkTable* HistogramTable = nullptr;
 
-  vtkPen*             PolyLinePen;
-  bool                MaskAboveCurve;
+  vtkNew<vtkPoints2D> Shape;
+  vtkNew<vtkCallbackCommand> Callback;
+  vtkNew<vtkPlotBar> PlotBar;
+  vtkNew<vtkPen> PolyLinePen;
+  bool MaskAboveCurve;
+
 private:
   vtkScalarsToColorsItem(const vtkScalarsToColorsItem &) = delete;
   void operator=(const vtkScalarsToColorsItem &) = delete;

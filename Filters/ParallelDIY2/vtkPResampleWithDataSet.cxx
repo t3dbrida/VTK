@@ -23,13 +23,11 @@
 #include "vtkDataArrayAccessor.h"
 #include "vtkDataObject.h"
 #include "vtkDataSet.h"
-#include "vtkImageData.h"
+#include "vtkDIYUtilities.h"
 #include "vtkIdTypeArray.h"
+#include "vtkImageData.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
-#include "vtkMPI.h"
-#include "vtkMPIController.h"
-#include "vtkMPICommunicator.h"
 #include "vtkMultiProcessController.h"
 #include "vtkObjectFactory.h"
 #include "vtkPointData.h"
@@ -38,12 +36,10 @@
 #include "vtkUnstructuredGrid.h"
 
 #include "vtk_diy2.h"   // must include this before any diy header
-VTKDIY2_PRE_INCLUDE
-#include VTK_DIY2_HEADER(diy/assigner.hpp)
-#include VTK_DIY2_HEADER(diy/link.hpp)
-#include VTK_DIY2_HEADER(diy/master.hpp)
-#include VTK_DIY2_HEADER(diy/mpi.hpp)
-VTKDIY2_POST_INCLUDE
+#include VTK_DIY2(diy/assigner.hpp)
+#include VTK_DIY2(diy/link.hpp)
+#include VTK_DIY2(diy/master.hpp)
+#include VTK_DIY2(diy/mpi.hpp)
 
 #include <algorithm>
 #include <cmath>
@@ -107,8 +103,7 @@ int vtkPResampleWithDataSet::RequestUpdateExtent(vtkInformation *request,
                                                  vtkInformationVector **inputVector,
                                                  vtkInformationVector *outputVector)
 {
-  vtkMPIController *mpiCont = vtkMPIController::SafeDownCast(this->Controller);
-  if (!mpiCont || mpiCont->GetNumberOfProcesses() == 1)
+  if (!this->Controller || this->Controller->GetNumberOfProcesses() == 1)
   {
     return this->Superclass::RequestUpdateExtent(request, inputVector, outputVector);
   }
@@ -238,7 +233,7 @@ public:
 
         Node n;
         n.BinId = bin[0] + this->NumBins[0]*bin[1] + this->NumBins[0]*this->NumBins[1]*bin[2];
-        n.Pt.BlockId = i;
+        n.Pt.BlockId = static_cast<int>(i);
         n.Pt.PointId = j;
         std::copy(pos, pos + 3, n.Pt.Position);
         this->Nodes.push_back(n);
@@ -381,7 +376,7 @@ public:
 
         Point pt;
         pt.PointId = j;
-        pt.BlockId = i;
+        pt.BlockId = static_cast<int>(i);
         std::copy(pos, pos + 3, pt.Position);
         this->Nodes.push_back(pt);
 
@@ -413,8 +408,8 @@ public:
       tag |= (this->Bounds[2*i + 1] <= bounds[2*i + 1]) ? (1<<(2*i + 1)) : 0;
     }
 
-    vtkIdType numPoints = this->Nodes.size();
-    vtkIdType splitSize = this->Splits.size();
+    vtkIdType numPoints = static_cast<vtkIdType>(this->Nodes.size());
+    vtkIdType splitSize = static_cast<vtkIdType>(this->Splits.size());
     this->RecursiveSearch(bounds, &this->Nodes[0], &this->Nodes[numPoints],
                           &this->Splits[0], &this->Splits[splitSize], 0, tag,
                           points);
@@ -615,7 +610,7 @@ void FindNeighbors(diy::mpi::communicator comm,
         if (ds)
         {
           const double *ibounds = ds->GetBounds();
-          if ((intersects = vtkBoundingBox(sbounds).Intersects(ibounds)) == true)
+          if ((intersects = (vtkBoundingBox(sbounds).Intersects(ibounds) == 1)) == true)
           {
             break;
           }
@@ -1003,7 +998,7 @@ private:
 void ReceiveResampledPoints(DiyBlock *block, const diy::Master::ProxyWithLink &cp,
                             const char *maskArrayName)
 {
-  int numBlocks = block->InputBlocks.size();
+  int numBlocks = static_cast<int>(block->InputBlocks.size());
   std::vector<std::map<std::string, int> > arrayReceiveCounts(numBlocks);
 
   diy::Master::IncomingQueues &in = *cp.incoming();
@@ -1083,15 +1078,6 @@ void ReceiveResampledPoints(DiyBlock *block, const diy::Master::ProxyWithLink &c
   }
 }
 
-
-//----------------------------------------------------------------------------
-inline diy::mpi::communicator GetDiyCommunicator(vtkMPIController *controller)
-{
-  vtkMPICommunicator *vtkcomm = vtkMPICommunicator::SafeDownCast(
-    controller->GetCommunicator());
-  return diy::mpi::communicator(*vtkcomm->GetMPIComm()->GetHandle());
-}
-
 } // anonymous namespace
 
 
@@ -1100,8 +1086,7 @@ int vtkPResampleWithDataSet::RequestData(vtkInformation *request,
                                      vtkInformationVector **inputVector,
                                      vtkInformationVector *outputVector)
 {
-  vtkMPIController *mpiCont = vtkMPIController::SafeDownCast(this->Controller);
-  if (!mpiCont || mpiCont->GetNumberOfProcesses() == 1)
+  if (!this->Controller || this->Controller->GetNumberOfProcesses() == 1)
   {
     return this->Superclass::RequestData(request, inputVector, outputVector);
   }
@@ -1110,8 +1095,7 @@ int vtkPResampleWithDataSet::RequestData(vtkInformation *request,
   vtkInformation *sourceInfo = inputVector[1]->GetInformationObject(0);
   vtkInformation *outInfo = outputVector->GetInformationObject(0);
 
-
-  diy::mpi::communicator comm = GetDiyCommunicator(mpiCont);
+  diy::mpi::communicator comm = vtkDIYUtilities::GetCommunicator(this->Controller);
 
   DiyBlock block;  // one diy-block per rank
   int mygid = comm.rank();

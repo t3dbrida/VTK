@@ -8,7 +8,9 @@
 int main()
 {
   /* Test whether getsockname takes socklen_t.  */
-  if(getsockname(0, 0, (socklen_t*)0)) return 0;
+  struct sockaddr addr;
+  socklen_t length = 0;
+  if(getsockname(0, &addr, &length)) return 0;
   if(sizeof (socklen_t)) return 0;
   return 0;
 }

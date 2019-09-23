@@ -162,7 +162,7 @@ public:
     return this->XMLParser;
   }
 
-  int ProcessRequest(vtkInformation *request,
+  vtkTypeBool ProcessRequest(vtkInformation *request,
                              vtkInformationVector **inputVector,
                              vtkInformationVector *outputVector) override;
 
@@ -216,6 +216,13 @@ protected:
   // Read the top-level element from the file.  This is always the
   // VTKFile element.
   virtual int ReadVTKFile(vtkXMLDataElement* eVTKFile);
+
+  /**
+   * If the IdType argument is present in the provided XMLDataElement
+   * and the provided dataType has the same size with VTK_ID_TYPE on this build of VTK,
+   * returns VTK_ID_TYPE. Returns dataType in any other cases.
+   */
+  int GetLocalDataType(vtkXMLDataElement* da, int datatype);
 
   // Create a vtkAbstractArray from its cooresponding XML representation.
   // Does not allocate.
@@ -282,7 +289,7 @@ protected:
                               vtkDataArraySelection* sel);
 
   int SetFieldDataInfo(vtkXMLDataElement *eDSA, int association,
-  int numTuples, vtkInformationVector *(&infoVector));
+  vtkIdType numTuples, vtkInformationVector *(&infoVector));
 
   // Check whether the given array element is an enabled array.
   int PointDataArrayIsEnabled(vtkXMLDataElement* ePDA);

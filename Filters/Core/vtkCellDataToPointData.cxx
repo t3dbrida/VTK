@@ -82,7 +82,7 @@ namespace
           // divide point data by the number of cells using it <==>
           // point_data /= denum
           std::transform(dstbeg, dstbeg+ncomps, dstbeg,
-                         std::bind2nd(std::divides<T>(), denom));
+                         std::bind(std::divides<T>(), std::placeholders::_1, denom));
         }
       }
     }
@@ -335,6 +335,7 @@ int vtkCellDataToPointData::RequestData(
     output->GetCellData()->CopyFieldOn(vtkDataSetAttributes::GhostArrayName());
   }
   output->GetCellData()->PassData(input->GetCellData());
+  output->GetFieldData()->PassData(input->GetFieldData());
 
   return 1;
 }
@@ -457,42 +458,36 @@ int vtkCellDataToPointData::RequestDataForUnstructuredData
   cfl.InitializeFieldList(processedCellData);
   opd->InterpolateAllocate(cfl, npoints, npoints);
 
-  for (int fid = 0, nfields = cfl.GetNumberOfFields(); fid < nfields; ++fid)
-  {
+  const auto nfields = processedCellData->GetNumberOfArrays();
+  int fid = 0;
+  auto f = [this, &fid, nfields, npoints, src, num, ncells, highestCellDimension](
+             vtkAbstractArray* aa_srcarray, vtkAbstractArray* aa_dstarray) {
     // update progress and check for an abort request.
-    this->UpdateProgress((fid+1.)/nfields);
+    this->UpdateProgress((fid + 1.0) / nfields);
+    ++fid;
+
     if (this->GetAbortExecute())
     {
-      break;
+      return;
     }
 
-    // indices into the field arrays associated with the cell and the point
-    // respectively
-    int const dstid = cfl.GetFieldIndex(fid);
-    int const srcid = cfl.GetDSAIndex(0,fid);
-    if  (srcid < 0 || dstid < 0)
+    vtkDataArray* const srcarray = vtkDataArray::FastDownCast(aa_srcarray);
+    vtkDataArray* const dstarray = vtkDataArray::FastDownCast(aa_dstarray);
+    if (srcarray && dstarray)
     {
-      continue;
+      dstarray->SetNumberOfTuples(npoints);
+      vtkIdType const ncomps = srcarray->GetNumberOfComponents();
+      switch (srcarray->GetDataType())
+      {
+        vtkTemplateMacro(__spread<VTK_TT>(src, num, srcarray, dstarray, ncells, npoints, ncomps,
+          highestCellDimension, this->ContributingCellOption));
+      }
     }
+  };
 
-    vtkCellData * const srccelldata  = processedCellData;
-    vtkPointData* const dstpointdata = dst->GetPointData();
-
-    if (!srccelldata || !dstpointdata)
-    {
-      continue;
-    }
-
-    vtkDataArray* const srcarray = srccelldata ->GetArray(srcid);
-    vtkDataArray* const dstarray = dstpointdata->GetArray(dstid);
-    dstarray->SetNumberOfTuples(npoints);
-
-    vtkIdType const ncomps = srcarray->GetNumberOfComponents();
-    switch (srcarray->GetDataType())
-    {
-      vtkTemplateMacro
-        (__spread<VTK_TT>(src,num,srcarray,dstarray,ncells,npoints,ncomps, highestCellDimension, this->ContributingCellOption));
-    }
+  if (processedCellData != nullptr && dst->GetPointData() != nullptr)
+  {
+    cfl.TransformData(0, processedCellData, dst->GetPointData(), f);
   }
 
   if (!this->PassCellData)

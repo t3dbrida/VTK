@@ -13,6 +13,10 @@
 
 =========================================================================*/
 
+//
+// Note if you fix this test to fill in all the empty tests
+// then remove the cppcheck suppression in VTKcppcheckSuppressions.txt
+//
 #include "vtkMath.h"
 #include "vtkMathUtilities.h"
 #include "vtkSmartPointer.h"
@@ -2753,7 +2757,7 @@ int TestSolveLeastSquares()
 int TestSolveHomogeneousLeastSquares()
 {
   int status = 0;
-  std::cout << "SolveHomogenousLeastSquares..";
+  std::cout << "SolveHomogeneousLeastSquares..";
 
   double **m = new double *[2];
   double **x = new double *[3];

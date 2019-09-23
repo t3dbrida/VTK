@@ -37,6 +37,7 @@
 
 #include "vtkCommonCoreModule.h" // For export macro
 #include "vtkAbstractArray.h"
+#include "vtkVTK_USE_SCALED_SOA_ARRAYS.h" // For #define of VTK_USE_SCALED_SOA_ARRAYS
 
 class vtkDoubleArray;
 class vtkIdList;
@@ -584,8 +585,10 @@ protected:
    */
   virtual bool ComputeScalarRange(double* ranges);
 
-  // Returns true if the range was computed. Will return false
-  // if you try to compute the range of an array of length zero.
+  /**
+   * Returns true if the range was computed. Will return false
+   * if you try to compute the range of an array of length zero.
+   */
   virtual bool ComputeVectorRange(double range[2]);
 
   /**
@@ -596,8 +599,10 @@ protected:
    */
   virtual bool ComputeFiniteScalarRange(double* ranges);
 
-  // Returns true if the range was computed. Will return false
-  // if you try to compute the range of an array of length zero.
+  /**
+   * Returns true if the range was computed. Will return false
+   * if you try to compute the range of an array of length zero.
+   */
   virtual bool ComputeFiniteVectorRange(double range[2]);
 
   // Construct object with default tuple dimension (number of components) of 1.
@@ -637,5 +642,13 @@ inline vtkDataArray* vtkDataArray::FastDownCast(vtkAbstractArray *source)
 }
 
 vtkArrayDownCast_FastCastMacro(vtkDataArray)
+
+// These are used by vtkDataArrayPrivate.txx, but need to be available to
+// vtkGenericDataArray.h as well.
+namespace vtkDataArrayPrivate
+{
+  struct AllValues {};
+  struct FiniteValues {};
+}
 
 #endif

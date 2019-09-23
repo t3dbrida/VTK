@@ -1,21 +1,24 @@
 vtk_add_test_cxx(vtkRenderingOpenGL2CxxTests tests
-  TestAppleBug.cxx
   TestBlurAndSobelPasses.cxx
   TestCoincident.cxx
+  TestCompositePolyDataMapper2CustomShader.cxx,NO_DATA
   TestCompositePolyDataMapper2NaNPartial.cxx,NO_DATA
   TestCompositePolyDataMapper2Pickability.cxx,NO_DATA
   TestCompositePolyDataMapper2SharedArray.cxx,NO_DATA
   TestCompositePolyDataMapper2Spheres.cxx,NO_DATA
   TestCompositePolyDataMapper2Vertices.cxx,NO_DATA
   TestCubeMap.cxx
+  TestCubeMapRerender.cxx
   TestDepthOfFieldPass.cxx
   TestDepthPeelingPass.cxx
   TestDepthPeelingPassViewport.cxx
   TestEDLPass.cxx
+  TestEquirectangularToCubemap.cxx
   TestFloor.cxx
   TestFramebufferPass.cxx
   TestFramebufferHDR.cxx
   TestFXAAFilter.cxx
+  TestFXAAPass.cxx
   TestGaussianBlurPass.cxx
   TestGlyph3DMapperEdges.cxx
   TestGlyph3DMapperCellPicking.cxx
@@ -24,8 +27,11 @@ vtk_add_test_cxx(vtkRenderingOpenGL2CxxTests tests
   TestLightingMapLuminancePass.cxx
   TestLightingMapNormalsPass.cxx
   TestMultiTexturing.cxx
+  TestNormalMapping.cxx
   TestOffscreenRenderingResize.cxx
   TestOrderIndependentTranslucentPass.cxx
+  TestPBRMapping.cxx
+  TestPBRMaterials.cxx
   TestPanoramicProjectionPass.cxx,NO_DATA
   TestPointFillPass.cxx
   TestPointGaussianSelection.cxx,NO_DATA
@@ -36,6 +42,7 @@ vtk_add_test_cxx(vtkRenderingOpenGL2CxxTests tests
   TestRenderToImage.cxx
   TestSRGB.cxx
   TestSSAAPass.cxx
+  TestSSAOPass.cxx
   TestSetZBuffer.cxx
   TestShadowMapBakerPass.cxx
   TestShadowMapPass.cxx
@@ -45,6 +52,8 @@ vtk_add_test_cxx(vtkRenderingOpenGL2CxxTests tests
   TestSphereMap.cxx
   TestSpherePoints.cxx
   TestSphereVertex.cxx
+  TestTexture16Bits.cxx,NO_DATA
+  TestTexture32Bits.cxx,NO_DATA
   TestToneMappingPass.cxx,NO_DATA
   TestUserShader.cxx
   TestUserShader2.cxx
@@ -52,10 +61,8 @@ vtk_add_test_cxx(vtkRenderingOpenGL2CxxTests tests
   TestVBOPointsLines.cxx
   TestValuePass.cxx
   TestValuePass2.cxx
-  )
-
-vtk_add_test_cxx(vtkRenderingOpenGL2CxxTests tests
   TestCubeMap2.cxx
-    "DATA{${VTK_TEST_INPUT_DIR}/skybox/,REGEX:.*}")
+  UnitTestOpenGLUniforms.cxx,NO_DATA,NO_VALID,NO_OUTPUT
+  )
 
 vtk_test_cxx_executable(vtkRenderingOpenGL2CxxTests tests RENDERING_FACTORY)

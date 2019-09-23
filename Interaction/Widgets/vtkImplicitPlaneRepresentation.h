@@ -181,6 +181,23 @@ public:
 
   //@{
   /**
+   * Toggles constraint translation axis on/off.
+   */
+  void SetXTranslationAxisOn() { this->TranslationAxis = Axis::XAxis; }
+  void SetYTranslationAxisOn() { this->TranslationAxis = Axis::YAxis; }
+  void SetZTranslationAxisOn() { this->TranslationAxis = Axis::ZAxis; }
+  void SetTranslationAxisOff() { this->TranslationAxis = Axis::NONE; }
+  //@}
+
+  //@{
+  /**
+   * Returns true if ContrainedAxis
+   **/
+  bool IsTranslationConstrained() { return this->TranslationAxis != Axis::NONE; }
+  //@}
+
+  //@{
+  /**
    * Set/Get the bounds of the widget representation. PlaceWidget can also be
    * used to set the bounds of the widget but it may also have other effects
    * on the internal state of the representation. Use this function when only
@@ -413,6 +430,21 @@ public:
   vtkSetMacro(SnapToAxes, bool);
   //@}
 
+  //@{
+  /**
+   * Forces the plane's normal to be aligned with x, y or z axis.
+   * The alignment happens when calling SetNormal.
+   * It defers with SnapToAxes from it is always applicable, and SnapToAxes
+   * only snaps when the angle difference exceeds 16 degrees in complex interactions.
+   */
+  vtkGetMacro(AlwaysSnapToNearestAxis, bool);
+  virtual void SetAlwaysSnapToNearestAxis(bool snap)
+  {
+    this->AlwaysSnapToNearestAxis = snap;
+    this->SetNormal(this->GetNormal());
+  }
+  //@}
+
 protected:
   vtkImplicitPlaneRepresentation();
   ~vtkImplicitPlaneRepresentation() override;
@@ -433,6 +465,8 @@ protected:
   bool SnappedOrientation;
   bool SnapToAxes;
 
+  bool AlwaysSnapToNearestAxis;
+
   // Locking normal to camera
   vtkTypeBool LockNormalToCamera;
 
@@ -441,6 +475,8 @@ protected:
 
   // The actual plane which is being manipulated
   vtkPlane *Plane;
+
+  int TranslationAxis;
 
   // The bounding box is represented by a single voxel image data
   vtkImageData      *Box;

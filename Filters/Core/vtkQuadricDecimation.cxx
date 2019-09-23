@@ -593,7 +593,7 @@ void vtkQuadricDecimation::InitializeQuadrics(vtkIdType numPts)
 }
 
 
-void vtkQuadricDecimation::AddBoundaryConstraints(void)
+void vtkQuadricDecimation::AddBoundaryConstraints()
 {
   vtkPolyData *input = this->Mesh;
   double *QEM;
@@ -701,9 +701,9 @@ void vtkQuadricDecimation::AddQuadric(vtkIdType oldPtId, vtkIdType newPtId)
 void vtkQuadricDecimation::FindAffectedEdges(vtkIdType p1Id, vtkIdType p2Id,
                                               vtkIdList *edges)
 {
-  unsigned short ncells;
+  vtkIdType ncells;
   vtkIdType *cells, npts, *pts, edgeId;
-  unsigned short i, j;
+  vtkIdType i, j;
 
   edges->Reset();
   this->Mesh->GetPointCells(p2Id, ncells, cells);
@@ -1259,7 +1259,7 @@ int vtkQuadricDecimation::TrianglePlaneCheck(const double t0[3],
 int vtkQuadricDecimation::IsGoodPlacement(vtkIdType pt0Id, vtkIdType pt1Id,
 const double *x)
 {
-  unsigned short ncells, i;
+  vtkIdType ncells, i;
   vtkIdType npts, *pts,  ptId, *cells;
   double pt1[3], pt2[3], pt3[3];
 
@@ -1312,7 +1312,7 @@ const double *x)
 }
 
 
-void vtkQuadricDecimation::ComputeNumberOfComponents(void)
+void vtkQuadricDecimation::ComputeNumberOfComponents()
 {
   vtkPointData *pd = this->Mesh->GetPointData();
   int i, j;

@@ -1,10 +1,11 @@
-// Copyright (c) 2014-2018 Dr. Colin Hirsch and Daniel Frey
+// Copyright (c) 2014-2019 Dr. Colin Hirsch and Daniel Frey
 // Please see LICENSE for license or visit https://github.com/taocpp/PEGTL/
 
 #ifndef TAO_PEGTL_INTERNAL_RAISE_HPP
 #define TAO_PEGTL_INTERNAL_RAISE_HPP
 
 #include <cstdlib>
+#include <stdexcept>
 #include <type_traits>
 
 #include "../config.hpp"
@@ -24,21 +25,26 @@ namespace tao
          template< typename T >
          struct raise
          {
-            using analyze_t = analysis::generic< analysis::rule_type::ANY >;
+            using analyze_t = analysis::generic< analysis::rule_type::any >;
 
+#ifdef _MSC_VER
+#pragma warning( push )
+#pragma warning( disable : 4702 )
+#endif
             template< apply_mode,
                       rewind_mode,
-                      template< typename... > class Action,
-                      template< typename... > class Control,
+                      template< typename... >
+                      class Action,
+                      template< typename... >
+                      class Control,
                       typename Input,
                       typename... States >
             static bool match( Input& in, States&&... st )
             {
                Control< T >::raise( static_cast< const Input& >( in ), st... );
-#if defined( _MSC_VER )
-               __assume( false );  // LCOV_EXCL_LINE
-#else
-               std::abort();  // LCOV_EXCL_LINE
+               throw std::logic_error( "code should be unreachable: Control< T >::raise() did not throw an exception" );  // NOLINT, LCOV_EXCL_LINE
+#ifdef _MSC_VER
+#pragma warning( pop )
 #endif
             }
          };

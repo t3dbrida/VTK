@@ -1,14 +1,19 @@
-set(Module_SRCS
-  vtkHyperTreeGridAxisClip.cxx
-  vtkHyperTreeGridAxisCut.cxx
-  vtkHyperTreeGridAxisReflection.cxx
-  vtkHyperTreeGridCellCenters.cxx
-  vtkHyperTreeGridContour.cxx
-  vtkHyperTreeGridDepthLimiter.cxx
-  vtkHyperTreeGridGeometry.cxx
-  vtkHyperTreeGridPlaneCutter.cxx
-  vtkHyperTreeGridThreshold.cxx
-  vtkHyperTreeGridToUnstructuredGrid.cxx
-  )
+set(classes
+  vtkHyperTreeGridAxisClip
+  vtkHyperTreeGridAxisCut
+  vtkHyperTreeGridAxisReflection
+  vtkHyperTreeGridCellCenters
+  vtkHyperTreeGridContour
+  vtkHyperTreeGridDepthLimiter
+  vtkHyperTreeGridEvaluateCoarse
+  vtkHyperTreeGridEvaluateCoarse
+  vtkHyperTreeGridGeometry
+  vtkImageDataToHyperTreeGrid
+  vtkHyperTreeGridPlaneCutter
+  vtkHyperTreeGridThreshold
+  vtkHyperTreeGridToDualGrid
+  vtkHyperTreeGridToUnstructuredGrid
+)
 
-vtk_module_library(vtkFiltersHyperTree ${Module_SRCS})
+vtk_module_add_module(VTK::FiltersHyperTree
+  CLASSES ${classes})

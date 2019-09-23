@@ -6,6 +6,7 @@ public:
   vtkPolyData *Data;
   unsigned int FlatIndex;
   double Opacity;
+  bool IsOpaque;
   bool Visibility;
   bool Pickability;
   bool OverridesColor;
@@ -21,8 +22,8 @@ public:
   unsigned int StartIndex[vtkOpenGLPolyDataMapper::PrimitiveEnd];
   unsigned int NextIndex[vtkOpenGLPolyDataMapper::PrimitiveEnd];
 
-  // Point Line Poly Strip end
-  size_t PrimOffsets[5];
+  // stores the mapping from vtk cells to gl_PrimitiveId
+  vtkNew<vtkOpenGLCellToVTKCellMap> CellCellMap;
 };
 
 //===================================================================
@@ -90,6 +91,13 @@ protected:
     vtkCompositeMapperHelperData *hdata,
     size_t primOffset);
 
+  /**
+   * Make sure appropriate shaders are defined, compiled and bound.  This method
+   * orchistrates the process, much of the work is done in other methods
+   */
+  virtual void UpdateShaders(
+    vtkOpenGLHelper &cellBO, vtkRenderer *ren, vtkActor *act) override;
+
   // Description:
   // Perform string replacements on the shader templates, called from
   // ReplaceShaderValues
@@ -124,6 +132,7 @@ protected:
 
   vtkHardwareSelector *CurrentSelector;
 
+  // bookkeeping required by vtkValuePass
   std::vector<vtkPolyData*> RenderedList;
 
   // used by the hardware selector

@@ -643,9 +643,8 @@ H5E_get_class_name(const H5E_cls_t *cls, char *name, size_t size)
 
     /* Set the user's buffer, if provided */
     if(name) {
-       HDstrncpy(name, cls->cls_name, MIN((size_t)(len + 1), size));
-       if((size_t)len >= size)
-          name[size - 1] = '\0';
+        HDstrncpy(name, cls->cls_name, size);
+        name[size - 1] = '\0';
     } /* end if */
 
     /* Return the full length */
@@ -1342,7 +1341,7 @@ done:
  * Programmer:	Quincey Koziol
  *		Monday, October 18, 1999
  *
- * Notes: 	Basically a new public API wrapper around the H5E_push_stack
+ * Notes: 	Basically a new public API wrapper around the H5E__push_stack
  *              function.
  *
  *-------------------------------------------------------------------------
@@ -1413,7 +1412,7 @@ H5Epush2(hid_t err_stack, const char *file, const char *func, unsigned line,
 #endif /* H5_HAVE_VASPRINTF */
 
     /* Push the error on the stack */
-    if(H5E_push_stack(estack, file, func, line, cls_id, maj_id, min_id, tmp) < 0)
+    if(H5E__push_stack(estack, file, func, line, cls_id, maj_id, min_id, tmp) < 0)
         HGOTO_ERROR(H5E_ERROR, H5E_CANTSET, FAIL, "can't push error on stack")
 
 done:
@@ -1481,7 +1480,7 @@ done:
  *
  * Purpose:	Prints the error stack in some default way.  This is just a
  *		convenience function for H5Ewalk() with a function that
- *		prints error messages.  Users are encouraged to write there
+ *		prints error messages.  Users are encouraged to write their
  *		own more specific error handlers.
  *
  * Return:	Non-negative on success/Negative on failure
@@ -1563,8 +1562,8 @@ H5Ewalk2(hid_t err_stack, H5E_direction_t direction, H5E_walk2_t stack_func, voi
     /* Walk the error stack */
     op.vers = 2;
     op.u.func2 = stack_func;
-    if(H5E_walk(estack, direction, &op, client_data) < 0)
-        HGOTO_ERROR(H5E_ERROR, H5E_CANTLIST, FAIL, "can't walk error stack")
+    if((ret_value = H5E_walk(estack, direction, &op, client_data)) < 0)
+        HERROR(H5E_ERROR, H5E_CANTLIST, "can't walk error stack");
 
 done:
     FUNC_LEAVE_API(ret_value)

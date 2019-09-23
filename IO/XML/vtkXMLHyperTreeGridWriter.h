@@ -18,25 +18,27 @@
  *
  * vtkXMLHyperTreeGridWriter writes the VTK XML HyperTreeGrid file
  * format. The standard extension for this writer's file format is "htg".
-*/
+ */
 
 #ifndef vtkXMLHyperTreeGridWriter_h
 #define vtkXMLHyperTreeGridWriter_h
 
+#include "vtkBitArray.h"    // For ivar
 #include "vtkIOXMLModule.h" // For export macro
 #include "vtkXMLWriter.h"
-#include "vtkNew.h" // For ivar
+
+#include <vector> // std::vector
 
 class OffsetsManagerGroup;
-class vtkBitArray;
-class vtkIdTypeArray;
+class OffsetsManagerArray;
+class vtkHyperTree;
 class vtkHyperTreeGrid;
-class vtkHyperTreeGridCursor;
+class vtkHyperTreeGridNonOrientedCursor;
 
 class VTKIOXML_EXPORT vtkXMLHyperTreeGridWriter : public vtkXMLWriter
 {
 public:
-  vtkTypeMacro(vtkXMLHyperTreeGridWriter,vtkXMLWriter);
+  vtkTypeMacro(vtkXMLHyperTreeGridWriter, vtkXMLWriter);
   void PrintSelf(ostream& os, vtkIndent indent) override;
   static vtkXMLHyperTreeGridWriter* New();
 
@@ -66,33 +68,37 @@ protected:
   int StartPrimaryElement(vtkIndent);
 
   // ... dim, size, origin>
-  void WritePrimaryElementAttributes(ostream &, vtkIndent) override;
+  void WritePrimaryElementAttributes(ostream&, vtkIndent) override;
 
-  // Grid coordinates (if origin and scale are not specified)
-  int WriteGridCoordinates(vtkIndent);
+  // Grid coordinates and mask
+  int WriteGrid(vtkIndent);
 
-  // Tree Structure
-  int WriteDescriptor(vtkIndent);
-
-  // Writes PointData and CellData attribute data.
-  int WriteAttributeData(vtkIndent);
+  // Tree Descriptor and  PointData
+  int WriteTrees(vtkIndent);
 
   // </HyperTreeGrid>
   int FinishPrimaryElement(vtkIndent);
 
+  // Descriptors for individual hypertrees
+  std::vector<vtkBitArray*> Descriptors;
+
+  // Masks for individual hypertrees
+  std::vector<vtkBitArray*> Masks;
+
   // Helper to simplify writing appended array data
-  void WriteAppendedArrayDataHelper(vtkAbstractArray *array,
-                                    OffsetsManager &offsets);
+  void WriteAppendedArrayDataHelper(vtkAbstractArray* array, OffsetsManager& offsets);
+  void WritePointDataAppendedArrayDataHelper(vtkAbstractArray* array,
+    vtkIdType treeCount,
+    OffsetsManager& offsets,
+    vtkHyperTree *tree
+  );
 
-  OffsetsManagerGroup *CoordsOMG;
+  OffsetsManagerGroup* CoordsOMG;
+  OffsetsManagerGroup* DescriptorOMG;
+  OffsetsManagerGroup* MaskOMG;
+  OffsetsManagerGroup* PointDataOMG;
 
-  vtkNew<vtkBitArray> Descriptor;
-  OffsetsManager *DescriptorOM;
-
-  vtkIdTypeArray *MaterialMask;
-  OffsetsManager *MaterialMaskOM;
-
-  OffsetsManagerGroup *AttributeDataOMG;
+  int NumberOfTrees;
 
 private:
   vtkXMLHyperTreeGridWriter(const vtkXMLHyperTreeGridWriter&) = delete;

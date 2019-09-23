@@ -80,7 +80,7 @@ int vtkPolyDataNormals::RequestData(
   vtkIdType *pts = nullptr;
   vtkIdType numNewPts;
   double flipDirection=1.0;
-  vtkIdType numPolys, numStrips;
+  vtkIdType numVerts, numLines, numPolys, numStrips;
   vtkIdType cellId;
   vtkIdType numPts;
   vtkPoints *inPts;
@@ -95,6 +95,8 @@ int vtkPolyDataNormals::RequestData(
 
   vtkDebugMacro(<<"Generating surface normals");
 
+  numVerts=input->GetNumberOfVerts();
+  numLines=input->GetNumberOfLines();
   numPolys=input->GetNumberOfPolys();
   numStrips=input->GetNumberOfStrips();
   if ( (numPts=input->GetNumberOfPoints()) < 1 )
@@ -223,7 +225,7 @@ int vtkPolyDataNormals::RequestData(
     int foundLeftmostCell;
     vtkIdType leftmostCellID=-1, currentPointID, currentCellID;
     vtkIdType *leftmostCells;
-    unsigned short nleftmostCells;
+    vtkIdType nleftmostCells;
     vtkIdType *cellPts;
     vtkIdType nCellPts;
     int cIdx;
@@ -342,9 +344,19 @@ int vtkPolyDataNormals::RequestData(
   //
   this->PolyNormals = vtkFloatArray::New();
   this->PolyNormals->SetNumberOfComponents(3);
-  this->PolyNormals->Allocate(3*numPolys);
   this->PolyNormals->SetName("Normals");
-  this->PolyNormals->SetNumberOfTuples(numPolys);
+  this->PolyNormals->SetNumberOfTuples(numVerts + numLines + numPolys);
+
+  vtkIdType offsetCells = numVerts + numLines;
+  n[0] = 1.0;
+  n[1] = 0.0;
+  n[2] = 0.0;
+  for (cellId=0; cellId < offsetCells; cellId++)
+  {
+    // add a default value for vertices and lines
+    // normals do not have meaningful values, we set them to X
+    this->PolyNormals->SetTuple(cellId, n);
+  }
 
   for (cellId=0, newPolys->InitTraversal(); newPolys->GetNextCell(npts,pts);
        cellId++ )
@@ -358,7 +370,7 @@ int vtkPolyDataNormals::RequestData(
       }
     }
     vtkPolygon::ComputeNormal(inPts, npts, pts, n);
-    this->PolyNormals->SetTuple(cellId,n);
+    this->PolyNormals->SetTuple(offsetCells + cellId, n);
   }
 
   // Split mesh if sharp features
@@ -457,7 +469,7 @@ int vtkPolyDataNormals::RequestData(
   float *fNormals = newNormals->WritePointer(0, 3 * numNewPts);
   std::fill_n(fNormals, 3 * numNewPts, 0);
 
-  float *fPolyNormals = this->PolyNormals->WritePointer(0, 3 * numPolys);
+  float *fPolyNormals = this->PolyNormals->WritePointer(3 * offsetCells, 3 * numPolys);
 
   if (this->ComputePointNormals)
   {
@@ -530,7 +542,7 @@ int vtkPolyDataNormals::RequestData(
 
 //  Propagate wave of consistently ordered polygons.
 //
-void vtkPolyDataNormals::TraverseAndOrder (void)
+void vtkPolyDataNormals::TraverseAndOrder ()
 {
   vtkIdType i, k;
   int j, l, j1;
@@ -604,7 +616,7 @@ void vtkPolyDataNormals::MarkAndSplit (vtkIdType ptId)
   int i,j;
 
   // Get the cells using this point and make sure that we have to do something
-  unsigned short ncells;
+  vtkIdType ncells;
   vtkIdType *cells;
   this->OldMesh->GetPointCells(ptId,ncells,cells);
   if ( ncells <= 1 )
@@ -773,4 +785,3 @@ void vtkPolyDataNormals::PrintSelf(ostream& os, vtkIndent indent)
   os << indent << "Precision of the output points: "
      << this->OutputPointsPrecision << "\n";
 }
-

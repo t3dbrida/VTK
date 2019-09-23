@@ -75,7 +75,7 @@ vtkLogoRepresentation::vtkLogoRepresentation()
   this->ImageProperty->SetOpacity(0.25);
   this->TextureActor->SetProperty(this->ImageProperty);
 
-  // Set up parameters from thw superclass
+  // Set up parameters from the superclass
   double size[2];
   this->GetSize(size);
   this->Position2Coordinate->SetValue(0.04*size[0], 0.04*size[1]);
@@ -168,6 +168,7 @@ void vtkLogoRepresentation::BuildRepresentation()
 
       // Update the points
       this->Texture->SetInputData(this->Image);
+      this->Texture->InterpolateOn();
       this->TexturePoints->SetPoint(0, o[0],o[1],0.0);
       this->TexturePoints->SetPoint(1, o[0]+imageSize[0],o[1],0.0);
       this->TexturePoints->SetPoint(2, o[0]+imageSize[0],o[1]+imageSize[1],0.0);

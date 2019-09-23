@@ -57,9 +57,10 @@ vtkAbstractWidget::~vtkAbstractWidget()
   if ( this->WidgetRep )
   {
     // Remove the representation from the renderer.
-    if (this->CurrentRenderer)
+    vtkRenderer* ren = this->WidgetRep->GetRenderer();
+    if (ren)
     {
-      this->CurrentRenderer->RemoveViewProp(this->WidgetRep);
+      ren->RemoveViewProp(this->WidgetRep);
     }
     this->WidgetRep->Delete();
     this->WidgetRep = nullptr;
@@ -199,7 +200,7 @@ void vtkAbstractWidget::SetEnabled(int enabling)
   }
 
   // We no longer call render when enabled state changes. It's the applications
-  // resposibility to explicitly call render after changing enable state.
+  // responsibility to explicitly call render after changing enable state.
   //// Should only render if there is no parent
   //if ( this->Interactor && !this->Parent )
   //  {

@@ -249,32 +249,6 @@ ID [a-zA-Z_\x80-\xff][0-9a-zA-Z_\x80-\xff]*
 "bitor"         return('|');
 "compl"         return('~');
 
-"vtkIdType"            return(IdType);
-"vtkSetVector2Macro"   return(SetVector2Macro);
-"vtkSetVector3Macro"   return(SetVector3Macro);
-"vtkSetVector4Macro"   return(SetVector4Macro);
-"vtkSetVector6Macro"   return(SetVector6Macro);
-"vtkGetVector2Macro"   return(GetVector2Macro);
-"vtkGetVector3Macro"   return(GetVector3Macro);
-"vtkGetVector4Macro"   return(GetVector4Macro);
-"vtkGetVector6Macro"   return(GetVector6Macro);
-"vtkSetVectorMacro"    return(SetVectorMacro);
-"vtkGetVectorMacro"    return(GetVectorMacro);
-"vtkViewportCoordinateMacro" return(ViewportCoordinateMacro);
-"vtkWorldCoordinateMacro" return(WorldCoordinateMacro);
-"VTK_WRAP_EXTERN"      ;
-"VTK_BYTE_SWAP_DECL"   return(VTK_BYTE_SWAP_DECL);
-"vtkTypeInt8"          return(TypeInt8);
-"vtkTypeUInt8"         return(TypeUInt8);
-"vtkTypeInt16"         return(TypeInt16);
-"vtkTypeUInt16"        return(TypeUInt16);
-"vtkTypeInt32"         return(TypeInt32);
-"vtkTypeUInt32"        return(TypeUInt32);
-"vtkTypeInt64"         return(TypeInt64);
-"vtkTypeUInt64"        return(TypeUInt64);
-"vtkTypeFloat32"       return(TypeFloat32);
-"vtkTypeFloat64"       return(TypeFloat64);
-
 "("{PS}({ID}"::")*"&" {
       size_t i = 1;
       size_t j;
@@ -1725,8 +1699,9 @@ void preprocessor_directive(const char *text, size_t l)
       if (Recursive && ep - cp > 3)
       {
         const char *dp;
-        dp = vtkParsePreprocess_FindIncludeFile(preprocessor,
-          &cp[1], (*cp != '\"'), &already_loaded);
+        dp = vtkParsePreprocess_FindIncludeFile(preprocessor, &cp[1],
+          (*cp != '\"' ? VTK_PARSE_SYSTEM_INCLUDE : VTK_PARSE_SOURCE_INCLUDE),
+          &already_loaded);
         if (dp)
         {
           yyin = fopen(dp, "r");

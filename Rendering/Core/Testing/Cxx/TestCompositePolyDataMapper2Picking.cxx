@@ -62,7 +62,6 @@ protected:
 
 public:
   static PointPickCommand * New() {return new PointPickCommand;}
-  vtkTypeMacro(PointPickCommand, vtkCommand);
 
   PointPickCommand() = default;
 
@@ -230,6 +229,9 @@ int TestCompositePolyDataMapper2Picking(int argc, char* argv[])
             lines->InsertCellPoint(18);
             lines->InsertCellPoint(19);
             poly->SetLines(lines);
+            // note this strip is coincident with the cylinder and
+            // with cell colors will resultin in some rendering
+            // artifacts/flickering
             vtkNew<vtkCellArray> strips;
             strips->InsertNextCell(5);
             strips->InsertCellPoint(20);

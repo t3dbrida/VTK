@@ -39,6 +39,7 @@
  * This class was modified by Guenole Harel and Jacques-Bernard Lekien 2014
  * This class was modified by Philippe Pebay, 2016
  * This work was supported by Commissariat a l'Energie Atomique (CEA/DIF)
+ * CEA, DAM, DIF, F-91297 Arpajon, France.
 */
 
 #ifndef vtkHyperTreeGridSource_h
@@ -53,7 +54,7 @@
 
 class vtkBitArray;
 class vtkDataArray;
-class vtkHyperTreeCursor;
+class vtkHyperTreeGridNonOrientedCursor;
 class vtkIdTypeArray;
 class vtkImplicitFunction;
 class vtkHyperTreeGrid;
@@ -67,11 +68,17 @@ public:
 
   static vtkHyperTreeGridSource* New();
 
+  // @deprecated Replaced by GetMaxDepth() as of VTK 9
+  VTK_LEGACY(unsigned int GetMaximumLevel());
+
+  // @deprecated Replaced by SetMaxDepth() as of VTK 9
+  VTK_LEGACY(void SetMaximumLevel(unsigned int levels));
+
   /**
    * Return the maximum number of levels of the hypertree.
    * \post positive_result: result>=1
    */
-  unsigned int GetMaximumLevel();
+  unsigned int GetMaxDepth();
 
   /**
    * Set the maximum number of levels of the hypertrees.
@@ -79,7 +86,7 @@ public:
    * \post is_set: this->GetLevels()==levels
    * \post min_is_valid: this->GetMinLevels()<this->GetLevels()
    */
-  void SetMaximumLevel( unsigned int levels );
+  void SetMaxDepth(unsigned int levels);
 
   //@{
   /**
@@ -95,14 +102,16 @@ public:
    */
   vtkSetVector3Macro(GridScale, double);
   vtkGetVector3Macro(GridScale, double);
+  void SetGridScale( double scale ) { this->SetGridScale( scale, scale, scale); }
   //@}
 
   //@{
   /**
-   * Set/Get the number of root cells in each dimension of the grid
+   * Set/Get the number of root cells + 1 in each dimension of the grid
    */
-  vtkSetVector3Macro(GridSize, unsigned int);
-  vtkGetVector3Macro(GridSize, unsigned int);
+  void SetDimensions( const unsigned int *dims );
+  void SetDimensions( unsigned int, unsigned int, unsigned int );
+  vtkGetVector3Macro(Dimensions, unsigned int);
   //@}
 
   //@{
@@ -118,17 +127,8 @@ public:
 
   //@{
   /**
-   * Set/Get the dimensionality of the grid
-   */
-  vtkSetClampMacro(Dimension, unsigned int, 1, 3);
-  vtkGetMacro(Dimension, unsigned int);
-  //@}
-
-  //@{
-  /**
    * Set/Get the orientation of the grid (in 1D and 2D)
    */
-  virtual void SetOrientation(unsigned int);
   vtkGetMacro(Orientation, unsigned int);
   //@}
 
@@ -157,9 +157,9 @@ public:
    * NB: This is only used when UseDescriptor is ON
    * Default: false
    */
-  vtkSetMacro(UseMaterialMask, bool);
-  vtkGetMacro(UseMaterialMask, bool);
-  vtkBooleanMacro(UseMaterialMask, bool);
+  vtkSetMacro(UseMask, bool);
+  vtkGetMacro(UseMask, bool);
+  vtkBooleanMacro(UseMask, bool);
   //@}
 
   //@{
@@ -185,8 +185,8 @@ public:
   /**
    * Set/Get the string used to as a material mask.
    */
-  vtkSetStringMacro(MaterialMask);
-  vtkGetStringMacro(MaterialMask);
+  vtkSetStringMacro(Mask);
+  vtkGetStringMacro(Mask);
   //@}
 
   //@{
@@ -206,8 +206,8 @@ public:
   /**
    * Set/Get the bitarray used as a material mask.
    */
-  virtual void SetMaterialMaskBits( vtkBitArray* );
-  vtkGetObjectMacro( MaterialMaskBits, vtkBitArray );
+  virtual void SetMaskBits( vtkBitArray* );
+  vtkGetObjectMacro( MaskBits, vtkBitArray );
   //@}
 
   //@{
@@ -237,7 +237,7 @@ public:
    * Helpers to convert string descriptors & mask to bit arrays
    */
   vtkBitArray* ConvertDescriptorStringToBitArray( const std::string& );
-  vtkBitArray* ConvertMaterialMaskStringToBitArray( const std::string& );
+  vtkBitArray* ConvertMaskStringToBitArray( const std::string& );
   //@}
 
 protected:
@@ -261,11 +261,9 @@ protected:
                     vtkDataObject* ) override;
 
   /**
-   * Initialize grid from descriptor string when it is to be used. The extent
-   * is used to determine what parts of *Descriptor* to use if the grid is
-   * partitioned.
+   * Initialize grid from descriptor string when it is to be used
    */
-  int InitializeFromStringDescriptor(int* extent);
+  int InitializeFromStringDescriptor();
 
   /**
    * Initialize grid from bit array descriptors when it is to be used
@@ -276,7 +274,7 @@ protected:
    * Initialize tree grid from descriptor and call subdivide if needed
    */
   void InitTreeFromDescriptor( vtkHyperTreeGrid* output,
-                               vtkHyperTreeCursor* cursor,
+                               vtkHyperTreeGridNonOrientedCursor* cursor,
                                int treeIdx,
                                int idx[3] );
 
@@ -284,7 +282,7 @@ protected:
    * Subdivide grid from descriptor string when it is to be used
    */
   void SubdivideFromStringDescriptor( vtkHyperTreeGrid* output,
-                                      vtkHyperTreeCursor* cursor,
+                                      vtkHyperTreeGridNonOrientedCursor* cursor,
                                       unsigned int level,
                                       int treeIdx,
                                       int childIdx,
@@ -295,7 +293,7 @@ protected:
    * Subdivide grid from descriptor string when it is to be used
    */
   void SubdivideFromBitsDescriptor( vtkHyperTreeGrid* output,
-                                    vtkHyperTreeCursor* cursor,
+                                    vtkHyperTreeGridNonOrientedCursor* cursor,
                                     unsigned int level,
                                     int treeIdx,
                                     int childIdx,
@@ -306,7 +304,7 @@ protected:
    * Subdivide grid from quadric when descriptor is not used
    */
   void SubdivideFromQuadric( vtkHyperTreeGrid* output,
-                             vtkHyperTreeCursor* cursor,
+                             vtkHyperTreeGridNonOrientedCursor* cursor,
                              unsigned int level,
                              int treeIdx,
                              const int idx[3],
@@ -320,15 +318,17 @@ protected:
 
   double Origin[3];
   double GridScale[3];
-  unsigned int GridSize[3];
-  bool TransposedRootIndexing;
-  unsigned int MaximumLevel;
   unsigned int Dimension;
+protected:
+  unsigned int Dimensions[3];
+  bool TransposedRootIndexing;
+  unsigned int MaxDepth;
+
   unsigned int Orientation;
   unsigned int BranchFactor;
   unsigned int BlockSize;
   bool UseDescriptor;
-  bool UseMaterialMask;
+  bool UseMask;
   bool GenerateInterfaceFields;
 
   vtkDataArray* XCoordinates;
@@ -336,12 +336,12 @@ protected:
   vtkDataArray* ZCoordinates;
 
   char* Descriptor;
-  char* MaterialMask;
+  char* Mask;
   std::vector<std::string> LevelDescriptors;
-  std::vector<std::string> LevelMaterialMasks;
+  std::vector<std::string> LevelMasks;
 
   vtkBitArray* DescriptorBits;
-  vtkBitArray* MaterialMaskBits;
+  vtkBitArray* MaskBits;
   std::vector<vtkIdType> LevelBitsIndex;
   std::vector<vtkIdType> LevelBitsIndexCnt;
 

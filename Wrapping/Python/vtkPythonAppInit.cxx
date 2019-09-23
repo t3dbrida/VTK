@@ -28,6 +28,7 @@
 #include "vtkVersion.h"
 #include "vtkpythonmodules.h"
 #include <sys/stat.h>
+#include <vtksys/SystemTools.hxx>
 
 #include <string>
 
@@ -84,7 +85,7 @@ int main(int argc, char **argv)
    * This function is generated and exposed in vtkpythonmodules.h.
    * This registers any Python modules for VTK for static builds.
    */
-  CMakeLoadAllPythonModules();
+  vtkpythonmodules_load();
 
   // Setup the output window to be vtkOutputWindow, rather than platform
   // specific one. This avoids creating vtkWin32OutputWindow on Windows, for
@@ -93,6 +94,15 @@ int main(int argc, char **argv)
   auto opwindow = vtkOutputWindow::New();
   vtkOutputWindow::SetInstance(opwindow);
   opwindow->Delete();
+
+  // For static builds, help with finding `vtk` packages.
+  std::string fullpath;
+  std::string error;
+  if (argc > 0 && vtksys::SystemTools::FindProgramPath(argv[0], fullpath, error))
+  {
+    const auto dir = vtksys::SystemTools::GetProgramPath(fullpath);
+    vtkPythonInterpreter::PrependPythonPath(dir.c_str(), "vtkmodules/__init__.py");
+  }
 
   return vtkPythonInterpreter::PyMain(argc, argv);
 }

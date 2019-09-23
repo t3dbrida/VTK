@@ -32,15 +32,12 @@ vtkStandardNewMacro(vtkOBJReader);
 //----------------------------------------------------------------------------
 vtkOBJReader::vtkOBJReader()
 {
-  this->FileName = nullptr;
-  this->SetNumberOfInputPorts(0);
   this->Comment = nullptr;
 }
 
 //----------------------------------------------------------------------------
 vtkOBJReader::~vtkOBJReader()
 {
-  this->SetFileName(nullptr);
   this->SetComment(nullptr);
 }
 
@@ -288,7 +285,7 @@ int vtkOBJReader::RequestData(
   {
     const vtkIdType nTuples = static_cast<vtkIdType>(verticesTextureList.size());
 
-    for (auto iter : tcoords_map)
+    for (const auto& iter : tcoords_map)
     {
       vtkFloatArray* tcoords = iter.second;
       tcoords->SetNumberOfTuples(nTuples);
@@ -765,7 +762,7 @@ int vtkOBJReader::RequestData(
       if (hasTCoords && tcoords_same_as_verts)
       {
         bool setTcoords = true;
-        for (auto iter : tcoords_map)
+        for (const auto& iter : tcoords_map)
         {
           vtkFloatArray* tcoords = iter.second;
           output->GetPointData()->AddArray(tcoords);
@@ -815,7 +812,7 @@ int vtkOBJReader::RequestData(
 
       vtkPoints *new_points = vtkPoints::New();
       std::vector<vtkFloatArray*> new_tcoords_vector;
-      for (auto iter : tcoords_map)
+      for (const auto& iter : tcoords_map)
       {
         vtkFloatArray* tcoords = iter.second;
         vtkFloatArray *new_tcoords = vtkFloatArray::New();
@@ -875,7 +872,7 @@ int vtkOBJReader::RequestData(
             if (n_tcoord_pts > 0)
             {
               size_t k = 0;
-              for (auto iter : tcoords_map)
+              for (const auto& iter : tcoords_map)
               {
                 vtkFloatArray* tcoords = iter.second;
                 vtkFloatArray* new_tcoords = new_tcoords_vector.at(k);
@@ -973,7 +970,7 @@ void vtkOBJReader::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os,indent);
 
-  os << indent << "File Name: "
-     << (this->FileName ? this->FileName : "(none)") << "\n";
+  os << indent << "Comment: "
+     << (this->Comment ? this->Comment : "(none)") << "\n";
 
 }

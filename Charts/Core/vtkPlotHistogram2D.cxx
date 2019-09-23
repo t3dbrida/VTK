@@ -25,8 +25,10 @@
 
 #include "vtkObjectFactory.h"
 
+#include <algorithm>
+
 //-----------------------------------------------------------------------------
-vtkStandardNewMacro(vtkPlotHistogram2D);
+vtkStandardNewMacro(vtkPlotHistogram2D)
 
 //-----------------------------------------------------------------------------
 vtkPlotHistogram2D::vtkPlotHistogram2D()
@@ -89,18 +91,16 @@ void vtkPlotHistogram2D::GetBounds(double bounds[4])
 {
   if (this->Input)
   {
-    int *extent = this->Input->GetExtent();
-    bounds[0] = this->Input->GetOrigin()[0];
-    bounds[1] = bounds[0] +
-        (extent[1] - extent[0] + 1) * this->Input->GetSpacing()[0];
+    std::copy(this->Input->GetBounds(), this->Input->GetBounds() + 4, bounds);
 
-    bounds[2] = this->Input->GetOrigin()[1];
-    bounds[3] = bounds[2] +
-        (extent[3] - extent[2] + 1) * this->Input->GetSpacing()[1];
+    // Adding a spacing increment is necessary in order to draw in the context 2D correctly
+    double* spacing = this->Input->GetSpacing();
+    bounds[1] += spacing[0];
+    bounds[3] += spacing[1];
   }
   else
   {
-    bounds[0] = bounds[1] = bounds[2] = bounds[3] = 0.0;
+    std::fill(bounds, bounds + 4, 0.);
   }
 }
 
@@ -119,8 +119,26 @@ vtkRectf vtkPlotHistogram2D::GetPosition()
 //-----------------------------------------------------------------------------
 vtkIdType vtkPlotHistogram2D::GetNearestPoint(const vtkVector2f& point,
                                               const vtkVector2f& tolerance,
-                                              vtkVector2f* location)
+                                              vtkVector2f* location,
+                                              vtkIdType* vtkNotUsed(segmentId))
 {
+#ifndef VTK_LEGACY_REMOVE
+  if (!this->LegacyRecursionFlag)
+  {
+    this->LegacyRecursionFlag = true;
+    vtkIdType ret = this->GetNearestPoint(point, tolerance, location);
+    this->LegacyRecursionFlag = false;
+    if (ret != -1)
+    {
+      VTK_LEGACY_REPLACED_BODY(
+        vtkPlotHistogram2D::GetNearestPoint(const vtkVector2f& point, const vtkVector2f& tolerance, vtkVector2f* location),
+        "VTK 8.3",
+        vtkPlotHistogram2D::GetNearestPoint(const vtkVector2f& point, const vtkVector2f& tolerance, vtkVector2f* location, vtkIdType* segmentId));
+      return ret;
+    }
+  }
+#endif // VTK_LEGACY_REMOVE
+
   if (!this->Input)
   {
     return -1;
@@ -174,8 +192,8 @@ vtkStdString vtkPlotHistogram2D::GetTooltipLabel(const vtkVector2d &plotPos,
   this->GetBounds(bounds);
   int width = this->Input->GetExtent()[1] - this->Input->GetExtent()[0] + 1;
   int height = this->Input->GetExtent()[3] - this->Input->GetExtent()[2] + 1;
-  int pointX = seriesIndex % width;
-  int pointY = seriesIndex / width;
+  int pointX = seriesIndex % width + this->Input->GetExtent()[0];
+  int pointY = seriesIndex / width + this->Input->GetExtent()[2];
 
   // Parse TooltipLabelFormat and build tooltipLabel
   bool escapeNext = false;
@@ -252,13 +270,14 @@ void vtkPlotHistogram2D::GenerateHistogram()
   this->Output->AllocateScalars(VTK_UNSIGNED_CHAR, 4);
 
   int dimension = this->Input->GetDimensions()[0] * this->Input->GetDimensions()[1];
-  double *input = reinterpret_cast<double *>(this->Input->GetScalarPointer());
+  void* const input = this->Input->GetScalarPointer();
+  const int inputType = this->Input->GetScalarType();
   unsigned char *output =
-    reinterpret_cast<unsigned char*>(this->Output->GetScalarPointer(0,0,0));
+    reinterpret_cast<unsigned char*>(this->Output->GetScalarPointer());
 
   if (this->TransferFunction)
   {
-    this->TransferFunction->MapScalarsThroughTable2(input, output, VTK_DOUBLE,
+    this->TransferFunction->MapScalarsThroughTable2(input, output, inputType,
                                                     dimension, 1, 4);
   }
 }

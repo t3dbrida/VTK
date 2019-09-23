@@ -207,7 +207,12 @@ int vtkCleanPolyData::RequestData(
 
   vtkPointData *outputPD = output->GetPointData();
   vtkCellData  *outputCD = output->GetCellData();
+  if (!this->PointMerging)
+  {
+    outputPD->CopyAllOn(vtkDataSetAttributes::COPYTUPLE);
+  }
   outputPD->CopyAllocate(inputPD);
+  outputCD->CopyAllOn(vtkDataSetAttributes::COPYTUPLE);
   outputCD->CopyAllocate(inputCD);
 
   // Celldata needs to be copied correctly. If a poly is converted to
@@ -275,6 +280,7 @@ int vtkCleanPolyData::RequestData(
     newLines = vtkCellArray::New();
     newLines->Allocate(inLines->GetSize());
     outLineData = vtkCellData::New();
+    outLineData->CopyAllOn(vtkDataSetAttributes::COPYTUPLE);
     outLineData->CopyAllocate(inputCD);
     //
     vtkDebugMacro(<<"Starting Lines "<<inCellID);
@@ -302,8 +308,10 @@ int vtkCleanPolyData::RequestData(
           updatedPts[numNewPts++] = ptId;
         }
       }//for all cell points
-      if ( (numNewPts>1) || !this->ConvertLinesToPoints )
+
+      if (numNewPts >= 2)
       {
+        // Cell is a proper line or polyline, always add
         newId = newLines->InsertNextCell(numNewPts,updatedPts);
         outLineData->CopyData(inputCD, inCellID, newId);
         if (lineIDcounter!=newId)
@@ -312,8 +320,9 @@ int vtkCleanPolyData::RequestData(
         }
         lineIDcounter++;
       }
-      else if ( numNewPts==1 )
+      else if (numNewPts == 1 && (npts == numNewPts || this->ConvertLinesToPoints))
       {
+        // Cell was either a vertex to begin with and we didn't modify it or a degenerated line and the user wanted it included as a vertex
         if (!newVerts)
         {
           newVerts = vtkCellArray::New();
@@ -341,6 +350,7 @@ int vtkCleanPolyData::RequestData(
     newPolys = vtkCellArray::New();
     newPolys->Allocate(inPolys->GetSize());
     outPolyData = vtkCellData::New();
+    outPolyData->CopyAllOn(vtkDataSetAttributes::COPYTUPLE);
     outPolyData->CopyAllocate(inputCD);
 
     vtkDebugMacro(<<"Starting Polys "<<inCellID);
@@ -372,8 +382,9 @@ int vtkCleanPolyData::RequestData(
       {
         numNewPts--;
       }
-      if ( (numNewPts > 2) || !this->ConvertPolysToLines )
+      if (numNewPts > 2)
       {
+        // Cell is a proper polygon, always add
         newId = newPolys->InsertNextCell(numNewPts,updatedPts);
         outPolyData->CopyData(inputCD, inCellID, newId);
         if (polyIDcounter!=newId)
@@ -382,13 +393,15 @@ int vtkCleanPolyData::RequestData(
         }
         polyIDcounter++;
       }
-      else if ( (numNewPts==2) || !this->ConvertLinesToPoints )
+      else if (numNewPts == 2 && (npts == numNewPts || this->ConvertPolysToLines))
       {
+        // Cell was either a line to begin with and we didn't modify it or a degenerated poly and the user wanted it included as a line
         if (!newLines)
         {
           newLines = vtkCellArray::New();
           newLines->Allocate(5);
           outLineData = vtkCellData::New();
+          outLineData->CopyAllOn(vtkDataSetAttributes::COPYTUPLE);
           outLineData->CopyAllocate(inputCD);
         }
         newId = newLines->InsertNextCell(numNewPts,updatedPts);
@@ -399,8 +412,9 @@ int vtkCleanPolyData::RequestData(
         }
         lineIDcounter++;
       }
-      else if ( numNewPts==1 )
+      else if (numNewPts == 1 && (npts == numNewPts || this->ConvertLinesToPoints))
       {
+        // Cell was either a vertex to begin with and we didn't modify it or a degenerated line and the user wanted it included as a vertex
         if (!newVerts)
         {
           newVerts = vtkCellArray::New();
@@ -427,6 +441,7 @@ int vtkCleanPolyData::RequestData(
     newStrips = vtkCellArray::New();
     newStrips->Allocate(inStrips->GetSize());
     outStrpData = vtkCellData::New();
+    outStrpData->CopyAllOn(vtkDataSetAttributes::COPYTUPLE);
     outStrpData->CopyAllocate(inputCD);
 
     for (inStrips->InitTraversal(); inStrips->GetNextCell(npts,pts);
@@ -454,8 +469,13 @@ int vtkCleanPolyData::RequestData(
           updatedPts[numNewPts++] = ptId;
         }
       }
-      if ( (numNewPts > 3) || !this->ConvertStripsToPolys )
+      if (numNewPts > 1 && updatedPts[0] == updatedPts[numNewPts - 1])
       {
+        numNewPts--;
+      }
+      if (numNewPts > 3)
+      {
+        // Cell is a proper triangle strip, always add
         newId = newStrips->InsertNextCell(numNewPts,updatedPts);
         outStrpData->CopyData(inputCD, inCellID, newId);
         if (strpIDcounter!=newId)
@@ -464,13 +484,15 @@ int vtkCleanPolyData::RequestData(
         }
         strpIDcounter++;
       }
-      else if ( (numNewPts==3) || !this->ConvertPolysToLines )
+      else if (numNewPts == 3 && (npts == numNewPts || this->ConvertStripsToPolys))
       {
+        // Cell was either a triangle to begin with and we didn't modify it or a degenerated triangle strip and the user wanted it included as a polygon
         if (!newPolys)
         {
           newPolys = vtkCellArray::New();
           newPolys->Allocate(5);
           outPolyData = vtkCellData::New();
+          outPolyData->CopyAllOn(vtkDataSetAttributes::COPYTUPLE);
           outPolyData->CopyAllocate(inputCD);
         }
         newId = newPolys->InsertNextCell(numNewPts,updatedPts);
@@ -481,13 +503,15 @@ int vtkCleanPolyData::RequestData(
         }
         polyIDcounter++;
       }
-      else if ( (numNewPts==2) || !this->ConvertLinesToPoints )
+      else if (numNewPts == 2 && (npts == numNewPts || this->ConvertPolysToLines))
       {
+        // Cell was either a line to begin with and we didn't modify it or a degenerated triangle strip and the user wanted it included as a line
         if (!newLines)
         {
           newLines = vtkCellArray::New();
           newLines->Allocate(5);
           outLineData = vtkCellData::New();
+          outLineData->CopyAllOn(vtkDataSetAttributes::COPYTUPLE);
           outLineData->CopyAllocate(inputCD);
         }
         newId = newLines->InsertNextCell(numNewPts,updatedPts);
@@ -498,8 +522,9 @@ int vtkCleanPolyData::RequestData(
         }
         lineIDcounter++;
       }
-      else if ( numNewPts==1 )
+      else if (numNewPts == 1 && (npts == numNewPts || this->ConvertLinesToPoints))
       {
+        // Cell was either a vertex to begin with and we didn't modify it or a degenerated triangle strip and the user wanted it included as a vertex
         if (!newVerts)
         {
           newVerts = vtkCellArray::New();

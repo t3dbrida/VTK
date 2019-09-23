@@ -113,9 +113,32 @@ public:
   /**
    * Returns the total number of points of all blocks. This will
    * iterate over all blocks and call GetNumberOfPoints() so it
-   * might be expansive.
+   * might be expensive.
    */
   virtual vtkIdType GetNumberOfPoints();
+
+  /**
+   * Returns the total number of cells of all blocks. This will
+   * iterate over all blocks and call GetNumberOfPoints() so it
+   * might be expensive.
+   */
+  virtual vtkIdType GetNumberOfCells();
+
+  /**
+   * Get the number of elements for a specific attribute type (POINT, CELL, etc.).
+   */
+  vtkIdType GetNumberOfElements(int type) override;
+
+  /**
+   * Return the geometric bounding box in the form (xmin,xmax, ymin,ymax,
+   * zmin,zmax).  Note that if the composite dataset contains abstract types
+   * (i.e., non vtkDataSet types) such as tables these will be ignored by the
+   * method. In cases where no vtkDataSet is contained in the composite
+   * dataset then the returned bounds will be undefined. THIS METHOD IS
+   * THREAD SAFE IF FIRST CALLED FROM A SINGLE THREAD AND THE DATASET IS NOT
+   * MODIFIED.
+   */
+  void GetBounds(double bounds[6]);
 
   /**
    * Key used to put node name in the meta-data associated with a node.
@@ -142,5 +165,3 @@ public:
 };
 
 #endif
-
-

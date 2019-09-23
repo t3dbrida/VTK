@@ -18,7 +18,6 @@
 //  this software.
 //============================================================================
 
-#include "vtkmlib/Storage.h"
 #include "vtkmConnectivityExec.h"
 
 namespace vtkm {
@@ -171,5 +170,10 @@ template class ConnectivityVTKSingleType<vtkm::cont::DeviceAdapterTagOpenMP>;
 template class ReverseConnectivityVTK<vtkm::cont::DeviceAdapterTagOpenMP>;
 #endif
 
+#ifdef VTKM_ENABLE_CUDA
+template class ConnectivityVTKAOS<vtkm::cont::DeviceAdapterTagCuda>;
+template class ConnectivityVTKSingleType<vtkm::cont::DeviceAdapterTagCuda>;
+template class ReverseConnectivityVTK<vtkm::cont::DeviceAdapterTagCuda>;
+#endif
 }
 }

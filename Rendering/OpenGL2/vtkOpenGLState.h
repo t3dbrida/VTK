@@ -24,7 +24,7 @@
  * and to save and restore OpenGL state that you change. The former
  * makes your code work, the latter hels prevent your code from
  * breaking something else. The problem is that the former results
- * in tons of redundent OpenGL calls and the later is done by querying
+ * in tons of redundant OpenGL calls and the later is done by querying
  * the OpenGL state which can cause a pipeline sync/stall which is
  * very slow.
  *
@@ -60,14 +60,19 @@
 #define vtkOpenGLState_h
 
 #include "vtkRenderingOpenGL2Module.h" // For export macro
+#include "vtkObject.h"
 #include <array>      // for ivar
+#include <map> // for ivar
 
 class vtkOpenGLRenderWindow;
+class vtkTextureObject;
+class vtkTextureUnitManager;
 
 class VTKRENDERINGOPENGL2_EXPORT vtkOpenGLState
 {
 public:
   vtkOpenGLState(); // set initial values
+  ~vtkOpenGLState();
 
   //@{
   // cached OpenGL methods. By calling these the context will check
@@ -96,16 +101,16 @@ public:
   //@{
   // Methods to reset the state to the current OpenGL context value.
   //
-  void ResetGlClearColorState();
-  void ResetGlClearDepthState();
-  void ResetGlDepthFuncState();
-  void ResetGlDepthMaskState();
-  void ResetGlColorMaskState();
-  void ResetGlViewportState();
-  void ResetGlScissorState();
-  void ResetGlBlendFuncState();
-  void ResetGlBlendEquationState();
-  void ResetGlCullFaceState();
+  void ResetGLClearColorState();
+  void ResetGLClearDepthState();
+  void ResetGLDepthFuncState();
+  void ResetGLDepthMaskState();
+  void ResetGLColorMaskState();
+  void ResetGLViewportState();
+  void ResetGLScissorState();
+  void ResetGLBlendFuncState();
+  void ResetGLBlendEquationState();
+  void ResetGLCullFaceState();
   //@}
 
   //@{
@@ -155,6 +160,26 @@ public:
       void (vtkOpenGLState::*Method)(T);
   };
 
+  /**
+   * Activate a texture unit for this texture
+   */
+  void ActivateTexture(vtkTextureObject *);
+
+  /**
+   * Deactivate a previously activated texture
+   */
+  void DeactivateTexture(vtkTextureObject *);
+
+  /**
+   * Get the texture unit for a given texture object
+   */
+  int GetTextureUnitForTexture(vtkTextureObject *);
+
+  /**
+   * Check to make sure no textures have been left active
+   */
+  void VerifyNoActiveTextures();
+
   // Scoped classes you can use to save state
   class VTKRENDERINGOPENGL2_EXPORT ScopedglDepthMask
     : public ScopedValue<unsigned char> {
@@ -174,6 +199,9 @@ public:
   class VTKRENDERINGOPENGL2_EXPORT ScopedglBlendFuncSeparate
     : public ScopedValue<std::array<unsigned int, 4> > {
     public: ScopedglBlendFuncSeparate(vtkOpenGLState *state); };
+  class VTKRENDERINGOPENGL2_EXPORT ScopedglDepthFunc
+    : public ScopedValue<unsigned int> {
+    public: ScopedglDepthFunc(vtkOpenGLState *state); };
 
   class ScopedglEnableDisable
   {
@@ -201,12 +229,26 @@ public:
    */
   void Initialize(vtkOpenGLRenderWindow*);
 
+  /**
+   * Set the texture unit manager.
+   */
+  void SetTextureUnitManager(vtkTextureUnitManager *textureUnitManager);
+
+  /**
+   * Returns its texture unit manager object. A new one will be created if one
+   * hasn't already been set up.
+   */
+  vtkTextureUnitManager *GetTextureUnitManager();
+
 protected:
   void BlendFuncSeparate(std::array<unsigned int, 4> val);
   void ClearColor(std::array<float, 4> val);
   void ColorMask(std::array<unsigned char, 4> val);
   void Scissor(std::array<int, 4> val);
   void Viewport(std::array<int, 4> val);
+
+  vtkTextureUnitManager *TextureUnitManager;
+  std::map<const vtkTextureObject *, int> TextureResourceIds;
 
   /**
    * Check that this OpenGL state has consistent values
@@ -242,6 +284,10 @@ protected:
   };
 
   GLState CurrentState;
+
+private:
+  vtkOpenGLState(const vtkOpenGLState&) = delete;
+  void operator=(const vtkOpenGLState&) = delete;
 };
 
 #endif

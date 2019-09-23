@@ -701,14 +701,15 @@ class DataSetAttributes(VTKObjectWrapper):
 
         # Fixup input array length:
         if not isinstance(narray, numpy.ndarray) or numpy.ndim(narray) == 0: # Scalar input
-            tmparray = numpy.empty(arrLength)
+            dtype = narray.dtype if isinstance(narray, numpy.ndarray) else type(narray)
+            tmparray = numpy.empty(arrLength, dtype=dtype)
             tmparray.fill(narray)
             narray = tmparray
         elif narray.shape[0] != arrLength: # Vector input
             components = 1
             for l in narray.shape:
                 components *= l
-            tmparray = numpy.empty((arrLength, components))
+            tmparray = numpy.empty((arrLength, components), dtype=narray.dtype)
             tmparray[:] = narray.flatten()
             narray = tmparray
 
@@ -1090,7 +1091,7 @@ class UnstructuredGrid(PointSet):
     def SetCells(self, cellTypes, cellLocations, cells):
         """Given cellTypes, cellLocations, cells as VTKArrays,
         populates the unstructured grid data structures."""
-        from .. import VTK_ID_TYPE
+        from ..util.vtkConstants import VTK_ID_TYPE
         from ..vtkCommonDataModel import vtkCellArray
         cellTypes = numpyTovtkDataArray(cellTypes)
         cellLocations = numpyTovtkDataArray(cellLocations, array_type=VTK_ID_TYPE)

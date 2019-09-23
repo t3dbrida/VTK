@@ -665,6 +665,7 @@ void vtkReebGraph::Implementation::DeepCopy(Implementation *srcG)
   {
     MainArcTable.Size = srcG->MainArcTable.Size;
     MainArcTable.Number = srcG->MainArcTable.Number;
+    free (this->MainArcTable.Buffer);
     this->MainArcTable.Buffer = (vtkReebArc*)malloc(
       sizeof(vtkReebArc)*srcG->MainArcTable.Size);
 
@@ -676,6 +677,8 @@ void vtkReebGraph::Implementation::DeepCopy(Implementation *srcG)
   {
     MainNodeTable.Size = srcG->MainNodeTable.Size;
     MainNodeTable.Number = srcG->MainNodeTable.Number;
+    // free existing buffer
+    free (this->MainNodeTable.Buffer);
     this->MainNodeTable.Buffer = (vtkReebNode*)malloc(
       sizeof(vtkReebNode)*srcG->MainNodeTable.Size);
 
@@ -687,6 +690,7 @@ void vtkReebGraph::Implementation::DeepCopy(Implementation *srcG)
   {
     MainLabelTable.Size = srcG->MainLabelTable.Size;
     MainLabelTable.Number = srcG->MainLabelTable.Number;
+    free (this->MainLabelTable.Buffer);
 
     this->MainLabelTable.Buffer = (vtkReebLabel*)malloc(
       sizeof(vtkReebLabel)*srcG->MainLabelTable.Size);
@@ -2934,12 +2938,16 @@ int vtkReebGraph::Implementation::AddMeshTriangle(vtkIdType vertex0Id, double f0
   {
     vtkReebGraphSwapVars(int,vertex0,vertex1);
     vtkReebGraphSwapVars(int,N0,N1);
+    // there is a useless assignment to f0 below
+    // keeping for clarity and consistency
     vtkReebGraphSwapVars(double,f0,f1);
   }
   if (f2 < f1 || (f2==f1 && vertex2 < vertex1))
   {
     vtkReebGraphSwapVars(int,vertex1,vertex2);
     vtkReebGraphSwapVars(int,N1,N2);
+    // there is a useless assignment below
+    // keeping for clarity and consistency
     vtkReebGraphSwapVars(double,f1,f2);
   }
 

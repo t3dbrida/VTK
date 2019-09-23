@@ -14,11 +14,11 @@
 =========================================================================*/
 /**
  * @class   vtkHyperTreeGridPlaneCutter
- * @brief   cut a hyper tree grid volume with
+ * @brief   cut an hyper tree grid volume with
  * a plane and generate a polygonal cut surface.
  *
  *
- * vtkHyperTreeGridPlaneCutter is a filter that takes as input a hyper tree
+ * vtkHyperTreeGridPlaneCutter is a filter that takes as input an hyper tree
  * grid and a single plane and generates the polygonal data intersection surface.
  * This cut is computed at the leaf cells of the hyper tree.
  * It is left as an option to decide whether the cut should be computed over
@@ -31,10 +31,11 @@
  * vtkHyperTreeGrid vtkHyperTreeGridAlgorithm
  *
  * @par Thanks:
- * This class was written by Philippe Pebay on a idea of Guénolé Harel and Jacques-Bernard Lekien, 2016
+ * This class was written by Philippe Pebay on a idea of Guenole Harel and Jacques-Bernard Lekien, 2016
  * This class was modified by Rogeli Grima Torres, 2016
- * This work was supported by Commissariat a l'Energie Atomique (CEA/DIF)
- *
+ * This class was modified by Jacques-Bernard Lekien, 2018
+ * This work was supported by Commissariat a l'Energie Atomique
+ * CEA, DAM, DIF, F-91297 Arpajon, France.
 */
 
 #ifndef vtkHyperTreeGridPlaneCutter_h
@@ -43,12 +44,12 @@
 #include "vtkFiltersHyperTreeModule.h" // For export macro
 #include "vtkHyperTreeGridAlgorithm.h"
 
-class vtkHyperTreeGridCursor;
 class vtkCellArray;
 class vtkCutter;
 class vtkIdList;
 class vtkPoints;
-class vtkPlane;
+class vtkHyperTreeGridNonOrientedGeometryCursor;
+class vtkHyperTreeGridNonOrientedMooreSuperCursor;
 
 class VTKFILTERSHYPERTREE_EXPORT vtkHyperTreeGridPlaneCutter : public vtkHyperTreeGridAlgorithm
 {
@@ -61,23 +62,27 @@ public:
   /**
    * Specify the plane with its [a,b,c,d] Cartesian coefficients:
    * a*x + b*y + c*z = d
-   *
-   * @note This will be overridden the vtkPlane object, if specified.
    */
-  vtkSetVector4Macro(Plane,double);
+  void SetPlane(double a, double b, double c, double d);
   vtkGetVector4Macro(Plane,double);
   //@}
 
+  //@{
   /**
-   * Set the plane by specifying a vtkPlane object. This will override the
-   * plane equation if set, and may be null, in which case the equation will
-   * be used.
-   *
-   * @note This will override plane equation state when specified.
+   * Returns 0 if plane's normal is aligned with X axis, 1 if it is aligned with Y axis, 2 if it
+   * is aligned with Z axis. Returns -1 if not aligned with any principal axis.
    */
-  void SetPlane(vtkPlane *plane) { this->SetPlaneObj(plane); }
-  void SetPlaneObj(vtkPlane*);
-  vtkGetObjectMacro(PlaneObj, vtkPlane)
+  vtkGetMacro(AxisAlignment, int);
+  //@}
+
+  //@{
+  /**
+   * Returns true if plane's normal is aligned with the corresponding axis, false elsewise.
+   */
+  bool IsPlaneOrthogonalToXAxis() { return this->AxisAlignment == 0; }
+  bool IsPlaneOrthogonalToYAxis() { return this->AxisAlignment == 1; }
+  bool IsPlaneOrthogonalToZAxis() { return this->AxisAlignment == 2; }
+  //}@
 
   //@{
   /**
@@ -88,11 +93,15 @@ public:
   vtkBooleanMacro(Dual,int);
   //@}
 
-  vtkMTimeType GetMTime() override;
 
 protected:
   vtkHyperTreeGridPlaneCutter();
   ~vtkHyperTreeGridPlaneCutter() override;
+
+  /**
+   * Resets every attributes to a minimal state needed for the algorithm to execute
+   */
+  virtual void Reset();
 
   /**
    * For this algorithm the output is a vtkPolyData instance
@@ -107,17 +116,17 @@ protected:
   /**
    * Recursively descend into tree down to leaves, cutting primal cells
    */
-  void RecursivelyProcessTreePrimal( vtkHyperTreeGridCursor*, vtkBitArray* );
+  void RecursivelyProcessTreePrimal( vtkHyperTreeGridNonOrientedGeometryCursor* );
 
   /**
    * Recursively decide whether cell is intersected by plane
    */
-  bool RecursivelyPreProcessTree( vtkHyperTreeGridCursor*, vtkBitArray* );
+  bool RecursivelyPreProcessTree( vtkHyperTreeGridNonOrientedGeometryCursor* );
 
   /**
    * Recursively descend into tree down to leaves, cutting dual cells
    */
-  void RecursivelyProcessTreeDual( vtkHyperTreeGridCursor*, vtkBitArray* );
+  void RecursivelyProcessTreeDual( vtkHyperTreeGridNonOrientedMooreSuperCursor* );
 
   /**
    * Check if a cursor is intersected by a plane
@@ -179,9 +188,14 @@ protected:
   vtkCutter* Cutter;
 
   /**
-   * Plane object used to hold plane state.
+   * material Mask
    */
-  vtkPlane *PlaneObj;
+  vtkBitArray* InMask;
+
+  /**
+   * Flag computed at plane creation to know wether it is aligned with x, y or z axis
+   */
+  int AxisAlignment;
 
 private:
   vtkHyperTreeGridPlaneCutter(const vtkHyperTreeGridPlaneCutter&) = delete;

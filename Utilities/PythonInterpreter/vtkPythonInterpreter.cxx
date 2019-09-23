@@ -16,8 +16,10 @@
 #include "vtkPythonInterpreter.h"
 
 #include "vtkCommand.h"
+#include "vtkLogger.h"
 #include "vtkNew.h"
 #include "vtkObjectFactory.h"
+#include "vtkOutputWindow.h"
 #include "vtkPythonStdStreamCaptureHelper.h"
 #include "vtkResourceFileLocator.h"
 #include "vtkVersion.h"
@@ -47,16 +49,9 @@ extern wchar_t* _Py_DecodeUTF8_surrogateescape(const char* s, Py_ssize_t size);
 #endif
 
 #define VTKPY_DEBUG_MESSAGE(x)                                                                     \
-  if (vtkPythonInterpreter::GetPythonVerboseFlag() > 0)                                            \
-  {                                                                                                \
-    cout << "# vtk: " x << endl;                                                                   \
-  }
-
+  vtkVLog(vtkLogger::ConvertToVerbosity(vtkPythonInterpreter::GetLogVerbosity()), x)
 #define VTKPY_DEBUG_MESSAGE_VV(x)                                                                  \
-  if (vtkPythonInterpreter::GetPythonVerboseFlag() > 1)                                            \
-  {                                                                                                \
-    cout << "# vtk: " x << endl;                                                                   \
-  }
+  vtkVLog(vtkLogger::ConvertToVerbosity(vtkPythonInterpreter::GetLogVerbosity() + 1), x)
 
 namespace
 {
@@ -157,14 +152,6 @@ inline void vtkPrependPythonPath(const char* pathtoadd)
   Py_DECREF(newpath);
 }
 
-inline void vtkSafePrependPythonPath(const std::string& pathtoadd)
-{
-  VTKPY_DEBUG_MESSAGE_VV("trying " << pathtoadd);
-  if (!pathtoadd.empty() && vtksys::SystemTools::FileIsDirectory(pathtoadd))
-  {
-    vtkPrependPythonPath(pathtoadd.c_str());
-  }
-}
 }
 
 // Schwarz counter idiom for GlobalInterpreters object
@@ -191,7 +178,7 @@ bool vtkPythonInterpreter::CaptureStdin = false;
 bool vtkPythonInterpreter::ConsoleBuffering = false;
 std::string vtkPythonInterpreter::StdErrBuffer;
 std::string vtkPythonInterpreter::StdOutBuffer;
-int vtkPythonInterpreter::PythonVerboseFlag = 0;
+int vtkPythonInterpreter::LogVerbosity = vtkLogger::VERBOSITY_TRACE;
 
 vtkStandardNewMacro(vtkPythonInterpreter);
 //----------------------------------------------------------------------------
@@ -260,12 +247,8 @@ bool vtkPythonInterpreter::Initialize(int initsigs /*=0*/)
     vtkPythonInterpreter::InitializedOnce = true;
 
 #ifdef VTK_PYTHON_FULL_THREADSAFE
-    int threadInit = PyEval_ThreadsInitialized();
     PyEval_InitThreads(); // safe to call this multiple time
-    if (!threadInit)
-    {
-      PyEval_SaveThread(); // release GIL
-    }
+    PyEval_SaveThread(); // release GIL
 #endif
 
     // HACK: Calling PyRun_SimpleString for the first time for some reason results in
@@ -372,24 +355,121 @@ void vtkPythonInterpreter::PrependPythonPath(const char* dir)
 }
 
 //----------------------------------------------------------------------------
+void vtkPythonInterpreter::PrependPythonPath(const char* anchor, const char* landmark)
+{
+  const std::vector<std::string> prefixes = {
+    VTK_PYTHON_SITE_PACKAGES_SUFFIX
+#if defined(__APPLE__)
+    // if in an App bundle, the `sitepackages` dir is <app_root>/Contents/Python
+    ,
+    "Contents/Python"
+#endif
+    ,
+    "."
+  };
+
+  vtkNew<vtkResourceFileLocator> locator;
+  locator->SetLogVerbosity(vtkPythonInterpreter::GetLogVerbosity() + 1);
+  const std::string path = locator->Locate(anchor, prefixes, landmark);
+  if (!path.empty())
+  {
+    vtkPythonInterpreter::PrependPythonPath(path.c_str());
+  }
+}
+
+//----------------------------------------------------------------------------
 int vtkPythonInterpreter::PyMain(int argc, char** argv)
 {
   vtksys::SystemTools::EnableMSVCDebugHook();
-  vtkPythonInterpreter::PythonVerboseFlag = 0;
+
+  int count_v = 0;
   for (int cc = 0; cc < argc; ++cc)
   {
     if (argv[cc] && strcmp(argv[cc], "-v") == 0)
     {
-      vtkPythonInterpreter::PythonVerboseFlag += 1;
+      ++count_v;
     }
     if (argv[cc] && strcmp(argv[cc], "-vv") == 0)
     {
-      vtkPythonInterpreter::PythonVerboseFlag = 2;
+      count_v += 2;
     }
   }
+
+  if (count_v > 0)
+  {
+    // change the vtkPythonInterpreter's log verbosity. We only touch it
+    // if the command line arguments explicitly requested a certain verbosity.
+    vtkPythonInterpreter::SetLogVerbosity(vtkLogger::VERBOSITY_INFO);
+    vtkLogger::SetStderrVerbosity(vtkLogger::ConvertToVerbosity(count_v - 1));
+  }
+  else
+  {
+    // update log verbosity such that default is to only show errors/warnings.
+    // this avoids show the standard loguru INFO messages for executable args etc.
+    // unless `-v` was specified.
+    vtkLogger::SetStderrVerbosity(vtkLogger::VERBOSITY_WARNING);
+  }
+
+  vtkLogger::Init(argc, argv, nullptr); // since `-v` and `-vv` are parsed as Python verbosity flags
+                                        // and not log verbosity flags.
+
   vtkPythonInterpreter::Initialize(1);
 
 #if PY_VERSION_HEX >= 0x03000000
+
+#if PY_VERSION_HEX >= 0x03070000 && PY_VERSION_HEX < 0x03080000
+  // Python 3.7.0 has a bug where Py_InitializeEx (called above) followed by
+  // Py_Main (at the end of this block) causes a crash. Gracefully exit with
+  // failure if we're using 3.7.0 and suggest getting the newest 3.7.x release.
+  // See <https://gitlab.kitware.com/vtk/vtk/issues/17434> for details.
+  {
+    bool is_ok = true;
+    vtkPythonScopeGilEnsurer gilEnsurer(false, true);
+    PyObject* sys = PyImport_ImportModule("sys");
+    if (sys)
+    {
+      // XXX: Check sys.implementation.name == 'cpython'?
+
+      PyObject* version_info = PyObject_GetAttrString(sys, "version_info");
+      if (version_info)
+      {
+        PyObject* major = PyObject_GetAttrString(version_info, "major");
+        PyObject* minor = PyObject_GetAttrString(version_info, "minor");
+        PyObject* micro = PyObject_GetAttrString(version_info, "micro");
+
+        auto py_number_cmp = [] (PyObject* obj, long expected) {
+          return obj && PyLong_Check(obj) && PyLong_AsLong(obj) == expected;
+        };
+
+        // Only 3.7.0 has this issue. Any failures to get the version
+        // information is OK; we'll just crash later anyways if the version is
+        // bad.
+        is_ok =
+          !py_number_cmp(major, 3) ||
+          !py_number_cmp(minor, 7) ||
+          !py_number_cmp(micro, 0);
+
+        Py_XDECREF(micro);
+        Py_XDECREF(minor);
+        Py_XDECREF(major);
+      }
+
+      Py_XDECREF(version_info);
+    }
+
+    Py_XDECREF(sys);
+
+    if (!is_ok)
+    {
+      std::cerr << "Python 3.7.0 has a known issue that causes a crash with a "
+        "specific API usage pattern. This has been fixed in 3.7.1 and all "
+        "newer 3.7.x Python releases. Exiting now to avoid the crash." <<
+        std::endl;
+      return 1;
+    }
+  }
+#endif
+
   // Need two copies of args, because programs might modify the first
   wchar_t** argvWide = new wchar_t*[argc];
   wchar_t** argvWide2 = new wchar_t*[argc];
@@ -480,14 +560,14 @@ int vtkPythonInterpreter::RunSimpleString(const char* script)
   vtkPythonInterpreter::ConsoleBuffering = false;
   if (!vtkPythonInterpreter::StdErrBuffer.empty())
   {
-    vtkOutputWindowDisplayErrorText(vtkPythonInterpreter::StdErrBuffer.c_str());
+    vtkOutputWindow::GetInstance()->DisplayErrorText(vtkPythonInterpreter::StdErrBuffer.c_str());
     NotifyInterpreters(
       vtkCommand::ErrorEvent, const_cast<char*>(vtkPythonInterpreter::StdErrBuffer.c_str()));
     vtkPythonInterpreter::StdErrBuffer.clear();
   }
   if (!vtkPythonInterpreter::StdOutBuffer.empty())
   {
-    vtkOutputWindowDisplayText(vtkPythonInterpreter::StdOutBuffer.c_str());
+    vtkOutputWindow::GetInstance()->DisplayText(vtkPythonInterpreter::StdOutBuffer.c_str());
     NotifyInterpreters(
       vtkCommand::SetOutputEvent, const_cast<char*>(vtkPythonInterpreter::StdOutBuffer.c_str()));
     vtkPythonInterpreter::StdOutBuffer.clear();
@@ -517,7 +597,7 @@ void vtkPythonInterpreter::WriteStdOut(const char* txt)
   }
   else
   {
-    vtkOutputWindowDisplayText(txt);
+    vtkOutputWindow::GetInstance()->DisplayText(txt);
     NotifyInterpreters(vtkCommand::SetOutputEvent, const_cast<char*>(txt));
   }
 }
@@ -536,7 +616,7 @@ void vtkPythonInterpreter::WriteStdErr(const char* txt)
   }
   else
   {
-    vtkOutputWindowDisplayErrorText(txt);
+    vtkOutputWindow::GetInstance()->DisplayErrorText(txt);
     NotifyInterpreters(vtkCommand::ErrorEvent, const_cast<char*>(txt));
   }
 }
@@ -573,14 +653,6 @@ void vtkPythonInterpreter::SetupPythonPrefix()
     return;
   }
 
-  if (Py_GetPythonHome() != nullptr)
-  {
-    // if PYTHONHOME is set, we do nothing. Don't override an already
-    // overridden environment.
-    VTKPY_DEBUG_MESSAGE("`PYTHONHOME` already set. Leaving unchanged.");
-    return;
-  }
-
   std::string pythonlib = vtkGetLibraryPathForSymbol(Py_SetProgramName);
   if (pythonlib.empty())
   {
@@ -588,24 +660,6 @@ void vtkPythonInterpreter::SetupPythonPrefix()
                         "Set `PYTHONHOME` if Python standard library fails to load.");
     return;
   }
-
-#if PY_VERSION_HEX >= 0x03000000
-  auto oldprogramname = vtk_Py_EncodeLocale(Py_GetProgramName(), nullptr);
-#else
-  auto oldprogramname = Py_GetProgramName();
-#endif
-  if (oldprogramname != nullptr && strcmp(oldprogramname, "python") != 0 && strcmp(oldprogramname, "python3") != 0)
-  {
-    VTKPY_DEBUG_MESSAGE("program-name has been changed. Leaving unchanged.");
-#if PY_VERSION_HEX >= 0x03000000
-    PyMem_Free(oldprogramname);
-#endif
-    return;
-  }
-
-#if PY_VERSION_HEX >= 0x03000000
-  PyMem_Free(oldprogramname);
-#endif
 
   const std::string newprogramname =
     systools::GetFilenamePath(pythonlib) + VTK_PATH_SEPARATOR "vtkpython";
@@ -672,20 +726,27 @@ void vtkPythonInterpreter::SetupVTKPythonPaths()
   }
 #endif
 
-  const std::vector<std::string> prefixes = {
-    VTK_PYTHON_SITE_PACKAGES_SUFFIX
-#if defined(__APPLE__)
-    // if in an App bundle, the `sitepackages` dir is <app_root>/Contents/Python
-    ,
-    "Contents/Python"
-#endif
-  };
-
-  vtkNew<vtkResourceFileLocator> locator;
-  locator->SetPrintDebugInformation(vtkPythonInterpreter::GetPythonVerboseFlag() > 1);
-  std::string path = locator->Locate(vtkdir, prefixes, "vtkmodules/__init__.py");
-  if (!path.empty())
-  {
-    vtkSafePrependPythonPath(path);
-  }
+  vtkPythonInterpreter::PrependPythonPath(vtkdir.c_str(), "vtkmodules/__init__.py");
 }
+
+//----------------------------------------------------------------------------
+void vtkPythonInterpreter::SetLogVerbosity(int val)
+{
+  vtkPythonInterpreter::LogVerbosity = vtkLogger::ConvertToVerbosity(val);
+}
+
+//----------------------------------------------------------------------------
+int vtkPythonInterpreter::GetLogVerbosity()
+{
+  return vtkPythonInterpreter::LogVerbosity;
+}
+
+#if !defined(VTK_LEGACY_REMOVE)
+//----------------------------------------------------------------------------
+int vtkPythonInterpreter::GetPythonVerboseFlag()
+{
+  VTK_LEGACY_REPLACED_BODY(
+    vtkPythonInterpreter::GetPythonVerboseFlag, "VTK 8.3", vtkPythonInterpreter::GetLogVerbosity);
+  return vtkPythonInterpreter::LogVerbosity == vtkLogger::VERBOSITY_INFO ? 1 : 0;
+}
+#endif

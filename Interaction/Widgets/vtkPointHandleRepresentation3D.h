@@ -53,6 +53,8 @@ public:
   void PrintSelf(ostream& os, vtkIndent indent) override;
   //@}
 
+  using vtkHandleRepresentation::Translate;
+
   //@{
   /**
    * Set the position of the point in world and display coordinates. Note
@@ -130,7 +132,6 @@ public:
   vtkBooleanMacro(TranslationMode,vtkTypeBool);
   //@}
 
-  //@{
   /**
    * Convenience methods to turn outline and shadows on and off.
    */
@@ -237,6 +238,14 @@ public:
   */
   void RegisterPickers() override;
 
+  /**
+   * Override to ensure that the internal actor's visibility is consistent with
+   * this representation's visibility. Inconsistency between the two would cause
+   * issues in picking logic which relies on individual view prop visibility to
+   * determine whether the prop is pickable.
+   */
+  void SetVisibility(vtkTypeBool visible) override;
+
 protected:
   vtkPointHandleRepresentation3D();
   ~vtkPointHandleRepresentation3D() override;
@@ -246,7 +255,6 @@ protected:
   vtkPolyDataMapper *Mapper;
   vtkCursor3D       *Cursor3D;
 
-
   // Do the picking
   vtkCellPicker *CursorPicker;
   double LastPickPosition[3];
@@ -254,22 +262,24 @@ protected:
 
   // Methods to manipulate the cursor
   int  ConstraintAxis;
-  void Translate(double *p1, double *p2);
-  void Scale(double *p1, double *p2, double eventPos[2]);
-  void MoveFocus(double *p1, double *p2);
+  virtual void Translate(const double* p1, const double* p2) override;
+  void Scale(const double* p1, const double* p2, const double eventPos[2]);
+  void MoveFocus(const double* p1, const double* p2);
   void SizeBounds();
 
-  // Given a motion vector defined by p1 --> p2 (p1 and p2 are in
-  // world coordinates), the new display position of the handle center is
-  // populated into requestedDisplayPos. This is again only a request for the
-  // new display position. It is up to the point placer to deduce the
-  // appropriate world co-ordinates that this display position will map into.
-  // The placer may even disallow such a movement.
-  // If "SmoothMotion" is OFF, the returned requestedDisplayPos is the same
-  // as the event position, ie the location of the mouse cursor. If its OFF,
-  // incremental offsets as described above are used to compute it.
-  void MoveFocusRequest( double *p1, double *p2,
-                         double eventPos[2], double requestedDisplayPos[3] );
+  /**
+   * Given a motion vector defined by p1 --> p2 (p1 and p2 are in
+   * world coordinates), the new display position of the handle center is
+   * populated into requestedDisplayPos. This is again only a request for the
+   * new display position. It is up to the point placer to deduce the
+   * appropriate world co-ordinates that this display position will map into.
+   * The placer may even disallow such a movement.
+   * If "SmoothMotion" is OFF, the returned requestedDisplayPos is the same
+   * as the event position, ie the location of the mouse cursor. If its OFF,
+   * incremental offsets as described above are used to compute it.
+   */
+  void MoveFocusRequest(
+    const double* p1, const double* p2, const double currPos[2], double center[3]);
 
   // Properties used to control the appearance of selected objects and
   // the manipulator in general.

@@ -27,7 +27,6 @@
 #ifndef __LSDynaMetaData_h
 #define __LSDynaMetaData_h
 
-#include "LSDynaExport.h"
 #include "LSDynaFamily.h"
 
 #include <string>
@@ -44,7 +43,7 @@ public:
 
   bool AddCellArray( int cellType, const std::string& name, int numComponents, int status );
 
-  int GetTotalMaterialCount();
+  vtkIdType GetTotalMaterialCount();
 
   void Reset();
 

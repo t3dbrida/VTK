@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cctype>
 #include <memory>
 #include <sstream>
 #include <vector>
@@ -476,13 +477,8 @@ void vtkXMLDataParser::PerformByteSwap(void* data, size_t numWords,
 //----------------------------------------------------------------------------
 int vtkXMLDataParser::ReadCompressionHeader()
 {
-#if defined(VTK_HAS_STD_UNIQUE_PTR)
   std::unique_ptr<vtkXMLDataHeader>
     ch(vtkXMLDataHeader::New(this->HeaderType, 3));
-#else
-  std::auto_ptr<vtkXMLDataHeader>
-    ch(vtkXMLDataHeader::New(this->HeaderType, 3));
-#endif
 
   this->DataStream->StartReading();
 
@@ -602,13 +598,9 @@ size_t vtkXMLDataParser::ReadUncompressedData(unsigned char* data,
                                               size_t wordSize)
 {
   // First read the length of the data.
-#if defined(VTK_HAS_STD_UNIQUE_PTR)
   std::unique_ptr<vtkXMLDataHeader>
     uh(vtkXMLDataHeader::New(this->HeaderType, 1));
-#else
-  std::auto_ptr<vtkXMLDataHeader>
-    uh(vtkXMLDataHeader::New(this->HeaderType, 1));
-#endif
+
   size_t const headerSize = uh->DataSize();
   size_t r = this->DataStream->Read(uh->Data(), headerSize);
   if(r < headerSize)
@@ -941,7 +933,8 @@ size_t vtkXMLDataParser::ReadAppendedData(vtkTypeInt64 offset,
 //----------------------------------------------------------------------------
 // Define a parsing function template.  The extra "long" argument is used
 // to help broken compilers select the non-templates below for char and
-// unsigned char by making them a better conversion than the template.
+// unsigned char, and float/double by making them a better conversion than
+// the template.
 template <class T>
 T* vtkXMLParseAsciiData(istream& is, int* length, T*, long)
 {
@@ -966,6 +959,116 @@ T* vtkXMLParseAsciiData(istream& is, int* length, T*, long)
   }
 
   if(length)
+  {
+    *length = dataLength;
+  }
+
+  return dataBuffer;
+}
+
+//----------------------------------------------------------------------------
+static float* vtkXMLParseAsciiData(istream& is, int* length, float*, int)
+{
+  int dataLength = 0;
+  int dataBufferSize = 64;
+
+  float* dataBuffer = new float[dataBufferSize];
+  std::string stringBuffer;
+  float element;
+
+  while (1)
+  {
+    is >> element;
+    if (!is.good())
+    {
+      is.clear(is.rdstate() & ~ios::failbit);
+      is >> stringBuffer;
+      if (!is.good())
+      {
+        break;
+      }
+      else
+      {
+        std::for_each(
+          stringBuffer.begin(), stringBuffer.end(), [](char& c) { c = std::tolower(c); });
+        if (stringBuffer == "inf" || stringBuffer == "nan" || stringBuffer == "-inf")
+        {
+          element = strtof(stringBuffer.c_str(), nullptr);
+        }
+        else
+        {
+          break;
+        }
+      }
+    }
+    if (dataLength == dataBufferSize)
+    {
+      int newSize = dataBufferSize * 2;
+      float* newBuffer = new float[newSize];
+      memcpy(newBuffer, dataBuffer, dataLength * sizeof(float));
+      delete[] dataBuffer;
+      dataBuffer = newBuffer;
+      dataBufferSize = newSize;
+    }
+    dataBuffer[dataLength++] = element;
+  }
+
+  if (length)
+  {
+    *length = dataLength;
+  }
+
+  return dataBuffer;
+}
+
+//----------------------------------------------------------------------------
+static double* vtkXMLParseAsciiData(istream& is, int* length, double*, int)
+{
+  int dataLength = 0;
+  int dataBufferSize = 64;
+
+  double* dataBuffer = new double[dataBufferSize];
+  std::string stringBuffer;
+  double element;
+
+  while (1)
+  {
+    is >> element;
+    if (!is.good())
+    {
+      is.clear(is.rdstate() & ~ios::failbit);
+      is >> stringBuffer;
+      if (!is.good())
+      {
+        break;
+      }
+      else
+      {
+        std::for_each(
+          stringBuffer.begin(), stringBuffer.end(), [](char& c) { c = std::tolower(c); });
+        if (stringBuffer == "inf" || stringBuffer == "nan" || stringBuffer == "-inf")
+        {
+          element = strtod(stringBuffer.c_str(), nullptr);
+        }
+        else
+        {
+          break;
+        }
+      }
+    }
+    if (dataLength == dataBufferSize)
+    {
+      int newSize = dataBufferSize * 2;
+      double* newBuffer = new double[newSize];
+      memcpy(newBuffer, dataBuffer, dataLength * sizeof(double));
+      delete[] dataBuffer;
+      dataBuffer = newBuffer;
+      dataBufferSize = newSize;
+    }
+    dataBuffer[dataLength++] = element;
+  }
+
+  if (length)
   {
     *length = dataLength;
   }

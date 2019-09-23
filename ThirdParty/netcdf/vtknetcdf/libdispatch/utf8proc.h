@@ -82,30 +82,30 @@
 #include "ncexternl.h"
 
 #if defined(_MSC_VER) && _MSC_VER < 1800
-// MSVC prior to 2013 lacked stdbool.h and inttypes.h
-typedef signed char utf8proc_int8_t;
-typedef unsigned char utf8proc_uint8_t;
-typedef short utf8proc_int16_t;
-typedef unsigned short utf8proc_uint16_t;
-typedef int utf8proc_int32_t;
-typedef unsigned int utf8proc_uint32_t;
+/* MSVC prior to 2013 lacked stdbool.h and inttypes.h */
+typedef signed char nc_utf8proc_int8_t;
+typedef unsigned char nc_utf8proc_uint8_t;
+typedef short nc_utf8proc_int16_t;
+typedef unsigned short nc_utf8proc_uint16_t;
+typedef int nc_utf8proc_int32_t;
+typedef unsigned int nc_utf8proc_uint32_t;
 #  ifdef _WIN64
-typedef __int64 utf8proc_ssize_t;
-typedef unsigned __int64 utf8proc_size_t;
+typedef __int64 nc_utf8proc_ssize_t;
+typedef unsigned __int64 nc_utf8proc_size_t;
 #  else
-typedef int utf8proc_ssize_t;
-typedef unsigned int utf8proc_size_t;
+typedef int nc_utf8proc_ssize_t;
+typedef unsigned int nc_utf8proc_size_t;
 #  endif
 #  ifndef __cplusplus
-// emulate C99 bool
-typedef unsigned char utf8proc_bool;
+/* emulate C99 bool */
+typedef unsigned char nc_utf8proc_bool;
 #    ifndef __bool_true_false_are_defined
 #      define false 0
 #      define true 1
 #      define __bool_true_false_are_defined 1
 #    endif
 #  else
-typedef bool utf8proc_bool;
+typedef bool nc_utf8proc_bool;
 #  endif
 #else
 #  include <stddef.h>
@@ -382,7 +382,7 @@ typedef nc_utf8proc_int32_t (*nc_utf8proc_custom_func)(nc_utf8proc_int32_t codep
  * Array containing the byte lengths of a UTF-8 encoded codepoint based
  * on the first byte.
  */
-//const nc_utf8proc_int8_t nc_utf8proc_utf8class[256];
+/*const nc_utf8proc_int8_t nc_utf8proc_utf8class[256];*/
 
 /**
  * Returns the utf8proc API version as a string MAJOR.MINOR.PATCH

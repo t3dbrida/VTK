@@ -90,7 +90,7 @@ public:
   //@}
 
   /**
-   * Get the entension for this file format.
+   * Get the extension for this file format.
    */
   virtual const char* GetFileExtensions() {
     return ".xfm"; }
@@ -156,7 +156,7 @@ protected:
 
   virtual int WriteFile();
 
-  int ProcessRequest(vtkInformation* request,
+  vtkTypeBool ProcessRequest(vtkInformation* request,
                              vtkInformationVector** inInfo,
                              vtkInformationVector* outInfo) override;
 

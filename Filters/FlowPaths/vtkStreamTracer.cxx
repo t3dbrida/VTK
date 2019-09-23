@@ -28,7 +28,6 @@ PURPOSE.  See the above copyright notice for more information.
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
 #include "vtkIntArray.h"
-#include "vtkCellLocator.h"
 #include "vtkModifiedBSPTree.h"
 #include "vtkInterpolatedVelocityField.h"
 #include "vtkAbstractInterpolatedVelocityField.h"
@@ -790,7 +789,6 @@ void vtkStreamTracer::Integrate(vtkPointData *input0Data,
 
   for(int currentLine = 0; currentLine < numLines; currentLine++)
   {
-
     double progress = static_cast<double>(currentLine)/numLines;
     this->UpdateProgress(progress);
 

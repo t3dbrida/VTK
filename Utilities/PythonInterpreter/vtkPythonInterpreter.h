@@ -128,7 +128,18 @@ public:
    * that if Python is initialized again (by calls to Initialize()), then these
    * paths will be re-added.
    */
-  static void PrependPythonPath(const char*);
+  static void PrependPythonPath(const char* path);
+
+  //@{
+  /**
+   * Prepend custom paths to `sys.path` after attempt to find the `landmark` using the
+   * `anchor` prefix provided. If found, the path to the landmark gets added the python path
+   * using `PrependPythonPath`. Applications can use this to add paths to custom modules
+   * in the module search path. This is also needed for static builds to assist the
+   * interpreter in locating the path to `vtk` package.
+   */
+  static void PrependPythonPath(const char* anchor, const char* landmark);
+  //@}
 
   //@{
   /**
@@ -141,7 +152,16 @@ public:
   static bool GetCaptureStdin();
   //@}
 
-  static int GetPythonVerboseFlag() { return vtkPythonInterpreter::PythonVerboseFlag; }
+  VTK_LEGACY(static int GetPythonVerboseFlag());
+
+  //@{
+  /**
+   * Get/Set the verbosity level at which vtkPythonInterpreter should generate
+   * log output. Default value is `vtkLogger::VERBOSITY_TRACE`.
+   */
+  static void SetLogVerbosity(int);
+  static int GetLogVerbosity();
+  //@}
 
 protected:
   vtkPythonInterpreter();
@@ -193,7 +213,10 @@ private:
    */
   static void SetupVTKPythonPaths();
 
-  static int PythonVerboseFlag;
+  /**
+   * Verbosity level to use when logging info.
+   */
+  static int LogVerbosity;
 };
 
 // For tracking global interpreters

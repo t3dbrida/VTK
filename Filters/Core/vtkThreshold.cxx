@@ -47,6 +47,7 @@ vtkThreshold::vtkThreshold()
                                vtkDataSetAttributes::SCALARS);
 
   this->UseContinuousCellRange = 0;
+  this->Invert = false;
 }
 
 vtkThreshold::~vtkThreshold() = default;
@@ -218,7 +219,10 @@ int vtkThreshold::RequestData(
       keepCell = this->EvaluateComponents( inScalars, cellId );
     }
 
-    if (  numCellPts > 0 && keepCell )
+    // Invert the keep flag if the Invert option is enabled.
+    keepCell = this->Invert ? (1 - keepCell) : keepCell;
+
+    if (  numCellPts > 0 && keepCell)
     {
       // satisfied thresholding (also non-empty cell, i.e. not VTK_EMPTY_CELL)
       for (i=0; i < numCellPts; i++)
@@ -343,7 +347,7 @@ int vtkThreshold::EvaluateComponents( vtkDataArray *scalars, vtkIdType id )
 
 
 // Return the method for manipulating scalar data as a string.
-const char *vtkThreshold::GetAttributeModeAsString(void)
+const char *vtkThreshold::GetAttributeModeAsString()
 {
   if ( this->AttributeMode == VTK_ATTRIBUTE_MODE_DEFAULT )
   {
@@ -360,7 +364,7 @@ const char *vtkThreshold::GetAttributeModeAsString(void)
 }
 
 // Return a string representation of the component mode
-const char *vtkThreshold::GetComponentModeAsString(void)
+const char *vtkThreshold::GetComponentModeAsString()
 {
   if ( this->ComponentMode == VTK_COMPONENT_MODE_USE_SELECTED )
   {

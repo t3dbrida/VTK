@@ -29,10 +29,12 @@
 #define vtkCurveRepresentation_h
 
 #include "vtkInteractionWidgetsModule.h" // For export macro
+#include "vtkPolyDataAlgorithm.h" // needed for vtkPolyDataAlgorithm
 #include "vtkWidgetRepresentation.h"
 
 class vtkActor;
 class vtkCellPicker;
+class vtkConeSource;
 class vtkDoubleArray;
 class vtkPlaneSource;
 class vtkPoints;
@@ -153,6 +155,16 @@ public:
 
   //@{
   /**
+   * Sets the representation to be a directional curve with the end represented
+   * as a cone.
+   */
+  void SetDirectionalLine(bool val);
+  vtkGetMacro(DirectionalLine, bool);
+  vtkBooleanMacro(DirectionalLine, bool);
+  //@}
+
+  //@{
+  /**
    * Set/Get the position of the handles. Call GetNumberOfHandles
    * to determine the valid range of handle indices.
    */
@@ -232,9 +244,47 @@ public:
   */
   void RegisterPickers() override;
 
+  //@{
+  /**
+   * Get/Set the current handle index. Setting the current handle index will
+   * also result in the handle being highlighted. Set to `-1` to remove the
+   * highlight.
+   */
+  void SetCurrentHandleIndex(int index);
+  vtkGetMacro(CurrentHandleIndex, int);
+  //@}
+
+  //@{
+  /**
+   * Gets/Sets the constraint axis for translations. Returns Axis::NONE
+   * if none.
+   **/
+  vtkGetMacro(TranslationAxis, int);
+  vtkSetClampMacro(TranslationAxis, int, -1, 2);
+  //@}
+
+  //@{
+  /**
+   * Toggles constraint translation axis on/off.
+   */
+  void SetXTranslationAxisOn() { this->TranslationAxis = Axis::XAxis; }
+  void SetYTranslationAxisOn() { this->TranslationAxis = Axis::YAxis; }
+  void SetZTranslationAxisOn() { this->TranslationAxis = Axis::ZAxis; }
+  void SetTranslationAxisOff() { this->TranslationAxis = Axis::NONE; }
+  //@}
+
+  //@{
+  /**
+   * Returns true if ContrainedAxis
+   **/
+  bool IsTranslationConstrained() { return this->TranslationAxis != Axis::NONE; }
+  //@}
+
 protected:
   vtkCurveRepresentation();
   ~vtkCurveRepresentation() override;
+
+  class HandleSource;
 
   double LastEventPosition[3];
   double Bounds[6];
@@ -259,11 +309,17 @@ protected:
 
   // Glyphs representing hot spots (e.g., handles)
   vtkActor          **Handle;
-  vtkSphereSource   **HandleGeometry;
+  HandleSource** HandleGeometry;
   void Initialize();
   int  HighlightHandle(vtkProp *prop); //returns handle index or -1 on fail
+  int GetHandleIndex(vtkProp* prop);   // returns handle index or -1 on fail
   virtual void SizeHandles();
-  virtual void InsertHandleOnLine(double* pos) = 0;
+
+  /**
+   * Returns the position of insertion or -1 on fail.
+   */
+  virtual int InsertHandleOnLine(double* pos) = 0;
+
   virtual void PushHandle(double* pos);
   void EraseHandle(const int&);
 
@@ -284,6 +340,9 @@ protected:
   // Transform the control points (used for spinning)
   vtkTransform *Transform;
 
+  // Manage how the representation appears
+  bool DirectionalLine;
+
   // Properties used to control the appearance of selected objects and
   // the manipulator in general.
   vtkProperty *HandleProperty;
@@ -295,6 +354,40 @@ protected:
   // For efficient spinning
   double Centroid[3];
   void CalculateCentroid();
+
+  int TranslationAxis;
+
+  class HandleSource : public vtkPolyDataAlgorithm
+  {
+  public:
+    static HandleSource* New();
+
+    vtkSetMacro(UseSphere, bool);
+    vtkGetMacro(UseSphere, bool);
+    vtkBooleanMacro(UseSphere, bool);
+
+    vtkSetClampMacro(Radius, double, 0.0, VTK_DOUBLE_MAX);
+    vtkGetMacro(Radius, double);
+
+    vtkSetVector3Macro(Center, double);
+    vtkGetVectorMacro(Center, double, 3);
+
+    vtkSetVector3Macro(Direction, double);
+    vtkGetVectorMacro(Direction, double, 3);
+
+  protected:
+    HandleSource();
+    ~HandleSource() override{};
+    int RequestData(vtkInformation*, vtkInformationVector**, vtkInformationVector*) override;
+
+  private:
+    bool UseSphere;
+    // Used by both
+    double Radius;
+    double Center[3];
+    // Cone only
+    double Direction[3];
+  };
 
 private:
   vtkCurveRepresentation(const vtkCurveRepresentation&) = delete;

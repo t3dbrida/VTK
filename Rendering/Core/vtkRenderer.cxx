@@ -147,6 +147,9 @@ vtkRenderer::vtkRenderer()
   this->Information = vtkInformation::New();
   this->Information->Register(this);
   this->Information->Delete();
+
+  this->UseImageBasedLighting = false;
+  this->EnvironmentCubeMap = nullptr;
 }
 
 vtkRenderer::~vtkRenderer()
@@ -198,6 +201,11 @@ vtkRenderer::~vtkRenderer()
   }
 
   this->SetInformation(nullptr);
+
+  if (this->EnvironmentCubeMap != nullptr)
+  {
+    this->EnvironmentCubeMap->Delete();
+  }
 }
 
 void vtkRenderer::SetLeftBackgroundTexture(vtkTexture* texture)
@@ -212,6 +220,10 @@ vtkTexture* vtkRenderer::GetLeftBackgroundTexture()
 
 void vtkRenderer::ReleaseGraphicsResources(vtkWindow *renWin)
 {
+  if(this->EnvironmentCubeMap != nullptr)
+  {
+    this->EnvironmentCubeMap->ReleaseGraphicsResources(renWin);
+  }
   if(this->BackgroundTexture != nullptr)
   {
     this->BackgroundTexture->ReleaseGraphicsResources(renWin);
@@ -232,7 +244,7 @@ void vtkRenderer::ReleaseGraphicsResources(vtkWindow *renWin)
 }
 
 // Concrete render method.
-void vtkRenderer::Render(void)
+void vtkRenderer::Render()
 {
   vtkRenderTimerLog *timer = this->RenderWindow->GetRenderTimer();
   VTK_SCOPED_RENDER_EVENT("vtkRenderer::Render this=@" << std::hex << this
@@ -426,7 +438,7 @@ void vtkRenderer::Render(void)
 }
 
 // ----------------------------------------------------------------------------
-void vtkRenderer::DeviceRenderOpaqueGeometry()
+void vtkRenderer::DeviceRenderOpaqueGeometry(vtkFrameBufferObjectBase* vtkNotUsed(fbo))
 {
   this->UpdateOpaquePolygonalGeometry();
 }
@@ -437,7 +449,7 @@ void vtkRenderer::DeviceRenderOpaqueGeometry()
 // UpdateTranslucentPolygonalGeometry().
 // Subclasses of vtkRenderer that can deal with depth peeling must
 // override this method.
-void vtkRenderer::DeviceRenderTranslucentPolygonalGeometry()
+void vtkRenderer::DeviceRenderTranslucentPolygonalGeometry(vtkFrameBufferObjectBase* vtkNotUsed(fbo))
 {
   // Have to be set before a call to UpdateTranslucentPolygonalGeometry()
   // because UpdateTranslucentPolygonalGeometry() will eventually call
@@ -482,7 +494,7 @@ int vtkRenderer::UpdateCamera ()
   return 1;
 }
 
-int vtkRenderer::UpdateLightsGeometryToFollowCamera()
+vtkTypeBool vtkRenderer::UpdateLightsGeometryToFollowCamera()
 {
   vtkCamera *camera;
   vtkLight *light;
@@ -522,7 +534,7 @@ int vtkRenderer::UpdateLightsGeometryToFollowCamera()
   return 1;
 }
 
-int vtkRenderer::UpdateLightGeometry()
+vtkTypeBool vtkRenderer::UpdateLightGeometry()
 {
   VTK_SCOPED_RENDER_EVENT("vtkRenderer::UpdateLightGeometry",
                           this->GetRenderWindow()->GetRenderTimer());
@@ -610,7 +622,7 @@ void vtkRenderer::AllocateTime()
 
 // Ask actors to render themselves. As a side effect will cause
 // visualization network to update.
-int vtkRenderer::UpdateGeometry()
+int vtkRenderer::UpdateGeometry(vtkFrameBufferObjectBase* vtkNotUsed(fbo))
 {
   int        i;
 
@@ -935,7 +947,7 @@ vtkLight *vtkRenderer::MakeLight()
   return vtkLight::New();
 }
 
-void vtkRenderer::CreateLight(void)
+void vtkRenderer::CreateLight()
 {
   if ( !this->AutomaticLightCreation )
   {
@@ -1101,7 +1113,7 @@ void vtkRenderer::ResetCamera(double bounds[6])
   }
   else
   {
-    vtkErrorMacro(<< "Trying to reset non-existant camera");
+    vtkErrorMacro(<< "Trying to reset non-existent camera");
     return;
   }
 
@@ -1221,7 +1233,7 @@ void vtkRenderer::ResetCameraClippingRange( double bounds[6] )
   this->GetActiveCameraAndResetIfCreated();
   if ( this->ActiveCamera == nullptr )
   {
-    vtkErrorMacro(<< "Trying to reset clipping range of non-existant camera");
+    vtkErrorMacro(<< "Trying to reset clipping range of non-existent camera");
     return;
   }
 
@@ -1857,6 +1869,13 @@ vtkAssemblyPath* vtkRenderer::PickProp(double selectionX1, double selectionY1,
   return this->PickedProp; //returns an assembly path
 }
 
+//----------------------------------------------------------------------------
+void vtkRenderer::SetEnvironmentCubeMap(vtkTexture* cubemap, bool vtkNotUsed(isSRGB))
+{
+  vtkSetObjectBodyMacro(EnvironmentCubeMap, vtkTexture, cubemap);
+}
+
+//----------------------------------------------------------------------------
 void vtkRenderer::ExpandBounds(double bounds[6], vtkMatrix4x4 *matrix)
 {
   if(!bounds)

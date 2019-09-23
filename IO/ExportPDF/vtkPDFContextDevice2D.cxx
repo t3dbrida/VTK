@@ -277,7 +277,7 @@ struct TextHelper
     assert(this->Valid);
 
     // Copy point since we'll modify it:
-    std::array<float, 2> pt = { ptIn[0], ptIn[1] };
+    std::array<float, 2> pt = {{ ptIn[0], ptIn[1] }};
 
     this->JustifyStartPoint(pt.data());
 
@@ -497,7 +497,7 @@ private:
   // the justification parameters
   void JustifyStartPoint(float pt[2]) const
   {
-    std::array<float, 2> offset = {0.f, -this->Ascent};
+    std::array<float, 2> offset = {{0.f, -this->Ascent}};
 
     switch (this->TextProp->GetJustification())
     {
@@ -530,10 +530,10 @@ private:
     }
 
     // Account for tprop rotation:
-    std::array<float, 2> tmp = {
-      offset[0] * this->CosineTheta - offset[1] * this->SineTheta,
-      offset[0] * this->SineTheta   + offset[1] * this->CosineTheta,
-    };
+    std::array<float, 2> tmp = {{
+        offset[0] * this->CosineTheta - offset[1] * this->SineTheta,
+        offset[0] * this->SineTheta   + offset[1] * this->CosineTheta,
+      }};
 
     pt[0] += tmp[0];
     pt[1] += tmp[1];
@@ -1734,6 +1734,7 @@ void vtkPDFContextDevice2D::ApplyLineType(int type)
   static const HPDF_UINT   dashLen = 1;
 
   static const HPDF_UINT16 dot[] = { 1, 7 };
+  static const HPDF_UINT16 denseDot[] = { 1, 3 };
   static const HPDF_UINT   dotLen = 2;
 
   static const HPDF_UINT16 dashDot[] = { 4, 6, 2, 4 };
@@ -1771,6 +1772,10 @@ void vtkPDFContextDevice2D::ApplyLineType(int type)
 
     case vtkPen::DASH_DOT_DOT_LINE:
       HPDF_Page_SetDash(this->Impl->Page, dashDotDot, dashDotDotLen, 0);
+      break;
+
+    case vtkPen::DENSE_DOT_LINE:
+      HPDF_Page_SetDash(this->Impl->Page, denseDot, dotLen, 0);
       break;
   }
 }

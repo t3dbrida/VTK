@@ -481,8 +481,7 @@ void DoContour(vtkSMPContourGrid* filter,
     vtkIdType numBatches;
     for (int i=0; i < numContours; ++i)
     {
-      scalarTree->InitTraversal(values[i]);
-      numBatches = scalarTree->GetNumberOfCellBatches();
+      numBatches = scalarTree->GetNumberOfCellBatches(values[i]);
       if ( numBatches > 0 )
       {
         vtkSMPTools::For(0, numBatches, functor);
@@ -575,7 +574,7 @@ int vtkSMPContourGrid::RequestData(
   // Not thread safe so calculate first.
   input->GetBounds();
 
-  int numContours = this->GetNumberOfContours();
+  vtkIdType numContours = this->GetNumberOfContours();
   if (numContours < 1)
   {
     return 1;
@@ -619,7 +618,7 @@ int vtkSMPContourGrid::FillOutputPortInformation(
 }
 
 //-----------------------------------------------------------------------------
-int vtkSMPContourGrid::ProcessRequest(vtkInformation* request,
+vtkTypeBool vtkSMPContourGrid::ProcessRequest(vtkInformation* request,
                                       vtkInformationVector** inputVector,
                                       vtkInformationVector* outputVector)
 {

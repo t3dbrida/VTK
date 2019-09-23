@@ -225,7 +225,7 @@ inline static void
 swapn2b(void *dst, const void *src, size_t nn)
 {
     /* it is OK if dst == src */
-    int i;
+    size_t i;
     uint16_t *op = (uint16_t*) dst;
     uint16_t *ip = (uint16_t*) src;
     for (i=0; i<nn; i++) {
@@ -314,7 +314,7 @@ swap4b(void *dst, const void *src)
 inline static void
 swapn4b(void *dst, const void *src, size_t nn)
 {
-    int i;
+    size_t i;
     uint32_t *op = (uint32_t*) dst;
     uint32_t *ip = (uint32_t*) src;
     for (i=0; i<nn; i++) {
@@ -385,10 +385,15 @@ swap8b(void *dst, const void *src)
     op = (uint32_t*)((char*)dst+4);
     *op = SWAP4(*op);
 #else
+    uint64_t tmp = *(uint64_t*)src;
+    tmp = SWAP8(tmp);
+    memcpy(dst, &tmp, 8);
+
+    /* Codes below will cause "break strict-aliasing rules" in gcc
     uint64_t *op = (uint64_t*)dst;
-    /* copy over, make the below swap in-place */
     *op = *(uint64_t*)src;
     *op = SWAP8(*op);
+    */
 #endif
 
 #if 0
@@ -422,7 +427,7 @@ inline static void
 swapn8b(void *dst, const void *src, size_t nn)
 {
 #ifdef FLOAT_WORDS_BIGENDIAN
-    int i;
+    size_t i;
     uint64_t *dst_p = (uint64_t*) dst;
     uint64_t *src_p = (uint64_t*) src;
     for (i=0; i<nn; i++) {
@@ -434,7 +439,7 @@ swapn8b(void *dst, const void *src, size_t nn)
         *op = SWAP4(*op);
     }
 #else
-    int i;
+    size_t i;
     uint64_t *op = (uint64_t*) dst;
     uint64_t *ip = (uint64_t*) src;
     for (i=0; i<nn; i++) {
@@ -588,7 +593,7 @@ static int
 ncx_get_short_schar(const void *xp, schar *ip)
 {
     int err=NC_NOERR;
-    ix_short xx;
+    ix_short xx = 0;
     get_ix_short(xp, &xx);
 
 #if IX_SHORT_MAX > SCHAR_MAX
@@ -614,7 +619,7 @@ ncx_get_short_short(const void *xp, short *ip)
 #if SIZEOF_IX_SHORT == SIZEOF_SHORT && IX_SHORT_MAX == SHORT_MAX
     get_ix_short(xp, (ix_short *)ip);
 #else
-    ix_short xx;
+    ix_short xx = 0;
     get_ix_short(xp, &xx);
 
 #if IX_SHORT_MAX > SHORT_MAX
@@ -641,7 +646,7 @@ ncx_get_short_int(const void *xp, int *ip)
 #if SIZEOF_IX_SHORT == SIZEOF_INT && IX_SHORT_MAX == INT_MAX
     get_ix_short(xp, (ix_short *)ip);
 #else
-    ix_short xx;
+    ix_short xx = 0;
     get_ix_short(xp, &xx);
 
 #if IX_SHORT_MAX > INT_MAX
@@ -668,7 +673,7 @@ ncx_get_short_long(const void *xp, long *ip)
 #if SIZEOF_IX_SHORT == SIZEOF_LONG && IX_SHORT_MAX == LONG_MAX
     get_ix_short(xp, (ix_short *)ip);
 #else
-    ix_short xx;
+    ix_short xx = 0;
     get_ix_short(xp, &xx);
 
 #if IX_SHORT_MAX > LONG_MAX
@@ -695,7 +700,7 @@ ncx_get_short_longlong(const void *xp, longlong *ip)
 #if SIZEOF_IX_SHORT == SIZEOF_LONGLONG && IX_SHORT_MAX == LONGLONG_MAX
     get_ix_short(xp, (ix_short *)ip);
 #else
-    ix_short xx;
+    ix_short xx = 0;
     get_ix_short(xp, &xx);
 
 #if IX_SHORT_MAX > LONGLONG_MAX
@@ -719,7 +724,7 @@ static int
 ncx_get_short_ushort(const void *xp, ushort *ip)
 {
     int err=NC_NOERR;
-    ix_short xx;
+    ix_short xx = 0;
     get_ix_short(xp, &xx);
 
 #if IX_SHORT_MAX > USHORT_MAX
@@ -749,7 +754,7 @@ static int
 ncx_get_short_uchar(const void *xp, uchar *ip)
 {
     int err=NC_NOERR;
-    ix_short xx;
+    ix_short xx = 0;
     get_ix_short(xp, &xx);
 
 #if IX_SHORT_MAX > UCHAR_MAX
@@ -779,7 +784,7 @@ static int
 ncx_get_short_uint(const void *xp, uint *ip)
 {
     int err=NC_NOERR;
-    ix_short xx;
+    ix_short xx = 0;
     get_ix_short(xp, &xx);
 
 #if IX_SHORT_MAX > UINT_MAX
@@ -809,7 +814,7 @@ static int
 ncx_get_short_ulonglong(const void *xp, ulonglong *ip)
 {
     int err=NC_NOERR;
-    ix_short xx;
+    ix_short xx = 0;
     get_ix_short(xp, &xx);
 
 #if IX_SHORT_MAX > ULONGLONG_MAX
@@ -838,7 +843,7 @@ ncx_get_short_ulonglong(const void *xp, ulonglong *ip)
 static int
 ncx_get_short_float(const void *xp, float *ip)
 {
-	ix_short xx;
+	ix_short xx = 0;
 	get_ix_short(xp, &xx);
 	*ip = (float)xx;
 	return NC_NOERR;
@@ -847,7 +852,7 @@ ncx_get_short_float(const void *xp, float *ip)
 static int
 ncx_get_short_double(const void *xp, double *ip)
 {
-	ix_short xx;
+	ix_short xx = 0;
 	get_ix_short(xp, &xx);
 	*ip = (double)xx;
 	return NC_NOERR;
@@ -1153,7 +1158,7 @@ static int
 ncx_get_ushort_schar(const void *xp, schar *ip)
 {
     int err=NC_NOERR;
-    ix_ushort xx;
+    ix_ushort xx = 0;
     get_ix_ushort(xp, &xx);
 
 #if IX_USHORT_MAX > SCHAR_MAX
@@ -1176,7 +1181,7 @@ static int
 ncx_get_ushort_short(const void *xp, short *ip)
 {
     int err=NC_NOERR;
-    ix_ushort xx;
+    ix_ushort xx = 0;
     get_ix_ushort(xp, &xx);
 
 #if IX_USHORT_MAX > SHORT_MAX
@@ -1199,7 +1204,7 @@ static int
 ncx_get_ushort_int(const void *xp, int *ip)
 {
     int err=NC_NOERR;
-    ix_ushort xx;
+    ix_ushort xx = 0;
     get_ix_ushort(xp, &xx);
 
 #if IX_USHORT_MAX > INT_MAX
@@ -1222,7 +1227,7 @@ static int
 ncx_get_ushort_long(const void *xp, long *ip)
 {
     int err=NC_NOERR;
-    ix_ushort xx;
+    ix_ushort xx = 0;
     get_ix_ushort(xp, &xx);
 
 #if IX_USHORT_MAX > LONG_MAX
@@ -1245,7 +1250,7 @@ static int
 ncx_get_ushort_longlong(const void *xp, longlong *ip)
 {
     int err=NC_NOERR;
-    ix_ushort xx;
+    ix_ushort xx = 0;
     get_ix_ushort(xp, &xx);
 
 #if IX_USHORT_MAX > LONGLONG_MAX
@@ -1271,7 +1276,7 @@ ncx_get_ushort_ushort(const void *xp, ushort *ip)
 #if SIZEOF_IX_USHORT == SIZEOF_USHORT && IX_USHORT_MAX == USHORT_MAX
     get_ix_ushort(xp, (ix_ushort *)ip);
 #else
-    ix_ushort xx;
+    ix_ushort xx = 0;
     get_ix_ushort(xp, &xx);
 
 #if IX_USHORT_MAX > USHORT_MAX
@@ -1298,7 +1303,7 @@ ncx_get_ushort_uchar(const void *xp, uchar *ip)
 #if SIZEOF_IX_USHORT == SIZEOF_UCHAR && IX_USHORT_MAX == UCHAR_MAX
     get_ix_ushort(xp, (ix_ushort *)ip);
 #else
-    ix_ushort xx;
+    ix_ushort xx = 0;
     get_ix_ushort(xp, &xx);
 
 #if IX_USHORT_MAX > UCHAR_MAX
@@ -1325,7 +1330,7 @@ ncx_get_ushort_uint(const void *xp, uint *ip)
 #if SIZEOF_IX_USHORT == SIZEOF_UINT && IX_USHORT_MAX == UINT_MAX
     get_ix_ushort(xp, (ix_ushort *)ip);
 #else
-    ix_ushort xx;
+    ix_ushort xx = 0;
     get_ix_ushort(xp, &xx);
 
 #if IX_USHORT_MAX > UINT_MAX
@@ -1352,7 +1357,7 @@ ncx_get_ushort_ulonglong(const void *xp, ulonglong *ip)
 #if SIZEOF_IX_USHORT == SIZEOF_ULONGLONG && IX_USHORT_MAX == ULONGLONG_MAX
     get_ix_ushort(xp, (ix_ushort *)ip);
 #else
-    ix_ushort xx;
+    ix_ushort xx = 0;
     get_ix_ushort(xp, &xx);
 
 #if IX_USHORT_MAX > ULONGLONG_MAX
@@ -1375,7 +1380,7 @@ ncx_get_ushort_ulonglong(const void *xp, ulonglong *ip)
 static int
 ncx_get_ushort_float(const void *xp, float *ip)
 {
-	ix_ushort xx;
+	ix_ushort xx = 0;
 	get_ix_ushort(xp, &xx);
 	*ip = (float)xx;
 	return NC_NOERR;
@@ -1384,7 +1389,7 @@ ncx_get_ushort_float(const void *xp, float *ip)
 static int
 ncx_get_ushort_double(const void *xp, double *ip)
 {
-	ix_ushort xx;
+	ix_ushort xx = 0;
 	get_ix_ushort(xp, &xx);
 	*ip = (double)xx;
 	return NC_NOERR;
@@ -1752,7 +1757,7 @@ ncx_get_int_int(const void *xp, int *ip)
 #if SIZEOF_IX_INT == SIZEOF_INT && IX_INT_MAX == INT_MAX
     get_ix_int(xp, (ix_int *)ip);
 #else
-    ix_int xx;
+    ix_int xx = 0;
     get_ix_int(xp, &xx);
 
 #if IX_INT_MAX > INT_MAX
@@ -1777,7 +1782,7 @@ static int
 ncx_get_int_schar(const void *xp, schar *ip)
 {
     int err=NC_NOERR;
-    ix_int xx;
+    ix_int xx = 0;
     get_ix_int(xp, &xx);
 
 #if IX_INT_MAX > SCHAR_MAX
@@ -1803,7 +1808,7 @@ ncx_get_int_short(const void *xp, short *ip)
 #if SIZEOF_IX_INT == SIZEOF_SHORT && IX_INT_MAX == SHORT_MAX
     get_ix_int(xp, (ix_int *)ip);
 #else
-    ix_int xx;
+    ix_int xx = 0;
     get_ix_int(xp, &xx);
 
 #if IX_INT_MAX > SHORT_MAX
@@ -1830,7 +1835,7 @@ ncx_get_int_long(const void *xp, long *ip)
 #if SIZEOF_IX_INT == SIZEOF_LONG && IX_INT_MAX == LONG_MAX
     get_ix_int(xp, (ix_int *)ip);
 #else
-    ix_int xx;
+    ix_int xx = 0;
     get_ix_int(xp, &xx);
 
 #if IX_INT_MAX > LONG_MAX
@@ -1857,7 +1862,7 @@ ncx_get_int_longlong(const void *xp, longlong *ip)
 #if SIZEOF_IX_INT == SIZEOF_LONGLONG && IX_INT_MAX == LONGLONG_MAX
     get_ix_int(xp, (ix_int *)ip);
 #else
-    ix_int xx;
+    ix_int xx = 0;
     get_ix_int(xp, &xx);
 
 #if IX_INT_MAX > LONGLONG_MAX
@@ -1881,7 +1886,7 @@ static int
 ncx_get_int_ushort(const void *xp, ushort *ip)
 {
     int err=NC_NOERR;
-    ix_int xx;
+    ix_int xx = 0;
     get_ix_int(xp, &xx);
 
 #if IX_INT_MAX > USHORT_MAX
@@ -1911,7 +1916,7 @@ static int
 ncx_get_int_uchar(const void *xp, uchar *ip)
 {
     int err=NC_NOERR;
-    ix_int xx;
+    ix_int xx = 0;
     get_ix_int(xp, &xx);
 
 #if IX_INT_MAX > UCHAR_MAX
@@ -1941,7 +1946,7 @@ static int
 ncx_get_int_uint(const void *xp, uint *ip)
 {
     int err=NC_NOERR;
-    ix_int xx;
+    ix_int xx = 0;
     get_ix_int(xp, &xx);
 
 #if IX_INT_MAX > UINT_MAX
@@ -1971,7 +1976,7 @@ static int
 ncx_get_int_ulonglong(const void *xp, ulonglong *ip)
 {
     int err=NC_NOERR;
-    ix_int xx;
+    ix_int xx = 0;
     get_ix_int(xp, &xx);
 
 #if IX_INT_MAX > ULONGLONG_MAX
@@ -2000,7 +2005,7 @@ ncx_get_int_ulonglong(const void *xp, ulonglong *ip)
 static int
 ncx_get_int_float(const void *xp, float *ip)
 {
-	ix_int xx;
+	ix_int xx = 0;
 	get_ix_int(xp, &xx);
 	*ip = (float)xx;
 	return NC_NOERR;
@@ -2009,7 +2014,7 @@ ncx_get_int_float(const void *xp, float *ip)
 static int
 ncx_get_int_double(const void *xp, double *ip)
 {
-	ix_int xx;
+	ix_int xx = 0;
 	get_ix_int(xp, &xx);
 	*ip = (double)xx;
 	return NC_NOERR;
@@ -2328,7 +2333,7 @@ ncx_get_uint_uint(const void *xp, uint *ip)
 #if SIZEOF_IX_UINT == SIZEOF_UINT && IX_UINT_MAX == UINT_MAX
     get_ix_uint(xp, (ix_uint *)ip);
 #else
-    ix_uint xx;
+    ix_uint xx = 0;
     get_ix_uint(xp, &xx);
 
 #if IX_UINT_MAX > UINT_MAX
@@ -2354,7 +2359,7 @@ static int
 ncx_get_uint_schar(const void *xp, schar *ip)
 {
     int err=NC_NOERR;
-    ix_uint xx;
+    ix_uint xx = 0;
     get_ix_uint(xp, &xx);
 
 #if IX_UINT_MAX > SCHAR_MAX
@@ -2377,7 +2382,7 @@ static int
 ncx_get_uint_short(const void *xp, short *ip)
 {
     int err=NC_NOERR;
-    ix_uint xx;
+    ix_uint xx = 0;
     get_ix_uint(xp, &xx);
 
 #if IX_UINT_MAX > SHORT_MAX
@@ -2400,7 +2405,7 @@ static int
 ncx_get_uint_int(const void *xp, int *ip)
 {
     int err=NC_NOERR;
-    ix_uint xx;
+    ix_uint xx = 0;
     get_ix_uint(xp, &xx);
 
 #if IX_UINT_MAX > INT_MAX
@@ -2423,7 +2428,7 @@ static int
 ncx_get_uint_long(const void *xp, long *ip)
 {
     int err=NC_NOERR;
-    ix_uint xx;
+    ix_uint xx = 0;
     get_ix_uint(xp, &xx);
 
 #if IX_UINT_MAX > LONG_MAX
@@ -2446,7 +2451,7 @@ static int
 ncx_get_uint_longlong(const void *xp, longlong *ip)
 {
     int err=NC_NOERR;
-    ix_uint xx;
+    ix_uint xx = 0;
     get_ix_uint(xp, &xx);
 
 #if IX_UINT_MAX > LONGLONG_MAX
@@ -2472,7 +2477,7 @@ ncx_get_uint_ushort(const void *xp, ushort *ip)
 #if SIZEOF_IX_UINT == SIZEOF_USHORT && IX_UINT_MAX == USHORT_MAX
     get_ix_uint(xp, (ix_uint *)ip);
 #else
-    ix_uint xx;
+    ix_uint xx = 0;
     get_ix_uint(xp, &xx);
 
 #if IX_UINT_MAX > USHORT_MAX
@@ -2499,7 +2504,7 @@ ncx_get_uint_uchar(const void *xp, uchar *ip)
 #if SIZEOF_IX_UINT == SIZEOF_UCHAR && IX_UINT_MAX == UCHAR_MAX
     get_ix_uint(xp, (ix_uint *)ip);
 #else
-    ix_uint xx;
+    ix_uint xx = 0;
     get_ix_uint(xp, &xx);
 
 #if IX_UINT_MAX > UCHAR_MAX
@@ -2526,7 +2531,7 @@ ncx_get_uint_ulonglong(const void *xp, ulonglong *ip)
 #if SIZEOF_IX_UINT == SIZEOF_ULONGLONG && IX_UINT_MAX == ULONGLONG_MAX
     get_ix_uint(xp, (ix_uint *)ip);
 #else
-    ix_uint xx;
+    ix_uint xx = 0;
     get_ix_uint(xp, &xx);
 
 #if IX_UINT_MAX > ULONGLONG_MAX
@@ -2549,7 +2554,7 @@ ncx_get_uint_ulonglong(const void *xp, ulonglong *ip)
 static int
 ncx_get_uint_float(const void *xp, float *ip)
 {
-	ix_uint xx;
+	ix_uint xx = 0;
 	get_ix_uint(xp, &xx);
 	*ip = (float)xx;
 	return NC_NOERR;
@@ -2558,7 +2563,7 @@ ncx_get_uint_float(const void *xp, float *ip)
 static int
 ncx_get_uint_double(const void *xp, double *ip)
 {
-	ix_uint xx;
+	ix_uint xx = 0;
 	get_ix_uint(xp, &xx);
 	*ip = (double)xx;
 	return NC_NOERR;
@@ -3327,7 +3332,7 @@ ncx_get_float_float(const void *xp, float *ip, void *fillp)
 static int
 ncx_get_float_schar(const void *xp, schar *ip)
 {
-	ix_float xx;
+	ix_float xx = 0;
 	get_ix_float(xp, &xx);
 	if (xx > (double)SCHAR_MAX || xx < (double)SCHAR_MIN) {
 #ifdef ERANGE_FILL
@@ -3342,7 +3347,7 @@ ncx_get_float_schar(const void *xp, schar *ip)
 static int
 ncx_get_float_short(const void *xp, short *ip)
 {
-	ix_float xx;
+	ix_float xx = 0;
 	get_ix_float(xp, &xx);
 	if (xx > (double)SHORT_MAX || xx < (double)SHORT_MIN) {
 #ifdef ERANGE_FILL
@@ -3357,7 +3362,7 @@ ncx_get_float_short(const void *xp, short *ip)
 static int
 ncx_get_float_int(const void *xp, int *ip)
 {
-	ix_float xx;
+	ix_float xx = 0;
 	get_ix_float(xp, &xx);
 	if (xx > (double)INT_MAX || xx < (double)INT_MIN) {
 #ifdef ERANGE_FILL
@@ -3372,7 +3377,7 @@ ncx_get_float_int(const void *xp, int *ip)
 static int
 ncx_get_float_long(const void *xp, long *ip)
 {
-	ix_float xx;
+	ix_float xx = 0;
 	get_ix_float(xp, &xx);
 	if (xx > (double)LONG_MAX || xx < (double)LONG_MIN) {
 #ifdef ERANGE_FILL
@@ -3387,7 +3392,7 @@ ncx_get_float_long(const void *xp, long *ip)
 static int
 ncx_get_float_double(const void *xp, double *ip)
 {
-	ix_float xx;
+	ix_float xx = 0;
 	get_ix_float(xp, &xx);
 	*ip = (double)xx;
 	return NC_NOERR;
@@ -3396,7 +3401,7 @@ ncx_get_float_double(const void *xp, double *ip)
 static int
 ncx_get_float_longlong(const void *xp, longlong *ip)
 {
-	ix_float xx;
+	ix_float xx = 0;
 	get_ix_float(xp, &xx);
 	if (xx == LONGLONG_MAX)      *ip = LONGLONG_MAX;
 	else if (xx == LONGLONG_MIN) *ip = LONGLONG_MIN;
@@ -3413,7 +3418,7 @@ ncx_get_float_longlong(const void *xp, longlong *ip)
 static int
 ncx_get_float_uchar(const void *xp, uchar *ip)
 {
-	ix_float xx;
+	ix_float xx = 0;
 	get_ix_float(xp, &xx);
 	if (xx > (double)UCHAR_MAX || xx < 0) {
 #ifdef ERANGE_FILL
@@ -3428,7 +3433,7 @@ ncx_get_float_uchar(const void *xp, uchar *ip)
 static int
 ncx_get_float_ushort(const void *xp, ushort *ip)
 {
-	ix_float xx;
+	ix_float xx = 0;
 	get_ix_float(xp, &xx);
 	if (xx > (double)USHORT_MAX || xx < 0) {
 #ifdef ERANGE_FILL
@@ -3443,7 +3448,7 @@ ncx_get_float_ushort(const void *xp, ushort *ip)
 static int
 ncx_get_float_uint(const void *xp, uint *ip)
 {
-	ix_float xx;
+	ix_float xx = 0;
 	get_ix_float(xp, &xx);
 	if (xx > (double)UINT_MAX || xx < 0) {
 #ifdef ERANGE_FILL
@@ -3458,7 +3463,7 @@ ncx_get_float_uint(const void *xp, uint *ip)
 static int
 ncx_get_float_ulonglong(const void *xp, ulonglong *ip)
 {
-	ix_float xx;
+	ix_float xx = 0;
 	get_ix_float(xp, &xx);
 	if (xx == ULONGLONG_MAX)      *ip = ULONGLONG_MAX;
 	else if (xx > (double)ULONGLONG_MAX || xx < 0) {
@@ -3907,7 +3912,7 @@ put_ix_double(void *xp, const double *ip)
 static int
 ncx_get_double_schar(const void *xp, schar *ip)
 {
-	ix_double xx;
+	ix_double xx = 0;
 	get_ix_double(xp, &xx);
 	if (xx > (double)SCHAR_MAX || xx < (double)SCHAR_MIN) {
 #ifdef ERANGE_FILL
@@ -3922,7 +3927,7 @@ ncx_get_double_schar(const void *xp, schar *ip)
 static int
 ncx_get_double_short(const void *xp, short *ip)
 {
-	ix_double xx;
+	ix_double xx = 0;
 	get_ix_double(xp, &xx);
 	if (xx > (double)SHORT_MAX || xx < (double)SHORT_MIN) {
 #ifdef ERANGE_FILL
@@ -3937,7 +3942,7 @@ ncx_get_double_short(const void *xp, short *ip)
 static int
 ncx_get_double_int(const void *xp, int *ip)
 {
-	ix_double xx;
+	ix_double xx = 0;
 	get_ix_double(xp, &xx);
 	if (xx > (double)INT_MAX || xx < (double)INT_MIN) {
 #ifdef ERANGE_FILL
@@ -3952,7 +3957,7 @@ ncx_get_double_int(const void *xp, int *ip)
 static int
 ncx_get_double_long(const void *xp, long *ip)
 {
-	ix_double xx;
+	ix_double xx = 0;
 	get_ix_double(xp, &xx);
 	if (xx > (double)LONG_MAX || xx < (double)LONG_MIN) {
 #ifdef ERANGE_FILL
@@ -3967,7 +3972,7 @@ ncx_get_double_long(const void *xp, long *ip)
 static int
 ncx_get_double_longlong(const void *xp, longlong *ip)
 {
-	ix_double xx;
+	ix_double xx = 0;
 	get_ix_double(xp, &xx);
 	if (xx == LONGLONG_MAX)      *ip = LONGLONG_MAX;
 	else if (xx == LONGLONG_MIN) *ip = LONGLONG_MIN;
@@ -3984,7 +3989,7 @@ ncx_get_double_longlong(const void *xp, longlong *ip)
 static int
 ncx_get_double_uchar(const void *xp, uchar *ip)
 {
-	ix_double xx;
+	ix_double xx = 0;
 	get_ix_double(xp, &xx);
 	if (xx > (double)UCHAR_MAX || xx < 0) {
 #ifdef ERANGE_FILL
@@ -3999,7 +4004,7 @@ ncx_get_double_uchar(const void *xp, uchar *ip)
 static int
 ncx_get_double_ushort(const void *xp, ushort *ip)
 {
-	ix_double xx;
+	ix_double xx = 0;
 	get_ix_double(xp, &xx);
 	if (xx > (double)USHORT_MAX || xx < 0) {
 #ifdef ERANGE_FILL
@@ -4014,7 +4019,7 @@ ncx_get_double_ushort(const void *xp, ushort *ip)
 static int
 ncx_get_double_uint(const void *xp, uint *ip)
 {
-	ix_double xx;
+	ix_double xx = 0;
 	get_ix_double(xp, &xx);
 	if (xx > (double)UINT_MAX || xx < 0) {
 #ifdef ERANGE_FILL
@@ -4029,7 +4034,7 @@ ncx_get_double_uint(const void *xp, uint *ip)
 static int
 ncx_get_double_ulonglong(const void *xp, ulonglong *ip)
 {
-	ix_double xx;
+	ix_double xx = 0;
 	get_ix_double(xp, &xx);
 	if (xx == ULONGLONG_MAX)      *ip = ULONGLONG_MAX;
 	else if (xx > (double)ULONGLONG_MAX || xx < 0) {
@@ -4046,7 +4051,7 @@ ncx_get_double_ulonglong(const void *xp, ulonglong *ip)
 static int
 ncx_get_double_float(const void *xp, float *ip)
 {
-    double xx;
+    double xx = 0.0;
     get_ix_double(xp, &xx);
     if (xx > FLT_MAX) {
 #ifdef ERANGE_FILL
@@ -4303,7 +4308,7 @@ ncx_get_longlong_longlong(const void *xp, longlong *ip)
 #if SIZEOF_IX_INT64 == SIZEOF_LONGLONG && IX_INT64_MAX == LONGLONG_MAX
     get_ix_int64(xp, (ix_int64 *)ip);
 #else
-    ix_int64 xx;
+    ix_int64 xx = 0;
     get_ix_int64(xp, &xx);
 
 #if IX_INT64_MAX > LONGLONG_MAX
@@ -4328,7 +4333,7 @@ static int
 ncx_get_longlong_schar(const void *xp, schar *ip)
 {
     int err=NC_NOERR;
-    ix_int64 xx;
+    ix_int64 xx = 0;
     get_ix_int64(xp, &xx);
 
 #if IX_INT64_MAX > SCHAR_MAX
@@ -4354,7 +4359,7 @@ ncx_get_longlong_short(const void *xp, short *ip)
 #if SIZEOF_IX_INT64 == SIZEOF_SHORT && IX_INT64_MAX == SHORT_MAX
     get_ix_int64(xp, (ix_int64 *)ip);
 #else
-    ix_int64 xx;
+    ix_int64 xx = 0;
     get_ix_int64(xp, &xx);
 
 #if IX_INT64_MAX > SHORT_MAX
@@ -4381,7 +4386,7 @@ ncx_get_longlong_int(const void *xp, int *ip)
 #if SIZEOF_IX_INT64 == SIZEOF_INT && IX_INT64_MAX == INT_MAX
     get_ix_int64(xp, (ix_int64 *)ip);
 #else
-    ix_int64 xx;
+    ix_int64 xx = 0;
     get_ix_int64(xp, &xx);
 
 #if IX_INT64_MAX > INT_MAX
@@ -4408,7 +4413,7 @@ ncx_get_longlong_long(const void *xp, long *ip)
 #if SIZEOF_IX_INT64 == SIZEOF_LONG && IX_INT64_MAX == LONG_MAX
     get_ix_int64(xp, (ix_int64 *)ip);
 #else
-    ix_int64 xx;
+    ix_int64 xx = 0;
     get_ix_int64(xp, &xx);
 
 #if IX_INT64_MAX > LONG_MAX
@@ -4432,7 +4437,7 @@ static int
 ncx_get_longlong_ushort(const void *xp, ushort *ip)
 {
     int err=NC_NOERR;
-    ix_int64 xx;
+    ix_int64 xx = 0;
     get_ix_int64(xp, &xx);
 
 #if IX_INT64_MAX > USHORT_MAX
@@ -4462,7 +4467,7 @@ static int
 ncx_get_longlong_uchar(const void *xp, uchar *ip)
 {
     int err=NC_NOERR;
-    ix_int64 xx;
+    ix_int64 xx = 0;
     get_ix_int64(xp, &xx);
 
 #if IX_INT64_MAX > UCHAR_MAX
@@ -4492,7 +4497,7 @@ static int
 ncx_get_longlong_uint(const void *xp, uint *ip)
 {
     int err=NC_NOERR;
-    ix_int64 xx;
+    ix_int64 xx = 0;
     get_ix_int64(xp, &xx);
 
 #if IX_INT64_MAX > UINT_MAX
@@ -4522,7 +4527,7 @@ static int
 ncx_get_longlong_ulonglong(const void *xp, ulonglong *ip)
 {
     int err=NC_NOERR;
-    ix_int64 xx;
+    ix_int64 xx = 0;
     get_ix_int64(xp, &xx);
 
 #if IX_INT64_MAX > ULONGLONG_MAX
@@ -4551,7 +4556,7 @@ ncx_get_longlong_ulonglong(const void *xp, ulonglong *ip)
 static int
 ncx_get_longlong_float(const void *xp, float *ip)
 {
-	ix_int64 xx;
+	ix_int64 xx = 0;
 	get_ix_int64(xp, &xx);
 	*ip = (float)xx;
 	return NC_NOERR;
@@ -4560,7 +4565,7 @@ ncx_get_longlong_float(const void *xp, float *ip)
 static int
 ncx_get_longlong_double(const void *xp, double *ip)
 {
-	ix_int64 xx;
+	ix_int64 xx = 0;
 	get_ix_int64(xp, &xx);
 	*ip = (double)xx;
 	return NC_NOERR;
@@ -4904,7 +4909,7 @@ ncx_get_ulonglong_ulonglong(const void *xp, ulonglong *ip)
 #if SIZEOF_IX_UINT64 == SIZEOF_ULONGLONG && IX_UINT64_MAX == ULONGLONG_MAX
     get_ix_uint64(xp, (ix_uint64 *)ip);
 #else
-    ix_uint64 xx;
+    ix_uint64 xx = 0;
     get_ix_uint64(xp, &xx);
 
 #if IX_UINT64_MAX > ULONGLONG_MAX
@@ -4929,7 +4934,7 @@ static int
 ncx_get_ulonglong_schar(const void *xp, schar *ip)
 {
     int err=NC_NOERR;
-    ix_uint64 xx;
+    ix_uint64 xx = 0;
     get_ix_uint64(xp, &xx);
 
 #if IX_UINT64_MAX > SCHAR_MAX
@@ -4952,7 +4957,7 @@ static int
 ncx_get_ulonglong_short(const void *xp, short *ip)
 {
     int err=NC_NOERR;
-    ix_uint64 xx;
+    ix_uint64 xx = 0;
     get_ix_uint64(xp, &xx);
 
 #if IX_UINT64_MAX > SHORT_MAX
@@ -4975,7 +4980,7 @@ static int
 ncx_get_ulonglong_int(const void *xp, int *ip)
 {
     int err=NC_NOERR;
-    ix_uint64 xx;
+    ix_uint64 xx = 0;
     get_ix_uint64(xp, &xx);
 
 #if IX_UINT64_MAX > INT_MAX
@@ -4998,7 +5003,7 @@ static int
 ncx_get_ulonglong_long(const void *xp, long *ip)
 {
     int err=NC_NOERR;
-    ix_uint64 xx;
+    ix_uint64 xx = 0;
     get_ix_uint64(xp, &xx);
 
 #if IX_UINT64_MAX > LONG_MAX
@@ -5021,7 +5026,7 @@ static int
 ncx_get_ulonglong_longlong(const void *xp, longlong *ip)
 {
     int err=NC_NOERR;
-    ix_uint64 xx;
+    ix_uint64 xx = 0;
     get_ix_uint64(xp, &xx);
 
 #if IX_UINT64_MAX > LONGLONG_MAX
@@ -5047,7 +5052,7 @@ ncx_get_ulonglong_ushort(const void *xp, ushort *ip)
 #if SIZEOF_IX_UINT64 == SIZEOF_USHORT && IX_UINT64_MAX == USHORT_MAX
     get_ix_uint64(xp, (ix_uint64 *)ip);
 #else
-    ix_uint64 xx;
+    ix_uint64 xx = 0;
     get_ix_uint64(xp, &xx);
 
 #if IX_UINT64_MAX > USHORT_MAX
@@ -5074,7 +5079,7 @@ ncx_get_ulonglong_uchar(const void *xp, uchar *ip)
 #if SIZEOF_IX_UINT64 == SIZEOF_UCHAR && IX_UINT64_MAX == UCHAR_MAX
     get_ix_uint64(xp, (ix_uint64 *)ip);
 #else
-    ix_uint64 xx;
+    ix_uint64 xx = 0;
     get_ix_uint64(xp, &xx);
 
 #if IX_UINT64_MAX > UCHAR_MAX
@@ -5101,7 +5106,7 @@ ncx_get_ulonglong_uint(const void *xp, uint *ip)
 #if SIZEOF_IX_UINT64 == SIZEOF_UINT && IX_UINT64_MAX == UINT_MAX
     get_ix_uint64(xp, (ix_uint64 *)ip);
 #else
-    ix_uint64 xx;
+    ix_uint64 xx = 0;
     get_ix_uint64(xp, &xx);
 
 #if IX_UINT64_MAX > UINT_MAX
@@ -5124,7 +5129,7 @@ ncx_get_ulonglong_uint(const void *xp, uint *ip)
 static int
 ncx_get_ulonglong_float(const void *xp, float *ip)
 {
-	ix_uint64 xx;
+	ix_uint64 xx = 0;
 	get_ix_uint64(xp, &xx);
 	*ip = (float)xx;
 	return NC_NOERR;
@@ -5133,7 +5138,7 @@ ncx_get_ulonglong_float(const void *xp, float *ip)
 static int
 ncx_get_ulonglong_double(const void *xp, double *ip)
 {
-	ix_uint64 xx;
+	ix_uint64 xx = 0;
 	get_ix_uint64(xp, &xx);
 	*ip = (double)xx;
 	return NC_NOERR;
@@ -5513,6 +5518,9 @@ ncx_get_size_t(const void **xpp,  size_t *ulp)
 int
 ncx_put_off_t(void **xpp, const off_t *lp, size_t sizeof_off_t)
 {
+	/* similar to put_ix_int() */
+	uchar *cp = (uchar *) *xpp;
+
 	/* No negative offsets stored in netcdf */
 	if (*lp < 0) {
 	  /* Assume this is an overflow of a 32-bit int... */
@@ -5520,9 +5528,6 @@ ncx_put_off_t(void **xpp, const off_t *lp, size_t sizeof_off_t)
 	}
 
 	assert(sizeof_off_t == 4 || sizeof_off_t == 8);
-
-	/* similar to put_ix_int() */
-	uchar *cp = (uchar *) *xpp;
 
 	if (sizeof_off_t == 4) {
 		*cp++ = (uchar) ((*lp)               >> 24);

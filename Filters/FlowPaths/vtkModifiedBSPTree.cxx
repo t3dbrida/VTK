@@ -39,7 +39,7 @@ const double Epsilon_=1E-8;
 //////////////////////////////////////////////////////////////////////////////
 // Main management and support for tree
 //////////////////////////////////////////////////////////////////////////////
-vtkModifiedBSPTree::vtkModifiedBSPTree(void)
+vtkModifiedBSPTree::vtkModifiedBSPTree()
 {
   this->NumberOfCellsPerNode       = 32;
   this->mRoot                      = nullptr;
@@ -49,13 +49,13 @@ vtkModifiedBSPTree::vtkModifiedBSPTree(void)
   this->npn = this->nln = this->tot_depth = 0;
 }
 //---------------------------------------------------------------------------
-vtkModifiedBSPTree::~vtkModifiedBSPTree(void)
+vtkModifiedBSPTree::~vtkModifiedBSPTree()
 {
   this->FreeSearchStructure();
   this->FreeCellBounds();
 }
 //---------------------------------------------------------------------------
-void vtkModifiedBSPTree::FreeSearchStructure(void)
+void vtkModifiedBSPTree::FreeSearchStructure()
 {
   delete this->mRoot;
   this->mRoot = nullptr;
@@ -93,7 +93,7 @@ public:
     }
     global_list_count += 1;
   };
-  ~Sorted_cell_extents_Lists(void)
+  ~Sorted_cell_extents_Lists()
   {
     for (int i=0; i<3; i++)
     {
@@ -248,6 +248,7 @@ void vtkModifiedBSPTree::BuildLocatorInternal()
                  << " Original : " << numCells);
 }
 
+//---------------------------------------------------------------------------
 //
 // The main BSP subdivision routine : The code which does the division is only
 // a small part of this, the rest is just bookkeeping - it looks worse than it is.
@@ -548,6 +549,7 @@ public:
 typedef std::vector<_box> boxlist;
 typedef std::stack<BSPNode*, std::vector<BSPNode*> > nodestack;
 
+//---------------------------------------------------------------------------
 void vtkModifiedBSPTree::GenerateRepresentation(int level, vtkPolyData *pd)
 {
   nodestack ns;
@@ -599,6 +601,7 @@ void vtkModifiedBSPTree::GenerateRepresentation(int level, vtkPolyData *pd)
   polys->Delete();
 }
 
+//---------------------------------------------------------------------------
 void vtkModifiedBSPTree::GenerateRepresentationLeafs(vtkPolyData *pd)
 {
   GenerateRepresentation(-1,pd);
@@ -634,6 +637,7 @@ static double _getMinDistNEG_Z(const double origin[3], const double dir[3], cons
   return ((B[5] - origin[2]) / dir[2]);
 }
 
+//---------------------------------------------------------------------------
 int BSPNode::getDominantAxis(const double dir[3])
 {
   double tX = (dir[0]>0) ? dir[0] : -dir[0];

@@ -116,6 +116,7 @@ int vtkAssembly::RenderTranslucentPolygonalGeometry(vtkViewport *ren)
     vtkProp3D* prop3D = static_cast<vtkProp3D *>(path->GetLastNode()->GetViewProp());
     if ( prop3D->GetVisibility() )
     {
+      prop3D->SetPropertyKeys(this->GetPropertyKeys());
       prop3D->SetAllocatedRenderTime(fraction, ren);
       prop3D->PokeMatrix(path->GetLastNode()->GetMatrix());
       renderedSomething += prop3D->RenderTranslucentPolygonalGeometry(ren);
@@ -143,6 +144,7 @@ vtkTypeBool vtkAssembly::HasTranslucentPolygonalGeometry()
     vtkProp3D* prop3D = static_cast<vtkProp3D *>(path->GetLastNode()->GetViewProp());
     if ( prop3D->GetVisibility() )
     {
+      prop3D->SetPropertyKeys(this->GetPropertyKeys());
       result = prop3D->HasTranslucentPolygonalGeometry();
     }
   }
@@ -175,6 +177,7 @@ int vtkAssembly::RenderVolumetricGeometry(vtkViewport *ren)
     vtkProp3D* prop3D = static_cast<vtkProp3D *>(path->GetLastNode()->GetViewProp());
     if (prop3D->GetVisibility())
     {
+      prop3D->SetPropertyKeys(this->GetPropertyKeys());
       prop3D->SetAllocatedRenderTime(fraction, ren);
       prop3D->PokeMatrix(path->GetLastNode()->GetMatrix());
       renderedSomething += prop3D->RenderVolumetricGeometry(ren);
@@ -210,6 +213,7 @@ int vtkAssembly::RenderOpaqueGeometry(vtkViewport *ren)
     vtkProp3D* prop3D = static_cast<vtkProp3D *>(path->GetLastNode()->GetViewProp());
     if (prop3D->GetVisibility())
     {
+      prop3D->SetPropertyKeys(this->GetPropertyKeys());
       prop3D->PokeMatrix(path->GetLastNode()->GetMatrix());
       prop3D->SetAllocatedRenderTime(fraction, ren);
       renderedSomething += prop3D->RenderOpaqueGeometry(ren);
@@ -369,7 +373,6 @@ double *vtkAssembly::GetBounds()
     vtkProp3D* prop3D = static_cast<vtkProp3D *>(path->GetLastNode()->GetViewProp());
     if (prop3D->GetVisibility() && prop3D->GetUseBounds())
     {
-      propVisible = 1;
       prop3D->PokeMatrix(path->GetLastNode()->GetMatrix());
       const double* bounds = prop3D->GetBounds();
       prop3D->PokeMatrix(nullptr);
@@ -379,6 +382,8 @@ double *vtkAssembly::GetBounds()
       {
         continue;
       }
+      // Only set the prop as visible if at least one prop has a valid bounds
+      propVisible = 1;
 
       double bbox[24];
       // fill out vertices of a bounding box

@@ -99,6 +99,15 @@ public:
   vtkBooleanMacro(SpacingSpecifiedFlag, bool)
   //@}
 
+  //@{
+  /**
+   * When set to true (default false), TIFFTAG_COLORMAP, if any, will be
+   * ignored.
+   */
+  vtkSetMacro(IgnoreColorMap, bool);
+  vtkGetMacro(IgnoreColorMap, bool);
+  vtkBooleanMacro(IgnoreColorMap, bool);
+  //@}
 protected:
   vtkTIFFReader();
   ~vtkTIFFReader() override;
@@ -107,6 +116,9 @@ protected:
 
   void ExecuteInformation() override;
   void ExecuteDataWithInformation(vtkDataObject *out, vtkInformation *outInfo) override;
+
+  class vtkTIFFReaderInternal;
+  vtkTIFFReaderInternal* InternalImage;
 
 private:
   vtkTIFFReader(const vtkTIFFReader&) = delete;
@@ -171,20 +183,19 @@ private:
   template <typename T>
   void Process2(T *outPtr, int *outExt);
 
-  class vtkTIFFReaderInternal;
 
   unsigned short *ColorRed;
   unsigned short *ColorGreen;
   unsigned short *ColorBlue;
   int TotalColors;
   unsigned int ImageFormat;
-  vtkTIFFReaderInternal *InternalImage;
   int OutputExtent[6];
   vtkIdType OutputIncrements[3];
   unsigned int OrientationType;
   bool OrientationTypeSpecifiedFlag;
   bool OriginSpecifiedFlag;
   bool SpacingSpecifiedFlag;
+  bool IgnoreColorMap;
 };
 
 #endif

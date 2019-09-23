@@ -35,6 +35,7 @@
 
 class vtkIdList;
 class vtkOpenGLBufferObject;
+class vtkOpenGLFramebufferObject;
 class vtkOpenGLHardwareSupport;
 class vtkOpenGLShaderCache;
 class vtkOpenGLVertexBufferObjectCache;
@@ -52,6 +53,11 @@ class VTKRENDERINGOPENGL2_EXPORT vtkOpenGLRenderWindow : public vtkRenderWindow
 public:
   vtkTypeMacro(vtkOpenGLRenderWindow, vtkRenderWindow);
   void PrintSelf(ostream& os, vtkIndent indent) override;
+
+  /**
+   * Begin the rendering process.
+   */
+  void Start(void) override;
 
   /**
    * What rendering backend has the user requested
@@ -260,9 +266,9 @@ public:
 
   //@{
   /**
-   * Returns the current default FBO (0 when OffScreenRendering is inactive).
+   * Returns the offscreen framebuffer object if any
    */
-  vtkGetMacro(FrameBufferObject, unsigned int);
+  vtkGetObjectMacro(OffScreenFramebuffer, vtkOpenGLFramebufferObject);
   //@}
 
   /**
@@ -334,15 +340,6 @@ public:
   {
     return this->OpenGLSupportMessage;
   }
-
-  // Create and bind offscreen rendering buffers without destroying the current
-  // OpenGL context. This allows to temporary switch to offscreen rendering
-  // (ie. to make a screenshot even if the window is hidden).
-  // Return if the creation was successful (1) or not (0).
-  // Note: This function requires that the device supports OpenGL framebuffer extension.
-  // The function has no effect if OffScreenRendering is ON.
-  int SetUseOffScreenBuffers(bool offScreen) override;
-  bool GetUseOffScreenBuffers() override;
 
   /**
    * Does this render window support OpenGL? 0-false, 1-true
@@ -453,14 +450,15 @@ public:
    */
   void Render() override;
 
+  // does the current read buffer require resolving for reading pixels
+  bool GetCurrentBufferNeedsResolving();
+
 protected:
   vtkOpenGLRenderWindow();
   ~vtkOpenGLRenderWindow() override;
 
   vtkOpenGLShaderCache *ShaderCache;
   vtkOpenGLVertexBufferObjectCache *VBOCache;
-
-  vtkOpenGLState *State;
 
   // used in testing for opengl support
   // in the SupportsOpenGL() method
@@ -471,50 +469,19 @@ protected:
   int TextureInternalFormats[VTK_UNICODE_STRING][3][5];
   void InitializeTextureInternalFormats();
 
-  std::map<const vtkTextureObject *, int> TextureResourceIds;
-
   virtual int ReadPixels(const vtkRecti& rect, int front, int glFormat, int glType, void* data, int right=0);
 
   /**
-   * Create an offScreen window based on OpenGL framebuffer extension.
+   * Create the offScreen framebuffer
    * Return if the creation was successful or not.
    * \pre positive_width: width>0
    * \pre positive_height: height>0
    * \pre not_initialized: !OffScreenUseFrameBuffer
    * \post valid_result: (result==0 || result==1)
-   * && (result implies OffScreenUseFrameBuffer)
    */
-  int CreateHardwareOffScreenWindow(int width, int height);
-
-  int CreateHardwareOffScreenBuffers(int width, int height, bool bind = false);
-  void BindHardwareOffScreenBuffers();
-
-  /**
-   * Destroy an offscreen window based on OpenGL framebuffer extension.
-   * \pre initialized: OffScreenUseFrameBuffer
-   * \post destroyed: !OffScreenUseFrameBuffer
-   */
-  void DestroyHardwareOffScreenWindow();
-
-  void UnbindHardwareOffScreenBuffers();
-  void DestroyHardwareOffScreenBuffers();
-
-  /**
-   * Flag telling if a framebuffer-based offscreen is currently in use.
-   */
-  int OffScreenUseFrameBuffer;
-
-  //@{
-  /**
-   * Variables used by the framebuffer-based offscreen method.
-   */
-  int NumberOfFrameBuffers;
-  unsigned int TextureObjects[4]; // really GLuint
-  unsigned int FrameBufferObject; // really GLuint
-  unsigned int DepthRenderBufferObject; // really GLuint
-  int HardwareBufferSize[2];
-  bool HardwareOffScreenBuffersBind;
-  //@}
+  int CreateOffScreenFramebuffer(int width, int height);
+  vtkOpenGLFramebufferObject *OffScreenFramebuffer;
+  bool OffScreenFramebufferBound;
 
   /**
    * Create a not-off-screen window.
@@ -531,12 +498,6 @@ protected:
    * a value of NULL means the context may already be destroyed
    */
   virtual void ReleaseGraphicsResources(vtkRenderWindow *);
-
-  /**
-   * Set the texture unit manager.
-   */
-  void SetTextureUnitManager(vtkTextureUnitManager *textureUnitManager);
-
 
   /**
    * Query and save OpenGL state
@@ -565,8 +526,6 @@ protected:
 
   vtkTimeStamp ContextCreationTime;
 
-  vtkTextureUnitManager *TextureUnitManager;
-
   vtkTextureObject *DrawPixelsTextureObject;
 
   bool Initialized; // ensure glewinit has been called
@@ -585,6 +544,10 @@ protected:
 private:
   vtkOpenGLRenderWindow(const vtkOpenGLRenderWindow&) = delete;
   void operator=(const vtkOpenGLRenderWindow&) = delete;
+
+  // Keeping `State` private so the only way to access it is through
+  // `this->GetState()`.
+  vtkOpenGLState *State;
 };
 
 #endif

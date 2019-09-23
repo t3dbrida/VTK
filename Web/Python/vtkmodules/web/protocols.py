@@ -143,7 +143,7 @@ class vtkWebViewPort(vtkWebProtocol):
         RPC callback to reset camera.
         """
         view = self.getView(viewId)
-        camera = view.GetRenderer().GetActiveCamera()
+        camera = view.GetRenderers().GetFirstRenderer().GetActiveCamera()
         camera.ResetCamera()
         try:
             # FIXME seb: view.CenterOfRotation = camera.GetFocalPoint()
@@ -183,16 +183,17 @@ class vtkWebViewPort(vtkWebProtocol):
         return str(self.getGlobalId(view))
 
     @exportRpc("viewport.camera.update")
-    def updateCamera(self, view_id, focal_point, view_up, position):
+    def updateCamera(self, view_id, focal_point, view_up, position, forceUpdate = True):
         view = self.getView(view_id)
 
-        camera = view.GetRenderer().GetActiveCamera()
+        camera = view.GetRenderers().GetFirstRenderer().GetActiveCamera()
         camera.SetFocalPoint(focal_point)
-        camera.SetCameraViewUp(view_up)
-        camera.SetCameraPosition(position)
-        self.getApplication().InvalidateCache(view)
+        camera.SetViewUp(view_up)
+        camera.SetPosition(position)
 
-        self.getApplication().InvokeEvent('UpdateEvent')
+        if forceUpdate:
+            self.getApplication().InvalidateCache(view)
+            self.getApplication().InvokeEvent('UpdateEvent')
 
 # =============================================================================
 #
@@ -342,6 +343,8 @@ class vtkWebPublishImageDelivery(vtkWebProtocol):
             self.targetFrameRate = self.maxFrameRate
 
         if nextAnimateTime < 0:
+            if nextAnimateTime < -1.0:
+                self.targetFrameRate = 1
             if self.targetFrameRate > self.minFrameRate:
                 self.targetFrameRate -= 1.0
             reactor.callLater(0.001, lambda: self.animate())
@@ -366,10 +369,9 @@ class vtkWebPublishImageDelivery(vtkWebProtocol):
         sView = self.getView(viewId)
         realViewId = str(self.getGlobalId(sView))
 
-        if realViewId not in self.viewsInAnimations:
-            self.viewsInAnimations.append(realViewId)
-            if len(self.viewsInAnimations) == 1:
-                self.animate()
+        self.viewsInAnimations.append(realViewId)
+        if len(self.viewsInAnimations) == 1:
+            self.animate()
 
 
     @exportRpc("viewport.image.animation.stop")
@@ -382,6 +384,15 @@ class vtkWebPublishImageDelivery(vtkWebProtocol):
 
 
     @exportRpc("viewport.image.push")
+    def imagePush(self, options):
+        sView = self.getView(options["view"])
+        realViewId = str(self.getGlobalId(sView))
+         # Make sure an image is pushed
+        self.getApplication().InvalidateCache(sView)
+        self.pushRender(realViewId)
+
+    # Internal function since the reply[image] is not
+    # JSON(serializable) it can not be an RPC one
     def stillRender(self, options):
         """
         RPC Callback to render a view and obtain the rendered image.
@@ -466,7 +477,7 @@ class vtkWebPublishImageDelivery(vtkWebProtocol):
             # There is an observer on this view already
             self.trackingViews[realViewId]['observerCount'] += 1
 
-        self.publish('viewport.image.push.subscription', self.pushRender(realViewId))
+        self.pushRender(realViewId)
         return { 'success': True, 'viewId': realViewId }
 
 
@@ -515,7 +526,7 @@ class vtkWebPublishImageDelivery(vtkWebProtocol):
         # Update image size right now!
         if "originalSize" in self.trackingViews[realViewId]:
             size = [int(s * ratio) for s in self.trackingViews[realViewId]["originalSize"]]
-            if 'SetSize' in sView:
+            if hasattr(sView, 'SetSize'):
                 sView.SetSize(size)
             else:
                 sView.ViewSize = size

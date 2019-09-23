@@ -31,6 +31,7 @@
 #include "vtkInformationRequestKey.h"
 #include "vtkInformationUnsignedLongKey.h"
 #include "vtkInformationVector.h"
+#include "vtkLogger.h"
 #include "vtkObjectFactory.h"
 #include "vtkPointData.h"
 
@@ -156,7 +157,7 @@ vtkDemandDrivenPipeline::ComputePipelineMTime(vtkInformation* request,
 
 
 //----------------------------------------------------------------------------
-int vtkDemandDrivenPipeline::ProcessRequest(vtkInformation* request,
+vtkTypeBool vtkDemandDrivenPipeline::ProcessRequest(vtkInformation* request,
                                             vtkInformationVector** inInfoVec,
                                             vtkInformationVector* outInfoVec)
 {
@@ -184,6 +185,7 @@ int vtkDemandDrivenPipeline::ProcessRequest(vtkInformation* request,
     if(this->PipelineMTime > this->DataObjectTime.GetMTime())
     {
       // Request data type from the algorithm.
+      vtkLogF(TRACE, "%s execute-data-object", vtkLogIdentifier(this->Algorithm));
       result = this->ExecuteDataObject(request,inInfoVec,outInfoVec);
 
       // Make sure the data object exists for all output ports.
@@ -233,6 +235,7 @@ int vtkDemandDrivenPipeline::ProcessRequest(vtkInformation* request,
       }
 
       // Request information from the algorithm.
+      vtkLogF(TRACE, "%s execute-information", vtkLogIdentifier(this->Algorithm));
       result = this->ExecuteInformation(request,inInfoVec,outInfoVec);
 
       // Information is now up to date.
@@ -270,6 +273,7 @@ int vtkDemandDrivenPipeline::ProcessRequest(vtkInformation* request,
       }
 
       // Request data from the algorithm.
+      vtkLogF(TRACE, "%s execute-data", vtkLogIdentifier(this->Algorithm));
       result = this->ExecuteData(request,inInfoVec,outInfoVec);
 
       // Data are now up to date.
@@ -300,13 +304,13 @@ void vtkDemandDrivenPipeline::ResetPipelineInformation(int,
 }
 
 //----------------------------------------------------------------------------
-int vtkDemandDrivenPipeline::Update()
+vtkTypeBool vtkDemandDrivenPipeline::Update()
 {
   return this->Superclass::Update();
 }
 
 //----------------------------------------------------------------------------
-int vtkDemandDrivenPipeline::Update(int port)
+vtkTypeBool vtkDemandDrivenPipeline::Update(int port)
 {
   if(!this->UpdateInformation())
   {

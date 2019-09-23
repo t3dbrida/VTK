@@ -165,7 +165,7 @@ public:
   /**
    * Set whether to use the Tolerance field or precompute the tolerance.
    * When on, the tolerance will be computed and the field
-   * value is ignored. Off by default.
+   * value is ignored. On by default.
    */
   vtkSetMacro(ComputeTolerance, bool);
   vtkBooleanMacro(ComputeTolerance, bool);
@@ -175,7 +175,7 @@ public:
   //@{
   /**
    * Set/Get the prototype cell locator to use for probing the source dataset.
-   * By default, vtkStaticCellLocator will be used.
+   * By default, vtkDataSet::FindCell is called.
    */
    virtual void SetCellLocatorPrototype(vtkAbstractCellLocator*);
    vtkGetObjectMacro(CellLocatorPrototype, vtkAbstractCellLocator);

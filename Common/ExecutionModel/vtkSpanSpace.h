@@ -17,23 +17,24 @@
  * @brief   organize data according to scalar span space
  *
  * This is a helper class used to accelerate contouring operations. Given an
- * dataset, it organizes the dataset cells into a 2D binned space, with axes
- * (scalar_min,scalar_max). This so-called span space can then be traversed
- * quickly to find the cells that intersect a particular contour value.
+ * dataset, it organizes the dataset cells into a 2D binned space, with
+ * coordinate axes (scalar_min,scalar_max). This so-called span space can
+ * then be traversed quickly to find the cells that intersect a specified
+ * contour value.
  *
  * This class has an API that supports both serial and parallel
  * operation.  The parallel API enables the using class to grab arrays
  * (or batches) of cells that lie along a particular row in the span
- * space. These arrays can then be processed separately in parallel.
+ * space. These arrays can then be processed separately or in parallel.
  *
  * Learn more about span space in these two publications: 1) "A Near
- * Optimal Isosorface Extraction Algorithm Using the Spsn Space."
- * Yarden Livnat et al. and 2) Isosurfacing in SPan Space with Utmost
+ * Optimal Isosorface Extraction Algorithm Using the Span Space."
+ * Yarden Livnat et al. and 2) Isosurfacing in Span Space with Utmost
  * Efficiency." Han-Wei Shen et al.
  *
  * @sa
- * vtkSimpleScalarTree
-*/
+ * vtkScalarTree vtkSimpleScalarTree
+ */
 
 #ifndef vtkSpanSpace_h
 #define vtkSpanSpace_h
@@ -41,14 +42,16 @@
 #include "vtkCommonExecutionModelModule.h" // For export macro
 #include "vtkScalarTree.h"
 
-class vtkInternalSpanSpace;
+class vtkSpanSpace;
+struct vtkInternalSpanSpace;
 
 
 class VTKCOMMONEXECUTIONMODEL_EXPORT vtkSpanSpace : public vtkScalarTree
 {
 public:
   /**
-   * Instantiate a scalar tree with default number of rows of 100.
+   * Instantiate a scalar tree with default resolution of 100 and automatic
+   * scalar range computation.
    */
   static vtkSpanSpace *New();
 
@@ -60,28 +63,77 @@ public:
   void PrintSelf(ostream& os, vtkIndent indent) override;
   //@}
 
+  /**
+   * This method is used to copy data members when cloning an instance of the
+   * class. It does not copy heavy data.
+   */
+  void ShallowCopy(vtkScalarTree *stree) override;
+
   //----------------------------------------------------------------------
   // The following methods are specific to the creation and configuration of
   // vtkSpanSpace.
 
   //@{
   /**
-   * Set/Get the resolution N of the span space. The span space can be
-   * envisioned as a rectangular lattice of NXN buckets (i.e., N rows
-   * and N columns), where each bucket stores a list of cell ids. The
-   * i-j coordinate of each cell (hence its location in the lattice)
-   * is determined from the cell's 2-tuple (smin,smax) scalar range.
-   * By default Resolution = 100.
+   * Specify the scalar range in terms of minimum and maximum values
+   * (smin,smax). These values are used to build the span space. Note that
+   * setting the range can have significant impact on the performance of the
+   * span space as it controls the effective resolution near important
+   * isocontour values. By default the range is computed automatically; turn
+   * off ComputeScalarRange is you wish to manually specify it.
    */
-  vtkSetClampMacro(Resolution,vtkIdType,1,VTK_INT_MAX);
+  vtkSetVector2Macro(ScalarRange, double);
+  vtkGetVectorMacro(ScalarRange, double, 2);
+  //@}
+
+  //@{
+  /**
+   * This boolean controls whether the determination of the scalar range is
+   * computed from the input scalar data. By default this is enabled.
+   */
+  vtkSetMacro(ComputeScalarRange,vtkTypeBool);
+  vtkGetMacro(ComputeScalarRange,vtkTypeBool);
+  vtkBooleanMacro(ComputeScalarRange,vtkTypeBool);
+  //@}
+
+  //@{
+  /**
+   * Set/Get the resolution N of the span space. The span space can be
+   * envisioned as a rectangular lattice of NXN buckets/bins (i.e., N rows
+   * and N columns), where each bucket stores a list of cell ids. The i-j
+   * coordinate of each cell (hence its location in the lattice) is
+   * determined from the cell's 2-tuple (smin,smax) scalar range.  By default
+   * Resolution = 100, with a clamp of 10,000.
+   */
+  vtkSetClampMacro(Resolution,vtkIdType,1,10000);
   vtkGetMacro(Resolution,vtkIdType);
+  //@}
+
+  //@{
+  /**
+   * Boolean controls whether the resolution of span space is computed
+   * automatically from the average number of cells falling in each bucket.
+   */
+  vtkSetMacro(ComputeResolution,vtkTypeBool);
+  vtkGetMacro(ComputeResolution,vtkTypeBool);
+  vtkBooleanMacro(ComputeResolution,vtkTypeBool);
+  //@}
+
+  //@{
+  /**
+   * Specify the average number of cells in each bucket. This is used to
+   * indirectly control the resolution if ComputeResolution is enabled.
+   */
+  vtkSetClampMacro(NumberOfCellsPerBucket,int,1,VTK_INT_MAX);
+  vtkGetMacro(NumberOfCellsPerBucket,int);
   //@}
 
   //----------------------------------------------------------------------
   // The following methods satisfy the vtkScalarTree abstract API.
 
   /**
-   * Initialize locator. Frees memory and resets object as appropriate.
+   * Initialize the span space. Frees memory and resets object as
+   * appropriate.
    */
   void Initialize() override;
 
@@ -92,10 +144,11 @@ public:
   void BuildTree() override;
 
   /**
-   * Begin to traverse the cells based on a scalar value. Returned cells
-   * will have scalar values that span the scalar value specified. Note this
-   * method must be called prior to parallel or serial traversal since it
-   * specifies the scalar value to be extracted.
+   * Begin to traverse the cells based on a scalar value. Returned cells will
+   * have scalar values that span the scalar value specified (within the
+   * resolution of the span space). Note this method must be called prior to
+   * parallel or serial traversal since it specifies the scalar value to be
+   * extracted.
    */
   void InitTraversal(double scalarValue) override;
 
@@ -103,40 +156,48 @@ public:
    * Return the next cell that may contain scalar value specified to
    * InitTraversal(). The value nullptr is returned if the list is
    * exhausted. Make sure that InitTraversal() has been invoked first or
-   * you'll get erratic behavior. This is inherently a serial operation.
+   * you'll get undefined behavior. This is inherently a serial operation.
    */
   vtkCell *GetNextCell(vtkIdType &cellId, vtkIdList* &ptIds,
                                vtkDataArray *cellScalars) override;
 
-  // The following methods supports parallel (threaded)
-  // applications. Basically batches of cells (which represent a
-  // portion of the whole dataset) are available for processing in a
-  // parallel For() operation. In the case of span space, a batch is
-  // taken from a portion of the span rectangle.
+  // The following methods supports parallel (threaded) traversal. Basically
+  // batches of cells (which are a portion of the whole dataset) are available for
+  // processing in a parallel For() operation.
 
   /**
-   * Get the number of cell batches available for processing. Note
-   * that this methods should be called after InitTraversal(). This is
-   * because the number of batches available is typically a function
-   * of the isocontour value. Note that the cells found in
-   * [0...(NumberOfCellBatches-1)] will contain all the cells
-   * potentially containing the isocontour.
+   * Get the number of cell batches available for processing as a function of
+   * the specified scalar value. Each batch contains a list of candidate
+   * cells that may contain the specified isocontour value.
    */
-  vtkIdType GetNumberOfCellBatches() override;
+  vtkIdType GetNumberOfCellBatches(double scalarValue) override;
 
   /**
    * Return the array of cell ids in the specified batch. The method
    * also returns the number of cell ids in the array. Make sure to
-   * call InitTraversal() beforehand.
+   * call GetNumberOfCellBatches() beforehand.
    */
   const vtkIdType* GetCellBatch(vtkIdType batchNum,
-                                        vtkIdType& numCells) override;
+                                vtkIdType& numCells) override;
+
+  //@{
+  /**
+   * Set/Get the size of the cell batches when processing in
+   * parallel. By default the batch size = 100 cells in each batch.
+   */
+  vtkSetClampMacro(BatchSize,vtkIdType,100,VTK_INT_MAX);
+  vtkGetMacro(BatchSize,vtkIdType);
+  //@}
 
 protected:
   vtkSpanSpace();
   ~vtkSpanSpace() override;
 
+  double ScalarRange[2];
+  vtkTypeBool ComputeScalarRange;
   vtkIdType Resolution;
+  vtkTypeBool ComputeResolution;
+  int NumberOfCellsPerBucket;
   vtkInternalSpanSpace *SpanSpace;
   vtkIdType BatchSize;
 

@@ -62,7 +62,7 @@ public:
   double *GetValues();
   void GetValues(double *contourValues);
   void SetNumberOfContours(int number);
-  int GetNumberOfContours();
+  vtkIdType GetNumberOfContours();
   void GenerateValues(int numContours, double range[2]);
   void GenerateValues(int numContours, double rangeStart, double rangeEnd);
   //@}
@@ -146,7 +146,10 @@ protected:
   int LocatorMinX;
   int LocatorMinY;
 
-  int RequestData(vtkInformation *, vtkInformationVector **, vtkInformationVector *) override;
+  int RequestData(vtkInformation *, vtkInformationVector **,
+                  vtkInformationVector *) override;
+  int RequestUpdateExtent(vtkInformation *, vtkInformationVector **,
+                          vtkInformationVector *) override;
   int FillInputPortInformation(int port, vtkInformation *info) override;
 
   void March(vtkImageData *inData, int chunkMin, int chunkMax,
@@ -199,7 +202,7 @@ inline void vtkImageMarchingCubes::SetNumberOfContours(int number)
 /**
  * Get the number of contours in the list of contour values.
  */
-inline int vtkImageMarchingCubes::GetNumberOfContours()
+inline vtkIdType vtkImageMarchingCubes::GetNumberOfContours()
 {return this->ContourValues->GetNumberOfContours();}
 
 /**

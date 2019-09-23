@@ -290,7 +290,7 @@ public:
   //
   // The usual suspects
   //
-  int ProcessRequest(vtkInformation* request,
+  vtkTypeBool ProcessRequest(vtkInformation* request,
                      vtkInformationVector** inputVector,
                      vtkInformationVector* outputVector) override;
 
@@ -370,7 +370,7 @@ public:
     int &localAssignedCount);
 
   /**
-   * give each one a uniqu ID. We need to use MPI to find out
+   * give each one a unique ID. We need to use MPI to find out
    * who is using which numbers.
    */
   virtual void AssignUniqueIds(

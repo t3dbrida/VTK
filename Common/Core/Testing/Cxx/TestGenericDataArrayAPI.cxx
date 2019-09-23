@@ -41,6 +41,9 @@
 #include "vtkShortArray.h"
 #include "vtkSignedCharArray.h"
 #include "vtkSOADataArrayTemplate.h"
+#ifdef VTK_USE_SCALED_SOA_ARRAYS
+#include "vtkScaledSOADataArrayTemplate.h"
+#endif
 #include "vtkUnsignedCharArray.h"
 #include "vtkUnsignedIntArray.h"
 #include "vtkUnsignedLongArray.h"
@@ -123,6 +126,24 @@ int TestGenericDataArrayAPI(int, char *[])
   errors += ExerciseGenericDataArray<unsigned long long, vtkSOADataArrayTemplate<unsigned long long> >();
   errors += ExerciseGenericDataArray<unsigned short,     vtkSOADataArrayTemplate<unsigned short> >();
   errors += ExerciseGenericDataArray<vtkIdType,          vtkSOADataArrayTemplate<vtkIdType> >();
+
+  // Explicit scale SoA arrays:
+#ifdef VTK_USE_SCALED_SOA_ARRAYS
+  errors += ExerciseGenericDataArray<char,               vtkScaledSOADataArrayTemplate<char> >();
+  errors += ExerciseGenericDataArray<double,             vtkScaledSOADataArrayTemplate<double> >();
+  errors += ExerciseGenericDataArray<float,              vtkScaledSOADataArrayTemplate<float> >();
+  errors += ExerciseGenericDataArray<int,                vtkScaledSOADataArrayTemplate<int> >();
+  errors += ExerciseGenericDataArray<long,               vtkScaledSOADataArrayTemplate<long> >();
+  errors += ExerciseGenericDataArray<long long,          vtkScaledSOADataArrayTemplate<long long> >();
+  errors += ExerciseGenericDataArray<short,              vtkScaledSOADataArrayTemplate<short> >();
+  errors += ExerciseGenericDataArray<signed char,        vtkScaledSOADataArrayTemplate<signed char> >();
+  errors += ExerciseGenericDataArray<unsigned char,      vtkScaledSOADataArrayTemplate<unsigned char> >();
+  errors += ExerciseGenericDataArray<unsigned int,       vtkScaledSOADataArrayTemplate<unsigned int> >();
+  errors += ExerciseGenericDataArray<unsigned long,      vtkScaledSOADataArrayTemplate<unsigned long> >();
+  errors += ExerciseGenericDataArray<unsigned long long, vtkScaledSOADataArrayTemplate<unsigned long long> >();
+  errors += ExerciseGenericDataArray<unsigned short,     vtkScaledSOADataArrayTemplate<unsigned short> >();
+  errors += ExerciseGenericDataArray<vtkIdType,          vtkScaledSOADataArrayTemplate<vtkIdType> >();
+#endif
 
   if (errors > 0)
   {
@@ -734,7 +755,7 @@ int Test_GetValueRange_all_overloads()
   DataArrayAPICreateTestArray(array);
 
   // Initialize arrays:
-  vtkIdType comps = 6;
+  int comps = 6;
   vtkIdType tuples = 9;
   array->SetNumberOfComponents(comps);
   array->SetNumberOfTuples(tuples);
@@ -744,6 +765,22 @@ int Test_GetValueRange_all_overloads()
     {
       array->SetComponent(t, c, (t + 1) * (c + 1));
     }
+  }
+
+  // Create a copy of the test array, but set some values to the min/max of
+  // the data type to ensure that the full range is supported:
+  DataArrayAPICreateTestArray(arrayMinMax);
+  arrayMinMax->DeepCopy(array);
+  assert(comps < tuples && "The logic below assumes more tuples than comps");
+  assert(comps % 2 == 0 && "The logic below assumes an even number of comps");
+  for (int c = 0; c < comps; ++c)
+  {
+    arrayMinMax->SetTypedComponent(static_cast<vtkIdType>(c),
+                                   c,
+                                   vtkTypeTraits<ScalarT>::Min());
+    arrayMinMax->SetTypedComponent(static_cast<vtkIdType>(c),
+                                   comps - c - 1,
+                                   vtkTypeTraits<ScalarT>::Max());
   }
 
   // Just the range of the first component:
@@ -760,6 +797,17 @@ int Test_GetValueRange_all_overloads()
                               << rangePtr[1] << "].");
   }
 
+  rangePtr = arrayMinMax->GetValueRange();
+  if (rangePtr[0] != vtkTypeTraits<ScalarT>::Min() ||
+      rangePtr[1] != vtkTypeTraits<ScalarT>::Max())
+  {
+    DataArrayAPINonFatalError("First component range expected to be: ["
+                              << vtkTypeTraits<ScalarT>::Min() << ", "
+                              << vtkTypeTraits<ScalarT>::Max()
+                              << "], got [" << rangePtr[0] << ", "
+                              << rangePtr[1] << "].");
+  }
+
   DataArrayAPIUpdateSignature("void GetValueRange(ValueType range[2])");
   ScalarT rangeArray[2];
   array->GetValueRange(rangeArray);
@@ -770,6 +818,17 @@ int Test_GetValueRange_all_overloads()
                               << expectedRange[0] << ", " << expectedRange[1]
                               << "], got [" << rangeArray[0] << ", "
                               << rangeArray[1] << "].");
+  }
+
+  arrayMinMax->GetValueRange(rangeArray);
+  if (rangeArray[0] != vtkTypeTraits<ScalarT>::Min() ||
+      rangeArray[1] != vtkTypeTraits<ScalarT>::Max())
+  {
+    DataArrayAPINonFatalError("First component range expected to be: ["
+                              << vtkTypeTraits<ScalarT>::Min() << ", "
+                              << vtkTypeTraits<ScalarT>::Max()
+                              << "], got [" << rangePtr[0] << ", "
+                              << rangePtr[1] << "].");
   }
 
   DataArrayAPIUpdateSignature("ValueType* GetValueRange(int comp)");
@@ -783,6 +842,17 @@ int Test_GetValueRange_all_overloads()
     {
       DataArrayAPINonFatalError("Component " << c << " range expected to be: ["
                                 << expectedRange[0] << ", " << expectedRange[1]
+                                << "], got [" << rangePtr[0] << ", "
+                                << rangePtr[1] << "].");
+    }
+
+    rangePtr = arrayMinMax->GetValueRange(c);
+    if (rangePtr[0] != vtkTypeTraits<ScalarT>::Min() ||
+        rangePtr[1] != vtkTypeTraits<ScalarT>::Max())
+    {
+      DataArrayAPINonFatalError("Component " << c << " range expected to be: ["
+                                << vtkTypeTraits<ScalarT>::Min() << ", "
+                                << vtkTypeTraits<ScalarT>::Max()
                                 << "], got [" << rangePtr[0] << ", "
                                 << rangePtr[1] << "].");
     }
@@ -801,6 +871,17 @@ int Test_GetValueRange_all_overloads()
                                 << expectedRange[0] << ", " << expectedRange[1]
                                 << "], got [" << rangeArray[0] << ", "
                                 << rangeArray[1] << "].");
+    }
+
+    arrayMinMax->GetValueRange(rangeArray, c);
+    if (rangeArray[0] != vtkTypeTraits<ScalarT>::Min() ||
+        rangeArray[1] != vtkTypeTraits<ScalarT>::Max())
+    {
+      DataArrayAPINonFatalError("Component " << c << " range expected to be: ["
+                                << vtkTypeTraits<ScalarT>::Min() << ", "
+                                << vtkTypeTraits<ScalarT>::Max()
+                                << "], got [" << rangePtr[0] << ", "
+                                << rangePtr[1] << "].");
     }
   }
 

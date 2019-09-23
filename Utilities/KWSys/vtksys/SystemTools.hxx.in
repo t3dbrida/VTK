@@ -10,14 +10,12 @@
 #include <string>
 #include <vector>
 
-#include <@KWSYS_NAMESPACE@/String.hxx>
-
 #include <sys/types.h>
 // include sys/stat.h after sys/types.h
 #include <sys/stat.h>
 
 #if !defined(_WIN32) || defined(__CYGWIN__)
-#include <unistd.h> // For access permissions for use with access()
+#  include <unistd.h> // For access permissions for use with access()
 #endif
 
 // Required for va_list
@@ -43,9 +41,7 @@ typedef @KWSYS_NAMESPACE@_VA_LIST::hack_va_list va_list;
 
 namespace @KWSYS_NAMESPACE@ {
 
-class SystemToolsTranslationMap;
-class SystemToolsPathCaseMap;
-class SystemToolsEnvMap;
+class SystemToolsStatic;
 
 /** \class SystemToolsManager
  * \brief Use to make sure SystemTools is initialized before it is used
@@ -56,6 +52,9 @@ class @KWSYS_NAMESPACE@_EXPORT SystemToolsManager
 public:
   SystemToolsManager();
   ~SystemToolsManager();
+
+  SystemToolsManager(const SystemToolsManager&) = delete;
+  SystemToolsManager& operator=(const SystemToolsManager&) = delete;
 };
 
 // This instance will show up in any translation unit that uses
@@ -197,9 +196,9 @@ public:
       s starts with a / then the first element of the returned array will
       be /, so /foo/bar will be [/, foo, bar]
   */
-  static std::vector<String> SplitString(const std::string& s,
-                                         char separator = '/',
-                                         bool isPath = false);
+  static std::vector<std::string> SplitString(const std::string& s,
+                                              char separator = '/',
+                                              bool isPath = false);
   /**
    * Perform a case-independent string comparison
    */
@@ -318,11 +317,11 @@ public:
  * Cross platform wrapper for stat struct
  */
 #if defined(_WIN32) && !defined(__CYGWIN__)
-#if defined(__BORLANDC__)
+#  if defined(__BORLANDC__)
   typedef struct stati64 Stat_t;
-#else
+#  else
   typedef struct _stat64 Stat_t;
-#endif
+#  endif
 #else
   typedef struct stat Stat_t;
 #endif
@@ -523,9 +522,8 @@ public:
   static bool GetShortPath(const std::string& path, std::string& result);
 
   /**
-   * Read line from file. Make sure to get everything. Due to a buggy stream
-   * library on the HP and another on Mac OS X, we need this very carefully
-   * written version of getline. Returns true if any data were read before the
+   * Read line from file. Make sure to read a full line and truncates it if
+   * requested via sizeLimit. Returns true if any data were read before the
    * end-of-file was reached. If the has_newline argument is specified, it will
    * be true when the line read had a newline character.
    */
@@ -580,6 +578,13 @@ public:
    */
   static bool FilesDiffer(const std::string& source,
                           const std::string& destination);
+
+  /**
+   * Compare the contents of two files, ignoring line ending differences.
+   * Return true if different
+   */
+  static bool TextFilesDiffer(const std::string& path1,
+                              const std::string& path2);
 
   /**
    * Return true if the two files are the same file
@@ -886,6 +891,7 @@ public:
    */
   static int GetTerminalWidth();
 
+#if @KWSYS_NAMESPACE@_SYSTEMTOOLS_USE_TRANSLATION_MAP
   /**
    * Add an entry in the path translation table.
    */
@@ -902,6 +908,7 @@ public:
    * Update path by going through the Path Translation table;
    */
   static void CheckTranslationPath(std::string& path);
+#endif
 
   /**
    * Delay the execution for a specified amount of time specified
@@ -960,41 +967,8 @@ private:
     return &SystemToolsManagerInstance;
   }
 
-  /**
-   * Actual implementation of ReplaceString.
-   */
-  static void ReplaceString(std::string& source, const char* replace,
-                            size_t replaceSize, const std::string& with);
-
-  /**
-   * Actual implementation of FileIsFullPath.
-   */
-  static bool FileIsFullPath(const char*, size_t);
-
-  /**
-   * Find a filename (file or directory) in the system PATH, with
-   * optional extra paths.
-   */
-  static std::string FindName(
-    const std::string& name,
-    const std::vector<std::string>& path = std::vector<std::string>(),
-    bool no_system_path = false);
-
-  static const char* GetEnvImpl(const char* key);
-
-  /**
-   * Path translation table from dir to refdir
-   * Each time 'dir' will be found it will be replace by 'refdir'
-   */
-  static SystemToolsTranslationMap* TranslationMap;
-#ifdef _WIN32
-  static std::string GetActualCaseForPathCached(std::string const& path);
-  static SystemToolsPathCaseMap* PathCaseMap;
-  static SystemToolsEnvMap* EnvMap;
-#endif
-#ifdef __CYGWIN__
-  static SystemToolsTranslationMap* Cyg2Win32Map;
-#endif
+  static SystemToolsStatic* Statics;
+  friend class SystemToolsStatic;
   friend class SystemToolsManager;
 };
 

@@ -88,6 +88,14 @@ vtkOpenVRRenderer::~vtkOpenVRRenderer()
   this->FloorActor = 0;
 }
 
+//----------------------------------------------------------------------------
+vtkCamera* vtkOpenVRRenderer::MakeCamera()
+{
+  vtkCamera *cam = vtkOpenVRCamera::New();
+  this->InvokeEvent(vtkCommand::CreateCameraEvent, cam);
+  return cam;
+}
+
 // adjust the floor if we need to
 void vtkOpenVRRenderer::DeviceRender()
 {
@@ -167,7 +175,7 @@ void vtkOpenVRRenderer::ResetCamera(double bounds[6])
   }
   else
   {
-    vtkErrorMacro(<< "Trying to reset non-existant camera");
+    vtkErrorMacro(<< "Trying to reset non-existent camera");
     return;
   }
 
@@ -292,7 +300,7 @@ void vtkOpenVRRenderer::ResetCameraClippingRange( double bounds[6] )
   this->GetActiveCameraAndResetIfCreated();
   if ( this->ActiveCamera == nullptr )
   {
-    vtkErrorMacro(<< "Trying to reset clipping range of non-existant camera");
+    vtkErrorMacro(<< "Trying to reset clipping range of non-existent camera");
     return;
   }
 

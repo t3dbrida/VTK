@@ -25,9 +25,17 @@
  * element has the properties "intensity" and/or the triplet "red",
  * "green", "blue", and optionally "alpha"; these are read and added as scalars
  * to the output data.
+ * If the "face" element has the property "texcoord" a new TCoords
+ * point array is created and points are duplicated if they have 2 or
+ * more different texture coordinates. Points are duplicated only if
+ * DuplicatePointsForFaceTexture is true (default).
+ * This creates a polygonal data that can be textured without
+ * artifacts. If unique points are required use a vtkCleanPolyData
+ * filter after this reader or use this reader with DuplicatePointsForFaceTexture
+ * set to false.
  *
  * @sa
- * vtkPLYWriter
+ * vtkPLYWriter, vtkCleanPolyData
 */
 
 #ifndef vtkPLYReader_h
@@ -56,16 +64,59 @@ public:
 
   vtkGetObjectMacro(Comments, vtkStringArray);
 
+  /**
+   * Tolerance used to detect different texture coordinates for shared
+   * points for faces.
+   */
+  vtkGetMacro(FaceTextureTolerance, float);
+  vtkSetMacro(FaceTextureTolerance, float);
+
+  //@{
+  /**
+   * Enable reading from an InputString instead of the default, a file.
+   * Note that reading from an input stream would be more flexible (enabling
+   * other kind of streams) and possibly more efficient because we don't need
+   * to save the whole stream to a string. However a stream interface
+   * does not translate well to python and the string interface satisfies
+   * our current needs. So we leave the stream interface for future work.
+   */
+  vtkSetMacro(ReadFromInputString, bool);
+  vtkGetMacro(ReadFromInputString, bool);
+  vtkBooleanMacro(ReadFromInputString, bool);
+  void SetInputString(const std::string& s) { this->InputString = s; }
+  //@}
+
+
+
+  /**
+   * If true (default) and the "face" element has the property "texcoord" duplicate
+   * face points if they have 2 or more different texture coordinates.
+   * Otherwise, each texture coordinate for a face point overwrites previously set
+   * texture coordinates for that point.
+   */
+  vtkGetMacro(DuplicatePointsForFaceTexture, bool);
+  vtkSetMacro(DuplicatePointsForFaceTexture, bool);
+
+
 protected:
   vtkPLYReader();
   ~vtkPLYReader() override;
 
   vtkStringArray* Comments;
+  // Whether this object is reading from a string or a file.
+  // Default is 0: read from file.
+  bool ReadFromInputString;
+  // The input string.
+  std::string InputString;
+
 
   int RequestData(vtkInformation *, vtkInformationVector **, vtkInformationVector *) override;
 private:
   vtkPLYReader(const vtkPLYReader&) = delete;
   void operator=(const vtkPLYReader&) = delete;
+
+  float FaceTextureTolerance;
+  bool DuplicatePointsForFaceTexture;
 };
 
 #endif

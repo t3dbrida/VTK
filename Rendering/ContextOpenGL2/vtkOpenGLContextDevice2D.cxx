@@ -18,6 +18,7 @@
 
 #include "vtkAbstractContextBufferId.h"
 #include "vtkBrush.h"
+#include "vtkContext2D.h"
 #include "vtkFloatArray.h"
 #include "vtkImageData.h"
 #include "vtkImageResize.h"
@@ -27,6 +28,7 @@
 #include "vtkObjectFactory.h"
 #include "vtkOpenGLError.h"
 #include "vtkOpenGLGL2PSHelper.h"
+#include "vtkOpenGLHelper.h"
 #include "vtkOpenGLIndexBufferObject.h"
 #include "vtkOpenGLRenderWindow.h"
 #include "vtkOpenGLRenderer.h"
@@ -37,8 +39,8 @@
 #include "vtkOpenGLVertexBufferObject.h"
 #include "vtkPath.h"
 #include "vtkPen.h"
-#include "vtkPoints2D.h"
 #include "vtkPointData.h"
+#include "vtkPoints2D.h"
 #include "vtkPolyData.h"
 #include "vtkRect.h"
 #include "vtkShaderProgram.h"
@@ -52,14 +54,15 @@
 #include "vtkVector.h"
 #include "vtkViewport.h"
 #include "vtkWindow.h"
-#include "vtkOpenGLHelper.h"
 
 #include "vtkObjectFactory.h"
 
 #include "vtkOpenGLContextDevice2DPrivate.h"
 
 #include <algorithm>
+#include <cassert>
 #include <sstream>
+#include <limits>
 
 #define BUFFER_OFFSET(i) (reinterpret_cast<char *>(i))
 
@@ -367,6 +370,8 @@ void vtkOpenGLContextDevice2D::End()
   {
     glDisable(GL_LINE_SMOOTH);
   }
+
+  this->PolyDataImpl->HandleEndFrame();
 
   this->RenderWindow = nullptr;
   this->InRender = false;
@@ -827,7 +832,11 @@ void vtkOpenGLContextDevice2D::DrawPoly(float *f, int n, unsigned char *colors,
   {
     float xDel = scale[0]*(f[i*2] - f[i*2-2]);
     float yDel = scale[1]*(f[i*2+1] - f[i*2-1]);
-    totDist += sqrt(xDel*xDel + yDel*yDel);
+    // discarding infinite coordinates
+    totDist += (std::abs(yDel) != std::numeric_limits<float>::infinity() &&
+        std::abs(xDel) != std::numeric_limits<float>::infinity())
+      ? sqrt(xDel * xDel + yDel * yDel)
+      : 0;
     distances[i*2] = totDist;
   }
 
@@ -888,11 +897,11 @@ void vtkOpenGLContextDevice2D::DrawPoly(float *f, int n, unsigned char *colors,
       newDistances[i*12+10] = distances[i*2+2];
     }
 
-    this->BuildVBO(cbo, &(newVerts[0]), newVerts.size()/2,
+    this->BuildVBO(cbo, &(newVerts[0]), static_cast<int>(newVerts.size()/2),
       colors ? &(newColors[0]) : nullptr, nc, &(newDistances[0]));
 
     PreDraw(*cbo, GL_TRIANGLES, newVerts.size() / 2);
-    glDrawArrays(GL_TRIANGLES, 0, newVerts.size()/2);
+    glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(newVerts.size()/2));
     PostDraw(*cbo, this->Renderer, this->Pen->GetColor());
   }
   else
@@ -1031,10 +1040,10 @@ void vtkOpenGLContextDevice2D::DrawLines(float *f, int n, unsigned char *colors,
       newDistances[i*6+10] = distances[i*2+2];
     }
 
-    this->BuildVBO(cbo, &(newVerts[0]), newVerts.size()/2,
+    this->BuildVBO(cbo, &(newVerts[0]), static_cast<int>(newVerts.size()/2),
       colors ? &(newColors[0]) : nullptr, nc, &(newDistances[0]));
     PreDraw(*cbo, GL_TRIANGLES, newVerts.size() / 2);
-    glDrawArrays(GL_TRIANGLES, 0, newVerts.size()/2);
+    glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(newVerts.size()/2));
     PostDraw(*cbo, this->Renderer, this->Pen->GetColor());
   }
   else
@@ -1273,7 +1282,7 @@ void vtkOpenGLContextDevice2D::CoreDrawTriangles(std::vector<float> &tverts,
     this->SetTexture(this->Brush->GetTexture(),
                      this->Brush->GetTextureProperties());
     this->Storage->Texture->Render(this->Renderer);
-    texCoord = this->Storage->TexCoords(&(tverts[0]), tverts.size()/2);
+    texCoord = this->Storage->TexCoords(&(tverts[0]), static_cast<int>(tverts.size()/2));
 
     int tunit = vtkOpenGLTexture::SafeDownCast(this->Storage->Texture)->GetTextureUnit();
     cbo->Program->SetUniformi("texture1", tunit);
@@ -1302,13 +1311,13 @@ void vtkOpenGLContextDevice2D::CoreDrawTriangles(std::vector<float> &tverts,
   cbo->Program->SetUniform4uc("vertexColor",
       this->Brush->GetColor());
 
-  this->BuildVBO(cbo, &(tverts[0]), tverts.size()/2, colors, numComp,
+  this->BuildVBO(cbo, &(tverts[0]), static_cast<int>(tverts.size()/2), colors, numComp,
     texCoord);
 
   this->SetMatrices(cbo->Program);
 
   PreDraw(*cbo, GL_TRIANGLES, tverts.size() / 2);
-  glDrawArrays(GL_TRIANGLES, 0, tverts.size()/2);
+  glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(tverts.size()/2));
   PostDraw(*cbo, this->Renderer, this->Brush->GetColor());
 
   // free everything
@@ -2030,6 +2039,9 @@ void vtkOpenGLContextDevice2D::SetLineType(int type)
     case vtkPen::DASH_DOT_DOT_LINE:
       this->LinePattern = 0x1C47;
       break;
+    case vtkPen::DENSE_DOT_LINE:
+      this->LinePattern = 0x1111;
+      break;
     default:
       this->LinePattern = 0xFFFF;
   }
@@ -2131,28 +2143,56 @@ void vtkOpenGLContextDevice2D::PopMatrix()
 //-----------------------------------------------------------------------------
 void vtkOpenGLContextDevice2D::SetClipping(int *dim)
 {
-  // Check the bounds, and clamp if necessary
-  GLint vp[4] = { this->Storage->Offset.GetX(), this->Storage->Offset.GetY(),
-    this->Storage->Dim.GetX(),this->Storage->Dim.GetY()};
+  // If the window is using tile scaling, we need to update the clip coordinates
+  // relative to the tile being rendered.
+  // (see paraview/paraview#17308)
+  double tileViewPort[4];
+  this->Renderer->GetVTKWindow()->GetTileViewport(tileViewPort);
+  this->Renderer->NormalizedDisplayToDisplay(tileViewPort[0], tileViewPort[1]);
+  this->Renderer->NormalizedDisplayToDisplay(tileViewPort[2], tileViewPort[3]);
 
-  if (dim[0] > 0 && dim[0] < vp[2] )
+  vtkRecti tileRect{ vtkContext2D::FloatToInt(tileViewPort[0]),
+    vtkContext2D::FloatToInt(tileViewPort[1]), 0, 0 };
+  tileRect.AddPoint(
+    vtkContext2D::FloatToInt(tileViewPort[2]), vtkContext2D::FloatToInt(tileViewPort[3]));
+  // tileRect is the tile being rendered in the current RenderWindow in pixels.
+
+  double viewport[4];
+  this->Renderer->GetViewport(viewport);
+  this->Renderer->NormalizedDisplayToDisplay(viewport[0], viewport[1]);
+  this->Renderer->NormalizedDisplayToDisplay(viewport[2], viewport[3]);
+  vtkRecti rendererRect{ vtkContext2D::FloatToInt(viewport[0]),
+    vtkContext2D::FloatToInt(viewport[1]), 0, 0 };
+  rendererRect.AddPoint(
+    vtkContext2D::FloatToInt(viewport[2]), vtkContext2D::FloatToInt(viewport[3]));
+  // rendererRect is the viewport in pixels.
+
+  // `dim` is specified as (x,y,width,height) relative to the viewport that this
+  // prop is rendering in. So let's fit it in the viewport rect i.e.
+  // rendererRect
+  vtkRecti clipRect{ dim[0], dim[1], dim[2], dim[3] };
+  clipRect.MoveTo(clipRect.GetX() + rendererRect.GetX(), clipRect.GetY() + rendererRect.GetY());
+  clipRect.Intersect(rendererRect);
+
+  // Now, clamp the clipRect to the region being shown on the current tile. This
+  // generally has no effect since clipRect is wholly contained in tileRect
+  // unless tile scaling was being used. In either case, this method will return
+  // true as long as the rectangle intersection will produce a valid rectangle.
+  if (clipRect.Intersect(tileRect))
   {
-    vp[0] += dim[0];
+    // offset clipRect relative to current tile i.e. window.
+    clipRect.MoveTo(clipRect.GetX() - tileRect.GetX(), clipRect.GetY() - tileRect.GetY());
   }
-  if (dim[1] > 0 && dim[1] < vp[3])
+  else
   {
-    vp[1] += dim[1];
-  }
-  if (dim[2] > 0 && dim[2] < vp[2])
-  {
-    vp[2] = dim[2];
-  }
-  if (dim[3] > 0 && dim[3] < vp[3])
-  {
-    vp[3] = dim[3];
+    // clipping region results in empty region, just set to empty.
+    clipRect = vtkRecti{ 0, 0, 0, 0 };
   }
 
-  this->RenderWindow->GetState()->vtkglScissor(vp[0], vp[1], vp[2], vp[3]);
+  assert(clipRect.GetWidth() >= 0 && clipRect.GetHeight() >= 0);
+
+  this->RenderWindow->GetState()->vtkglScissor(
+    clipRect.GetX(), clipRect.GetY(), clipRect.GetWidth(), clipRect.GetHeight());
 }
 
 //-----------------------------------------------------------------------------
@@ -2797,7 +2837,7 @@ void vtkOpenGLContextDevice2D::DrawImageGL2PS(float p[2], vtkImageData *input)
   scalars->SetNumberOfTuples(s->GetNumberOfTuples());
   for (size_t i = 0; i < numVals; ++i)
   {
-    scalars->SetValue(i, vals[i] / 255.f);
+    scalars->SetValue(static_cast<vtkIdType>(i), vals[i] / 255.f);
   }
   image->GetPointData()->SetScalars(scalars);
 

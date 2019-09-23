@@ -36,6 +36,9 @@ class vtkOpenGLTexture;
 class vtkOrderIndependentTranslucentPass;
 class vtkTextureObject;
 class vtkDepthPeelingPass;
+class vtkPBRIrradianceTexture;
+class vtkPBRLUTTexture;
+class vtkPBRPrefilterTexture;
 class vtkShaderProgram;
 class vtkShadowMapPass;
 
@@ -54,7 +57,7 @@ public:
   /**
    * Overridden to support hidden line removal.
    */
-  void DeviceRenderOpaqueGeometry() override;
+  void DeviceRenderOpaqueGeometry(vtkFrameBufferObjectBase* fbo = nullptr) override;
 
   /**
    * Render translucent polygonal geometry. Default implementation just call
@@ -62,7 +65,7 @@ public:
    * Subclasses of vtkRenderer that can deal with depth peeling must
    * override this method.
    */
-  void DeviceRenderTranslucentPolygonalGeometry() override;
+  void DeviceRenderTranslucentPolygonalGeometry(vtkFrameBufferObjectBase* fbo = nullptr) override;
 
   void Clear(void) override;
 
@@ -134,6 +137,20 @@ public:
    */
   void SetUserLightTransform(vtkTransform* transform);
 
+  //@{
+  /**
+   * Get environment textures used for image based lighting.
+   */
+  vtkPBRLUTTexture* GetEnvMapLookupTable();
+  vtkPBRIrradianceTexture* GetEnvMapIrradiance();
+  vtkPBRPrefilterTexture* GetEnvMapPrefiltered();
+  //@}
+
+  /**
+   * Overriden in order to connect the cubemap to the environment map textures.
+   */
+  void SetEnvironmentCubeMap(vtkTexture* cubemap, bool isSRGB = false) override;
+
 protected:
   vtkOpenGLRenderer();
   ~vtkOpenGLRenderer() override;
@@ -151,7 +168,7 @@ protected:
    * geometry. This includes both vtkActors and vtkVolumes
    * Returns the number of props that rendered geometry.
    */
-  int UpdateGeometry() override;
+  int UpdateGeometry(vtkFrameBufferObjectBase* fbo = nullptr) override;
 
   /**
    * Check and return the textured background for the current state
@@ -193,9 +210,6 @@ protected:
 
   friend class vtkRenderPass;
 
-  bool HaveApplePrimitiveIdBugValue;
-  bool HaveApplePrimitiveIdBugChecked;
-
   std::string LightingDeclaration;
   int LightingComplexity;
   int LightingCount;
@@ -205,6 +219,10 @@ protected:
    * Optional user transform for lights
    */
   vtkSmartPointer<vtkTransform> UserLightTransform;
+
+  vtkPBRLUTTexture* EnvMapLookupTable;
+  vtkPBRIrradianceTexture* EnvMapIrradiance;
+  vtkPBRPrefilterTexture* EnvMapPrefiltered;
 
 private:
   vtkOpenGLRenderer(const vtkOpenGLRenderer&) = delete;

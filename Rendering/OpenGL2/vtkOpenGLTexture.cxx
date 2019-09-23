@@ -135,6 +135,10 @@ void vtkOpenGLTexture::Load(vtkRenderer *ren)
 
   if (!this->ExternalTextureObject)
   {
+    if (this->GetInputDataObject(0, 0) == nullptr)
+    {
+        return;
+    }
     vtkImageData *input = this->GetInput();
     int numIns = 1;
     vtkMTimeType inputTime = input->GetMTime();
@@ -170,12 +174,12 @@ void vtkOpenGLTexture::Load(vtkRenderer *ren)
     // like the graphics context.
 
     // has something changed so that we need to rebuild the texture?
-    if (this->GetMTime() > this->LoadTime.GetMTime() ||
-        inputTime > this->LoadTime.GetMTime() ||
-        (this->GetLookupTable() && this->GetLookupTable()->GetMTime () >
-         this->LoadTime.GetMTime()) ||
-         renWin->GetGenericContext() != this->RenderWindow->GetGenericContext() ||
-         renWin->GetContextCreationTime() > this->LoadTime)
+    if (this->GetMTime() > this->LoadTime.GetMTime()
+        || inputTime > this->LoadTime.GetMTime()
+        || (this->GetLookupTable() && this->GetLookupTable()->GetMTime () >
+            this->LoadTime.GetMTime())
+        || renWin->GetGenericContext() != this->RenderWindow->GetGenericContext()
+        || renWin->GetContextCreationTime() > this->LoadTime)
     {
       int size[3];
       int xsize, ysize;
@@ -242,47 +246,54 @@ void vtkOpenGLTexture::Load(vtkRenderer *ren)
       }
 
       // map/resize inputs
-      unsigned char *resultData[6];
-      unsigned char *dataPtr[6];
+      void* resultData[6];
+      void* dataPtr[6];
+      bool resampled[6];
       for (int i = 0; i < numIns && i < 6; ++i)
       {
         vtkImageData *in = vtkImageData::SafeDownCast(this->GetInputDataObject(i, 0));
         // Get the scalars the user choose to color with.
         vtkDataArray* inscalars = this->GetInputArrayToProcess(i, in);
 
-        // make sure using unsigned char data of color scalars type
-        if (this->IsDepthTexture != 1 &&
-          (this->ColorMode == VTK_COLOR_MODE_MAP_SCALARS ||
-           inscalars->GetDataType() != VTK_UNSIGNED_CHAR ))
-        {
-          dataPtr[i] = this->MapScalarsToColors (inscalars);
-          bytesPerPixel = 4;
-        }
-        else
-        {
-          dataPtr[i] = static_cast<vtkUnsignedCharArray *>(inscalars)->GetPointer(0);
-        }
-
-        // -- decide whether the texture needs to be resampled --
+        // decide whether the texture needs to be resampled
         GLint maxDimGL;
         ostate->vtkglGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxDimGL);
         vtkOpenGLCheckErrorMacro("failed at glGetIntegerv");
         // if larger than permitted by the graphics library then must resample
         bool resampleNeeded = xsize > maxDimGL || ysize > maxDimGL;
-        if(resampleNeeded)
+
+        // colors are copied directly in 8-bits, 16-bits or 32-bits floating textures.
+        bool directColors = (this->ColorMode != VTK_COLOR_MODE_MAP_SCALARS &&
+          inscalars->GetDataType() == VTK_UNSIGNED_CHAR) ||
+          (this->ColorMode == VTK_COLOR_MODE_DIRECT_SCALARS &&
+           (inscalars->GetDataType() == VTK_UNSIGNED_SHORT ||
+            inscalars->GetDataType() == VTK_FLOAT));
+
+        // make sure using unsigned char data of color scalars type
+        if (this->IsDepthTexture != 1 &&
+          (!directColors || inscalars->GetNumberOfComponents() < 3 || resampleNeeded))
         {
-          vtkDebugMacro( "Texture too big for gl, maximum is " << maxDimGL);
+          dataPtr[i] = this->MapScalarsToColors (inscalars);
+          dataType = VTK_UNSIGNED_CHAR;
+          bytesPerPixel = 4;
+        }
+        else
+        {
+          dataPtr[i] = inscalars->GetVoidPointer(0);
         }
 
         if (resampleNeeded)
         {
+          vtkDebugMacro( "Texture too big for gl, maximum is " << maxDimGL);
           vtkDebugMacro(<< "Resampling texture to power of two for OpenGL");
-          resultData[i] = this->ResampleToPowerOfTwo(xsize, ysize, dataPtr[i],
-                                                  bytesPerPixel, maxDimGL);
+          resultData[i] = this->ResampleToPowerOfTwo(xsize, ysize,
+            static_cast<unsigned char*>(dataPtr[i]), bytesPerPixel, maxDimGL);
+          resampled[i] = true;
         }
         else
         {
           resultData[i] = dataPtr[i];
+          resampled[i] = false;
         }
       }
 
@@ -290,33 +301,28 @@ void vtkOpenGLTexture::Load(vtkRenderer *ren)
       if (this->IsDepthTexture)
       {
         this->TextureObject->CreateDepthFromRaw(
-          xsize, ysize, vtkTextureObject::Float32, dataType, resultData[0]);
+          xsize, ysize, vtkTextureObject::Float32, dataType, nullptr);
       }
       else
       {
         if (numIns == 6)
         {
-          void *vtmp[6];
-          for (int i = 0; i < 6; ++i)
-          {
-            vtmp[i] = static_cast<void *>(resultData[i]);
-          }
           this->TextureObject->CreateCubeFromRaw(
-            xsize, ysize, bytesPerPixel, VTK_UNSIGNED_CHAR, vtmp);
+            xsize, ysize, bytesPerPixel, dataType, resultData);
         }
         else
         {
           this->TextureObject->Create2DFromRaw(
-            xsize, ysize, bytesPerPixel, VTK_UNSIGNED_CHAR, resultData[0]);
+            xsize, ysize, bytesPerPixel, dataType, resultData[0]);
         }
       }
 
       // free memory
       for (int i = 0; i < numIns && i < 6; ++i)
       {
-        if (resultData[i] != dataPtr[i])
+        if (resampled[i])
         {
-          delete [] resultData[i];
+          delete[] static_cast<unsigned char*>(resultData[i]);
           resultData[i] = nullptr;
         }
       }
@@ -396,7 +402,10 @@ void vtkOpenGLTexture::Load(vtkRenderer *ren)
 // ----------------------------------------------------------------------------
 void vtkOpenGLTexture::PostRender(vtkRenderer *ren)
 {
-  this->TextureObject->Deactivate();
+  if (this->TextureObject)
+  {
+    this->TextureObject->Deactivate();
+  }
 
   if (this->GetInput() && this->PremultipliedAlpha)
   {
@@ -544,7 +553,7 @@ void vtkOpenGLTexture::PrintSelf(ostream& os, vtkIndent indent)
 // ----------------------------------------------------------------------------
 int vtkOpenGLTexture::IsTranslucent()
 {
-  if (this->ExternalTextureObject)
+  if (this->ExternalTextureObject && this->TextureObject)
   {
     // If number of components are 1, 2, or 4 then mostly
     // we can assume that the data can be used as alpha values.

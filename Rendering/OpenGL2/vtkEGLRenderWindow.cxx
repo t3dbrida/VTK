@@ -98,6 +98,12 @@ public:
       this->eglQueryDevices = nullptr;
       this->eglGetPlatformDisplay = nullptr;
       const char* s = eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
+      if (s == nullptr)
+      {
+        // eglQueryString returns a nullptr upon failure.
+        // Setting it to empty string to silently ignore failure.
+        s = "";
+      }
       std::string platformExtensions(s);
       if (platformExtensions.find("EGL_EXT_device_base") != std::string::npos &&
           platformExtensions.find("EGL_EXT_platform_device") != std::string::npos &&
@@ -114,8 +120,6 @@ public:
     }
   };
 };
-
-
 
 
 vtkStandardNewMacro(vtkEGLRenderWindow);
@@ -145,6 +149,7 @@ vtkEGLRenderWindow::vtkEGLRenderWindow()
   // so we don't need to initialize on else
 #ifdef VTK_USE_OFFSCREEN_EGL
   this->DeviceIndex = VTK_DEFAULT_EGL_DEVICE_INDEX;
+  this->ShowWindow = false;
 #endif
 
   // Use an environment variable to set the default device index
@@ -164,14 +169,6 @@ vtkEGLRenderWindow::vtkEGLRenderWindow()
     {
     }
   }
-
-
-#ifdef ANDROID
-  this->OffScreenRendering = false;
-#else
-  // this is an offscreen-only window otherwise.
-  this->OffScreenRendering = true;
-#endif
 
   this->IsPointSpriteBugTested = false;
   this->IsPointSpriteBugPresent_ = false;
@@ -204,6 +201,7 @@ void vtkEGLRenderWindow::Frame()
         && impl->Display != EGL_NO_DISPLAY)
     {
       eglSwapBuffers(impl->Display, impl->Surface);
+      glFinish();
       vtkDebugMacro(<< " eglSwapBuffers\n");
     }
   }
@@ -212,6 +210,7 @@ void vtkEGLRenderWindow::Frame()
     if (!this->AbortRender && this->DoubleBuffer && this->SwapBuffers)
     {
       eglSwapBuffers( eglGetCurrentDisplay(), eglGetCurrentSurface( EGL_DRAW ) );
+      glFinish();
       vtkDebugMacro(<< " eglSwapBuffers\n");
     }
   }
@@ -235,6 +234,25 @@ void vtkEGLRenderWindow::SetStereoCapableWindow(vtkTypeBool capable)
   }
 }
 
+// Specify the size of the rendering window.
+void vtkEGLRenderWindow::SetSize(int width, int height)
+{
+  this->Superclass::SetSize(width, height);
+  vtkInternals* impl = this->Internals;
+
+  if( this->OwnWindow  &&
+      impl->Display != EGL_NO_DISPLAY &&
+      impl->Surface != EGL_NO_SURFACE)
+  {
+    // We only need to resize the window if we own it
+    int w, h;
+    this->GetEGLSurfaceSize(&w, &h);
+    if (w != this->Size[0] || h != this->Size[1])
+    {
+      this->ResizeWindow(this->Size[0], this->Size[1]);
+    }
+  }
+}
 
 void vtkEGLRenderWindow::CreateAWindow()
 {
@@ -294,6 +312,22 @@ void vtkEGLRenderWindow::SetDeviceAsDisplay(int deviceIndex)
                   "EGL_EXT_device_base EGL_EXT_platform_device EGL_EXT_platform_base extensions");
 }
 
+void vtkEGLRenderWindow::SetShowWindow(bool val)
+{
+  if (val == this->ShowWindow)
+  {
+    return;
+  }
+
+#if defined(VTK_USE_OFFSCREEN_EGL)
+  if (!val)
+  {
+    this->Superclass::SetShowWindow(val);
+  }
+#else
+  this->Superclass::SetShowWindow(val);
+#endif
+}
 
 void vtkEGLRenderWindow::ResizeWindow(int width, int height)
 {
@@ -305,23 +339,22 @@ void vtkEGLRenderWindow::ResizeWindow(int width, int height)
    */
   EGLint surfaceType, clientAPI;
   const EGLint* contextAttribs;
-  if (this->OffScreenRendering)
-  {
-    surfaceType = EGL_PBUFFER_BIT;
-    clientAPI = EGL_OPENGL_BIT;
-    contextAttribs = nullptr;
-  }
-  else
-  {
-    surfaceType = EGL_WINDOW_BIT;
-    clientAPI = EGL_OPENGL_ES2_BIT;
-    const EGLint contextES2[] =
-      {
-      EGL_CONTEXT_CLIENT_VERSION, 2,
-      EGL_NONE
-      };
-    contextAttribs = contextES2;
-  }
+#ifdef ANDROID
+  surfaceType = EGL_WINDOW_BIT;
+  clientAPI = EGL_OPENGL_ES2_BIT;
+  const EGLint contextES2[] =
+    {
+    EGL_CONTEXT_CLIENT_VERSION, 2,
+    EGL_NONE
+    };
+  contextAttribs = contextES2;
+#else
+  // arguably you could have EGL_WINDOW_BIT here as well
+  surfaceType = EGL_PBUFFER_BIT;
+  clientAPI = EGL_OPENGL_BIT;
+  contextAttribs = nullptr;
+#endif
+
   const EGLint configs[] = {
     EGL_SURFACE_TYPE, surfaceType,
     EGL_BLUE_SIZE, 8,
@@ -333,38 +366,40 @@ void vtkEGLRenderWindow::ResizeWindow(int width, int height)
     EGL_NONE
   };
 
+#if !defined(ANDROID)
   const EGLint surface_attribs[] = {
     EGL_WIDTH, width,
     EGL_HEIGHT, height,
     EGL_NONE
   };
-
+#endif
 
   EGLint numConfigs = 0;
   EGLConfig config;
 
   if (impl->Display == EGL_NO_DISPLAY)
   {
-      // eglGetDisplay(EGL_DEFAULT_DISPLAY) does not seem to work
-      // if there are several cards on a system.
-      this->SetDeviceAsDisplay(this->DeviceIndex);
-      // try to use the default display
-      if (impl->Display == EGL_NO_DISPLAY)
-      {
-        impl->Display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-      }
+    // eglGetDisplay(EGL_DEFAULT_DISPLAY) does not seem to work
+    // if there are several cards on a system.
+    this->SetDeviceAsDisplay(this->DeviceIndex);
+
+    // try to use the default display
+    if (impl->Display == EGL_NO_DISPLAY)
+    {
+      impl->Display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    }
+
     EGLint major = 0, minor = 0;
     vtkEGLDisplayInitializationHelper::Initialize(impl->Display, &major, &minor);
-    if (this->OffScreenRendering)
+#if !defined(ANDROID)
+    if (major <= 1 && minor < 4)
     {
-      if (major <= 1 && minor < 4)
-      {
-        vtkErrorMacro("Only EGL 1.4 and greater allows OpenGL as client API. "
-                      "See eglBindAPI for more information.");
-        return;
-      }
-      eglBindAPI(EGL_OPENGL_API);
+      vtkErrorMacro("Only EGL 1.4 and greater allows OpenGL as client API. "
+                    "See eglBindAPI for more information.");
+      return;
     }
+    eglBindAPI(EGL_OPENGL_API);
+#endif
   }
 
 
@@ -399,10 +434,15 @@ void vtkEGLRenderWindow::ResizeWindow(int width, int height)
   {
       eglDestroySurface(impl->Display, impl->Surface);
   }
-  impl->Surface = this->OffScreenRendering ?
-    eglCreatePbufferSurface(impl->Display, config, surface_attribs):
+
+#ifdef ANDROID
+  impl->Surface =
     eglCreateWindowSurface(impl->Display, config, impl->Window, nullptr);
-  this->Mapped = 1;
+#else
+  impl->Surface =
+    eglCreatePbufferSurface(impl->Display, config, surface_attribs);
+#endif
+  this->Mapped = this->ShowWindow;
   this->OwnWindow = 1;
 
   this->MakeCurrent();
@@ -418,7 +458,7 @@ void vtkEGLRenderWindow::DestroyWindow()
 {
   vtkInternals* impl = this->Internals;
   this->ReleaseGraphicsResources(this);
-  if (this->OwnWindow && this->Mapped && impl->Display != EGL_NO_DISPLAY)
+  if (this->OwnWindow && impl->Display != EGL_NO_DISPLAY)
   {
     // make sure all other code knows we're not mapped anymore
     this->Mapped = 0;
@@ -466,12 +506,9 @@ void vtkEGLRenderWindow::WindowInitialize (void)
   this->OpenGLInit();
 
   // for offscreen EGL always turn on point sprites
-  if (this->OffScreenRendering)
-  {
-#ifdef GL_POINT_SPRITE
-    glEnable(GL_POINT_SPRITE);
+#if !defined(ANDROID) && defined(GL_POINT_SPRITE)
+  glEnable(GL_POINT_SPRITE);
 #endif
-  }
 }
 
 // Initialize the rendering window.
@@ -481,16 +518,6 @@ void vtkEGLRenderWindow::Initialize (void)
   if (impl->Context == EGL_NO_CONTEXT)
   {
     this->WindowInitialize();
-  }
-  else if( this->OwnWindow )
-  {
-    // We only need to resize the window if we own it
-    int w, h;
-    this->GetEGLSurfaceSize(&w, &h);
-    if (w != this->Size[0] || h != this->Size[1])
-    {
-      this->ResizeWindow(this->Size[0], this->Size[1]);
-    }
   }
   this->Initialized = true;
 }
@@ -524,26 +551,6 @@ void vtkEGLRenderWindow::WindowRemap()
   this->Initialize();
 }
 
-// Begin the rendering process.
-void vtkEGLRenderWindow::Start(void)
-{
-  this->Initialize();
-
-  // set the current window
-  this->MakeCurrent();
-}
-
-// Specify the size of the rendering window.
-void vtkEGLRenderWindow::SetSize(int width, int height)
-{
-  if ((this->Size[0] != width)||(this->Size[1] != height))
-  {
-    this->Size[0] = width;
-    this->Size[1] = height;
-    this->Modified();
-  }
-}
-
 void vtkEGLRenderWindow::GetEGLSurfaceSize(int* width, int* height)
 {
   vtkInternals* impl = this->Internals;
@@ -563,8 +570,6 @@ void vtkEGLRenderWindow::GetEGLSurfaceSize(int* width, int* height)
 }
 
 
-
-
 void vtkEGLRenderWindow::PrintSelf(ostream& os, vtkIndent indent)
 {
   vtkInternals* impl = this->Internals;
@@ -578,10 +583,9 @@ void vtkEGLRenderWindow::PrintSelf(ostream& os, vtkIndent indent)
 void vtkEGLRenderWindow::MakeCurrent()
 {
   vtkInternals* impl = this->Internals;
-  if(this->Mapped &&
-     impl->Display != EGL_NO_DISPLAY &&
-     impl->Context != EGL_NO_CONTEXT &&
-     impl->Surface != EGL_NO_SURFACE)
+  if (impl->Display != EGL_NO_DISPLAY &&
+      impl->Context != EGL_NO_CONTEXT &&
+      impl->Surface != EGL_NO_SURFACE)
   {
     if (eglMakeCurrent(impl->Display, impl->Surface, impl->Surface, impl->Context) == EGL_FALSE)
     {
@@ -662,18 +666,6 @@ void* vtkEGLRenderWindow::GetGenericContext()
 {
   vtkInternals* impl = this->Internals;
   return impl->Context;
-}
-
-//----------------------------------------------------------------------------
-void vtkEGLRenderWindow::SetOffScreenRendering (vtkTypeBool)
-{
-  // this is determined at compile time: ANDROID -> 0, otherwise -> 1
-}
-
-//----------------------------------------------------------------------------
-vtkTypeBool vtkEGLRenderWindow::GetOffScreenRendering ()
-{
-  return this->OffScreenRendering;
 }
 
 //----------------------------------------------------------------------------

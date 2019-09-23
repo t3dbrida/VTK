@@ -59,7 +59,6 @@ void output_temp(FILE *fp,int i)
       case VTK_PARSE_INT:         fprintf(fp,"int "); break;
       case VTK_PARSE_SHORT:       fprintf(fp,"int "); break;
       case VTK_PARSE_LONG:        fprintf(fp,"int "); break;
-      case VTK_PARSE_ID_TYPE:     fprintf(fp,"int "); break;
       case VTK_PARSE_LONG_LONG:   fprintf(fp,"int "); break;
       case VTK_PARSE___INT64:     fprintf(fp,"int "); break;
       case VTK_PARSE_SIGNED_CHAR: fprintf(fp,"char "); break;
@@ -102,7 +101,6 @@ void return_result(FILE *fp)
     case VTK_PARSE_INT:
     case VTK_PARSE_SHORT:
     case VTK_PARSE_LONG:
-    case VTK_PARSE_ID_TYPE:
     case VTK_PARSE_LONG_LONG:
     case VTK_PARSE___INT64:
     case VTK_PARSE_SIGNED_CHAR:
@@ -110,7 +108,6 @@ void return_result(FILE *fp)
     case VTK_PARSE_UNSIGNED_INT:
     case VTK_PARSE_UNSIGNED_SHORT:
     case VTK_PARSE_UNSIGNED_LONG:
-    case VTK_PARSE_UNSIGNED_ID_TYPE:
     case VTK_PARSE_UNSIGNED_LONG_LONG:
     case VTK_PARSE_UNSIGNED___INT64:
     case VTK_PARSE_UNKNOWN:
@@ -140,14 +137,12 @@ void return_result(FILE *fp)
     case VTK_PARSE_INT_PTR:
     case VTK_PARSE_SHORT_PTR:
     case VTK_PARSE_LONG_PTR:
-    case VTK_PARSE_ID_TYPE_PTR:
     case VTK_PARSE_LONG_LONG_PTR:
     case VTK_PARSE___INT64_PTR:
     case VTK_PARSE_SIGNED_CHAR_PTR:
     case VTK_PARSE_UNSIGNED_INT_PTR:
     case VTK_PARSE_UNSIGNED_SHORT_PTR:
     case VTK_PARSE_UNSIGNED_LONG_PTR:
-    case VTK_PARSE_UNSIGNED_ID_TYPE_PTR:
     case VTK_PARSE_UNSIGNED_LONG_LONG_PTR:
     case VTK_PARSE_UNSIGNED___INT64_PTR:
       fprintf(fp,"int[]  ");
@@ -181,7 +176,6 @@ void return_result_native(FILE *fp)
     case VTK_PARSE_INT:
     case VTK_PARSE_SHORT:
     case VTK_PARSE_LONG:
-    case VTK_PARSE_ID_TYPE:
     case VTK_PARSE_LONG_LONG:
     case VTK_PARSE___INT64:
     case VTK_PARSE_SIGNED_CHAR:
@@ -189,7 +183,6 @@ void return_result_native(FILE *fp)
     case VTK_PARSE_UNSIGNED_INT:
     case VTK_PARSE_UNSIGNED_SHORT:
     case VTK_PARSE_UNSIGNED_LONG:
-    case VTK_PARSE_UNSIGNED_ID_TYPE:
     case VTK_PARSE_UNSIGNED_LONG_LONG:
     case VTK_PARSE_UNSIGNED___INT64:
     case VTK_PARSE_UNKNOWN:
@@ -219,14 +212,12 @@ void return_result_native(FILE *fp)
     case VTK_PARSE_INT_PTR:
     case VTK_PARSE_SHORT_PTR:
     case VTK_PARSE_LONG_PTR:
-    case VTK_PARSE_ID_TYPE_PTR:
     case VTK_PARSE_LONG_LONG_PTR:
     case VTK_PARSE___INT64_PTR:
     case VTK_PARSE_SIGNED_CHAR_PTR:
     case VTK_PARSE_UNSIGNED_INT_PTR:
     case VTK_PARSE_UNSIGNED_SHORT_PTR:
     case VTK_PARSE_UNSIGNED_LONG_PTR:
-    case VTK_PARSE_UNSIGNED_ID_TYPE_PTR:
     case VTK_PARSE_UNSIGNED_LONG_LONG_PTR:
     case VTK_PARSE_UNSIGNED___INT64_PTR:
       fprintf(fp,"int[]  ");
@@ -249,7 +240,7 @@ static int CheckMatch(
 
   static unsigned int intTypes[] = {
     VTK_PARSE_UNSIGNED_LONG_LONG, VTK_PARSE_UNSIGNED___INT64,
-    VTK_PARSE_LONG_LONG, VTK_PARSE___INT64, VTK_PARSE_ID_TYPE,
+    VTK_PARSE_LONG_LONG, VTK_PARSE___INT64,
     VTK_PARSE_UNSIGNED_LONG, VTK_PARSE_LONG,
     VTK_PARSE_UNSIGNED_INT, VTK_PARSE_INT,
     VTK_PARSE_UNSIGNED_SHORT, VTK_PARSE_SHORT,
@@ -450,11 +441,14 @@ static int isClassWrapped(const char *classname)
     entry = vtkParseHierarchy_FindEntry(hierarchyInfo, classname);
 
     if (entry == 0 ||
-        vtkParseHierarchy_GetProperty(entry, "WRAP_EXCLUDE_PYTHON") ||
+        vtkParseHierarchy_GetProperty(entry, "WRAPEXCLUDE") ||
         !vtkParseHierarchy_IsTypeOf(hierarchyInfo, entry, "vtkObjectBase"))
     {
       return 0;
     }
+
+    /* Only the primary class in the header is wrapped in Java */
+    return vtkParseHierarchy_IsPrimary(entry);
   }
 
   return 1;
@@ -468,7 +462,6 @@ int checkFunctionSignature(ClassInfo *data)
     VTK_PARSE_INT, VTK_PARSE_UNSIGNED_INT,
     VTK_PARSE_SHORT, VTK_PARSE_UNSIGNED_SHORT,
     VTK_PARSE_LONG, VTK_PARSE_UNSIGNED_LONG,
-    VTK_PARSE_ID_TYPE, VTK_PARSE_UNSIGNED_ID_TYPE,
     VTK_PARSE_LONG_LONG, VTK_PARSE_UNSIGNED_LONG_LONG,
     VTK_PARSE___INT64, VTK_PARSE_UNSIGNED___INT64,
     VTK_PARSE_OBJECT, VTK_PARSE_STRING, VTK_PARSE_UNKNOWN,
@@ -485,6 +478,8 @@ int checkFunctionSignature(ClassInfo *data)
   /* some functions will not get wrapped no matter what else */
   if (currentFunction->IsOperator ||
       currentFunction->ArrayFailure ||
+      currentFunction->IsExcluded ||
+      currentFunction->IsDeleted ||
       !currentFunction->IsPublic ||
       !currentFunction->Name)
   {
@@ -577,7 +572,6 @@ int checkFunctionSignature(ClassInfo *data)
     if (aType == VTK_PARSE_UNSIGNED_INT_PTR) args_ok = 0;
     if (aType == VTK_PARSE_UNSIGNED_SHORT_PTR) args_ok = 0;
     if (aType == VTK_PARSE_UNSIGNED_LONG_PTR) args_ok = 0;
-    if (aType == VTK_PARSE_UNSIGNED_ID_TYPE_PTR) args_ok = 0;
     if (aType == VTK_PARSE_UNSIGNED_LONG_LONG_PTR) args_ok = 0;
     if (aType == VTK_PARSE_UNSIGNED___INT64_PTR) args_ok = 0;
   }
@@ -633,7 +627,6 @@ int checkFunctionSignature(ClassInfo *data)
   if (rType == VTK_PARSE_UNSIGNED_INT_PTR) args_ok = 0;
   if (rType == VTK_PARSE_UNSIGNED_SHORT_PTR) args_ok = 0;
   if (rType == VTK_PARSE_UNSIGNED_LONG_PTR) args_ok = 0;
-  if (rType == VTK_PARSE_UNSIGNED_ID_TYPE_PTR) args_ok = 0;
   if (rType == VTK_PARSE_UNSIGNED_LONG_LONG_PTR) args_ok = 0;
   if (rType == VTK_PARSE_UNSIGNED___INT64_PTR) args_ok = 0;
 
@@ -657,7 +650,6 @@ int checkFunctionSignature(ClassInfo *data)
     case VTK_PARSE_INT_PTR:
     case VTK_PARSE_SHORT_PTR:
     case VTK_PARSE_LONG_PTR:
-    case VTK_PARSE_ID_TYPE_PTR:
     case VTK_PARSE_LONG_LONG_PTR:
     case VTK_PARSE___INT64_PTR:
     case VTK_PARSE_SIGNED_CHAR_PTR:
@@ -727,7 +719,9 @@ void outputFunction(FILE *fp, ClassInfo *data)
           numberOfWrappedFunctions++;
   }
 
-  if (currentFunction->IsPublic && args_ok &&
+  if (!currentFunction->IsExcluded &&
+      currentFunction->IsPublic &&
+      args_ok &&
       strcmp(data->Name,currentFunction->Name) &&
       strcmp(data->Name, currentFunction->Name + 1))
   {
@@ -858,7 +852,8 @@ int main(int argc, char *argv[])
   }
 
   /* get the main class */
-  if ((data = file_info->MainClass) == NULL)
+  data = file_info->MainClass;
+  if (data == NULL || data->IsExcluded)
   {
     fclose(fp);
     exit(0);

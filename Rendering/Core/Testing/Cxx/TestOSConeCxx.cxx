@@ -31,7 +31,8 @@
 int TestOSConeCxx(int argc, char* argv[])
 {
   vtkRenderWindow *renWin = vtkRenderWindow::New();
-  renWin->OffScreenRenderingOn();
+  //renWin->SetShowWindow(false);
+  //renWin->OffScreenRenderingOn();
   renWin->SetMultiSamples(0);
 
   vtkRenderer *renderer = vtkRenderer::New();
@@ -49,6 +50,17 @@ int TestOSConeCxx(int argc, char* argv[])
 
   renderer->AddActor(actor);
   actor->Delete();
+
+  renderer->SetBackground(0.2,0.3,0.4);
+  renWin->Render();
+  renWin->SetShowWindow(false);
+  renWin->SetUseOffScreenBuffers(true);
+  renderer->SetBackground(0,0,0);
+
+  renWin->Render();
+  renWin->Render();
+  renWin->Render();
+  renWin->Render();
 
 #if 0
   vtkRenderWindowInteractor *iren = vtkRenderWindowInteractor::New();

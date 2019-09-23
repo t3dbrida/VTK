@@ -64,8 +64,8 @@ public:
    */
   void Update(int port) override;
   void Update() override;
-  int Update(int port, vtkInformationVector* requests) override;
-  int Update(vtkInformation* requests) override;
+  vtkTypeBool Update(int port, vtkInformationVector* requests) override;
+  vtkTypeBool Update(vtkInformation* requests) override;
   //@}
 
   //@{
@@ -99,7 +99,7 @@ public:
   /**
    * Make a shallow copy of this mapper.
    */
-  void ShallowCopy(vtkAbstractMapper *m);
+  void ShallowCopy(vtkAbstractMapper *m) override;
 
   /**
    * Select a data array from the point/cell data
@@ -137,7 +137,7 @@ public:
   /**
    * see vtkAlgorithm for details
    */
-  int ProcessRequest(vtkInformation*,
+  vtkTypeBool ProcessRequest(vtkInformation*,
                              vtkInformationVector**,
                              vtkInformationVector*) override;
 

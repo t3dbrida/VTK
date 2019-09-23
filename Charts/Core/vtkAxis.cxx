@@ -1305,11 +1305,10 @@ void vtkAxis::GenerateTickLabels(double min, double max)
     }
 
     double mult = max > min ? 1.0 : -1.0;
-    double range = 0.0;
     int n = 0;
     if (this->LogScaleActive)
     {
-      range = mult > 0.0 ? pow(10.0, max) - pow(10.0, min)
+      double range = mult > 0.0 ? pow(10.0, max) - pow(10.0, min)
         : pow(10.0, min) - pow(10.0, max);
       n = vtkContext2D::FloatToInt(range / pow(10.0, this->TickInterval));
     }
@@ -1319,7 +1318,7 @@ void vtkAxis::GenerateTickLabels(double min, double max)
     }
     else
     {
-      range = mult > 0.0 ? max - min : min - max;
+      double range = mult > 0.0 ? max - min : min - max;
       n = vtkContext2D::FloatToInt(range / this->TickInterval);
     }
     for (int i = 0; i <= n; ++i)
@@ -1569,19 +1568,7 @@ vtkStdString vtkAxis::GenerateSprintfLabel(double value, const std::string & for
   const int buffSize = 1024;
   char buffer[buffSize];
 
-  // On Windows, formats with exponents have three digits by default
-  // whereas on other systems, exponents have two digits. Set to two
-  // digits on Windows for consistent behavior.
-#if defined(_MSC_VER) && _MSC_VER < 1900
-  unsigned int oldWin32ExponentFormat = _set_output_format(_TWO_DIGIT_EXPONENT);
-
-  _snprintf(buffer, buffSize-1, format.c_str(), value);
-  buffer[buffSize-1] = '\0';
-
-  _set_output_format(oldWin32ExponentFormat);
-#else
   snprintf(buffer, buffSize, format.c_str(), value);
-#endif
 
   vtkStdString result = vtkStdString(buffer);
 

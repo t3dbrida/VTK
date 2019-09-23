@@ -56,8 +56,10 @@
 #define vtkDataSetAttributesFieldList_h
 
 #include "vtkCommonDataModelModule.h" // For export macro
-#include "vtkSystemIncludes.h"
 #include "vtkSmartPointer.h"          // for vtkSmartPointer
+#include "vtkSystemIncludes.h"
+
+#include <functional>                 // for std::function
 #include <memory>                     // for unique_ptr
 
 class vtkAbstractArray;
@@ -116,21 +118,12 @@ public:
     double* weights, vtkDataSetAttributes* output, vtkIdType toId) const;
   //@}
 
-  //@{
   /**
-   * vtkDataSetAttributes::FieldList used a different internal data structure in
-   * older versions of VTK. This exposes that API for legacy applications.
-   * It may be deprecated in the future.
-   *
-   * Using these methods should be avoided in new code.
+   * Use this method to provide a custom callback function to invoke for each
+   * array in the input and corresponding array in the output.
    */
-  int IsAttributePresent(int attrType) const;
-  int GetNumberOfFields() const;
-  int GetFieldIndex(int i) const;
-  const char* GetFieldName(int i) const;
-  int GetFieldComponents(int i) const;
-  int GetDSAIndex(int index, int i) const;
-  //@}
+  void TransformData(int inputIndex, vtkDataSetAttributes* input, vtkDataSetAttributes* output,
+    std::function<void(vtkAbstractArray*, vtkAbstractArray*)> op) const;
 
 protected:
   /**
