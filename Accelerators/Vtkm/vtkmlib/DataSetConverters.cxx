@@ -63,10 +63,7 @@ vtkm::cont::CoordinateSystem deduce_container(vtkPoints *points)
       vtkSOADataArrayTemplate<T>::FastDownCast(points->GetData());
   if (typedIn2)
   {
-    typedef tovtkm::vtkSOAArrayContainerTag TagType;
-    typedef vtkm::cont::internal::Storage<Vec3, TagType> StorageType;
-    StorageType storage(typedIn2);
-    vtkm::cont::ArrayHandle<Vec3, TagType> p(storage);
+    auto p = DataArrayToArrayHandle<vtkSOADataArrayTemplate<T>, 3>::Wrap(typedIn2);
     return vtkm::cont::CoordinateSystem("coords", p);
   }
 
@@ -120,21 +117,21 @@ vtkm::cont::DataSet Convert(vtkStructuredGrid *input, FieldsFlag fields)
   // second step is to create structured cellset that represe
   if(dimensionality == 1)
   {
-    vtkm::cont::CellSetStructured<1> cells("cells");
+    vtkm::cont::CellSetStructured<1> cells;
     cells.SetPointDimensions(dims[0]);
-    dataset.AddCellSet(cells);
+    dataset.SetCellSet(cells);
   }
   else if(dimensionality == 2)
   {
-    vtkm::cont::CellSetStructured<2> cells("cells");
+    vtkm::cont::CellSetStructured<2> cells;
     cells.SetPointDimensions(vtkm::make_Vec(dims[0],dims[1]));
-    dataset.AddCellSet(cells);
+    dataset.SetCellSet(cells);
   }
   else
   { //going to presume 3d for everything else
-    vtkm::cont::CellSetStructured<3> cells("cells");
+    vtkm::cont::CellSetStructured<3> cells;
     cells.SetPointDimensions(vtkm::make_Vec(dims[0],dims[1],dims[2]));
-    dataset.AddCellSet(cells);
+    dataset.SetCellSet(cells);
   }
 
   ProcessFields(input, dataset, fields);
