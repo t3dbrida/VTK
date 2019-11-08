@@ -890,9 +890,9 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetLightingShaderParameters(
       specularPower.emplace_back(value);
   }
 
-  prog->SetUniform3fv("in_ambient", ambient.size(), (const float(*)[3]) (ambient.data()));
-  prog->SetUniform3fv("in_diffuse", diffuse.size(), (const float(*)[3]) (diffuse.data()));
-  prog->SetUniform3fv("in_specular", specular.size(), (const float(*)[3]) (specular.data()));
+  prog->SetUniform3fv("in_ambient", ambient.size() / 3, (const float(*)[3]) (ambient.data()));
+  prog->SetUniform3fv("in_diffuse", diffuse.size() / 3, (const float(*)[3]) (diffuse.data()));
+  prog->SetUniform3fv("in_specular", specular.size() / 3, (const float(*)[3]) (specular.data()));
   prog->SetUniform1fv("in_shininess", specularPower.size(), specularPower.data());
 
   // Set advanced lighting features
