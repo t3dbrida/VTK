@@ -464,6 +464,34 @@ public:
   vtkGetMacro(ClippedVoxelIntensity, double);
   //@}
 
+  //@{
+  /**
+   * Set/Get scaling of gradient for shading.
+   * By default this is set to 0.0, (1.0/65535.0) (basically always apply),
+   * reasonable seems something like 0.1/0.4.
+   * If gradient is lower  than Min, shading is not applied and voxel color is assigned directly
+   * If gradient is higher than Max, shading is fully applied.
+   * If between, shading is partially applied.
+   * Motivation is to get rid of noise caused by very small gradients.
+   */
+  void SetShadingGradientScale(int index, double minThreshold, double maxThreshold)
+  {
+    ShadingGradientScaleMin[index] = minThreshold;
+    ShadingGradientScaleMax[index] = maxThreshold;
+  }
+  void SetShadingGradientScale(double minThreshold, double maxThreshold)
+  {
+     this->SetShadingGradientScale(0, minThreshold, maxThreshold);
+  }
+  double GetShadingGradientScaleMin(int index = 0)
+  {
+      return ShadingGradientScaleMin[index];
+  }
+  double GetShadingGradientScaleMax(int index = 0)
+  {
+      return ShadingGradientScaleMax[index];
+  }
+  //@}
 
 protected:
   vtkVolumeProperty();
@@ -521,6 +549,9 @@ protected:
    * Contour values for isosurface blend mode
    */
   vtkNew<vtkContourValues> IsoSurfaceValues;
+
+  double ShadingGradientScaleMin[VTK_MAX_VRCOMP];
+  double ShadingGradientScaleMax[VTK_MAX_VRCOMP];
 
 private:
   vtkVolumeProperty(const vtkVolumeProperty&) = delete;
