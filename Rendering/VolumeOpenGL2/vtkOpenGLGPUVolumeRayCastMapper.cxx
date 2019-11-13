@@ -895,9 +895,6 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetLightingShaderParameters(
   prog->SetUniform3fv("in_specular", specular.size() / 3, (const float(*)[3]) (specular.data()));
   prog->SetUniform1fv("in_shininess", specularPower.size(), specularPower.data());
 
-  float shadingGradientScales[2] = { this->Parent->ShadingGradientScaleMin, this->Parent->ShadingGradientScaleMax };
-  prog->SetUniform2f("in_shadingGradientScales", shadingGradientScales);
-
   // Set advanced lighting features
   if (vol && !vol->GetProperty()->GetShade())
   {

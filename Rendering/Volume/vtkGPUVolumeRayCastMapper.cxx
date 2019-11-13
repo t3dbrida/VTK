@@ -106,10 +106,6 @@ vtkGPUVolumeRayCastMapper::vtkGPUVolumeRayCastMapper()
   this->ReportProgress = true;
 
   this->SetNumberOfInputPorts(10);
-
-  this->ShadingGradientScaleMin = 0.0f;
-  this->ShadingGradientScaleMax = (1.0f / 65535.0f);
-
 }
 
 // ----------------------------------------------------------------------------

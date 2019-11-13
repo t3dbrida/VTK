@@ -399,23 +399,6 @@ public:
   vtkGetMacro(GradientOpacityRangeType, int);
   //@}
 
-  //@{
-  /**
-   * Set/Get scaling of gradient for shading.
-   * By default this is set to 0.0, (1.0/65535.0) (basically always apply),
-   * reasonable seems something like 0.1/0.4.
-   * If gradient is lower  than Min, shading is not applied and voxel color is assigned directly
-   * If gradient is higher than Max, shading is fully applied.
-   * If between, shading is partially applied.
-   * Motivation is to get rid of noise caused by very small gradients.
-   */
-  vtkSetMacro(ShadingGradientScaleMin, float);
-  vtkGetMacro(ShadingGradientScaleMin, float);
-  vtkSetMacro(ShadingGradientScaleMax, float);
-  vtkGetMacro(ShadingGradientScaleMax, float);
-  //@}
-
-
   vtkImageData* GetInput() override
   {
     return this->GetInput(0);
@@ -618,9 +601,6 @@ protected:
    * Render() call.
    */
   DataMap LastInputs;
-
-  float ShadingGradientScaleMin;
-  float ShadingGradientScaleMax;
 
 private:
   vtkGPUVolumeRayCastMapper(const vtkGPUVolumeRayCastMapper&) = delete;
