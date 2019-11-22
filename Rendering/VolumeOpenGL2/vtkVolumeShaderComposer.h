@@ -219,7 +219,8 @@ namespace vtkvolume
       "uniform vec3 in_ambient[" << numInputs << "];\n"
       "uniform vec3 in_specular[" << numInputs << "];\n"
       "uniform float in_shininess[" << numInputs << "];\n"
-      "\n"
+      "uniform vec2 in_shadingGradientScales[" << numInputs << "];\n"
+        "\n"
       "// Others\n"
       "uniform bool in_useJittering;\n"
       "vec3 g_rayJitter = vec3(0.0);\n"
@@ -685,8 +686,12 @@ namespace vtkvolume
           \n                 in_lightSpecularColor[0];\
           \n  // For the headlight, ignore the light's ambient color\
           \n  // for now as it is causing the old mapper tests to fail\
-          \n  finalColor.xyz = in_ambient[idx] * color.rgb +\
-          \n                   diffuse + specular;"
+          \n  //finalColor.xyz = in_ambient[idx] * color.rgb +\
+          \n  //                 diffuse + specular;\
+          \n  float shadingFactor = smoothstep(in_shadingGradientScales[idx].s, in_shadingGradientScales[idx].t, gradient.w);\
+          \n  finalColor.xyz  = mix(color.rgb, in_ambient[idx] * color.rgb, shadingFactor); // apply color for sf=0, ambient for sf=1\
+          \n  finalColor.xyz += shadingFactor * (diffuse + specular);\
+          \n"
           );
       }
       else if (lightingComplexity == 2)

@@ -57,6 +57,9 @@ vtkVolumeProperty::vtkVolumeProperty()
     this->Diffuse[i]                         = 0.7;
     this->Specular[i]                        = 0.2;
     this->SpecularPower[i]                   = 10.0;
+
+    this->ShadingGradientScaleMin[i]         = 0.0;
+    this->ShadingGradientScaleMax[i]         = 1.0 / 65535.0;
   }
 }
 
@@ -145,6 +148,8 @@ void vtkVolumeProperty::DeepCopy(vtkVolumeProperty *p)
     this->SetDiffuse(i, p->GetDiffuse(i));
     this->SetSpecular(i, p->GetSpecular(i));
     this->SetSpecularPower(i, p->GetSpecularPower(i));
+
+    this->SetShadingGradientScale(i, p->GetShadingGradientScaleMin(i), p->GetShadingGradientScaleMax(i));
   }
 
   this->Modified();
