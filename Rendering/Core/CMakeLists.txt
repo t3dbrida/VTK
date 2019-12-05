@@ -3,7 +3,6 @@ set(Module_SRCS
   vtkAbstractMapper.cxx
   vtkAbstractPicker.cxx
   vtkAbstractVolumeMapper.cxx
-  vtkAbstractMultiVolumeMapper.cxx
   vtkActor2DCollection.cxx
   vtkActor2D.cxx
   vtkActorCollection.cxx
@@ -97,7 +96,6 @@ set(Module_SRCS
   vtkVisibilitySort.cxx
   vtkVolumeCollection.cxx
   vtkVolume.cxx
-  vtkMultiVolume2.cxx
   vtkVolumeProperty.cxx
   vtkWindowLevelLookupTable.cxx
   vtkWindowToImageFilter.cxx

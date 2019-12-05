@@ -3335,16 +3335,14 @@ void vtkOpenGLGPUVolumeRayCastMapper::GPURender(vtkRenderer* ren,
 {
   vtkOpenGLClearErrorMacro();
 
-  if (!this->Impl->MultiVolume)
+  const auto multiVol = vtkMultiVolume::SafeDownCast(vol);
+  const bool wasMultiVolume = this->Impl->MultiVolume;
+  this->Impl->MultiVolume = multiVol && this->GetInputCount() > 1 ? multiVol : nullptr;
+
+  if (!this->Impl->MultiVolume && multiVol && !multiVol->GetVolume(0)->GetVisibility())
   {
-      if (vtkMultiVolume* const multiVolume = vtkMultiVolume::SafeDownCast(vol))
-      {
-          // there is a single volume in the multi-volume but it is not visible, do not render it
-          if (!multiVolume->GetVolume(0)->GetVisibility())
-          {
-              return;
-          }
-      }
+      // there is a single volume in the multi-volume but it is not visible, do not render it
+      return;
   }
 
   vtkOpenGLCamera* cam = vtkOpenGLCamera::SafeDownCast(ren->GetActiveCamera());
@@ -3394,10 +3392,6 @@ void vtkOpenGLGPUVolumeRayCastMapper::GPURender(vtkRenderer* ren,
 
   vtkMTimeType renderPassTime = this->GetRenderPassStageMTime(vol);
 
-  const auto multiVol = vtkMultiVolume::SafeDownCast(vol);
-  const bool wasMultiVolume = this->Impl->MultiVolume;
-  this->Impl->MultiVolume = multiVol && this->GetInputCount() > 1 ?
-    multiVol : nullptr;
   if (wasMultiVolume && !this->Impl->MultiVolume)
   {
       this->Impl->BBoxPolyData = nullptr;
