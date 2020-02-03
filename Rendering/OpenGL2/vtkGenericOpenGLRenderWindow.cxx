@@ -175,10 +175,6 @@ int* vtkGenericOpenGLRenderWindow::GetScreenSize()
   return this->ScreenSize;
 }
 
-void vtkGenericOpenGLRenderWindow::Start()
-{
-}
-
 void vtkGenericOpenGLRenderWindow::HideCursor()
 {
 }
