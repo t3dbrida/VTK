@@ -3680,6 +3680,8 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
   this->RangeVec.resize(numInputs * 8, 0);
 
   std::vector<int> volumeVisibility(numInputs, 0);
+  std::vector<float> voiMinimums(3 * numInputs, 0.);
+  std::vector<float> voiMaximums(3 * numInputs, 1.);
 
   int index = 0;
   for (auto& input : this->Parent->AssembledInputs)
@@ -3714,6 +3716,15 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
 
     input.second.ActivateTransferFunction(prog, this->Parent->BlendMode);
 
+    double* voimin = input.second.Volume->GetProperty()->GetVolumeOfInterestMin();
+    double* voimax = input.second.Volume->GetProperty()->GetVolumeOfInterestMax();
+    voiMinimums[3 * index] = voimin[0];
+    voiMinimums[3 * index + 1] = voimin[1];
+    voiMinimums[3 * index + 2] = voimin[2];
+    voiMaximums[3 * index] = voimax[0];
+    voiMaximums[3 * index + 1] = voimax[1];
+    voiMaximums[3 * index + 2] = voimax[2];
+
     volumeVisibility[index] = input.second.Volume->GetVisibility();
 
     ++index;
@@ -3728,6 +3739,12 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
    reinterpret_cast<const float(*)[3]>(this->StepVec.data()));
   prog->SetUniform3fv("in_cellSpacing", numInputs,
    reinterpret_cast<const float(*)[3]>(this->SpacingVec.data()));
+  prog->SetUniform3fv("in_voi_min",
+                      numInputs,
+                      reinterpret_cast<const float(*)[3]>(voiMinimums.data()));
+  prog->SetUniform3fv("in_voi_max",
+                      numInputs,
+                      reinterpret_cast<const float(*)[3]>(voiMaximums.data()));
 
   // upload volume visibility information
   prog->SetUniform1iv("in_volumeVisibility",

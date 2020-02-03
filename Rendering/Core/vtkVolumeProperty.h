@@ -493,6 +493,23 @@ public:
   }
   //@}
 
+  //@{
+  /**
+   * Set/Get volume of interest min/max. The volume of interest is defined
+   * in the volume space.
+   */
+  void SetVolumeOfInterestMin(double minX, double minY, double minZ);
+  double* GetVolumeOfInterestMin()
+  {
+      return this->VolumeOfInterestMin;
+  }
+  void SetVolumeOfInterestMax(double maxX, double maxY, double maxZ);
+  double* GetVolumeOfInterestMax()
+  {
+      return this->VolumeOfInterestMax;
+  }
+  //@}
+
 protected:
   vtkVolumeProperty();
   ~vtkVolumeProperty() override;
@@ -552,6 +569,9 @@ protected:
 
   double ShadingGradientScaleMin[VTK_MAX_VRCOMP];
   double ShadingGradientScaleMax[VTK_MAX_VRCOMP];
+
+  double VolumeOfInterestMin[3];
+  double VolumeOfInterestMax[3];
 
 private:
   vtkVolumeProperty(const vtkVolumeProperty&) = delete;
