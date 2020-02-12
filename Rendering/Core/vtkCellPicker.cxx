@@ -41,6 +41,7 @@
 #include "vtkRenderer.h"
 #include "vtkCamera.h"
 #include "vtkAbstractCellLocator.h"
+#include "vtkProperty.h"
 
 #include <algorithm>
 
@@ -400,6 +401,26 @@ double vtkCellPicker::IntersectActorWithLine(const double p1[3],
     bool ok = this->IntersectDataSetWithLine(data, p1, p2, t1, t2, tol,
                                      locator, minCellId, minSubId,
                                      tMin, pDistMin, minXYZ, minPCoords);
+    double bounds[6];
+    data->GetBounds(bounds);
+    if (vtkActor* actor = vtkActor::SafeDownCast(prop))
+    {
+        vtkProperty* const property = actor->GetProperty();
+        double* voiMin = property->GetVolumeOfInterestMin(),
+              * voiMax = property->GetVolumeOfInterestMax();
+        for (int i = 0; i < 3; ++i)
+        {
+            bounds[2 * i] = voiMin[i] * (bounds[2 * i + 1] - bounds[2 * i]) + bounds[2 * i];
+            bounds[2 * i + 1] = voiMax[i] * (bounds[2 * i + 1] - bounds[2 * i]) + bounds[2 * i];
+        }
+        bounds[0] -= tol; bounds[1] += tol;
+        bounds[2] -= tol; bounds[3] += tol;
+        bounds[4] -= tol; bounds[5] += tol;
+
+        ok &= minXYZ[0] >= bounds[0] && minXYZ[0] <= bounds[1] &&
+            minXYZ[1] >= bounds[2] && minXYZ[1] <= bounds[3] &&
+            minXYZ[2] >= bounds[4] && minXYZ[2] <= bounds[5];
+    }
     if ( !ok )
     {
       return VTK_DOUBLE_MAX;
@@ -437,6 +458,17 @@ double vtkCellPicker::IntersectActorWithLine(const double p1[3],
         // First check if the bounding box of the data set is hit.
         double bounds[6];
         ds->GetBounds(bounds);
+        //if (vtkActor* actor = vtkActor::SafeDownCast(prop))
+        //{
+        //    vtkProperty* const property = actor->GetProperty();
+        //    double* voiMin = property->GetVolumeOfInterestMin(),
+        //          * voiMax = property->GetVolumeOfInterestMax();
+        //    for (int i = 0; i < 3; ++i)
+        //    {
+        //        bounds[2 * i] = voiMin[i] * (bounds[2 * i + 1] - bounds[2 * i]) + bounds[2 * i];
+        //        bounds[2 * i + 1] = voiMax[i] * (bounds[2 * i + 1] - bounds[2 * i]) + bounds[2 * i];
+        //    }
+        //}
         bounds[0] -= tol; bounds[1] += tol;
         bounds[2] -= tol; bounds[3] += tol;
         bounds[4] -= tol; bounds[5] += tol;

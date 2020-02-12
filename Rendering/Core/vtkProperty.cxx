@@ -89,6 +89,12 @@ vtkProperty::vtkProperty()
   this->Information = vtkInformation::New();
   this->Information->Register(this);
   this->Information->Delete();
+
+  for (int i = 0; i < 3; ++i)
+  {
+    this->VolumeOfInterestMin[i] = 0.;
+    this->VolumeOfInterestMax[i] = 1.;
+  }
 }
 
 //----------------------------------------------------------------------------
@@ -131,6 +137,10 @@ void vtkProperty::DeepCopy(vtkProperty *p)
     this->SetRenderPointsAsSpheres(p->GetRenderPointsAsSpheres());
     this->SetRenderLinesAsTubes(p->GetRenderLinesAsTubes());
     this->SetShading(p->GetShading());
+    double* voiMin = p->GetVolumeOfInterestMin();
+    this->SetVolumeOfInterestMin(voiMin[0], voiMin[1], voiMin[2]);
+    double* voiMax = p->GetVolumeOfInterestMax();
+    this->SetVolumeOfInterestMax(voiMax[0], voiMax[1], voiMax[2]);
 
     this->RemoveAllTextures();
     auto iter = p->Textures.begin();
@@ -431,4 +441,20 @@ void vtkProperty::PrintSelf(ostream& os, vtkIndent indent)
 
  os << indent << "MaterialName: " <<
    (this->MaterialName? this->MaterialName:"(none)") << endl;
+}
+
+void vtkProperty::SetVolumeOfInterestMin(double minX, double minY, double minZ)
+{
+    this->VolumeOfInterestMin[0] = minX >= 0. && minX <= 1. ? minX : 0.;
+    this->VolumeOfInterestMin[1] = minY >= 0. && minY <= 1. ? minY : 0.;
+    this->VolumeOfInterestMin[2] = minZ >= 0. && minZ <= 1. ? minZ : 0.;
+    this->Modified();
+}
+
+void vtkProperty::SetVolumeOfInterestMax(double maxX, double maxY, double maxZ)
+{
+    this->VolumeOfInterestMax[0] = maxX >= 0. && maxX <= 1. ? maxX : 1.;
+    this->VolumeOfInterestMax[1] = maxY >= 0. && maxY <= 1. ? maxY : 1.;
+    this->VolumeOfInterestMax[2] = maxZ >= 0. && maxZ <= 1. ? maxZ : 1.;
+    this->Modified();
 }

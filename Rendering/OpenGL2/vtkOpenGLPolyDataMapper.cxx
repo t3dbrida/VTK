@@ -82,8 +82,8 @@ vtkOpenGLPolyDataMapper::vtkOpenGLPolyDataMapper()
   this->ForceTextureCoordinates = false;
 
   this->PrimitiveIDOffset = 0;
-  this->ShiftScaleMethod =
-    vtkOpenGLVertexBufferObject::AUTO_SHIFT_SCALE;
+  this->ShiftScaleMethod = vtkOpenGLVertexBufferObject::DISABLE_SHIFT_SCALE;
+    //vtkOpenGLVertexBufferObject::AUTO_SHIFT_SCALE;
 
   this->CellScalarTexture = nullptr;
   this->CellScalarBuffer = nullptr;
@@ -1276,6 +1276,31 @@ void vtkOpenGLPolyDataMapper::ReplaceShaderClip(
   shaders[vtkShader::Geometry]->SetSource(GSSource);
 }
 
+void vtkOpenGLPolyDataMapper::ReplaceShaderVoi(
+  std::map<vtkShader::Type, vtkShader *> shaders,
+  vtkRenderer *, vtkActor *)
+{
+  std::string FSSource = shaders[vtkShader::Fragment]->GetSource();
+
+  if (this->LastLightComplexity[this->LastBoundBO] > 0)
+  {
+      vtkShaderProgram::Substitute(FSSource,
+                                   "//VTK::VOI::Dec",
+                                   "uniform vec3 voiMinUniform;\n"
+                                   "uniform vec3 voiMaxUniform;\n");
+      vtkShaderProgram::Substitute(FSSource,
+                                   "//VTK::VOI::Impl",
+                                   "if (vertexMC.x < voiMinUniform.x || vertexMC.x > voiMaxUniform.x ||\n"
+                                   "      vertexMC.y < voiMinUniform.y || vertexMC.y > voiMaxUniform.y ||\n"
+                                   "      vertexMC.z < voiMinUniform.z || vertexMC.z > voiMaxUniform.z)\n"
+                                   "  {\n"
+                                   "    discard;\n"
+                                   "  }\n");
+  }
+
+  shaders[vtkShader::Fragment]->SetSource(FSSource);
+}
+
 void vtkOpenGLPolyDataMapper::ReplaceShaderNormal(
   std::map<vtkShader::Type, vtkShader *> shaders,
   vtkRenderer *, vtkActor *actor)
@@ -1525,10 +1550,12 @@ void vtkOpenGLPolyDataMapper::ReplaceShaderPositionVC(
   {
     vtkShaderProgram::Substitute(VSSource,
       "//VTK::PositionVC::Dec",
+      "out vec3 vertexMCVSOutput;\n"
       "out vec4 vertexVCVSOutput;");
     vtkShaderProgram::Substitute(VSSource,
       "//VTK::PositionVC::Impl",
-      "vertexVCVSOutput = MCVCMatrix * vertexMC;\n"
+      "vertexMCVSOutput = vec3(vertexMC);\n"
+      "  vertexVCVSOutput = MCVCMatrix * vertexMC;\n"
       "  gl_Position = MCDCMatrix * vertexMC;\n");
     vtkShaderProgram::Substitute(VSSource,
       "//VTK::Camera::Dec",
@@ -1543,10 +1570,12 @@ void vtkOpenGLPolyDataMapper::ReplaceShaderPositionVC(
       "vertexVCGSOutput = vertexVCVSOutput[i];");
     vtkShaderProgram::Substitute(FSSource,
       "//VTK::PositionVC::Dec",
+      "in vec3 vertexMCVSOutput;\n"
       "in vec4 vertexVCVSOutput;");
     vtkShaderProgram::Substitute(FSSource,
       "//VTK::PositionVC::Impl",
-      "vec4 vertexVC = vertexVCVSOutput;");
+      "vec3 vertexMC = vertexMCVSOutput;\n"
+      "  vec4 vertexVC = vertexVCVSOutput;");
   }
   else
   {
@@ -1555,7 +1584,7 @@ void vtkOpenGLPolyDataMapper::ReplaceShaderPositionVC(
       "uniform mat4 MCDCMatrix;");
     vtkShaderProgram::Substitute(VSSource,
       "//VTK::PositionVC::Impl",
-      "  gl_Position = MCDCMatrix * vertexMC;\n");
+      "gl_Position = MCDCMatrix * vertexMC;\n");
   }
   shaders[vtkShader::Vertex]->SetSource(VSSource);
   shaders[vtkShader::Geometry]->SetSource(GSSource);
@@ -1668,6 +1697,7 @@ void vtkOpenGLPolyDataMapper::ReplaceShaderValues(
   this->ReplaceShaderTCoord(shaders, ren, actor);
   this->ReplaceShaderPicking(shaders, ren, actor);
   this->ReplaceShaderClip(shaders, ren, actor);
+  this->ReplaceShaderVoi(shaders, ren, actor);
   this->ReplaceShaderPrimID(shaders, ren, actor);
   this->ReplaceShaderPositionVC(shaders, ren, actor);
   this->ReplaceShaderCoincidentOffset(shaders, ren, actor);
@@ -2217,6 +2247,57 @@ void vtkOpenGLPolyDataMapper::SetPropertyShaderParameters(vtkOpenGLHelper &cellB
   program->SetUniformf("diffuseIntensity", dIntensity);
   program->SetUniform3f("ambientColorUniform", aColor);
   program->SetUniform3f("diffuseColorUniform", dColor);
+
+  if (program->IsUniformUsed("voiMinUniform") && program->IsUniformUsed("voiMaxUniform"))
+  {
+      double* bounds = GetBounds();
+      double bounds_min[3]{ bounds[0], bounds[2], bounds[4] };
+      double bounds_max[3]{ bounds[1], bounds[3], bounds[5] };
+
+      double in_voi_min[3];
+      double in_voi_max[3];
+
+      if (bounds_min[0] == bounds_max[0] || bounds_min[1] == bounds_max[1] || bounds_min[2] == bounds_max[2])
+      {
+          in_voi_min[0] = std::numeric_limits<float>::lowest();
+          in_voi_min[1] = std::numeric_limits<float>::lowest();
+          in_voi_min[2] = std::numeric_limits<float>::lowest();
+          in_voi_max[0] = std::numeric_limits<float>::max();
+          in_voi_max[1] = std::numeric_limits<float>::max();
+          in_voi_max[2] = std::numeric_limits<float>::max();
+      }
+      else
+      {
+
+          double* voiMin = ppty->GetVolumeOfInterestMin();
+          double* voiMax = ppty->GetVolumeOfInterestMax();
+
+          in_voi_min[0] = (voiMin[0] == voiMax[0]) ? bounds_min[0] : (voiMin[0] * (bounds_max[0] - bounds_min[0]) + bounds_min[0]);
+          in_voi_min[1] = (voiMin[1] == voiMax[1]) ? bounds_min[1] : (voiMin[1] * (bounds_max[1] - bounds_min[1]) + bounds_min[1]);
+          in_voi_min[2] = (voiMin[2] == voiMax[2]) ? bounds_min[2] : (voiMin[2] * (bounds_max[2] - bounds_min[2]) + bounds_min[2]);
+
+          in_voi_max[0] = (voiMin[0] == voiMax[0]) ? bounds_min[0] : (voiMax[0] * (bounds_max[0] - bounds_min[0]) + bounds_min[0]);
+          in_voi_max[1] = (voiMin[1] == voiMax[1]) ? bounds_min[1] : (voiMax[1] * (bounds_max[1] - bounds_min[1]) + bounds_min[1]);
+          in_voi_max[2] = (voiMin[2] == voiMax[2]) ? bounds_min[2] : (voiMax[2] * (bounds_max[2] - bounds_min[2]) + bounds_min[2]);
+
+          const double decimalTol = 3.;
+          double decimals[3] = { std::abs(std::log10(std::abs(in_voi_max[0] - in_voi_min[0]))) + decimalTol,
+                                std::abs(std::log10(std::abs(in_voi_max[1] - in_voi_min[1]))) + decimalTol,
+                                std::abs(std::log10(std::abs(in_voi_max[2] - in_voi_min[2]))) + decimalTol };
+          double bias[3] = { 1. / std::pow(10., std::ceil(decimals[0])),
+                            1. / std::pow(10., std::ceil(decimals[1])),
+                            1. / std::pow(10., std::ceil(decimals[2])) };
+          in_voi_min[0] -= bias[0];
+          in_voi_min[1] -= bias[1];
+          in_voi_min[2] -= bias[2];
+          in_voi_max[0] += bias[0];
+          in_voi_max[1] += bias[1];
+          in_voi_max[2] += bias[2];
+      }
+
+      program->SetUniform3f("voiMinUniform", in_voi_min);
+      program->SetUniform3f("voiMaxUniform", in_voi_max);
+  }
 
   // handle specular
   if (this->LastLightComplexity[&cellBO])

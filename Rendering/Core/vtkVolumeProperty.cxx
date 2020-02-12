@@ -64,8 +64,8 @@ vtkVolumeProperty::vtkVolumeProperty()
 
   for (int i = 0; i < 3; ++i)
   {
-      this->VolumeOfInterestMin[i] = 0.;
-      this->VolumeOfInterestMax[i] = 1.;
+    this->VolumeOfInterestMin[i] = 0.;
+    this->VolumeOfInterestMax[i] = 1.;
   }
 }
 
@@ -157,6 +157,11 @@ void vtkVolumeProperty::DeepCopy(vtkVolumeProperty *p)
 
     this->SetShadingGradientScale(i, p->GetShadingGradientScaleMin(i), p->GetShadingGradientScaleMax(i));
   }
+
+  double* voiMin = p->GetVolumeOfInterestMin();
+  this->SetVolumeOfInterestMin(voiMin[0], voiMin[1], voiMin[2]);
+  double* voiMax = p->GetVolumeOfInterestMax();
+  this->SetVolumeOfInterestMax(voiMax[0], voiMax[1], voiMax[2]);
 
   this->Modified();
 }
