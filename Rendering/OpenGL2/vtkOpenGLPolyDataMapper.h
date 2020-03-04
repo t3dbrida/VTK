@@ -393,6 +393,9 @@ protected:
   virtual void ReplaceShaderClip(
     std::map<vtkShader::Type, vtkShader *> shaders,
     vtkRenderer *ren, vtkActor *act);
+  virtual void ReplaceShaderVoi(
+      std::map<vtkShader::Type, vtkShader *> shaders,
+      vtkRenderer *ren, vtkActor *act);
   virtual void ReplaceShaderPositionVC(
     std::map<vtkShader::Type, vtkShader *> shaders,
     vtkRenderer *ren, vtkActor *act);

@@ -61,6 +61,12 @@ vtkVolumeProperty::vtkVolumeProperty()
     this->ShadingGradientScaleMin[i]         = 0.0;
     this->ShadingGradientScaleMax[i]         = 1.0 / 65535.0;
   }
+
+  for (int i = 0; i < 3; ++i)
+  {
+    this->VolumeOfInterestMin[i] = 0.;
+    this->VolumeOfInterestMax[i] = 1.;
+  }
 }
 
 // Destruct a vtkVolumeProperty
@@ -151,6 +157,11 @@ void vtkVolumeProperty::DeepCopy(vtkVolumeProperty *p)
 
     this->SetShadingGradientScale(i, p->GetShadingGradientScaleMin(i), p->GetShadingGradientScaleMax(i));
   }
+
+  double* voiMin = p->GetVolumeOfInterestMin();
+  this->SetVolumeOfInterestMin(voiMin[0], voiMin[1], voiMin[2]);
+  double* voiMax = p->GetVolumeOfInterestMax();
+  this->SetVolumeOfInterestMax(voiMax[0], voiMax[1], voiMax[2]);
 
   this->Modified();
 }
@@ -695,6 +706,22 @@ vtkTimeStamp vtkVolumeProperty::GetTransferFunction2DMTime(int index)
 vtkTimeStamp vtkVolumeProperty::GetGrayTransferFunctionMTime( int index )
 {
   return this->GrayTransferFunctionMTime[index];
+}
+
+void vtkVolumeProperty::SetVolumeOfInterestMin(double minX, double minY, double minZ)
+{
+    this->VolumeOfInterestMin[0] = minX >= 0. && minX <= 1. ? minX : 0.;
+    this->VolumeOfInterestMin[1] = minY >= 0. && minY <= 1. ? minY : 0.;
+    this->VolumeOfInterestMin[2] = minZ >= 0. && minZ <= 1. ? minZ : 0.;
+    this->Modified();
+}
+
+void vtkVolumeProperty::SetVolumeOfInterestMax(double maxX, double maxY, double maxZ)
+{
+    this->VolumeOfInterestMax[0] = maxX >= 0. && maxX <= 1. ? maxX : 1.;
+    this->VolumeOfInterestMax[1] = maxY >= 0. && maxY <= 1. ? maxY : 1.;
+    this->VolumeOfInterestMax[2] = maxZ >= 0. && maxZ <= 1. ? maxZ : 1.;
+    this->Modified();
 }
 
 // Print the state of the volume property.

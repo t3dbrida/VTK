@@ -425,6 +425,23 @@ public:
 
   //@{
   /**
+   * Set/Get volume of interest min/max. The volume of interest is defined
+   * in the volume space.
+   */
+  void SetVolumeOfInterestMin(double minX, double minY, double minZ);
+  double* GetVolumeOfInterestMin()
+  {
+      return this->VolumeOfInterestMin;
+  }
+  void SetVolumeOfInterestMax(double maxX, double maxY, double maxZ);
+  double* GetVolumeOfInterestMax()
+  {
+      return this->VolumeOfInterestMax;
+  }
+  //@}
+
+  //@{
+  /**
    * Set/Get the texture object to control rendering texture maps. This will
    * be a vtkTexture object. A property does not need to have an associated
    * texture map and multiple properties can share one texture. Textures
@@ -546,6 +563,9 @@ protected:
 
   // Arbitrary extra information associated with this Property.
   vtkInformation* Information;
+
+  double VolumeOfInterestMin[3];
+  double VolumeOfInterestMax[3];
 
 private:
   vtkProperty(const vtkProperty&) = delete;

@@ -97,7 +97,6 @@ public:
   void SetWindowInfo(const char*) override;
   void SetParentInfo(const char*) override;
   int* GetScreenSize() VTK_SIZEHINT(2) override;
-  void Start() override;
   void HideCursor() override;
   void ShowCursor() override;
   void SetFullScreen(vtkTypeBool) override;
@@ -161,6 +160,11 @@ public:
   * vtkCommand::EndPickEvent.
   */
   void SetIsPicking(vtkTypeBool isPicking) override;
+
+
+  // since we are using an external context it must
+  // specify if the window is mapped or not.
+  vtkSetMacro(Mapped, vtkTypeBool);
 
 protected:
   int DirectStatus;

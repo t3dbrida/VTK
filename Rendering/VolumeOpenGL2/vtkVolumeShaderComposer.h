@@ -160,6 +160,11 @@ namespace vtkvolume
       "uniform sampler3D in_volume[" << numInputs <<"];\n";
 
     toShaderStr <<
+        "uniform vec3 in_voi_min[" << numInputs << "];\n";
+    toShaderStr <<
+        "uniform vec3 in_voi_max[" << numInputs << "];\n";
+
+    toShaderStr <<
       "uniform vec4 in_volume_scale[" << numInputs << "];\n"
       "uniform vec4 in_volume_bias[" << numInputs << "];\n";
 
@@ -1472,8 +1477,8 @@ namespace vtkvolume
           "                in_inverseVolumeMatrix[" << idx  <<"] * in_volumeMatrix[0] * in_textureDatasetMatrix[0] *\n"
           "                vec4(g_dataPos.xyz, 1.0)).xyz;\n"
           "      if (in_volumeVisibility[" << i << "] == 1 &&\n"
-          "          all(lessThanEqual(texPos, vec3(1.0))) &&\n"
-          "          all(greaterThanEqual(texPos, vec3(0.0))))\n"
+          "          all(lessThanEqual(texPos, in_voi_max[" << i << "])) &&\n"
+          "          all(greaterThanEqual(texPos, in_voi_min[" << i << "])))\n"
           "      {\n"
           "        vec4 scalar = texture3D(in_volume[" << i << "], texPos);\n"
           "        scalar = scalar * in_volume_scale[" << i << "] + in_volume_bias[" << i << "];\n"
@@ -1556,8 +1561,8 @@ namespace vtkvolume
             << "] * in_inverseVolumeMatrix[" << idx  <<"] *\n"
           "        in_volumeMatrix[0] * in_textureDatasetMatrix[0] * vec4(g_dataPos.xyz, 1.0)).xyz;\n"
           "      if (in_volumeVisibility[" << i << "] == 1 &&\n"
-          "          all(lessThanEqual(texPos, vec3(1.0))) &&\n"
-          "          all(greaterThanEqual(texPos, vec3(0.0))))\n"
+          "          all(lessThanEqual(texPos, in_voi_max[" << i << "])) &&\n"
+          "          all(greaterThanEqual(texPos, in_voi_min[" << i << "])))\n"
           "      {\n"
           "        vec4 scalar = texture3D(in_volume[" << i << "], texPos);\n"
           "        scalar = scalar * in_volume_scale[" << i << "] + in_volume_bias[" << i << "];\n"
@@ -1627,7 +1632,7 @@ namespace vtkvolume
   {
     auto glMapper = vtkOpenGLGPUVolumeRayCastMapper::SafeDownCast(mapper);
     std::string shaderStr = std::string("\
-      \n    if (!g_skip)\
+      \n    if (!g_skip && all(lessThanEqual(g_dataPos, in_voi_max[0])) && all(greaterThanEqual(g_dataPos, in_voi_min[0])))\
       \n      {\
       \n      vec4 scalar = texture3D(in_volume[0], g_dataPos);"
     );
