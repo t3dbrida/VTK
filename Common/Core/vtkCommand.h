@@ -245,10 +245,13 @@
     _vtk_add_event(AbortCheckEvent)\
     _vtk_add_event(ExitEvent)\
     _vtk_add_event(LeftButtonPressEvent)\
+    _vtk_add_event(LeftButtonDblClickEvent)\
     _vtk_add_event(LeftButtonReleaseEvent)\
     _vtk_add_event(MiddleButtonPressEvent)\
+    _vtk_add_event(MiddleButtonDblClickEvent)\
     _vtk_add_event(MiddleButtonReleaseEvent)\
     _vtk_add_event(RightButtonPressEvent)\
+    _vtk_add_event(RightButtonDblClickEvent)\
     _vtk_add_event(RightButtonReleaseEvent)\
     _vtk_add_event(EnterEvent)\
     _vtk_add_event(LeaveEvent)\
