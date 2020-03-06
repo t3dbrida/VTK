@@ -82,8 +82,8 @@ vtkOpenGLPolyDataMapper::vtkOpenGLPolyDataMapper()
   this->ForceTextureCoordinates = false;
 
   this->PrimitiveIDOffset = 0;
-  this->ShiftScaleMethod = vtkOpenGLVertexBufferObject::DISABLE_SHIFT_SCALE;
-    //vtkOpenGLVertexBufferObject::AUTO_SHIFT_SCALE;
+  this->ShiftScaleMethod = //vtkOpenGLVertexBufferObject::DISABLE_SHIFT_SCALE;
+    vtkOpenGLVertexBufferObject::AUTO_SHIFT_SCALE;
 
   this->CellScalarTexture = nullptr;
   this->CellScalarBuffer = nullptr;
@@ -1286,13 +1286,14 @@ void vtkOpenGLPolyDataMapper::ReplaceShaderVoi(
   {
       vtkShaderProgram::Substitute(FSSource,
                                    "//VTK::VOI::Dec",
+                                   "uniform int enableVoiUniform;\n"
                                    "uniform vec3 voiMinUniform;\n"
                                    "uniform vec3 voiMaxUniform;\n");
       vtkShaderProgram::Substitute(FSSource,
                                    "//VTK::VOI::Impl",
-                                   "if (vertexMC.x < voiMinUniform.x || vertexMC.x > voiMaxUniform.x ||\n"
-                                   "      vertexMC.y < voiMinUniform.y || vertexMC.y > voiMaxUniform.y ||\n"
-                                   "      vertexMC.z < voiMinUniform.z || vertexMC.z > voiMaxUniform.z)\n"
+                                   "if (enableVoiUniform == 1 && (vertexMC.x < voiMinUniform.x || vertexMC.x > voiMaxUniform.x ||\n"
+                                   "                              vertexMC.y < voiMinUniform.y || vertexMC.y > voiMaxUniform.y ||\n"
+                                   "                              vertexMC.z < voiMinUniform.z || vertexMC.z > voiMaxUniform.z))\n"
                                    "  {\n"
                                    "    discard;\n"
                                    "  }\n");
@@ -2248,6 +2249,11 @@ void vtkOpenGLPolyDataMapper::SetPropertyShaderParameters(vtkOpenGLHelper &cellB
   program->SetUniform3f("ambientColorUniform", aColor);
   program->SetUniform3f("diffuseColorUniform", dColor);
 
+  const bool enableVoi = ppty->GetEnableVolumeOfInterest();
+  if (program->IsUniformUsed("enableVoiUniform"))
+  {
+      program->SetUniformi("enableVoiUniform", static_cast<int>(enableVoi));
+  }
   if (program->IsUniformUsed("voiMinUniform") && program->IsUniformUsed("voiMaxUniform"))
   {
       double* bounds = GetBounds();
