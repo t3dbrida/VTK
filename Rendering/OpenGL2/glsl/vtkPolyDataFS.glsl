@@ -48,6 +48,9 @@ uniform int PrimitiveIDOffset;
 // clipping plane vars
 //VTK::Clip::Dec
 
+// VOI vars
+//VTK::VOI::Dec
+
 // the output of this shader
 //VTK::Output::Dec
 
@@ -78,6 +81,8 @@ void main()
   //VTK::PrimID::Impl
 
   //VTK::Clip::Impl
+  
+  //VTK::VOI::Impl
 
   //VTK::ValuePass::Impl
 
