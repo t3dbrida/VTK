@@ -141,7 +141,7 @@ bool QVTKInteractorAdapter::ProcessEvent(QEvent* e, vtkRenderWindowInteractor* i
     {
       iren->InvokeEvent(vtkCommand::MouseMoveEvent, e2);
     }
-    else if(t == QEvent::MouseButtonPress || t == QEvent::MouseButtonDblClick)
+    else if(t == QEvent::MouseButtonPress)
     {
       switch(e2->button())
       {
@@ -155,6 +155,26 @@ bool QVTKInteractorAdapter::ProcessEvent(QEvent* e, vtkRenderWindowInteractor* i
 
         case Qt::RightButton:
           iren->InvokeEvent(vtkCommand::RightButtonPressEvent, e2);
+          break;
+
+        default:
+          break;
+      }
+    }
+    else if(t == QEvent::MouseButtonDblClick)
+    {
+      switch(e2->button())
+      {
+        case Qt::LeftButton:
+          iren->InvokeEvent(vtkCommand::LeftButtonDblClickEvent, e2);
+          break;
+
+        case Qt::MidButton:
+          iren->InvokeEvent(vtkCommand::MiddleButtonDblClickEvent, e2);
+          break;
+
+        case Qt::RightButton:
+          iren->InvokeEvent(vtkCommand::RightButtonDblClickEvent, e2);
           break;
 
         default:

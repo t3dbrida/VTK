@@ -440,6 +440,9 @@ public:
   }
   //@}
 
+  vtkSetMacro(EnableVolumeOfInterest, bool);
+  vtkGetMacro(EnableVolumeOfInterest, bool);
+
   //@{
   /**
    * Set/Get the texture object to control rendering texture maps. This will
@@ -566,6 +569,7 @@ protected:
 
   double VolumeOfInterestMin[3];
   double VolumeOfInterestMax[3];
+  bool EnableVolumeOfInterest;
 
 private:
   vtkProperty(const vtkProperty&) = delete;

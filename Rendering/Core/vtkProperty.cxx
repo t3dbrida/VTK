@@ -95,6 +95,7 @@ vtkProperty::vtkProperty()
     this->VolumeOfInterestMin[i] = 0.;
     this->VolumeOfInterestMax[i] = 1.;
   }
+  this->EnableVolumeOfInterest = false;
 }
 
 //----------------------------------------------------------------------------
@@ -141,6 +142,7 @@ void vtkProperty::DeepCopy(vtkProperty *p)
     this->SetVolumeOfInterestMin(voiMin[0], voiMin[1], voiMin[2]);
     double* voiMax = p->GetVolumeOfInterestMax();
     this->SetVolumeOfInterestMax(voiMax[0], voiMax[1], voiMax[2]);
+    this->EnableVolumeOfInterest = p->EnableVolumeOfInterest;
 
     this->RemoveAllTextures();
     auto iter = p->Textures.begin();
