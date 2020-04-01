@@ -197,6 +197,9 @@ public:
   vtkGetObjectMacro(VertexCustomUniforms,vtkOpenGLUniforms);
   //@}
 
+  vtkGetMacro(MaxCellSpacingDivisor, double);
+  vtkSetMacro(MaxCellSpacingDivisor, double);
+
   // Description:
   // Delete OpenGL objects.
   // \post done: this->OpenGLObjectsCreated==0
@@ -330,6 +333,7 @@ protected:
   //@}
 
   double ReductionFactor;
+  double MaxCellSpacingDivisor;
   int    CurrentPass;
   char *VertexShaderCode;
   char *FragmentShaderCode;

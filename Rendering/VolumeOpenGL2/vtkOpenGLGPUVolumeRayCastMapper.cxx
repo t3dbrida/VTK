@@ -1489,10 +1489,87 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::EndPicking(vtkRenderer* ren)
 void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateSamplingDistance(
   vtkRenderer* vtkNotUsed(ren))
 {
-  auto input = this->Parent->GetTransformedInput(0);
-  auto vol = this->Parent->AssembledInputs[0].Volume;
+  struct CellSpacingSortedInput
+  {
+    bool operator <(const CellSpacingSortedInput& rhs) const
+    {
+        return cellSpacing[0] < rhs.cellSpacing[0] &&
+               cellSpacing[1] < rhs.cellSpacing[1] && 
+               cellSpacing[2] < rhs.cellSpacing[2];
+    }
+
+    int i;
+
+    double cellSpacing[3];
+  };
+
+  std::set<CellSpacingSortedInput> sortedInputs;
+
+  // find max cell spacing
+  double maxCellSpacing[3] = {std::numeric_limits<double>::lowest(),
+                              std::numeric_limits<double>::lowest(),
+                              std::numeric_limits<double>::lowest()};
+  for (int i = 0; i < this->Parent->GetTotalNumberOfInputConnections(); ++i)
+  {
+    auto input = this->Parent->GetTransformedInput(i);
+    auto vol = this->Parent->AssembledInputs[i].Volume;
+    double inputCellSpacing[3];
+    input->GetSpacing(inputCellSpacing);
+    for (int j = 0; j < 3; ++j)
+    {
+      if (inputCellSpacing[j] > maxCellSpacing[j])
+      {
+          maxCellSpacing[j] = inputCellSpacing[j];
+      }
+    }
+    sortedInputs.insert({i, {inputCellSpacing[0], inputCellSpacing[1], inputCellSpacing[2]}});
+  }
+
+  // find smallest cell spacing so that it is >= maxCellSpacing / this->Parent->MaxCellSpacingDivisor
+  int i = 0;
+  for (const CellSpacingSortedInput& sortedInput : sortedInputs)
+  {
+    if (sortedInput.cellSpacing[0] >= maxCellSpacing[0] / this->Parent->MaxCellSpacingDivisor &&
+        sortedInput.cellSpacing[1] >= maxCellSpacing[1] / this->Parent->MaxCellSpacingDivisor &&
+        sortedInput.cellSpacing[2] >= maxCellSpacing[2] / this->Parent->MaxCellSpacingDivisor)
+    {
+      i = sortedInput.i;
+      break;
+    }
+  }
+
+  // use the found cell spacing to compute the sampling distance
+  vtkImageData* input = this->Parent->GetTransformedInput(i);
+  vtkVolume* vol = this->Parent->AssembledInputs[i].Volume;
+  
   double cellSpacing[3];
   input->GetSpacing(cellSpacing);
+
+  input->GetSpacing(cellSpacing);
+  vtkMatrix4x4* worldToDataset = vol->GetMatrix();
+  double minWorldSpacing = VTK_DOUBLE_MAX;
+
+  for (int j = 0; j < 3; ++j)
+  {
+      double tmp = worldToDataset->GetElement(0, j);
+      double tmp2 = tmp * tmp;
+      tmp = worldToDataset->GetElement(1, j);
+      tmp2 += tmp * tmp;
+      tmp = worldToDataset->GetElement(2, j);
+      tmp2 += tmp * tmp;
+
+      // We use fabs() in case the spacing is negative.
+      double worldSpacing = fabs(cellSpacing[j] * sqrt(tmp2));
+      if (worldSpacing < minWorldSpacing)
+      {
+          minWorldSpacing = worldSpacing;
+      }
+  }
+
+  // minWorldSpacing is the optimal sample distance in world space.
+  // To go faster (reduceFactor<1.0), we multiply this distance
+  // by 1/reduceFactor.
+  double actualSampleDistance = static_cast<float>(minWorldSpacing);
 
   if (!this->Parent->AutoAdjustSampleDistances)
   {
@@ -1501,55 +1578,30 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateSamplingDistance(
       int extents[6];
       input->GetExtent(extents);
 
-      float const d = static_cast<float>(this->Parent->SpacingAdjustedSampleDistance(
-        cellSpacing, extents));
+      float const d = static_cast<float>(this->Parent->SpacingAdjustedSampleDistance(cellSpacing, extents));
       float const sample = this->Parent->SampleDistance;
 
       // ActualSampleDistance will grow proportionally to numVoxels^(1/3) (see
       // vtkVolumeMapper.cxx). Until it reaches 1/2 average voxel size when number of
       // voxels is 1E6.
-      this->ActualSampleDistance = (sample / d < 0.999f || sample / d > 1.001f) ?
-        d : this->Parent->SampleDistance;
-
-      return;
+      this->ActualSampleDistance = (sample / d < 0.999f || sample / d > 1.001f)
+                                   ? d : this->Parent->SampleDistance;
     }
-
-    this->ActualSampleDistance = this->Parent->SampleDistance;
+    else
+    {
+      this->ActualSampleDistance = this->Parent->SampleDistance;
+    }
+    if (this->ActualSampleDistance < actualSampleDistance)
+    {
+      this->ActualSampleDistance = actualSampleDistance;
+    }
   }
   else
   {
-    input->GetSpacing(cellSpacing);
-    vtkMatrix4x4* worldToDataset = vol->GetMatrix();
-    double minWorldSpacing = VTK_DOUBLE_MAX;
-    int i = 0;
-    while (i < 3)
+    this->ActualSampleDistance =actualSampleDistance;
+    if (this->Parent->ReductionFactor < 1.0 && this->Parent->ReductionFactor != 0.0)
     {
-      double tmp = worldToDataset->GetElement(0, i);
-      double tmp2 = tmp * tmp;
-      tmp = worldToDataset->GetElement(1, i);
-      tmp2 += tmp * tmp;
-      tmp = worldToDataset->GetElement(2, i);
-      tmp2 += tmp * tmp;
-
-      // We use fabs() in case the spacing is negative.
-      double worldSpacing = fabs(cellSpacing[i] * sqrt(tmp2));
-      if(worldSpacing < minWorldSpacing)
-      {
-        minWorldSpacing = worldSpacing;
-      }
-      ++i;
-    }
-
-    // minWorldSpacing is the optimal sample distance in world space.
-    // To go faster (reduceFactor<1.0), we multiply this distance
-    // by 1/reduceFactor.
-    this->ActualSampleDistance = static_cast<float>(minWorldSpacing);
-
-    if (this->Parent->ReductionFactor < 1.0 &&
-      this->Parent->ReductionFactor != 0.0)
-    {
-      this->ActualSampleDistance /=
-        static_cast<GLfloat>(this->Parent->ReductionFactor);
+      this->ActualSampleDistance /= static_cast<GLfloat>(this->Parent->ReductionFactor);
     }
   }
 }
@@ -2222,6 +2274,7 @@ vtkOpenGLGPUVolumeRayCastMapper::vtkOpenGLGPUVolumeRayCastMapper()
   this->CurrentPass = RenderPass;
   this->VertexShaderCode = nullptr;
   this->FragmentShaderCode = nullptr;
+  this->MaxCellSpacingDivisor = 8.;
 
   this->ResourceCallback =
     new vtkOpenGLResourceFreeCallback<vtkOpenGLGPUVolumeRayCastMapper>(

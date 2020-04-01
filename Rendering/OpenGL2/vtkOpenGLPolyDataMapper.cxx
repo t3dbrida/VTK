@@ -1564,10 +1564,13 @@ void vtkOpenGLPolyDataMapper::ReplaceShaderPositionVC(
       "uniform mat4 MCVCMatrix;");
     vtkShaderProgram::Substitute(GSSource,
       "//VTK::PositionVC::Dec",
+      "in vec3 vertexMCVSOutput[];\n"
       "in vec4 vertexVCVSOutput[];\n"
+      "out vec3 vertexMCGSOutput;\n"
       "out vec4 vertexVCGSOutput;");
     vtkShaderProgram::Substitute(GSSource,
       "//VTK::PositionVC::Impl",
+      "vertexMCGSOutput = vertexMCVSOutput[i];\n"
       "vertexVCGSOutput = vertexVCVSOutput[i];");
     vtkShaderProgram::Substitute(FSSource,
       "//VTK::PositionVC::Dec",
