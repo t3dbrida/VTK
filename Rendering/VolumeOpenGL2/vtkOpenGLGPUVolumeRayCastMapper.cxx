@@ -3841,7 +3841,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetMapperShaderParameters(
   }
   else
   {
-      prog->SetUniformf("in_downsampleCompensation", this->ActualSampleDistance);
+      prog->SetUniformf("in_downsampleCompensation", this->Parent->Downsamplecompensation);
   }
 
   // Set the scale and bias for color correction

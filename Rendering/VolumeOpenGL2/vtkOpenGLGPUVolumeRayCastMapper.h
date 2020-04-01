@@ -200,6 +200,10 @@ public:
   vtkGetMacro(MaxCellSpacingDivisor, double);
   vtkSetMacro(MaxCellSpacingDivisor, double);
 
+
+  vtkGetMacro(Downsamplecompensation, float);
+  vtkSetMacro(Downsamplecompensation, float);
+
   // Description:
   // Delete OpenGL objects.
   // \post done: this->OpenGLObjectsCreated==0
@@ -334,6 +338,7 @@ protected:
 
   double ReductionFactor;
   double MaxCellSpacingDivisor;
+  float Downsamplecompensation = 1.f;
   int    CurrentPass;
   char *VertexShaderCode;
   char *FragmentShaderCode;
