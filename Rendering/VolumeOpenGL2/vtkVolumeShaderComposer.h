@@ -1607,6 +1607,7 @@ namespace vtkvolume
           }
 
           toShaderStr <<
+          "          g_srcColor.a *= in_downsampleCompensation;\n"
           "          g_srcColor.rgb *= g_srcColor.a;\n"
           "          g_fragColor = (1.0f - g_fragColor.a) * g_srcColor + g_fragColor;\n"
           "        }\n"
