@@ -1943,9 +1943,11 @@ namespace vtkvolume
            \n        // and accumulated to the composited colour. The alpha\
            \n        // value from the previous steps is then accumulated\
            \n        // to the composited colour alpha.\
-           \n        g_srcColor.a *= in_downsampleCompensation;\
+           \n        g_srcColor.a *= in_downsampleCompensation / 2;\
            \n        g_srcColor.rgb *= g_srcColor.a;\
-           \n        g_fragColor = (1.0f - g_fragColor.a) * g_srcColor + g_fragColor;"
+           \n        // we're doing it twice to compesate for downsampling\
+           \n        g_fragColor += (1.0f - g_fragColor.a) * g_srcColor;\
+           \n        g_fragColor += (1.0f - g_fragColor.a) * g_srcColor;"
          );
 
          if (!mask || !maskInput ||
