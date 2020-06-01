@@ -2527,8 +2527,10 @@ namespace vtkvolume
       \n    {\
       \n      // Scale the point-plane distance to the ray direction and update the\
       \n      // termination point.\
-      \n      float rayScaledDist = stopDistance / rayDotNormal;\
-      \n      stopPosObj = vec4(stopPosObj.xyz + rayScaledDist * clip_rayDirObj, 1.0);\
+      \n      float t = dot(planeOrigin.xyz - startPosObj.xyz, planeNormal) / rayDotNormal;\
+      \n      stopPosObj = vec4(startPosObj.xyz + t * clip_rayDirObj.xyz, 1.0);\
+      \n      //float rayScaledDist = stopDistance / rayDotNormal;\
+      \n      //stopPosObj = vec4(stopPosObj.xyz + rayScaledDist * clip_rayDirObj, 1.0);\
       \n      vec4 newStopPosTex = clip_objToTexMat * vec4(stopPosObj.xyz, 1.0);\
       \n      newStopPosTex /= newStopPosTex.w;\
       \n      stopPosTex = newStopPosTex.xyz;\
