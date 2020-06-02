@@ -534,7 +534,7 @@ public:
   /**
    * Set the interactor to the render window
    */
-  void SetInteractor(vtkRenderWindowInteractor *);
+  virtual void SetInteractor(vtkRenderWindowInteractor *);
 
   /**
    * This Method detects loops of RenderWindow<->Interactor,
