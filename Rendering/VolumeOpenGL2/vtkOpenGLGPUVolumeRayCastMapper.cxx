@@ -3391,6 +3391,10 @@ void vtkOpenGLGPUVolumeRayCastMapper::GPURender(vtkRenderer* ren,
   const auto multiVol = vtkMultiVolume::SafeDownCast(vol);
   const bool wasMultiVolume = this->Impl->MultiVolume;
   this->Impl->MultiVolume = multiVol && this->GetInputCount() > 1 ? multiVol : nullptr;
+  if (wasMultiVolume && !this->Impl->MultiVolume)
+  {
+      this->Impl->BBoxPolyData = nullptr;
+  }
 
   if (!this->Impl->MultiVolume && multiVol && !multiVol->GetVolume(0)->GetVisibility())
   {
@@ -3444,11 +3448,6 @@ void vtkOpenGLGPUVolumeRayCastMapper::GPURender(vtkRenderer* ren,
   }
 
   vtkMTimeType renderPassTime = this->GetRenderPassStageMTime(vol);
-
-  if (wasMultiVolume && !this->Impl->MultiVolume)
-  {
-      this->Impl->BBoxPolyData = nullptr;
-  }
 
   this->Impl->ClearRemovedInputs(renWin);
   this->Impl->UpdateInputs(ren, vol);
