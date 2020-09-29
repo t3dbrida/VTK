@@ -479,6 +479,7 @@ public:
   vtkSmartPointer<vtkVolumeTexture> CurrentMask;
 
   vtkTimeStamp InitializationTime;
+  vtkRenderWindow* LastRenderWindow;
   vtkTimeStamp MaskUpdateTime;
   vtkTimeStamp ReleaseResourcesTime;
   vtkTimeStamp DepthPassTime;
@@ -3440,6 +3441,12 @@ void vtkOpenGLGPUVolumeRayCastMapper::GPURender(vtkRenderer* ren,
   this->Impl->NeedToInitializeResources  =
     (this->Impl->ReleaseResourcesTime.GetMTime() >
     this->Impl->InitializationTime.GetMTime());
+
+  if (ren->GetRenderWindow() != this->Impl->LastRenderWindow)
+  {
+      this->Impl->InitializationTime.Modified();
+      this->Impl->LastRenderWindow = ren->GetRenderWindow();
+  }
 
   this->ComputeReductionFactor(vol->GetAllocatedRenderTime());
   if (!this->Impl->SharedDepthTextureObject)
