@@ -180,6 +180,9 @@ namespace vtkvolume
       "// Camera position\n"
       "uniform vec3 in_cameraPos;\n";
 
+    toShaderStr <<
+        "uniform float in_gradMagMax[" << numInputs << "];\n";
+
     // For multiple inputs (numInputs > 1), an additional transformation is
     // needed for the bounding-box.
     const int numTransf = (numInputs > 1) ? numInputs + 1 :
@@ -606,10 +609,8 @@ namespace vtkvolume
         "  // Handle normalizing with grad_mag == 0.0\n"
         "  g2 = grad_mag > 0.0 ? normalize(g2) : vec3(0.0);\n"
         "\n"
-        "  // Since the actual range of the gradient magnitude is unknown,\n"
-        "  // assume it is in the range [0, 0.25 * dataRange].\n"
         "  range = range != 0 ? range : 1.0;\n"
-        "  grad_mag = grad_mag / (0.25 * range);\n"
+        "  grad_mag = grad_mag / in_gradMagMax[index];\n"
         "  grad_mag = clamp(grad_mag, 0.0, 1.0);\n"
         "\n"
         "  return vec4(g2.xyz, grad_mag);\n"

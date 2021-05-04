@@ -3809,6 +3809,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
   prog->SetUniform1iv("in_volumeVisibility",
                       numInputs,
                       volumeVisibility.data());
+  prog->SetUniform1fv("in_gradMagMax", this->Parent->GradMagMaxs.size(), this->Parent->GradMagMaxs.data());
 }
 
 ////----------------------------------------------------------------------------

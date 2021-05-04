@@ -60,6 +60,7 @@
 #ifndef vtkOpenGLGPUVolumeRayCastMapper_h
 #define vtkOpenGLGPUVolumeRayCastMapper_h
 #include <map>                               // For methods
+#include <vector>
 
 #include "vtkNew.h"                          // For vtkNew
 #include "vtkRenderingVolumeOpenGL2Module.h" // For export macro
@@ -204,6 +205,16 @@ public:
   vtkGetMacro(Downsamplecompensation, float);
   vtkSetMacro(Downsamplecompensation, float);
 
+  const std::vector<float>& GetGradMagMaxs() const noexcept
+  {
+      return this->GradMagMaxs;
+  }
+
+  void SetGradMagMaxs(const std::vector<float>& gradMagMaxs) noexcept
+  {
+      this->GradMagMaxs = gradMagMaxs;
+  }
+
   // Description:
   // Delete OpenGL objects.
   // \post done: this->OpenGLObjectsCreated==0
@@ -347,6 +358,8 @@ protected:
 
   vtkNew<vtkOpenGLUniforms> FragmentCustomUniforms;
   vtkNew<vtkOpenGLUniforms> VertexCustomUniforms;
+
+  std::vector<float> GradMagMaxs;
 
 public:
   using VolumeInput = vtkVolumeInputHelper;
