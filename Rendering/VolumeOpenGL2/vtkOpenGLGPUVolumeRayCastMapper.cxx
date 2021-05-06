@@ -2774,9 +2774,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::ReplaceShaderCompute(
     "//VTK::ComputeLighting::Dec",
     vtkvolume::ComputeLightingDeclaration(ren,
       this,
-      vol,
-      numComps,
-      independentComponents,
+      this->AssembledInputs,
       this->Impl->NumberOfLights,
       this->Impl->LightComplexity));
 
