@@ -570,7 +570,7 @@ namespace vtkvolume
           "    }\n"
           "  }\n"
           "\n"
-          "  for (int i = 0; i < clip_numPlanes && !g_skip; i = i + 6)\n"
+          "  for (int i = 0; i < clip_numPlanes && g_skip == false; i = i + 6)\n"
           "  {\n"
           "    vec3 planeOrigin = vec3(in_clippingPlanes[i + 1],\n"
           "                            in_clippingPlanes[i + 2],\n"
@@ -1594,15 +1594,18 @@ namespace vtkvolume
 
   //--------------------------------------------------------------------------
   std::string ShadingMultipleInputs(vtkVolumeMapper* mapper,
-                                    vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs)
+                                    vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs,
+                                    const std::map<int, vtkImageData*>& maskInputs,
+                                    const std::map<int, vtkSmartPointer<vtkVolumeTexture>>& masks)
   {
     std::ostringstream toShaderStr;
     toShaderStr <<
-      "    if (!g_skip)\n"
+      //"    if (g_skip == false)\n"
       "    {\n"
       "      vec3 texPos;\n";
 
     int i = 0;
+    int maskI = 0;
     switch (mapper->GetBlendMode())
     {
       case vtkVolumeMapper::ISOSURFACE_BLEND:
@@ -1699,10 +1702,22 @@ namespace vtkvolume
               // From global texture coordinates (bbox) to volume_i texture coords.
               // texPos = T * g_dataPos
               // T = T_dataToTex1 * T_worldToData * T_bboxTexToWorld;
+              "      g_skip = false;\n"
               "      texPos = (in_cellToPoint[" << idx << "] * in_inverseTextureDatasetMatrix[" << idx
               << "] * in_inverseVolumeMatrix[" << idx << "] *\n"
-              "        in_volumeMatrix[0] * in_textureDatasetMatrix[0] * vec4(g_dataPos.xyz, 1.0)).xyz;\n"
-              "      if (in_volumeVisibility[" << i << "] == 1 &&\n"
+              "        in_volumeMatrix[0] * in_textureDatasetMatrix[0] * vec4(g_dataPos.xyz, 1.0)).xyz;\n";
+
+          if (maskInputs.find(i) != maskInputs.end())
+          {
+              toShaderStr <<
+                  "      vec4 maskValue = texture3D(in_mask[" << (maskI++) << "], texPos);\n"
+                  "      if (maskValue.r <= 0)\n"
+                  "      {\n"
+                  "        g_skip = true;\n"
+                  "      }\n";
+          }
+          toShaderStr <<
+              "      if (g_skip == false && in_volumeVisibility[" << i << "] == 1 &&\n"
               "          all(lessThanEqual(texPos, in_voi_max[" << i << "])) &&\n"
               "          all(greaterThanEqual(texPos, in_voi_min[" << i << "])))\n"
               "      {\n"
@@ -1773,16 +1788,16 @@ namespace vtkvolume
 
   //--------------------------------------------------------------------------
   std::string ShadingSingleInput(vtkRenderer* vtkNotUsed(ren),
-                                    vtkVolumeMapper* mapper,
-                                    vtkVolume* vtkNotUsed(vol),
-                                    vtkImageData* maskInput,
-                                    vtkVolumeTexture* mask, int maskType,
-                                    int noOfComponents,
-                                    int independentComponents = 0)
+                                 vtkVolumeMapper* mapper,
+                                 vtkVolume* vtkNotUsed(vol),
+                                 vtkImageData* maskInput,
+                                 vtkVolumeTexture* mask,// int maskType,
+                                 int noOfComponents,
+                                 int independentComponents = 0)
   {
     auto glMapper = vtkOpenGLGPUVolumeRayCastMapper::SafeDownCast(mapper);
     std::string shaderStr = std::string("\
-      \n    if (!g_skip && all(lessThanEqual(g_dataPos, in_voi_max[0])) && all(greaterThanEqual(g_dataPos, in_voi_min[0])))\
+      \n    if (g_skip == false && all(lessThanEqual(g_dataPos, in_voi_max[0])) && all(greaterThanEqual(g_dataPos, in_voi_min[0])))\
       \n      {\
       \n      vec4 scalar = texture3D(in_volume[0], g_dataPos);"
     );
@@ -2075,9 +2090,9 @@ namespace vtkvolume
       //}
       else
       {
-         if (!mask || !maskInput ||
-             maskType != vtkGPUVolumeRayCastMapper::LabelMapMaskType)
-         {
+         //if (!mask || !maskInput ||
+             //maskType != vtkGPUVolumeRayCastMapper::LabelMapMaskType)
+         //{
            shaderStr += std::string("\
              \n      g_srcColor = vec4(0.0);\
              \n      g_srcColor.a = computeOpacity_0(scalar);\
@@ -2085,7 +2100,7 @@ namespace vtkvolume
              \n        {\
              \n        g_srcColor = computeColor_0(scalar, g_srcColor.a);"
            );
-         }
+         //}
 
          shaderStr += std::string("\
            \n        // Opacity calculation using compositing:\
@@ -2105,8 +2120,8 @@ namespace vtkvolume
            \n        g_fragColor += (1.0f - g_fragColor.a) * g_srcColor;"
          );
 
-         if (!mask || !maskInput ||
-           maskType != vtkGPUVolumeRayCastMapper::LabelMapMaskType)
+         //if (!mask || !maskInput ||
+         //  maskType != vtkGPUVolumeRayCastMapper::LabelMapMaskType)
          {
            shaderStr += std::string("\
              \n        }"
@@ -2776,45 +2791,45 @@ namespace vtkvolume
 
   //--------------------------------------------------------------------------
   std::string BinaryMaskDeclaration(vtkRenderer* vtkNotUsed(ren),
-                                            vtkVolumeMapper* vtkNotUsed(mapper),
-                                            vtkVolume* vtkNotUsed(vol),
-                                            vtkImageData* maskInput,
-                                            vtkVolumeTexture* mask,
-                                            int vtkNotUsed(maskType))
+                                    vtkVolumeMapper* vtkNotUsed(mapper),
+                                    vtkVolume* vtkNotUsed(vol),
+                                    const std::map<int, vtkImageData*>& maskInputs,
+                                    const std::map<int, vtkSmartPointer<vtkVolumeTexture>>& masks)
   {
-    if (!mask || !maskInput)
+    if (masks.empty() || maskInputs.empty())
     {
       return std::string();
     }
     else
     {
-      return std::string("uniform sampler3D in_mask;");
+      return std::string("uniform sampler3D in_mask[" + std::to_string(maskInputs.size()) + "];");
     }
   }
 
   //--------------------------------------------------------------------------
   std::string BinaryMaskImplementation(vtkRenderer* vtkNotUsed(ren),
-                                       vtkVolumeMapper* vtkNotUsed(mapper),
+                                       vtkVolumeMapper* mapper,
                                        vtkVolume* vtkNotUsed(vol),
-                                       vtkImageData* maskInput,
-                                       vtkVolumeTexture* mask,
-                                       int maskType)
+                                       const std::map<int, vtkImageData*>& maskInputs,
+                                       const std::map<int, vtkSmartPointer<vtkVolumeTexture>>& masks)
   {
-    if (!mask || !maskInput ||
-        maskType == vtkGPUVolumeRayCastMapper::LabelMapMaskType)
+    if (masks.empty() || maskInputs.empty()/* ||
+        maskType == vtkGPUVolumeRayCastMapper::LabelMapMaskType*/)
     {
       return std::string();
     }
-    else
+    else if (mapper->GetTotalNumberOfInputConnections() == 1)
     {
       return std::string("\
-        \nvec4 maskValue = texture3D(in_mask, g_dataPos);\
-        \nif(maskValue.r <= 0.0)\
-        \n  {\
-        \n  g_skip = true;\
-        \n  }"
+        \n    vec4 maskValue = texture3D(in_mask[0], g_dataPos);\
+        \n    if(maskValue.r <= 0)\
+        \n    {\
+        \n      g_skip = true;\
+        \n    }"
       );
     }
+
+    return "";
   }
 
   //--------------------------------------------------------------------------

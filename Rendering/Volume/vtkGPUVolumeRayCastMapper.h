@@ -29,6 +29,8 @@
  */
 #ifndef vtkGPUVolumeRayCastMapper_h
 #define vtkGPUVolumeRayCastMapper_h
+
+#include <map>
 #include <unordered_map>              // For std::unordered_map
 #include <vector>                     // For std::vector
 
@@ -238,8 +240,11 @@ public:
    * component 0, with the blending weight being determined by
    * MaskBlendFactor.
    */
-  void SetMaskInput(vtkImageData *mask);
-  vtkGetObjectMacro(MaskInput, vtkImageData);
+  void SetMask(const int volumeIndex, vtkImageData* const mask) noexcept;
+  vtkImageData* GetMask(const int volumeIndex) const noexcept;
+
+  //void SetMaskInput(vtkImageData *mask);
+  //vtkGetObjectMacro(MaskInput, vtkImageData);
   //@}
 
   enum { BinaryMaskType = 0, LabelMapMaskType };
@@ -249,10 +254,10 @@ public:
    * Set the mask type, if mask is to be used. See documentation for
    * SetMaskInput(). The default is a LabelMapMaskType.
    */
-  vtkSetMacro( MaskType, int );
-  vtkGetMacro( MaskType, int );
-  void SetMaskTypeToBinary();
-  void SetMaskTypeToLabelMap();
+  //vtkSetMacro( MaskType, int );
+  //vtkGetMacro( MaskType, int );
+  //void SetMaskTypeToBinary();
+  //void SetMaskTypeToLabelMap();
   //@}
 
   //@{
@@ -264,8 +269,8 @@ public:
    * 1.0 means only mask color transfer function.
    * The default value is 1.0.
    */
-  vtkSetClampMacro(MaskBlendFactor,float,0.0f,1.0f);
-  vtkGetMacro(MaskBlendFactor,float);
+  //vtkSetClampMacro(MaskBlendFactor,float,0.0f,1.0f);
+  //vtkGetMacro(MaskBlendFactor,float);
   //@}
 
   //@{
@@ -554,9 +559,21 @@ protected:
   vtkBooleanMacro(AMRMode,vtkTypeBool);
   //@}
 
-  vtkImageData * MaskInput;
-  float          MaskBlendFactor;
-  int            MaskType;
+  struct Mask final
+  {
+      vtkImageData* Input;
+
+      // only relevant for label masks
+      //float MaskBlendFactor;
+
+      int MaskType;
+  };
+
+  std::map<int, Mask> Masks;
+
+  //vtkImageData * MaskInput;
+  //float          MaskBlendFactor;
+  //int            MaskType;
 
   vtkTypeBool AMRMode;
 

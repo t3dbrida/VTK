@@ -38,7 +38,7 @@
 
 // Return nullptr if no override is supplied.
 vtkAbstractObjectFactoryNewMacro(vtkGPUVolumeRayCastMapper)
-vtkCxxSetObjectMacro(vtkGPUVolumeRayCastMapper, MaskInput, vtkImageData);
+//vtkCxxSetObjectMacro(vtkGPUVolumeRayCastMapper, MaskInput, vtkImageData);
 
 vtkGPUVolumeRayCastMapper::vtkGPUVolumeRayCastMapper()
 : LockSampleDistanceToInputSpacing(0)
@@ -62,10 +62,10 @@ vtkGPUVolumeRayCastMapper::vtkGPUVolumeRayCastMapper()
   this->GeneratingCanonicalView    = 0;
   this->CanonicalViewImageData     = nullptr;
 
-  this->MaskInput                  = nullptr;
-  this->MaskBlendFactor            = 1.0f;
-  this->MaskType
-    = vtkGPUVolumeRayCastMapper::LabelMapMaskType;
+  //this->MaskInput                  = nullptr;
+  //this->MaskBlendFactor            = 1.0f;
+  //this->MaskType
+  //  = vtkGPUVolumeRayCastMapper::LabelMapMaskType;
 
   this->ColorRangeType = TFRangeType::SCALAR;
   this->ScalarOpacityRangeType = TFRangeType::SCALAR;
@@ -111,7 +111,11 @@ vtkGPUVolumeRayCastMapper::vtkGPUVolumeRayCastMapper()
 // ----------------------------------------------------------------------------
 vtkGPUVolumeRayCastMapper::~vtkGPUVolumeRayCastMapper()
 {
-  this->SetMaskInput(nullptr);
+  for (auto& mask : this->Masks)
+  {
+    mask.second.Input->UnRegister(this);
+  }
+  //this->SetMaskInput(nullptr);
 
   for (auto& input : this->TransformedInputs)
   {
@@ -589,6 +593,31 @@ void vtkGPUVolumeRayCastMapper::CreateCanonicalView(
   this->GeneratingCanonicalView = 0;
 }
 
+void vtkGPUVolumeRayCastMapper::SetMask(const int volumeIndex, vtkImageData* const mask) noexcept
+{
+  auto it = this->Masks.find(volumeIndex);
+  const bool exists = it != this->Masks.end();
+  if (exists)
+  {
+    it->second.Input->UnRegister(this);
+  }
+  if (mask)
+  {
+    this->Masks[volumeIndex] = {mask, BinaryMaskType};
+    mask->Register(this);
+  }
+  else if (exists)
+  {
+    this->Masks.erase(it);
+  }
+  this->Modified();
+}
+
+vtkImageData* vtkGPUVolumeRayCastMapper::GetMask(const int volumeIndex) const noexcept
+{
+  return this->Masks.at(volumeIndex).Input;
+}
+
 // ----------------------------------------------------------------------------
 // Print method for vtkGPUVolumeRayCastMapper
 void vtkGPUVolumeRayCastMapper::PrintSelf(ostream& os, vtkIndent indent)
@@ -605,9 +634,9 @@ void vtkGPUVolumeRayCastMapper::PrintSelf(ostream& os, vtkIndent indent)
   os << indent << "SampleDistance: " << this->SampleDistance << endl;
   os << indent << "FinalColorWindow: " << this->FinalColorWindow << endl;
   os << indent << "FinalColorLevel: " << this->FinalColorLevel << endl;
-  os << indent << "MaskInput: " << this->MaskInput << endl;
-  os << indent << "MaskType: " << this->MaskType << endl;
-  os << indent << "MaskBlendFactor: " << this->MaskBlendFactor << endl;
+  //os << indent << "MaskInput: " << this->MaskInput << endl;
+  //os << indent << "MaskType: " << this->MaskType << endl;
+  //os << indent << "MaskBlendFactor: " << this->MaskBlendFactor << endl;
   os << indent << "MaxMemoryInBytes: " << this->MaxMemoryInBytes << endl;
   os << indent << "MaxMemoryFraction: " << this->MaxMemoryFraction << endl;
   os << indent << "ReportProgress: " << this->ReportProgress << endl;
@@ -672,16 +701,16 @@ void vtkGPUVolumeRayCastMapper::ClipCroppingRegionPlanes()
 }
 
 //----------------------------------------------------------------------------
-void vtkGPUVolumeRayCastMapper::SetMaskTypeToBinary()
-{
-  this->MaskType = vtkGPUVolumeRayCastMapper::BinaryMaskType;
-}
-
-//----------------------------------------------------------------------------
-void vtkGPUVolumeRayCastMapper::SetMaskTypeToLabelMap()
-{
-  this->MaskType = vtkGPUVolumeRayCastMapper::LabelMapMaskType;
-}
+//void vtkGPUVolumeRayCastMapper::SetMaskTypeToBinary()
+//{
+//  this->MaskType = vtkGPUVolumeRayCastMapper::BinaryMaskType;
+//}
+//
+////----------------------------------------------------------------------------
+//void vtkGPUVolumeRayCastMapper::SetMaskTypeToLabelMap()
+//{
+//  this->MaskType = vtkGPUVolumeRayCastMapper::LabelMapMaskType;
+//}
 
 //----------------------------------------------------------------------------
 vtkContourValues* vtkGPUVolumeRayCastMapper::GetDepthPassContourValues()
