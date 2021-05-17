@@ -490,56 +490,38 @@ namespace vtkvolume
     for (size_t i = 0; i < inputs.size(); ++i)
     {
       const std::string index = std::to_string(i);
+      shaderStr +=
+        "\n"
+        "vec4 computeGradient_" + index + "(in vec3 texPos)\n"
+        "{\n"
+        "  // Approximate Nabla(F) derivatives with central differences.\n"
+        "  vec3 g1; // F_front\n"
+        "  vec3 g2; // F_back\n"
+        "  vec3 xvec = vec3(in_cellStep[" + index + "].x, 0.0, 0.0);\n"
+        "  vec3 yvec = vec3(0.0, in_cellStep[" + index + "].y, 0.0);\n"
+        "  vec3 zvec = vec3(0.0, 0.0, in_cellStep[" + index + "].z);\n"
+        "  vec3 texPosPvec[3];\n"
+        "  texPosPvec[0] = texPos + xvec;\n"
+        "  texPosPvec[1] = texPos + yvec;\n"
+        "  texPosPvec[2] = texPos + zvec;\n"
+        "  vec3 texPosNvec[3];\n"
+        "  texPosNvec[0] = texPos - xvec;\n"
+        "  texPosNvec[1] = texPos - yvec;\n"
+        "  texPosNvec[2] = texPos - zvec;\n";
       if (inputs[i].Texture->GetLoadedScalars()->GetNumberOfComponents() == 3)
       {
         shaderStr +=
-          "vec4 computeGradient_" + index + "(in vec3 texPos)\n"
-          "{\n"
-          "  // Approximate Nabla(F) derivatives with central differences.\n"
-          "  vec3 g1; // F_front\n"
-          "  vec3 g2; // F_back\n"
-          "  vec3 xvec = vec3(in_cellStep[" + index + "].x, 0.0, 0.0);\n"
-          "  vec3 yvec = vec3(0.0, in_cellStep[" + index + "].y, 0.0);\n"
-          "  vec3 zvec = vec3(0.0, 0.0, in_cellStep[" + index + "].z);\n"
-          "  vec3 texPosPvec[3];\n"
-          "  texPosPvec[0] = texPos + xvec;\n"
-          "  texPosPvec[1] = texPos + yvec;\n"
-          "  texPosPvec[2] = texPos + zvec;\n"
-          "  vec3 texPosNvec[3];\n"
-          "  texPosNvec[0] = texPos - xvec;\n"
-          "  texPosNvec[1] = texPos - yvec;\n"
-          "  texPosNvec[2] = texPos - zvec;\n"
-          "  g1.x = texture3D(in_volume[" + index + "], vec3(texPosPvec[0])).rgb == vec3(0.) ? 0. : 1.;\n"
-          "  g1.y = texture3D(in_volume[" + index + "], vec3(texPosPvec[1])).rgb == vec3(0.) ? 0. : 1.;\n"
-          "  g1.z = texture3D(in_volume[" + index + "], vec3(texPosPvec[2])).rgb == vec3(0.) ? 0. : 1.;\n"
-          "  g2.x = texture3D(in_volume[" + index + "], vec3(texPosNvec[0])).rgb == vec3(0.) ? 0. : 1.;\n"
-          "  g2.y = texture3D(in_volume[" + index + "], vec3(texPosNvec[1])).rgb == vec3(0.) ? 0. : 1.;\n"
-          "  g2.z = texture3D(in_volume[" + index + "], vec3(texPosNvec[2])).rgb == vec3(0.) ? 0. : 1.;\n"
-          "\n"
-          "  // Apply scale and bias to the fetched values.\n"
-          "  g1 = g1 * in_volume_scale[" + index + "].xyz + in_volume_bias[" + index + "].xyz;\n"
-          "  g2 = g2 * in_volume_scale[" + index + "].xyz + in_volume_bias[" + index + "].xyz;\n"
+          "  g1.x = ((texture3D(in_volume[" + index + "], vec3(texPosPvec[0])).rgb) == vec3(0.)) ? xvec.x : 0.;\n"
+          "  g1.y = ((texture3D(in_volume[" + index + "], vec3(texPosPvec[1])).rgb) == vec3(0.)) ? yvec.y : 0.;\n"
+          "  g1.z = ((texture3D(in_volume[" + index + "], vec3(texPosPvec[2])).rgb) == vec3(0.)) ? zvec.z : 0.;\n"
+          "  g2.x = ((texture3D(in_volume[" + index + "], vec3(texPosNvec[0])).rgb) == vec3(0.)) ? -xvec.x : 0.;\n"
+          "  g2.y = ((texture3D(in_volume[" + index + "], vec3(texPosNvec[1])).rgb) == vec3(0.)) ? -yvec.y : 0.;\n"
+          "  g2.z = ((texture3D(in_volume[" + index + "], vec3(texPosNvec[2])).rgb) == vec3(0.)) ? -zvec.z : 0.;\n"
           "\n";
       }
       else
       {
         shaderStr +=
-          "vec4 computeGradient_" + index + "(in vec3 texPos)\n"
-          "{\n"
-          "  // Approximate Nabla(F) derivatives with central differences.\n"
-          "  vec3 g1; // F_front\n"
-          "  vec3 g2; // F_back\n"
-          "  vec3 xvec = vec3(in_cellStep[" + index + "].x, 0.0, 0.0);\n"
-          "  vec3 yvec = vec3(0.0, in_cellStep[" + index + "].y, 0.0);\n"
-          "  vec3 zvec = vec3(0.0, 0.0, in_cellStep[" + index + "].z);\n"
-          "  vec3 texPosPvec[3];\n"
-          "  texPosPvec[0] = texPos + xvec;\n"
-          "  texPosPvec[1] = texPos + yvec;\n"
-          "  texPosPvec[2] = texPos + zvec;\n"
-          "  vec3 texPosNvec[3];\n"
-          "  texPosNvec[0] = texPos - xvec;\n"
-          "  texPosNvec[1] = texPos - yvec;\n"
-          "  texPosNvec[2] = texPos - zvec;\n"
           "  g1.x = texture3D(in_volume[" + index + "], vec3(texPosPvec[0]))[0];\n"
           "  g1.y = texture3D(in_volume[" + index + "], vec3(texPosPvec[1]))[0];\n"
           "  g1.z = texture3D(in_volume[" + index + "], vec3(texPosPvec[2]))[0];\n"
@@ -592,13 +574,49 @@ namespace vtkvolume
           "  }\n"
           "\n");
       }
-      shaderStr +=
-        "  // Central differences: (F_front - F_back) / 2h\n"
-        "  // This version of computeGradient() is only used for lighting\n"
-        "  // calculations (only direction matters), hence the difference is\n"
-        "  // not scaled by 2h and a dummy gradient mag is returned (-1.).\n"
-        "  return vec4((g1 - g2) / in_cellSpacing[" + index + "], -1.0);\n"
-        "}\n";
+      if (inputs[i].Texture->GetLoadedScalars()->GetNumberOfComponents() == 3)
+      {
+        shaderStr +=
+          "\n"
+          "  g2 = normalize(g1 - g2);\n" 
+          "  return vec4(g2, g2 == vec3(0.) ? 0. : 1.);\n"
+          "}\n";
+      }
+      else
+      {
+        shaderStr +=
+          "  int i = 4 * " + index + ";"
+          "  float range = in_scalarsRange[i][1] - in_scalarsRange[i][0];\n"
+          "  g1 = in_scalarsRange[i][0] + range * g1;\n"
+          "  g2 = in_scalarsRange[i][0] + range * g2;\n"
+          "\n"
+          "  // Central differences: (F_front - F_back) / 2h\n"
+          "  g2 = g1 - g2;\n"
+          "\n"
+          "  float avgSpacing = (in_cellSpacing[" + index + "].x +\n"
+          "   in_cellSpacing[" + index + "].y + in_cellSpacing[" + index + "].z) / 3.0;\n"
+          "  vec3 aspect = in_cellSpacing[" + index + "] * 2.0 / avgSpacing;\n"
+          "  g2 /= aspect;\n"
+          "  float grad_mag = length(g2);\n"
+          "\n"
+          "  // Handle normalizing with grad_mag == 0.0\n"
+          "  g2 = grad_mag > 0.0 ? normalize(g2) : vec3(0.0);\n"
+          "\n"
+          "  range = range != 0 ? range : 1.0;\n"
+          "  grad_mag = grad_mag / in_gradMagMax[" + index + "];\n"
+          "  grad_mag = clamp(grad_mag, 0.0, 1.0);\n"
+          "\n"
+          "  return vec4(g2.xyz, grad_mag);\n"
+          "}\n";
+      }
+
+      //shaderStr +=
+      //  "  // Central differences: (F_front - F_back) / 2h\n"
+      //  "  // This version of computeGradient() is only used for lighting\n"
+      //  "  // calculations (only direction matters), hence the difference is\n"
+      //  "  // not scaled by 2h and a dummy gradient mag is returned (-1.).\n"
+      //  "  return vec4((g1 - g2) / in_cellSpacing[" + index + "], -1.);\n"
+      //  "}\n";
     }
 
     // original VTK code
@@ -756,9 +774,10 @@ namespace vtkvolume
     {
       const std::string index = std::to_string(i);
       shaderStr +=
+        "\n"
         "vec4 computeLighting_" + index + "(vec4 color, vec4 gradient)\n"
-        "{\
-          vec4 finalColor = vec4(0.0);";
+        "{\n"
+        "  vec4 finalColor = vec4(0.0);";
       
       vtkVolumeProperty* volProperty = input.second.Volume->GetProperty();
       // Shading for composite blending only
@@ -771,184 +790,184 @@ namespace vtkvolume
       {
         if (lightingComplexity == 1)
         {
-          shaderStr += std::string("\
-            \n  vec3 diffuse = vec3(0.0);\
-            \n  vec3 specular = vec3(0.0);\
-            \n  vec3 normal = gradient.xyz;\
-            \n  float normalLength = length(normal);\
-            \n  if (normalLength > 0.0)\
-            \n    {\
-            \n    normal = normalize(normal);\
-            \n    }\
-            \n  else\
-            \n    {\
-            \n    normal = vec3(0.0, 0.0, 0.0);\
-            \n    }\
-            \n   float nDotL = dot(normal, g_ldir);\
-            \n   float nDotH = dot(normal, g_h);\
-            \n   if (nDotL < 0.0 && in_twoSidedLighting)\
-            \n     {\
-            \n     nDotL = -nDotL;\
-            \n     }\
-            \n   if (nDotH < 0.0 && in_twoSidedLighting)\
-            \n     {\
-            \n     nDotH = -nDotH;\
-            \n     }\
-            \n   if (nDotL > 0.0)\
-            \n     {\
-            \n     diffuse = nDotL * in_diffuse[" + index + "] *\
-            \n               in_lightDiffuseColor[0] * color.rgb;\
-            \n     }\
-            \n    specular = pow(nDotH, in_shininess[" + index + "]) *\
-            \n                 in_specular[" + index + "] *\
-            \n                 in_lightSpecularColor[0];\
-            \n  // For the headlight, ignore the light's ambient color\
-            \n  // for now as it is causing the old mapper tests to fail\
-            \n  //finalColor.xyz = in_ambient[" + index + "] * color.rgb +\
-            \n  //                 diffuse + specular;\
-            \n  float shadingFactor = smoothstep(in_shadingGradientScales[" + index + "].s, in_shadingGradientScales[" + index + "].t, gradient.w);\
-            \n  finalColor.xyz  = mix(color.rgb, in_ambient[" + index + "] * color.rgb, shadingFactor); // apply color for sf=0, ambient for sf=1\
-            \n  finalColor.xyz += shadingFactor * (diffuse + specular);\
-            \n"
-            );
+          shaderStr +=
+            "\n  vec3 diffuse = vec3(0.0);"
+            "\n  vec3 specular = vec3(0.0);"
+            "\n  vec3 normal = gradient.xyz;"
+            "\n  float normalLength = length(normal);"
+            "\n  if (normalLength > 0.0)"
+            "\n  {"
+            "\n    normal = normalize(normal);"
+            "\n  }"
+            "\n  else"
+            "\n  {"
+            "\n    normal = vec3(0.0, 0.0, 0.0);"
+            "\n  }"
+            "\n  float nDotL = dot(normal, g_ldir);"
+            "\n  float nDotH = dot(normal, g_h);"
+            "\n  if (nDotL < 0.0 && in_twoSidedLighting)"
+            "\n  {"
+            "\n    nDotL = -nDotL;"
+            "\n  }"
+            "\n  if (nDotH < 0.0 && in_twoSidedLighting)"
+            "\n  {"
+            "\n    nDotH = -nDotH;"
+            "\n  }"
+            "\n  if (nDotL > 0.0)"
+            "\n  {"
+            "\n    diffuse = nDotL * in_diffuse[" + index + "] *"
+            "\n              in_lightDiffuseColor[0] * color.rgb;"
+            "\n  }"
+            "\n  specular = pow(nDotH, in_shininess[" + index + "]) *"
+            "\n               in_specular[" + index + "] *"
+            "\n               in_lightSpecularColor[0];"
+            "\n  // For the headlight, ignore the light's ambient color"
+            "\n  // for now as it is causing the old mapper tests to fail"
+            "\n  //finalColor.xyz = in_ambient[" + index + "] * color.rgb +"
+            "\n  //                 diffuse + specular;"
+            "\n  float shadingFactor = smoothstep(in_shadingGradientScales[" + index + "].s, in_shadingGradientScales[" + index + "].t, gradient.w);"
+            "\n  finalColor.xyz  = mix(color.rgb, in_ambient[" + index + "] * color.rgb, shadingFactor); // apply color for sf=0, ambient for sf=1"
+            "\n  finalColor.xyz += shadingFactor * (diffuse + specular);"
+            "\n"
+            ;
         }
         else if (lightingComplexity == 2)
         {
-          shaderStr += std::string("\
-            \n  g_fragWorldPos = in_modelViewMatrix * in_volumeMatrix[0] *\
-            \n                      in_textureDatasetMatrix[0] * vec4(-g_dataPos, 1.0);\
-            \n  if (g_fragWorldPos.w != 0.0)\
-            \n   {\
-            \n   g_fragWorldPos /= g_fragWorldPos.w;\
-            \n   }\
-            \n  vec3 vdir = normalize(g_fragWorldPos.xyz);\
-            \n  vec3 normal = gradient.xyz;\
-            \n  vec3 ambient = vec3(0.0);\
-            \n  vec3 diffuse = vec3(0.0);\
-            \n  vec3 specular = vec3(0.0);\
-            \n  float normalLength = length(normal);\
-            \n  if (normalLength > 0.0)\
-            \n    {\
-            \n    normal = normalize((in_textureToEye[0] * vec4(normal, 0.0)).xyz);\
-            \n    }\
-            \n  else\
-            \n    {\
-            \n    normal = vec3(0.0, 0.0, 0.0);\
-            \n    }\
-            \n  for (int lightNum = 0; lightNum < in_numberOfLights; lightNum++)\
-            \n    {\
-            \n    vec3 ldir = in_lightDirection[lightNum].xyz;\
-            \n    vec3 h = normalize(ldir + vdir);\
-            \n    float nDotH = dot(normal, h);\
-            \n    if (nDotH < 0.0 && in_twoSidedLighting)\
-            \n     {\
-            \n     nDotH = -nDotH;\
-            \n     }\
-            \n  float nDotL = dot(normal, ldir);\
-            \n  if (nDotL < 0.0 && in_twoSidedLighting)\
-            \n    {\
-            \n    nDotL = -nDotL;\
-            \n    }\
-            \n  if (nDotL > 0.0)\
-            \n    {\
-            \n    diffuse += in_lightDiffuseColor[lightNum] * nDotL;\
-            \n    }\
-            \n  if (nDotH > 0.0)\
-            \n    {\
-            \n    specular = in_lightSpecularColor[lightNum] *\
-            \n               pow(nDotH, in_shininess[" + index + "]);\
-            \n    }\
-            \n  ambient += in_lightAmbientColor[lightNum];\
-            \n  }\
-            \n  finalColor.xyz = in_ambient[" + index + "] * ambient +\
-            \n                   in_diffuse[" + index + "] * diffuse * color.rgb +\
-            \n                   in_specular[" + index + "] * specular;"
-            );
+          shaderStr +=
+            "\n  g_fragWorldPos = in_modelViewMatrix * in_volumeMatrix[0] *"
+            "\n                   in_textureDatasetMatrix[0] * vec4(-g_dataPos, 1.0);"
+            "\n  if (g_fragWorldPos.w != 0.0)"
+            "\n  {"
+            "\n    g_fragWorldPos /= g_fragWorldPos.w;"
+            "\n  }"
+            "\n  vec3 vdir = normalize(g_fragWorldPos.xyz);"
+            "\n  vec3 normal = gradient.xyz;"
+            "\n  vec3 ambient = vec3(0.0);"
+            "\n  vec3 diffuse = vec3(0.0);"
+            "\n  vec3 specular = vec3(0.0);"
+            "\n  float normalLength = length(normal);"
+            "\n  if (normalLength > 0.0)"
+            "\n  {"
+            "\n    normal = normalize((in_textureToEye[0] * vec4(normal, 0.0)).xyz);"
+            "\n  }"
+            "\n  else"
+            "\n  {"
+            "\n    normal = vec3(0.0, 0.0, 0.0);"
+            "\n  }"
+            "\n  for (int lightNum = 0; lightNum < in_numberOfLights; lightNum++)"
+            "\n  {"
+            "\n    vec3 ldir = in_lightDirection[lightNum].xyz;"
+            "\n    vec3 h = normalize(ldir + vdir);"
+            "\n    float nDotH = dot(normal, h);"
+            "\n    if (nDotH < 0.0 && in_twoSidedLighting)"
+            "\n    {"
+            "\n      nDotH = -nDotH;"
+            "\n    }"
+            "\n    float nDotL = dot(normal, ldir);"
+            "\n    if (nDotL < 0.0 && in_twoSidedLighting)"
+            "\n    {"
+            "\n      nDotL = -nDotL;"
+            "\n    }"
+            "\n    if (nDotL > 0.0)"
+            "\n    {"
+            "\n      diffuse += in_lightDiffuseColor[lightNum] * nDotL;"
+            "\n    }"
+            "\n    if (nDotH > 0.0)"
+            "\n    {"
+            "\n      specular = in_lightSpecularColor[lightNum] *"
+            "\n                 pow(nDotH, in_shininess[" + index + "]);"
+            "\n    }"
+            "\n    ambient += in_lightAmbientColor[lightNum];"
+            "\n  }"
+            "\n  finalColor.xyz = in_ambient[" + index + "] * ambient +"
+            "\n                   in_diffuse[" + index + "] * diffuse * color.rgb +"
+            "\n                   in_specular[" + index + "] * specular;"
+            ;
         }
         else if (lightingComplexity == 3)
         {
-          shaderStr += std::string("\
-            \n  g_fragWorldPos = in_modelViewMatrix * in_volumeMatrix[0] *\
-            \n                      in_textureDatasetMatrix[0] * vec4(g_dataPos, 1.0);\
-            \n  if (g_fragWorldPos.w != 0.0)\
-            \n    {\
-            \n    g_fragWorldPos /= g_fragWorldPos.w;\
-            \n    }\
-            \n  vec3 viewDirection = normalize(-g_fragWorldPos.xyz);\
-            \n  vec3 ambient = vec3(0,0,0);\
-            \n  vec3 diffuse = vec3(0,0,0);\
-            \n  vec3 specular = vec3(0,0,0);\
-            \n  vec3 vertLightDirection;\
-            \n  vec3 normal = normalize((in_textureToEye[0] * vec4(gradient.xyz, 0.0)).xyz);\
-            \n  vec3 lightDir;\
-            \n  for (int lightNum = 0; lightNum < in_numberOfLights; lightNum++)\
-            \n    {\
-            \n    float attenuation = 1.0;\
-            \n    // directional\
-            \n    lightDir = in_lightDirection[lightNum];\
-            \n    if (in_lightPositional[lightNum] == 0)\
-            \n      {\
-            \n      vertLightDirection = lightDir;\
-            \n      }\
-            \n    else\
-            \n      {\
-            \n      vertLightDirection = (g_fragWorldPos.xyz - in_lightPosition[lightNum]);\
-            \n      float distance = length(vertLightDirection);\
-            \n      vertLightDirection = normalize(vertLightDirection);\
-            \n      attenuation = 1.0 /\
-            \n                    (in_lightAttenuation[lightNum].x\
-            \n                    + in_lightAttenuation[lightNum].y * distance\
-            \n                    + in_lightAttenuation[lightNum].z * distance * distance);\
-            \n      // per OpenGL standard cone angle is 90 or less for a spot light\
-            \n      if (in_lightConeAngle[lightNum] <= 90.0)\
-            \n        {\
-            \n        float coneDot = dot(vertLightDirection, lightDir);\
-            \n        // if inside the cone\
-            \n        if (coneDot >= cos(radians(in_lightConeAngle[lightNum])))\
-            \n          {\
-            \n          attenuation = attenuation * pow(coneDot, in_lightExponent[lightNum]);\
-            \n          }\
-            \n        else\
-            \n          {\
-            \n          attenuation = 0.0;\
-            \n          }\
-            \n        }\
-            \n      }\
-            \n  // diffuse and specular lighting\
-            \n  float nDotL = dot(normal, vertLightDirection);\
-            \n  if (nDotL < 0.0 && in_twoSidedLighting)\
-            \n    {\
-            \n    nDotL = -nDotL;\
-            \n    }\
-            \n  if (nDotL > 0.0)\
-            \n    {\
-            \n    float df = max(0.0, attenuation * nDotL);\
-            \n    diffuse += (df * in_lightDiffuseColor[lightNum]);\
-            \n    }\
-            \n  vec3 h = normalize(vertLightDirection + viewDirection);\
-            \n  float nDotH = dot(normal, h);\
-            \n  if (nDotH < 0.0 && in_twoSidedLighting)\
-            \n    {\
-            \n    nDotH = -nDotH;\
-            \n    }\
-            \n  if (nDotH > 0.0)\
-            \n    {\
-            \n    float sf = attenuation * pow(nDotH, in_shininess[" + index + "]);\
-            \n    specular += (sf * in_lightSpecularColor[lightNum]);\
-            \n    }\
-            \n    ambient += in_lightAmbientColor[lightNum];\
-            \n  }\
-            \n  finalColor.xyz = in_ambient[" + index + "] * ambient +\
-            \n                   in_diffuse[" + index + "] * diffuse * color.rgb +\
-            \n                   in_specular[" + index + "] * specular;\
-          ");
+          shaderStr +=
+            "\n  g_fragWorldPos = in_modelViewMatrix * in_volumeMatrix[0] *"
+            "\n                      in_textureDatasetMatrix[0] * vec4(g_dataPos, 1.0);"
+            "\n  if (g_fragWorldPos.w != 0.0)"
+            "\n  {"
+            "\n    g_fragWorldPos /= g_fragWorldPos.w;"
+            "\n  }"
+            "\n  vec3 viewDirection = normalize(-g_fragWorldPos.xyz);"
+            "\n  vec3 ambient = vec3(0,0,0);"
+            "\n  vec3 diffuse = vec3(0,0,0);"
+            "\n  vec3 specular = vec3(0,0,0);"
+            "\n  vec3 vertLightDirection;"
+            "\n  vec3 normal = normalize((in_textureToEye[0] * vec4(gradient.xyz, 0.0)).xyz);"
+            "\n  vec3 lightDir;"
+            "\n  for (int lightNum = 0; lightNum < in_numberOfLights; lightNum++)"
+            "\n  {"
+            "\n    float attenuation = 1.0;"
+            "\n    // directional"
+            "\n    lightDir = in_lightDirection[lightNum];"
+            "\n    if (in_lightPositional[lightNum] == 0)"
+            "\n    {"
+            "\n      vertLightDirection = lightDir;"
+            "\n    }"
+            "\n    else"
+            "\n    {"
+            "\n      vertLightDirection = (g_fragWorldPos.xyz - in_lightPosition[lightNum]);"
+            "\n      float distance = length(vertLightDirection);"
+            "\n      vertLightDirection = normalize(vertLightDirection);"
+            "\n      attenuation = 1.0 /"
+            "\n                    (in_lightAttenuation[lightNum].x"
+            "\n                    + in_lightAttenuation[lightNum].y * distance"
+            "\n                    + in_lightAttenuation[lightNum].z * distance * distance);"
+            "\n      // per OpenGL standard cone angle is 90 or less for a spot light"
+            "\n      if (in_lightConeAngle[lightNum] <= 90.0)"
+            "\n      {"
+            "\n        float coneDot = dot(vertLightDirection, lightDir);"
+            "\n        // if inside the cone"
+            "\n        if (coneDot >= cos(radians(in_lightConeAngle[lightNum])))"
+            "\n        {"
+            "\n          attenuation = attenuation * pow(coneDot, in_lightExponent[lightNum]);"
+            "\n        }"
+            "\n        else"
+            "\n        {"
+            "\n          attenuation = 0.0;"
+            "\n        }"
+            "\n      }"
+            "\n    }"
+            "\n    // diffuse and specular lighting"
+            "\n    float nDotL = dot(normal, vertLightDirection);"
+            "\n    if (nDotL < 0.0 && in_twoSidedLighting)"
+            "\n    {"
+            "\n      nDotL = -nDotL;"
+            "\n    }"
+            "\n    if (nDotL > 0.0)"
+            "\n    {"
+            "\n      float df = max(0.0, attenuation * nDotL);"
+            "\n      diffuse += (df * in_lightDiffuseColor[lightNum]);"
+            "\n    }"
+            "\n    vec3 h = normalize(vertLightDirection + viewDirection);"
+            "\n    float nDotH = dot(normal, h);"
+            "\n    if (nDotH < 0.0 && in_twoSidedLighting)"
+            "\n    {"
+            "\n      nDotH = -nDotH;"
+            "\n    }"
+            "\n    if (nDotH > 0.0)"
+            "\n    {"
+            "\n      float sf = attenuation * pow(nDotH, in_shininess[" + index + "]);"
+            "\n      specular += (sf * in_lightSpecularColor[lightNum]);"
+            "\n    }"
+            "\n    ambient += in_lightAmbientColor[lightNum];"
+            "\n  }"
+            "\n  finalColor.xyz = in_ambient[" + index + "] * ambient +"
+            "\n                   in_diffuse[" + index + "] * diffuse * color.rgb +"
+            "\n                   in_specular[" + index + "] * specular;"
+          ;
         }
       }
       else
       {
-        shaderStr += std::string(
+        shaderStr +=
           "\n  finalColor = vec4(color.rgb, 0.0);"
-        );
+        ;
       }
       
       //auto glMapper = vtkOpenGLGPUVolumeRayCastMapper::SafeDownCast(mapper);
@@ -989,7 +1008,8 @@ namespace vtkvolume
       shaderStr += std::string("\
         \n  finalColor.a = color.a;\
         \n  return finalColor;\
-        \n  }"
+        \n}\
+        \n"
       );
 
       ++i;

@@ -910,10 +910,10 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetLightingShaderParameters(
   prog->SetUniform2fv("in_shadingGradientScales", shadingGradientScales.size() / 2, (const float(*)[2]) (shadingGradientScales.data()));
 
   // Set advanced lighting features
-  if (vol && !vol->GetProperty()->GetShade())
-  {
-    return;
-  }
+  //if (vol && !vol->GetProperty()->GetShade())
+  //{
+  //  return;
+  //}
 
   prog->SetUniformi("in_twoSidedLighting", ren->GetTwoSidedLighting());
 
