@@ -305,6 +305,17 @@ public:
     return false;
   }
 
+  void SetOpacity(int index, double value);
+  void SetOpacity(double value)
+  {
+      this->SetOpacity(0, value);
+  }
+  double GetOpacity(int index);
+  double GetOpacity()
+  {
+      return this->GetOpacity(0);
+  }
+
   //@{
   /**
    * Set/Get the shading of a volume. If shading is turned off, then
@@ -553,6 +564,7 @@ protected:
   vtkImageData* TransferFunction2D[VTK_MAX_VRCOMP];
   vtkTimeStamp TransferFunction2DMTime[VTK_MAX_VRCOMP];
 
+  double Opacity[VTK_MAX_VRCOMP];
   int Shade[VTK_MAX_VRCOMP];
   double Ambient[VTK_MAX_VRCOMP];
   double Diffuse[VTK_MAX_VRCOMP];

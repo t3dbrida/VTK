@@ -52,6 +52,7 @@ vtkVolumeProperty::vtkVolumeProperty()
 
     this->ComponentWeight[i]                 = 1.0;
 
+    this->Opacity[i] = 1.;
     this->Shade[i]                           = 0;
     this->Ambient[i]                         = 0.1;
     this->Diffuse[i]                         = 0.7;
@@ -149,6 +150,7 @@ void vtkVolumeProperty::DeepCopy(vtkVolumeProperty *p)
 
     this->SetDisableGradientOpacity(i, p->GetDisableGradientOpacity(i));
 
+    this->SetOpacity(i, p->GetOpacity(i));
     this->SetShade(i, p->GetShade(i));
     this->SetAmbient(i, p->GetAmbient(i));
     this->SetDiffuse(i, p->GetDiffuse(i));
@@ -593,6 +595,20 @@ double vtkVolumeProperty::GetComponentWeight(int index)
   }
 
   return this->ComponentWeight[index];
+}
+
+void vtkVolumeProperty::SetOpacity(int index, double value)
+{
+    if (this->Opacity[index] != value)
+    {
+        this->Opacity[index] = value;
+        this->Modified();
+    }
+}
+
+double vtkVolumeProperty::GetOpacity(int index)
+{
+    return this->Opacity[index];
 }
 
 void vtkVolumeProperty::SetShade( int index, int value )

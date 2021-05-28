@@ -844,6 +844,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetLightingShaderParameters(
     return;
   }
 
+  std::vector<float> opacity;
   std::vector<float> ambient;
   std::vector<float> diffuse;
   std::vector<float> specular;
@@ -876,6 +877,9 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetLightingShaderParameters(
 
           shadingGradientScales.emplace_back(volumeProperty->GetShadingGradientScaleMin(0));
           shadingGradientScales.emplace_back(volumeProperty->GetShadingGradientScaleMax(0));
+
+          value = volumeProperty->GetOpacity(0);
+          opacity.emplace_back(value);
       }
   }
   else
@@ -901,6 +905,9 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetLightingShaderParameters(
 
       shadingGradientScales.emplace_back(volumeProperty->GetShadingGradientScaleMin(0));
       shadingGradientScales.emplace_back(volumeProperty->GetShadingGradientScaleMax(0));
+
+      value = volumeProperty->GetOpacity(0);
+      opacity.emplace_back(value);
   }
 
   prog->SetUniform3fv("in_ambient", ambient.size() / 3, (const float(*)[3]) (ambient.data()));
@@ -908,6 +915,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetLightingShaderParameters(
   prog->SetUniform3fv("in_specular", specular.size() / 3, (const float(*)[3]) (specular.data()));
   prog->SetUniform1fv("in_shininess", specularPower.size(), specularPower.data());
   prog->SetUniform2fv("in_shadingGradientScales", shadingGradientScales.size() / 2, (const float(*)[2]) (shadingGradientScales.data()));
+  prog->SetUniform1fv("in_opacities", opacity.size(), opacity.data());
 
   // Set advanced lighting features
   //if (vol && !vol->GetProperty()->GetShade())

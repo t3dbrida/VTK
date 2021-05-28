@@ -225,6 +225,7 @@ namespace vtkvolume
       "uniform vec3 in_textureExtentsMin;\n"
       "\n"
       "// Material and lighting\n"
+      "uniform float in_opacities[" << numInputs << "];\n"
       "uniform vec3 in_diffuse[" << numInputs << "];\n"
       "uniform vec3 in_ambient[" << numInputs << "];\n"
       "uniform vec3 in_specular[" << numInputs << "];\n"
@@ -609,154 +610,7 @@ namespace vtkvolume
           "  return vec4(g2.xyz, grad_mag);\n"
           "}\n";
       }
-
-      //shaderStr +=
-      //  "  // Central differences: (F_front - F_back) / 2h\n"
-      //  "  // This version of computeGradient() is only used for lighting\n"
-      //  "  // calculations (only direction matters), hence the difference is\n"
-      //  "  // not scaled by 2h and a dummy gradient mag is returned (-1.).\n"
-      //  "  return vec4((g1 - g2) / in_cellSpacing[" + index + "], -1.);\n"
-      //  "}\n";
     }
-
-    // original VTK code
-    //const bool hasLighting = HasLighting(inputs);
-    //const bool hasGradientOp = HasGradientOpacity(inputs);
-    //if (hasLighting && !hasGradientOp)
-    //{
-    //  shaderStr += std::string(
-    //    "// c is short for component\n"
-    //    "vec4 computeGradient(in vec3 texPos, in int c, in sampler3D volume,in int index)\n"
-    //    "{\n"
-    //    "  // Approximate Nabla(F) derivatives with central differences.\n"
-    //    "  vec3 g1; // F_front\n"
-    //    "  vec3 g2; // F_back\n"
-    //    "  vec3 xvec = vec3(in_cellStep[index].x, 0.0, 0.0);\n"
-    //    "  vec3 yvec = vec3(0.0, in_cellStep[index].y, 0.0);\n"
-    //    "  vec3 zvec = vec3(0.0, 0.0, in_cellStep[index].z);\n"
-    //    "  vec3 texPosPvec[3];\n"
-    //    "  texPosPvec[0] = texPos + xvec;\n"
-    //    "  texPosPvec[1] = texPos + yvec;\n"
-    //    "  texPosPvec[2] = texPos + zvec;\n"
-    //    "  vec3 texPosNvec[3];\n"
-    //    "  texPosNvec[0] = texPos - xvec;\n"
-    //    "  texPosNvec[1] = texPos - yvec;\n"
-    //    "  texPosNvec[2] = texPos - zvec;\n"
-    //    "  g1.x = texture3D(volume, vec3(texPosPvec[0]))[c];\n"
-    //    "  g1.y = texture3D(volume, vec3(texPosPvec[1]))[c];\n"
-    //    "  g1.z = texture3D(volume, vec3(texPosPvec[2]))[c];\n"
-    //    "  g2.x = texture3D(volume, vec3(texPosNvec[0]))[c];\n"
-    //    "  g2.y = texture3D(volume, vec3(texPosNvec[1]))[c];\n"
-    //    "  g2.z = texture3D(volume, vec3(texPosNvec[2]))[c];\n"
-    //    "\n");
-    //  if (UseClippedVoxelIntensity(inputs) && mapper->GetClippingPlanes())
-    //  {
-    //    shaderStr += std::string(
-    //      "  vec4 g1ObjDataPos[3], g2ObjDataPos[3];\n"
-    //      "  for (int i = 0; i < 3; ++i)\n"
-    //      "  {\n"
-    //      "    g1ObjDataPos[i] = clip_texToObjMat * vec4(texPosPvec[i], 1.0);\n"
-    //      "    if (g1ObjDataPos[i].w != 0.0)\n"
-    //      "    {\n"
-    //      "      g1ObjDataPos[i] /= g1ObjDataPos[i].w;\n"
-    //      "    }\n"
-    //      "    g2ObjDataPos[i] = clip_texToObjMat * vec4(texPosNvec[i], 1.0);\n"
-    //      "    if (g2ObjDataPos[i].w != 0.0)\n"
-    //      "    {\n"
-    //      "      g2ObjDataPos[i] /= g2ObjDataPos[i].w;\n"
-    //      "    }\n"
-    //      "  }\n"
-    //      "\n"
-    //      "  for (int i = 0; i < clip_numPlanes && !g_skip; i = i + 6)\n"
-    //      "  {\n"
-    //      "    vec3 planeOrigin = vec3(in_clippingPlanes[i + 1],\n"
-    //      "                            in_clippingPlanes[i + 2],\n"
-    //      "                            in_clippingPlanes[i + 3]);\n"
-    //      "    vec3 planeNormal = normalize(vec3(in_clippingPlanes[i + 4],\n"
-    //      "                                      in_clippingPlanes[i + 5],\n"
-    //      "                                      in_clippingPlanes[i + 6]));\n"
-    //      "    for (int j = 0; j < 3; ++j)\n"
-    //      "    {\n"
-    //      "      if (dot(vec3(planeOrigin - g1ObjDataPos[j].xyz), planeNormal) > 0)\n"
-    //      "      {\n"
-    //      "        g1[j] = in_clippedVoxelIntensity;\n"
-    //      "      }\n"
-    //      "      if (dot(vec3(planeOrigin - g2ObjDataPos[j].xyz), planeNormal) > 0)\n"
-    //      "      {\n"
-    //      "        g2[j] = in_clippedVoxelIntensity;\n"
-    //      "      }\n"
-    //      "    }\n"
-    //      "  }\n"
-    //      "\n");
-    //  }
-    //  shaderStr += std::string(
-    //    "  // Apply scale and bias to the fetched values.\n"
-    //    "  g1 = g1 * in_volume_scale[index][c] + in_volume_bias[index][c];\n"
-    //    "  g2 = g2 * in_volume_scale[index][c] + in_volume_bias[index][c];\n"
-    //    "\n"
-    //    "  // Central differences: (F_front - F_back) / 2h\n"
-    //    "  // This version of computeGradient() is only used for lighting\n"
-    //    "  // calculations (only direction matters), hence the difference is\n"
-    //    "  // not scaled by 2h and a dummy gradient mag is returned (-1.).\n"
-    //    "  return vec4((g1 - g2) / in_cellSpacing[index], -1.0);\n"
-    //    "}\n");
-    //}
-    //else if (hasGradientOp)
-    //{
-    //  shaderStr += std::string(
-    //    "// c is short for component\n"
-    //    "vec4 computeGradient(in vec3 texPos, in int c, in sampler3D volume, in int index)\n"
-    //    "{\n"
-    //    "  // Approximate Nabla(F) derivatives with central differences.\n"
-    //    "  vec3 g1; // F_front\n"
-    //    "  vec3 g2; // F_back\n"
-    //    "  vec3 xvec = vec3(in_cellStep[index].x, 0.0, 0.0);\n"
-    //    "  vec3 yvec = vec3(0.0, in_cellStep[index].y, 0.0);\n"
-    //    "  vec3 zvec = vec3(0.0, 0.0, in_cellStep[index].z);\n"
-    //    "  g1.x = texture3D(volume, vec3(texPos + xvec))[c];\n"
-    //    "  g1.y = texture3D(volume, vec3(texPos + yvec))[c];\n"
-    //    "  g1.z = texture3D(volume, vec3(texPos + zvec))[c];\n"
-    //    "  g2.x = texture3D(volume, vec3(texPos - xvec))[c];\n"
-    //    "  g2.y = texture3D(volume, vec3(texPos - yvec))[c];\n"
-    //    "  g2.z = texture3D(volume, vec3(texPos - zvec))[c];\n"
-    //    "\n"
-    //    "  // Apply scale and bias to the fetched values.\n"
-    //    "  g1 = g1 * in_volume_scale[index][c] + in_volume_bias[index][c];\n"
-    //    "  g2 = g2 * in_volume_scale[index][c] + in_volume_bias[index][c];\n"
-    //    "\n"
-    //    "  // Scale values the actual scalar range.\n"
-    //    "  c = 4 * index + c;"
-    //    "  float range = in_scalarsRange[c][1] - in_scalarsRange[c][0];\n"
-    //    "  g1 = in_scalarsRange[c][0] + range * g1;\n"
-    //    "  g2 = in_scalarsRange[c][0] + range * g2;\n"
-    //    "\n"
-    //    "  // Central differences: (F_front - F_back) / 2h\n"
-    //    "  g2 = g1 - g2;\n"
-    //    "\n"
-    //    "  float avgSpacing = (in_cellSpacing[index].x +\n"
-    //    "   in_cellSpacing[index].y + in_cellSpacing[index].z) / 3.0;\n"
-    //    "  vec3 aspect = in_cellSpacing[index] * 2.0 / avgSpacing;\n"
-    //    "  g2 /= aspect;\n"
-    //    "  float grad_mag = length(g2);\n"
-    //    "\n"
-    //    "  // Handle normalizing with grad_mag == 0.0\n"
-    //    "  g2 = grad_mag > 0.0 ? normalize(g2) : vec3(0.0);\n"
-    //    "\n"
-    //    "  range = range != 0 ? range : 1.0;\n"
-    //    "  grad_mag = grad_mag / in_gradMagMax[index];\n"
-    //    "  grad_mag = clamp(grad_mag, 0.0, 1.0);\n"
-    //    "\n"
-    //    "  return vec4(g2.xyz, grad_mag);\n"
-    //    "}\n");
-    //}
-    //else
-    //{
-    //  shaderStr += std::string(
-    //    "vec4 computeGradient(in vec3 texPos, in int c, in sampler3D volume, in int index)\n"
-    //    "{\n"
-    //    "  return vec4(0.0);\n"
-    //    "}\n");
-    //}
 
     return shaderStr;
   }
@@ -1006,7 +860,7 @@ namespace vtkvolume
       //}
     
       shaderStr += std::string("\
-        \n  finalColor.a = color.a;\
+        \n  finalColor.a = in_opacities[" + index + "] * color.a;\
         \n  return finalColor;\
         \n}\
         \n"
@@ -2097,7 +1951,14 @@ namespace vtkvolume
       if (noOfComponents == 3)
       {
         shaderStr += std::string("\
-        \n      g_fragColor = (1.0f - g_fragColor.a) * vec4(computeColor_0(scalar, computeOpacity_0(scalar))) + g_fragColor;"
+        \n      g_srcColor = vec4(0.0);\
+        \n      g_srcColor.a = computeOpacity_0(scalar);\
+        \n      if (g_srcColor.a > 0.0)\
+        \n      {\
+        \n        g_srcColor = computeColor_0(scalar, g_srcColor.a);\
+        \n        g_srcColor.rgb *= g_srcColor.a;\
+        \n        g_fragColor += (1.0f - g_fragColor.a) * g_srcColor;\
+        \n      }"
         );
       }
       //else if (glMapper->GetUseDepthPass() && glMapper->GetCurrentPass() ==
@@ -2117,7 +1978,7 @@ namespace vtkvolume
              \n      g_srcColor = vec4(0.0);\
              \n      g_srcColor.a = computeOpacity_0(scalar);\
              \n      if (g_srcColor.a > 0.0)\
-             \n        {\
+             \n      {\
              \n        g_srcColor = computeColor_0(scalar, g_srcColor.a);"
            );
          //}
@@ -2144,7 +2005,7 @@ namespace vtkvolume
          //  maskType != vtkGPUVolumeRayCastMapper::LabelMapMaskType)
          {
            shaderStr += std::string("\
-             \n        }"
+             \n      }"
            );
          }
       }
