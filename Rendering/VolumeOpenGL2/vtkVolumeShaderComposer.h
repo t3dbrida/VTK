@@ -512,23 +512,23 @@ namespace vtkvolume
       if (inputs[i].Texture->GetLoadedScalars()->GetNumberOfComponents() == 3)
       {
         shaderStr +=
-          "  g1.x = ((texture3D(in_volume[" + index + "], vec3(texPosPvec[0])).rgb) == vec3(0.)) ? xvec.x : 0.;\n"
-          "  g1.y = ((texture3D(in_volume[" + index + "], vec3(texPosPvec[1])).rgb) == vec3(0.)) ? yvec.y : 0.;\n"
-          "  g1.z = ((texture3D(in_volume[" + index + "], vec3(texPosPvec[2])).rgb) == vec3(0.)) ? zvec.z : 0.;\n"
-          "  g2.x = ((texture3D(in_volume[" + index + "], vec3(texPosNvec[0])).rgb) == vec3(0.)) ? -xvec.x : 0.;\n"
-          "  g2.y = ((texture3D(in_volume[" + index + "], vec3(texPosNvec[1])).rgb) == vec3(0.)) ? -yvec.y : 0.;\n"
-          "  g2.z = ((texture3D(in_volume[" + index + "], vec3(texPosNvec[2])).rgb) == vec3(0.)) ? -zvec.z : 0.;\n"
+          "  g1.x = (texPosPvec[0].x < in_cellStep[" + index + "].x || texPosPvec[0].x > 1. - in_cellStep[" + index + "].x || texture3D(in_volume[" + index + "], texPosPvec[0]).rgb == vec3(0.)) ? 1. : 0.;\n"
+          "  g1.y = (texPosPvec[1].y < in_cellStep[" + index + "].y || texPosPvec[1].y > 1. - in_cellStep[" + index + "].y || texture3D(in_volume[" + index + "], texPosPvec[1]).rgb == vec3(0.)) ? 1. : 0.;\n"
+          "  g1.z = (texPosPvec[2].z < in_cellStep[" + index + "].z || texPosPvec[2].z > 1. - in_cellStep[" + index + "].z || texture3D(in_volume[" + index + "], texPosPvec[2]).rgb == vec3(0.)) ? 1. : 0.;\n"
+          "  g2.x = (texPosNvec[0].x < in_cellStep[" + index + "].x || texPosNvec[0].x > 1. - in_cellStep[" + index + "].x || texture3D(in_volume[" + index + "], texPosNvec[0]).rgb == vec3(0.)) ? 1. : 0.;\n"
+          "  g2.y = (texPosNvec[1].y < in_cellStep[" + index + "].y || texPosNvec[1].y > 1. - in_cellStep[" + index + "].y || texture3D(in_volume[" + index + "], texPosNvec[1]).rgb == vec3(0.)) ? 1. : 0.;\n"
+          "  g2.z = (texPosNvec[2].z < in_cellStep[" + index + "].z || texPosNvec[2].z > 1. - in_cellStep[" + index + "].z || texture3D(in_volume[" + index + "], texPosNvec[2]).rgb == vec3(0.)) ? 1. : 0.;\n"
           "\n";
       }
       else
       {
         shaderStr +=
-          "  g1.x = texture3D(in_volume[" + index + "], vec3(texPosPvec[0]))[0];\n"
-          "  g1.y = texture3D(in_volume[" + index + "], vec3(texPosPvec[1]))[0];\n"
-          "  g1.z = texture3D(in_volume[" + index + "], vec3(texPosPvec[2]))[0];\n"
-          "  g2.x = texture3D(in_volume[" + index + "], vec3(texPosNvec[0]))[0];\n"
-          "  g2.y = texture3D(in_volume[" + index + "], vec3(texPosNvec[1]))[0];\n"
-          "  g2.z = texture3D(in_volume[" + index + "], vec3(texPosNvec[2]))[0];\n"
+          "  g1.x = texture3D(in_volume[" + index + "], texPosPvec[0])[0];\n"
+          "  g1.y = texture3D(in_volume[" + index + "], texPosPvec[1])[0];\n"
+          "  g1.z = texture3D(in_volume[" + index + "], texPosPvec[2])[0];\n"
+          "  g2.x = texture3D(in_volume[" + index + "], texPosNvec[0])[0];\n"
+          "  g2.y = texture3D(in_volume[" + index + "], texPosNvec[1])[0];\n"
+          "  g2.z = texture3D(in_volume[" + index + "], texPosNvec[2])[0];\n"
           "\n"
           "  // Apply scale and bias to the fetched values.\n"
           "  g1 = g1 * in_volume_scale[" + index + "][0] + in_volume_bias[" + index + "][0];\n"
@@ -579,7 +579,7 @@ namespace vtkvolume
       {
         shaderStr +=
           "\n"
-          "  g2 = normalize(g1 - g2);\n" 
+          "  g2 = g1 - g2;\n"
           "  return vec4(g2, g2 == vec3(0.) ? 0. : 1.);\n"
           "}\n";
       }
@@ -680,7 +680,7 @@ namespace vtkvolume
             "\n  //finalColor.xyz = in_ambient[" + index + "] * color.rgb +"
             "\n  //                 diffuse + specular;"
             "\n  float shadingFactor = smoothstep(in_shadingGradientScales[" + index + "].s, in_shadingGradientScales[" + index + "].t, gradient.w);"
-            "\n  finalColor.xyz  = mix(color.rgb, in_ambient[" + index + "] * color.rgb, shadingFactor); // apply color for sf=0, ambient for sf=1"
+            "\n  finalColor.xyz = /*mix(color.rgb, */in_ambient[" + index + "] * color.rgb/*, shadingFactor)*/; // apply color for sf=0, ambient for sf=1"
             "\n  finalColor.xyz += shadingFactor * (diffuse + specular);"
             "\n"
             ;
