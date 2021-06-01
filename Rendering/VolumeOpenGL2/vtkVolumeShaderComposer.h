@@ -680,7 +680,7 @@ namespace vtkvolume
             "\n  //finalColor.xyz = in_ambient[" + index + "] * color.rgb +"
             "\n  //                 diffuse + specular;"
             "\n  float shadingFactor = smoothstep(in_shadingGradientScales[" + index + "].s, in_shadingGradientScales[" + index + "].t, gradient.w);"
-            "\n  finalColor.xyz = /*mix(color.rgb, */in_ambient[" + index + "] * color.rgb/*, shadingFactor)*/; // apply color for sf=0, ambient for sf=1"
+            "\n  finalColor.xyz = mix(color.rgb, in_ambient[" + index + "] * color.rgb, shadingFactor); // apply color for sf=0, ambient for sf=1"
             "\n  finalColor.xyz += shadingFactor * (diffuse + specular);"
             "\n"
             ;
@@ -1031,7 +1031,10 @@ namespace vtkvolume
     {
       auto prop = item.second.Volume->GetProperty();
       if (prop->GetTransferFunctionMode() != vtkVolumeProperty::TF_1D)
-        continue;
+      {
+          i++;
+          continue;
+      }
 
       const int noOfComponents = item.second.Texture->GetLoadedScalars()->GetNumberOfComponents();
       if (noOfComponents == 1)
@@ -1137,7 +1140,7 @@ namespace vtkvolume
       std::string shaderStr = ss.str();
       shaderStr +=  "\nfloat computeOpacity_0(vec4 scalar)\
                      \n{\
-                     \n  return texture2D(" + opacityTableMap[0] + "[0], vec2(scalar.w, 0)).r;\
+                     \n  return texture2D(" + opacityTableMap[0] + ", vec2(scalar.w, 0)).r;\
                      \n}";
       return shaderStr;
     }
@@ -1536,7 +1539,7 @@ namespace vtkvolume
           if (property->GetTransferFunctionMode() == vtkVolumeProperty::TF_1D)
           {
             toShaderStr <<
-            "            g_srcColor.a = computeOpacity(s, in_opacityTransferFunc_" << i << "[0]);\n"
+            "            g_srcColor.a = computeOpacity_0(s, in_opacityTransferFunc_" << i << "[0]);\n"
             "            g_srcColor.rgb = computeColor(vec2(s, 0),\n"
             "                                          computeGradient(texPos, 0, in_volume[" << i <<  "], " << i << "),\n"
             "                                          in_colorTransferFunc_" << i << "[0],\n"
