@@ -64,6 +64,8 @@ float g_terminatePointMax;
 
 //VTK::BinaryMask::Dec
 
+//VTK::RegionMask::Dec
+
 //VTK::CompositeMask::Dec
 
 //VTK::GradientCache::Dec
@@ -233,6 +235,8 @@ vec4 castRay(const float zStart, const float zEnd)
     //VTK::Cropping::Impl
 
     //VTK::BinaryMask::Impl
+
+    //VTK::RegionMask::Impl
 
     //VTK::CompositeMask::Impl
 

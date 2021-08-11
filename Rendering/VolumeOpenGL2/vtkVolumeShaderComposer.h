@@ -1604,13 +1604,35 @@ namespace vtkvolume
           const int numOfComponents = item.second.Texture->GetLoadedScalars()->GetNumberOfComponents();
           if (numOfComponents == 1)
           {
+            const std::size_t regionCount = property->GetRegions().size();
+            if (regionCount)
+            {
+              toShaderStr <<
+                    "\n"
+                    "      vec4 regionResultColor = vec4(0.);\n"
+                    "      for (int regionIndex = 0; regionIndex < " << regionCount << "; ++regionIndex)\n"
+                    "      {\n"
+                    "          vec4 regionMaskValue = texture3D(in_region_mask_" << i << "[regionIndex], texPos);\n"
+                    "          if (regionMaskValue.r > 0)\n"
+                    "          {\n"
+                    "              vec4 regionColor = in_region_color_" << i << "[regionIndex];\n"
+                    "              regionColor.rgb *= regionColor.a;\n"
+                    "              regionResultColor += (1.0f - regionResultColor.a) * regionColor;\n"
+                    "          }\n"
+                    "      }\n";
+            }
             if (property->GetTransferFunctionMode() == vtkVolumeProperty::TF_1D)
             {
               toShaderStr <<
                 "        scalar = vec4(scalar.r);\n"
                 "        g_srcColor = vec4(0.0);\n"
                 "        g_srcColor.a = computeOpacity_" << i << "(scalar);\n"
-                "        if (g_srcColor.a > 0.0)\n"
+                "        if (g_srcColor.a > 0.0";
+              if (regionCount)
+              {
+                  toShaderStr << " || regionResultColor.a > 0.";
+              }
+              toShaderStr << ")\n"
                 "        {\n"
                 "          g_srcColor.rgb = computeColor_" << i << "(vec2(scalar.r, 0.), computeGradient_" << i << "(texPos)).rgb;\n";
             
@@ -1633,8 +1655,13 @@ namespace vtkvolume
                 // Sample 2DTF directly
                 "        " << grad << "[0] = computeGradient_" << i << "(texPos);\n"
                 "        g_srcColor = computeColor_" << i << "(vec2(scalar.r, " << grad << "[0].w), " << grad << "[0]);\n"
-                "        if (g_srcColor.a > 0.0)\n"
-                "        {\n";
+                "        if (g_srcColor.a > 0.0";
+              if (regionCount)
+              {
+                toShaderStr << " || regionResultColor.a > 0.";
+              }
+              toShaderStr << ")\n"
+                  "        {\n";
             }
           }
           else if (numOfComponents == 3)
@@ -1644,6 +1671,22 @@ namespace vtkvolume
                 "        g_srcColor = vec4(computeColor_" << i << "(scalar.xyz, computeOpacity_" << i << "(scalar), computeGradient_" << i << "(texPos)));\n"
                 "        if (g_srcColor.a > 0.0)\n"
                 "        {\n";
+          }
+
+          if (numOfComponents == 1)
+          {
+              const std::size_t regionCount = property->GetRegions().size();
+              if (regionCount)
+              {
+                  toShaderStr <<
+                      "\n"
+                      "        if (regionResultColor.a > 0.)\n"
+                      "        {\n"
+                      "            regionResultColor = computeLighting_" << i << "(regionResultColor, computeGradient_" << i << "(texPos));\n"
+                      "            g_srcColor.rgb *= g_srcColor.a;\n"
+                      "            g_srcColor = regionResultColor + (1. - regionResultColor.a) * g_srcColor;\n"
+                      "        }\n";
+              }
           }
 
           toShaderStr <<
@@ -1666,7 +1709,7 @@ namespace vtkvolume
   //--------------------------------------------------------------------------
   std::string ShadingSingleInput(vtkRenderer* vtkNotUsed(ren),
                                  vtkVolumeMapper* mapper,
-                                 vtkVolume* vtkNotUsed(vol),
+                                 vtkVolume* vol,
                                  vtkImageData* maskInput,
                                  vtkVolumeTexture* mask,// int maskType,
                                  int noOfComponents,
@@ -1695,7 +1738,7 @@ namespace vtkvolume
         );
     }
 
-    if (mapper->GetBlendMode() == vtkVolumeMapper::MAXIMUM_INTENSITY_BLEND)
+    /*if (mapper->GetBlendMode() == vtkVolumeMapper::MAXIMUM_INTENSITY_BLEND)
     {
       if (noOfComponents > 1)
       {
@@ -1851,7 +1894,7 @@ namespace vtkvolume
         );
       }
     }
-    else if (mapper->GetBlendMode() == vtkVolumeMapper::ISOSURFACE_BLEND)
+    else */if (mapper->GetBlendMode() == vtkVolumeMapper::ISOSURFACE_BLEND)
     {
       shaderStr += std::string("\
         \n#if NUMBER_OF_CONTOURS_0\
@@ -1977,14 +2020,46 @@ namespace vtkvolume
          //if (!mask || !maskInput ||
              //maskType != vtkGPUVolumeRayCastMapper::LabelMapMaskType)
          //{
-           shaderStr += std::string("\
+          const std::size_t regionCount = vol->GetProperty()->GetRegions().size();
+          if (regionCount)
+          {
+              shaderStr +=
+                  "\n"
+                  "      vec4 regionResultColor = vec4(0.);\n"
+                  "      for (int regionIndex = 0; regionIndex < " + std::to_string(regionCount) + "; ++regionIndex)\n"
+                  "      {\n"
+                  "          vec4 regionMaskValue = texture3D(in_region_mask_0[regionIndex], g_dataPos);\n"
+                  "          if (regionMaskValue.r > 0)\n"
+                  "          {\n"
+                  "              vec4 regionColor = in_region_color_0[regionIndex];\n"
+                  "              regionColor.rgb *= regionColor.a;\n"
+                  "              regionResultColor += (1.0f - regionResultColor.a) * regionColor;\n"
+                  "          }\n"
+                  "      }\n";
+          }
+          shaderStr += "\
              \n      g_srcColor = vec4(0.0);\
              \n      g_srcColor.a = computeOpacity_0(scalar);\
-             \n      if (g_srcColor.a > 0.0)\
+             \n      if (g_srcColor.a > 0.0";
+          if (regionCount)
+          {
+              shaderStr += " || regionResultColor.a > 0.";
+          }
+          shaderStr += ")\n\
              \n      {\
-             \n        g_srcColor = computeColor_0(scalar, g_srcColor.a);"
-           );
+             \n        g_srcColor = computeColor_0(scalar, g_srcColor.a);";
          //}
+         if (regionCount)
+         {
+            shaderStr +=
+                "\n"
+                "        if (regionResultColor.a > 0.)\n"
+                "        {\n"
+                "            regionResultColor = computeLighting_0(regionResultColor, computeGradient_0(g_dataPos));\n"
+                "            g_srcColor.rgb *= g_srcColor.a;\n"
+                "            g_srcColor = regionResultColor + (1. - regionResultColor.a) * g_srcColor;\n"
+                "        }\n";
+         }
 
          shaderStr += std::string("\
            \n        // Opacity calculation using compositing:\
@@ -2714,6 +2789,30 @@ namespace vtkvolume
     }
 
     return "";
+  }
+
+  //--------------------------------------------------------------------------
+  std::string RegionMaskDeclaration(vtkRenderer* vtkNotUsed(ren),
+                                    vtkVolumeMapper* vtkNotUsed(mapper),
+                                    vtkVolume* vtkNotUsed(vol),
+                                    vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs)
+  {
+    std::string result = "";
+
+    std::size_t i = 0;
+    for (const auto& input : inputs)
+    {
+      const std::size_t regionCount = input.second.Volume->GetProperty()->GetRegions().size();
+      if (regionCount)
+      {
+        const std::string regionCountStr = std::to_string(regionCount);
+        result += "uniform sampler3D in_region_mask_" + std::to_string(i) + '[' + regionCountStr + "];\n";
+        result += "uniform vec4 in_region_color_" + std::to_string(i) + '[' + regionCountStr + "];\n";
+      }
+      ++i;
+    }
+
+    return result;
   }
 
   //--------------------------------------------------------------------------

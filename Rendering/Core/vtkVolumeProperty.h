@@ -55,6 +55,8 @@
 #ifndef vtkVolumeProperty_h
 #define vtkVolumeProperty_h
 
+#include <vector>
+
 #include "vtkNew.h" // Needed for vtkNew
 #include "vtkRenderingCoreModule.h" // For export macro
 #include "vtkObject.h"
@@ -68,6 +70,13 @@ class vtkTimeStamp;
 class VTKRENDERINGCORE_EXPORT vtkVolumeProperty : public vtkObject
 {
 public:
+  struct Region
+  {
+    vtkImageData* mask;
+
+    double color[4];
+  };
+
   static vtkVolumeProperty *New();
   vtkTypeMacro(vtkVolumeProperty, vtkObject);
   void PrintSelf(ostream& os, vtkIndent indent) override;
@@ -521,6 +530,17 @@ public:
   }
   //@}
 
+  void AddRegion(const Region& region) noexcept;
+
+  const std::vector<Region>& GetRegions() const noexcept
+  {
+      return this->Regions;
+  }
+
+  void SetRegion(const std::size_t regionIndex, const Region& region) noexcept;
+
+  void RemoveRegion(const std::size_t regionIndex) noexcept;
+
 protected:
   vtkVolumeProperty();
   ~vtkVolumeProperty() override;
@@ -584,6 +604,8 @@ protected:
 
   double VolumeOfInterestMin[3];
   double VolumeOfInterestMax[3];
+
+  std::vector<Region> Regions;
 
 private:
   vtkVolumeProperty(const vtkVolumeProperty&) = delete;

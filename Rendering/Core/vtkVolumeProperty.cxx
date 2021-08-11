@@ -105,6 +105,14 @@ vtkVolumeProperty::~vtkVolumeProperty()
       this->DefaultGradientOpacity[i]->UnRegister(this);
     }
   }
+
+  for (const Region& region : this->Regions)
+  {
+    if (vtkImageData* const regionMask = region.mask)
+    {
+      regionMask->UnRegister(this);
+    }
+  }
 }
 
 void vtkVolumeProperty::DeepCopy(vtkVolumeProperty *p)
@@ -164,6 +172,16 @@ void vtkVolumeProperty::DeepCopy(vtkVolumeProperty *p)
   this->SetVolumeOfInterestMin(voiMin[0], voiMin[1], voiMin[2]);
   double* voiMax = p->GetVolumeOfInterestMax();
   this->SetVolumeOfInterestMax(voiMax[0], voiMax[1], voiMax[2]);
+
+  for (const Region& region : p->Regions)
+  {
+    if (vtkImageData* const regionMask = region.mask)
+    {
+      regionMask->Register(this);
+    }
+  }
+
+  this->Regions = p->Regions;
 
   this->Modified();
 }
@@ -738,6 +756,39 @@ void vtkVolumeProperty::SetVolumeOfInterestMax(double maxX, double maxY, double 
     this->VolumeOfInterestMax[1] = maxY >= 0. && maxY <= 1. ? maxY : 1.;
     this->VolumeOfInterestMax[2] = maxZ >= 0. && maxZ <= 1. ? maxZ : 1.;
     this->Modified();
+}
+
+void vtkVolumeProperty::AddRegion(const Region& region) noexcept
+{
+  this->Regions.push_back(region);
+  if (vtkImageData* const regionMask = region.mask)
+  {
+    regionMask->Register(this);
+  }
+  this->Modified();
+}
+
+void vtkVolumeProperty::SetRegion(const std::size_t regionIndex, const Region& region) noexcept
+{
+    const Region& oldRegion = this->Regions[regionIndex];
+    if (region.mask != oldRegion.mask)
+    {
+        region.mask->Register(this);
+        oldRegion.mask->UnRegister(this);
+    }
+    this->Regions[regionIndex] = region;
+    this->Modified();
+}
+
+void vtkVolumeProperty::RemoveRegion(const std::size_t regionIndex) noexcept
+{
+  auto it = this->Regions.begin() + regionIndex;
+  if (vtkImageData* const regionMask = it->mask)
+  {
+    regionMask->UnRegister(this);
+  }
+  this->Regions.erase(it);
+  this->Modified();
 }
 
 // Print the state of the volume property.

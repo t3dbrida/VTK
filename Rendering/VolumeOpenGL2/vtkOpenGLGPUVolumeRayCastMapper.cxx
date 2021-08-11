@@ -252,7 +252,8 @@ public:
   void DeleteMaskTransfer();
   ///@}
 
-  bool LoadMask(vtkRenderer* ren);
+  bool LoadMasks(vtkRenderer* ren);
+  bool LoadRegions(vtkRenderer* ren);
 
   // Update the depth sampler with the current state of the z-buffer. The
   // sampler is used for z-buffer compositing with opaque geometry during
@@ -368,6 +369,7 @@ public:
    * Feature specific.
    */
   void SetMaskShaderParameters(vtkShaderProgram* prog, int noOfComponents);
+  void SetRegionShaderParameters(vtkShaderProgram* prog);
   void SetRenderToImageParameters(vtkShaderProgram* prog);
   void SetAdvancedShaderParameters(vtkRenderer* ren, vtkShaderProgram* prog,
     vtkVolume* vol, vtkVolumeTexture::VolumeBlock* block, int numComp);
@@ -477,6 +479,17 @@ public:
 
   vtkSmartPointer<vtkPolyData> BBoxPolyData;
   std::map<int, vtkSmartPointer<vtkVolumeTexture>> CurrentMasks;
+
+  struct RegionMaskTexture final
+  {
+      vtkImageData* mask;
+
+      vtkSmartPointer<vtkVolumeTexture> texture;
+
+      vtkTimeStamp timeStamp;
+  };
+
+  std::map<int, std::vector<RegionMaskTexture>> RegionMaskTextures;
 
   vtkTimeStamp InitializationTime;
   vtkRenderWindow* LastRenderWindow;
@@ -692,9 +705,9 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateTransferFunctions(
 }
 
 //-----------------------------------------------------------------------------
-bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadMask(vtkRenderer* ren)
+bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadMasks(vtkRenderer* ren)
 {
-  bool result = true;
+  bool result = false;
   for (const auto& mask : this->Parent->Masks)
   {
     const int volumeIndex = mask.first;
@@ -721,6 +734,88 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadMask(vtkRenderer* ren)
     
       this->MaskUpdateTime[volumeIndex].Modified();
     }
+  }
+
+  return result;
+}
+
+bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadRegions(vtkRenderer* ren)
+{
+  bool result = false;
+
+  for (auto in : this->Parent->AssembledInputs)
+  {
+      const std::vector<vtkVolumeProperty::Region>& regions = in.second.Volume->GetProperty()->GetRegions();
+      auto it = this->RegionMaskTextures.find(in.first);
+      if (it != this->RegionMaskTextures.end())
+      {
+          std::vector<RegionMaskTexture>& regionTextures = it->second;
+          for (auto rit = regionTextures.begin(), rend = regionTextures.end(); rit != rend;)
+          {
+              bool found = false; 
+              for (vtkVolumeProperty::Region region : regions)
+              {
+                  if (region.mask == rit->mask)
+                  {
+                      found = true;
+                      break;
+                  }
+              }
+
+              if (!found)
+              {
+                  rit = regionTextures.erase(rit);
+                  rend = regionTextures.end();
+              }
+              else
+              {
+                  ++rit;
+              }
+          }
+
+          if (regionTextures.empty())
+          {
+              it = this->RegionMaskTextures.erase(it);
+          }
+      }
+      
+      if (regions.size() && it == this->RegionMaskTextures.end())
+      {
+          it = this->RegionMaskTextures.insert({in.first, {}}).first;
+      }
+
+      for (vtkVolumeProperty::Region region : regions)
+      {
+          std::vector<RegionMaskTexture>& regionTextures = it->second;
+          vtkImageData* const regionMask = region.mask;
+          auto rit = regionTextures.begin();
+          while (rit != regionTextures.end())
+          {
+              if (rit->mask == regionMask)
+              {
+                  break;
+              }
+              ++rit;
+          }
+          bool update = false;
+          if (update = rit == regionTextures.end())
+          {
+              rit = regionTextures.insert(regionTextures.end(), {regionMask, vtkSmartPointer<vtkVolumeTexture>::New(), {}});
+              const auto part = this->Partitions;
+              rit->texture->SetPartitions(part[0], part[1], part[2]);
+          }
+          else
+          {
+              update = rit->timeStamp < regionMask->GetMTime();
+          }
+          if (update)
+          {
+              int isCellData;
+              vtkDataArray* arr = this->Parent->GetScalars(regionMask, this->Parent->ScalarMode, this->Parent->ArrayAccessMode, this->Parent->ArrayId, this->Parent->ArrayName, isCellData);
+              result |= rit->texture->LoadVolume(ren, regionMask, arr, isCellData, VTK_NEAREST_INTERPOLATION);
+              rit->timeStamp.Modified();
+          }
+      }
   }
 
   return result;
@@ -2407,6 +2502,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::ReleaseGraphicsResources(
     currentMask.second->ReleaseGraphicsResources(window);
   }
   this->Impl->CurrentMasks.clear();
+  this->Impl->RegionMaskTextures.clear();
 
   this->Impl->ReleaseGraphicsMaskTransfer(window);
   this->Impl->DeleteMaskTransfer();
@@ -2904,6 +3000,16 @@ void vtkOpenGLGPUVolumeRayCastMapper::ReplaceShaderMasking(
         masks,
         this->Impl->CurrentMasks/*,
         this->MaskType*/));
+  }
+  // TODO move this elsewhere?
+  if (this->Impl->RegionMaskTextures.size())
+  {
+      vtkShaderProgram::Substitute(fragmentShader,
+                                   "//VTK::RegionMask::Dec",
+                                   vtkvolume::RegionMaskDeclaration(ren,
+                                                                    this,
+                                                                    vol,
+                                                                    this->AssembledInputs));
   }
 
   //vtkShaderProgram::Substitute(fragmentShader,
@@ -3492,11 +3598,8 @@ void vtkOpenGLGPUVolumeRayCastMapper::GPURender(vtkRenderer* ren,
   this->Impl->UpdateSamplingDistance(ren);
   this->Impl->UpdateTransferFunctions(ren);
 
-  // Masks are only supported on single-input rendring.
-  //if (!this->Impl->MultiVolume)
-  //{
-    this->Impl->LoadMask(ren);
-  //}
+  this->Impl->LoadMasks(ren);
+  this->Impl->LoadRegions(ren);
 
   // Get the shader cache. This is important to make sure that shader cache
   // knows the state of various shader programs in use.
@@ -3942,7 +4045,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetCameraShaderParameters(
 void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetMaskShaderParameters(
   vtkShaderProgram* prog, int noOfComponents)
 {
-    int maskI = 0;
+  int maskI = 0;
   for (const auto& currentMask : this->CurrentMasks)
   {
     auto maskTex = currentMask.second->GetCurrentBlock()->TextureObject;
@@ -3964,6 +4067,39 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetMaskShaderParameters(
   //    prog->SetUniformf("in_maskBlendFactor", this->Parent->MaskBlendFactor);
   //  }
   //}
+}
+
+void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetRegionShaderParameters(vtkShaderProgram* prog)
+{
+  for (const auto& in : this->Parent->AssembledInputs)
+  {
+    const int vi = in.first;
+    const std::string viStr = std::to_string(vi);
+    const std::vector<vtkVolumeProperty::Region>& regions = in.second.Volume->GetProperty()->GetRegions();
+    const std::string regionUniformName = "in_region_mask_" + viStr;
+    const std::string regionColorUniformName = "in_region_color_" + viStr;
+    std::size_t i = 0;
+    for (const vtkVolumeProperty::Region& region : regions)
+    {
+      auto it = this->RegionMaskTextures.find(vi);
+      if (it != this->RegionMaskTextures.end())
+      {
+        const std::vector<RegionMaskTexture>& rmts = it->second;
+        auto rmt = std::find_if(rmts.begin(), rmts.end(), [regionMask = region.mask] (const RegionMaskTexture& rmt) { return rmt.mask == regionMask; });
+        if (rmt != rmts.end())
+        {
+            vtkTextureObject* const to = rmt->texture->GetCurrentBlock()->TextureObject;
+            to->Activate();
+            const std::string iStr = std::to_string(i);
+            prog->SetUniformi((regionUniformName + '[' + iStr + ']').c_str(), to->GetTextureUnit());
+
+            const double* const regionColor = region.color;
+            const float color[4]{regionColor[0], regionColor[1], regionColor[2], regionColor[3]};
+            prog->SetUniform4f((regionColorUniformName + '[' + iStr + ']').c_str(), color);
+        }
+      }
+    }
+  }
 }
 
 //----------------------------------------------------------------------------
@@ -4074,6 +4210,14 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::FinishRendering(
     currentMask.second->GetCurrentBlock()->TextureObject->Deactivate();
   }
 
+  for (const auto& rmts : this->RegionMaskTextures)
+  {
+      for (const RegionMaskTexture& rmt : rmts.second)
+      {
+          rmt.texture->GetCurrentBlock()->TextureObject->Deactivate();
+      }
+  }
+
   //if(numComp == 1 &&
   //   this->Parent->BlendMode != vtkGPUVolumeRayCastMapper::ADDITIVE_BLEND)
   //{
@@ -4132,6 +4276,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderMultipleInputs(vtkRende
   this->SetMapperShaderParameters(prog, ren, independent, numComp);
   this->SetVolumeShaderParameters(prog, independent, numComp, wcvc);
   this->SetMaskShaderParameters(prog, numComp);
+  this->SetRegionShaderParameters(prog);
   this->SetLightingShaderParameters(ren, prog, this->MultiVolume, numSamplers);
   this->SetCameraShaderParameters(prog, ren, cam);
   this->SetAdvancedShaderParameters(ren, prog, vol, nullptr, numComp);
@@ -4159,6 +4304,16 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderSingleInput(vtkRenderer
     currentMask = this->CurrentMasks[0];
     currentMask->SortBlocksBackToFront(ren, vol->GetMatrix());
   }
+  if (this->RegionMaskTextures.find(0) != this->RegionMaskTextures.end())
+  {
+    for (const auto& rmts : this->RegionMaskTextures)
+    {
+      for (const RegionMaskTexture& rmt : rmts.second)
+      {
+        rmt.texture->SortBlocksBackToFront(ren, vol->GetMatrix());
+      }
+    }
+  }
 
   const int independent = vol->GetProperty()->GetIndependentComponents();
   const int numComp = volumeTex->GetLoadedScalars()->GetNumberOfComponents();
@@ -4173,6 +4328,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderSingleInput(vtkRenderer
     this->SetVolumeShaderParameters(prog, independent, numComp, wcvc);
 
     this->SetMaskShaderParameters(prog, numComp);
+    this->SetRegionShaderParameters(prog);
     this->SetLightingShaderParameters(ren, prog, vol, numSamplers);
     this->SetCameraShaderParameters(prog, ren, cam);
     this->SetAdvancedShaderParameters(ren, prog, vol, block, numComp);
