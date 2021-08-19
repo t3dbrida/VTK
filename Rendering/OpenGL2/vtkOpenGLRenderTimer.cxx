@@ -153,7 +153,7 @@ bool vtkOpenGLRenderTimer::Stopped()
 //------------------------------------------------------------------------------
 bool vtkOpenGLRenderTimer::Ready()
 {
-#ifndef NO_TIMESTAMP_QUERIES
+/*#ifndef NO_TIMESTAMP_QUERIES
   if (!this->IsSupported())
   {
     return false;
@@ -190,7 +190,7 @@ bool vtkOpenGLRenderTimer::Ready()
                           GL_QUERY_RESULT,
                           reinterpret_cast<GLuint64*>(&this->EndTime));
   }
-#endif // NO_TIMESTAMP_QUERIES
+#endif // NO_TIMESTAMP_QUERIES*/
 
   return true;
 }
