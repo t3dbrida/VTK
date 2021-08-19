@@ -1612,10 +1612,10 @@ namespace vtkvolume
                     "      vec4 regionResultColor = vec4(0.);\n"
                     "      for (int regionIndex = 0; regionIndex < " << regionCount << "; ++regionIndex)\n"
                     "      {\n"
-                    "          vec4 regionMaskValue = texture3D(in_region_mask_" << i << "[regionIndex], texPos);\n"
+                    "          vec4 regionMaskValue = texture3D(in_regionMask_" << i << "[regionIndex], texPos);\n"
                     "          if (regionMaskValue.r > 0)\n"
                     "          {\n"
-                    "              vec4 regionColor = in_region_color_" << i << "[regionIndex];\n"
+                    "              vec4 regionColor = texture2D(in_regionTransferFunction_" << i << "[regionIndex], vec2(regionMaskValue.r, 0.));\n"
                     "              regionColor.rgb *= regionColor.a;\n"
                     "              regionResultColor += (1.0f - regionResultColor.a) * regionColor;\n"
                     "          }\n"
@@ -2028,10 +2028,10 @@ namespace vtkvolume
                   "      vec4 regionResultColor = vec4(0.);\n"
                   "      for (int regionIndex = 0; regionIndex < " + std::to_string(regionCount) + "; ++regionIndex)\n"
                   "      {\n"
-                  "          vec4 regionMaskValue = texture3D(in_region_mask_0[regionIndex], g_dataPos);\n"
+                  "          vec4 regionMaskValue = texture3D(in_regionMask_0[regionIndex], g_dataPos);\n"
                   "          if (regionMaskValue.r > 0)\n"
                   "          {\n"
-                  "              vec4 regionColor = in_region_color_0[regionIndex];\n"
+                  "              vec4 regionColor = texture2D(in_regionTransferFunction_0[regionIndex], vec2(regionMaskValue.r, 0.));\n"
                   "              regionColor.rgb *= regionColor.a;\n"
                   "              regionResultColor += (1.0f - regionResultColor.a) * regionColor;\n"
                   "          }\n"
@@ -2806,8 +2806,8 @@ namespace vtkvolume
       if (regionCount)
       {
         const std::string regionCountStr = std::to_string(regionCount);
-        result += "uniform sampler3D in_region_mask_" + std::to_string(i) + '[' + regionCountStr + "];\n";
-        result += "uniform vec4 in_region_color_" + std::to_string(i) + '[' + regionCountStr + "];\n";
+        result += "uniform sampler3D in_regionMask_" + std::to_string(i) + '[' + regionCountStr + "];\n";
+        result += "uniform sampler2D in_regionTransferFunction_" + std::to_string(i) + '[' + regionCountStr + "];\n";
       }
       ++i;
     }

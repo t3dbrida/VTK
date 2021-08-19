@@ -241,7 +241,7 @@ public:
    * MaskBlendFactor.
    */
   void SetMask(const int volumeIndex, vtkImageData* const mask) noexcept;
-  vtkImageData* GetMask(const int volumeIndex) const noexcept;
+  vtkImageData* GetMask(const int volumeIndex) const;
 
   //void SetMaskInput(vtkImageData *mask);
   //vtkGetObjectMacro(MaskInput, vtkImageData);

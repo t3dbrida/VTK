@@ -72,9 +72,8 @@ class VTKRENDERINGCORE_EXPORT vtkVolumeProperty : public vtkObject
 public:
   struct Region
   {
-    vtkImageData* mask;
-
-    double color[4];
+    vtkImageData* mask,
+                * transferFunction;
   };
 
   static vtkVolumeProperty *New();

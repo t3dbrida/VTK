@@ -765,19 +765,44 @@ void vtkVolumeProperty::AddRegion(const Region& region) noexcept
   {
     regionMask->Register(this);
   }
+  if (vtkImageData* const regionMaskTransferFunction = region.transferFunction)
+  {
+    regionMaskTransferFunction->Register(this);
+  }
   this->Modified();
 }
 
 void vtkVolumeProperty::SetRegion(const std::size_t regionIndex, const Region& region) noexcept
 {
-    const Region& oldRegion = this->Regions[regionIndex];
-    if (region.mask != oldRegion.mask)
+  const Region& oldRegion = this->Regions[regionIndex];
+  vtkImageData* const regionMask = region.mask,
+              * const oldRegionMask = oldRegion.mask;
+  if (regionMask != oldRegionMask)
+  {
+    if (regionMask)
     {
-        region.mask->Register(this);
-        oldRegion.mask->UnRegister(this);
+        regionMask->Register(this);
     }
-    this->Regions[regionIndex] = region;
-    this->Modified();
+    if (oldRegionMask)
+    {
+        oldRegionMask->UnRegister(this);
+    }
+  }
+  vtkImageData* const regionMaskTransferFunction = region.transferFunction,
+              * const oldRegionMaskTransferFunction = oldRegion.transferFunction;
+  if (regionMaskTransferFunction != oldRegionMaskTransferFunction)
+  {
+    if (regionMaskTransferFunction)
+    {
+        regionMaskTransferFunction->Register(this);
+    }
+    if (oldRegionMaskTransferFunction)
+    {
+        oldRegionMaskTransferFunction->UnRegister(this);
+    }
+  }
+  this->Regions[regionIndex] = region;
+  this->Modified();
 }
 
 void vtkVolumeProperty::RemoveRegion(const std::size_t regionIndex) noexcept
@@ -786,6 +811,10 @@ void vtkVolumeProperty::RemoveRegion(const std::size_t regionIndex) noexcept
   if (vtkImageData* const regionMask = it->mask)
   {
     regionMask->UnRegister(this);
+  }
+  if (vtkImageData* const regionMaskTransferFunction = it->transferFunction)
+  {
+    regionMaskTransferFunction->UnRegister(this);
   }
   this->Regions.erase(it);
   this->Modified();

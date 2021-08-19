@@ -613,7 +613,7 @@ void vtkGPUVolumeRayCastMapper::SetMask(const int volumeIndex, vtkImageData* con
   this->Modified();
 }
 
-vtkImageData* vtkGPUVolumeRayCastMapper::GetMask(const int volumeIndex) const noexcept
+vtkImageData* vtkGPUVolumeRayCastMapper::GetMask(const int volumeIndex) const
 {
   return this->Masks.at(volumeIndex).Input;
 }
