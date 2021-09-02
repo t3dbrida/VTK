@@ -242,6 +242,11 @@ void vtkRenderWindow::SetStereoRender(vtkTypeBool stereo)
   }
 }
 
+void vtkRenderWindow::ImmediateRender()
+{
+    this->Render();
+}
+
 //----------------------------------------------------------------------------
 // Ask each renderer owned by this RenderWindow to render its image and
 // synchronize this process.

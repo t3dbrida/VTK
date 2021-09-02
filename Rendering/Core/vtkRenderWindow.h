@@ -142,6 +142,8 @@ public:
   vtkGetMacro(CapturingGL2PSSpecialProps, int);
   //@}
 
+  virtual void ImmediateRender();
+
   /**
    * Ask each renderer owned by this RenderWindow to render its image and
    * synchronize this process.

@@ -119,7 +119,7 @@ void vtkOpenGLHardwareSelector::BeginSelection()
     vtkOpenGLState::ScopedglEnableDisable bsaver(ostate, GL_BLEND);
     ostate->vtkglDisable(GL_BLEND);
 
-    rwin->Render();
+    rwin->ImmediateRender();
     this->Renderer->PreserveDepthBufferOn();
   }
 

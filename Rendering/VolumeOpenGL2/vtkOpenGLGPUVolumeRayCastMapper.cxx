@@ -3618,11 +3618,12 @@ void vtkOpenGLGPUVolumeRayCastMapper::GPURender(vtkRenderer* ren,
       this->Impl->BBoxPolyData = nullptr;
   }
 
-  if (!this->Impl->MultiVolume && multiVol && !multiVol->GetVolume(0)->GetVisibility())
-  {
-      // there is a single volume in the multi-volume but it is not visible, do not render it
-      return;
-  }
+  // 2021: this no longer applies due to the existance of regions
+  //if (!this->Impl->MultiVolume && multiVol && !multiVol->GetVolume(0)->GetVisibility())
+  //{
+  //    // there is a single volume in the multi-volume but it is not visible, do not render it
+  //    return;
+  //}
 
   vtkOpenGLCamera* cam = vtkOpenGLCamera::SafeDownCast(ren->GetActiveCamera());
 

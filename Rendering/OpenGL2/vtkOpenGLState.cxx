@@ -146,9 +146,10 @@ void vtkOpenGLState::CheckState()
   }
 
   GLint iparams[4];
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(_WIN32) || defined(WIN32)
   // OSX systems seem to change the glViewport upon a window resize
   // under the hood, so our viewport cache cannot be trusted
+  // T3D: happened on Windows with QDialog as well.
   this->ResetGlViewportState();
 #endif
   ::glGetIntegerv(GL_VIEWPORT, iparams);
