@@ -1530,12 +1530,12 @@ namespace vtkvolume
                     "        for (int regionIndex = 0; regionIndex < " << regionCount << "; ++regionIndex)\n"
                     "        {\n"
                     "            vec4 regionMaskValue = texture3D(in_regionMask_" << i << "[regionIndex], texPos);\n"
-                    "            if (regionMaskValue.r > 0)\n"
+                    "            vec4 regionColor = texture2D(in_regionTransferFunction_" << i << "[regionIndex], vec2(regionMaskValue.r, 0.));\n"
+                    "            if (regionColor.a > 0.)\n"
                     "            {\n"
-                    "                vec4 regionColor = texture2D(in_regionTransferFunction_" << i << "[regionIndex], vec2(regionMaskValue.r, 0.));\n"
                     "                regionColor.rgb *= regionColor.a;\n"
                     "                regionResultColor += (1.0f - regionResultColor.a) * regionColor;\n"
-                    "            }\n"
+                  "              }\n"
                     "        }\n";
             }
             toShaderStr << "          g_srcColor = vec4(0.0);\n"

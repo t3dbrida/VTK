@@ -99,8 +99,7 @@ public:
       this->TextureObject->SetWrapT(vtkTextureObject::ClampToEdge);
       this->TextureObject->SetMagnificationFilter(interpolation);
       this->TextureObject->SetMinificationFilter(interpolation);
-      this->TextureObject->Create2DFromRaw(width, height, 4, VTK_FLOAT,
-        data);
+      this->TextureObject->Create2DFromRaw(width, height, transfer2D->GetNumberOfScalarComponents(), transfer2D->GetScalarType(), data);
       this->LastInterpolation = interpolation;
       this->BuildTime.Modified();
     }
