@@ -48,6 +48,7 @@
 #ifndef vtkAxesActor_h
 #define vtkAxesActor_h
 
+#include "vtkNew.h"
 #include "vtkRenderingAnnotationModule.h" // For export macro
 #include "vtkProp3D.h"
 
@@ -302,18 +303,18 @@ protected:
   vtkAxesActor();
   ~vtkAxesActor() override;
 
-  vtkCylinderSource *CylinderSource;
-  vtkLineSource     *LineSource;
-  vtkConeSource     *ConeSource;
-  vtkSphereSource   *SphereSource;
+  vtkNew<vtkCylinderSource> CylinderSource;
+  vtkNew<vtkLineSource>     LineSource;
+  vtkNew<vtkConeSource>     ConeSource;
+  vtkNew<vtkSphereSource>   SphereSource;
 
-  vtkActor          *XAxisShaft;
-  vtkActor          *YAxisShaft;
-  vtkActor          *ZAxisShaft;
+  vtkNew<vtkActor>          XAxisShaft;
+  vtkNew<vtkActor>          YAxisShaft;
+  vtkNew<vtkActor>          ZAxisShaft;
 
-  vtkActor          *XAxisTip;
-  vtkActor          *YAxisTip;
-  vtkActor          *ZAxisTip;
+  vtkNew<vtkActor>          XAxisTip;
+  vtkNew<vtkActor>          YAxisTip;
+  vtkNew<vtkActor>          ZAxisTip;
 
   void               UpdateProps();
 
@@ -325,16 +326,16 @@ protected:
   int                ShaftType;
   int                TipType;
 
-  vtkPolyData       *UserDefinedTip;
-  vtkPolyData       *UserDefinedShaft;
+  vtkPolyData*       UserDefinedTip;
+  vtkPolyData*       UserDefinedShaft;
 
   char              *XAxisLabelText;
   char              *YAxisLabelText;
   char              *ZAxisLabelText;
 
-  vtkCaptionActor2D *XAxisLabel;
-  vtkCaptionActor2D *YAxisLabel;
-  vtkCaptionActor2D *ZAxisLabel;
+  vtkNew<vtkCaptionActor2D> XAxisLabel;
+  vtkNew<vtkCaptionActor2D> YAxisLabel;
+  vtkNew<vtkCaptionActor2D> ZAxisLabel;
 
   vtkTypeBool        AxisLabels;
 

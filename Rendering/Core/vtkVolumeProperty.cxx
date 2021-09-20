@@ -23,7 +23,6 @@
 #include "vtkPiecewiseFunction.h"
 #include "vtkPointData.h"
 
-
 vtkStandardNewMacro(vtkVolumeProperty);
 
 // Construct a new vtkVolumeProperty with default values
@@ -68,6 +67,14 @@ vtkVolumeProperty::vtkVolumeProperty()
     this->VolumeOfInterestMin[i] = 0.;
     this->VolumeOfInterestMax[i] = 1.;
   }
+
+  this->CylinderMask.center[0] = 0.;
+  this->CylinderMask.center[1] = 0.;
+  this->CylinderMask.center[2] = 0.;
+  this->CylinderMask.axis[0] = 0.;
+  this->CylinderMask.axis[1] = 0.;
+  this->CylinderMask.axis[2] = 0.;
+  this->CylinderMask.radius = 0.;
 }
 
 // Destruct a vtkVolumeProperty
@@ -172,6 +179,8 @@ void vtkVolumeProperty::DeepCopy(vtkVolumeProperty *p)
   this->SetVolumeOfInterestMin(voiMin[0], voiMin[1], voiMin[2]);
   double* voiMax = p->GetVolumeOfInterestMax();
   this->SetVolumeOfInterestMax(voiMax[0], voiMax[1], voiMax[2]);
+
+  this->CylinderMask = p->CylinderMask;
 
   for (const Region& region : p->Regions)
   {
@@ -756,6 +765,12 @@ void vtkVolumeProperty::SetVolumeOfInterestMax(double maxX, double maxY, double 
     this->VolumeOfInterestMax[1] = maxY >= 0. && maxY <= 1. ? maxY : 1.;
     this->VolumeOfInterestMax[2] = maxZ >= 0. && maxZ <= 1. ? maxZ : 1.;
     this->Modified();
+}
+
+void vtkVolumeProperty::SetCylinderMask(const struct CylinderMask& cylinderMask)
+{
+  this->CylinderMask = cylinderMask;
+  this->Modified();
 }
 
 void vtkVolumeProperty::AddRegion(const Region& region) noexcept

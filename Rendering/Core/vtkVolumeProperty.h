@@ -76,6 +76,13 @@ public:
                 * transferFunction;
   };
 
+  struct CylinderMask
+  {
+      double center[3],
+             axis[3],
+             radius;
+  };
+
   static vtkVolumeProperty *New();
   vtkTypeMacro(vtkVolumeProperty, vtkObject);
   void PrintSelf(ostream& os, vtkIndent indent) override;
@@ -529,6 +536,12 @@ public:
   }
   //@}
 
+  const struct CylinderMask& GetCylinderMask() const
+  {
+      return this->CylinderMask;
+  }
+  void SetCylinderMask(const struct CylinderMask& cylinderMask);
+
   void AddRegion(const Region& region) noexcept;
 
   const std::vector<Region>& GetRegions() const noexcept
@@ -603,6 +616,8 @@ protected:
 
   double VolumeOfInterestMin[3];
   double VolumeOfInterestMax[3];
+
+  struct CylinderMask CylinderMask;
 
   std::vector<Region> Regions;
 

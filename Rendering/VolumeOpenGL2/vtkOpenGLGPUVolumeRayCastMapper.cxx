@@ -82,6 +82,7 @@
 #include <vtkTransform.h>
 #include <vtkUnsignedCharArray.h>
 #include <vtkUnsignedIntArray.h>
+#include <vtkCylinder.h>
 
 
 #include <vtkVolumeInputHelper.h>
@@ -3960,12 +3961,14 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
   std::vector<int> volumeVisibility(numInputs, 0);
   std::vector<float> voiMinimums(3 * numInputs, 0.);
   std::vector<float> voiMaximums(3 * numInputs, 1.);
+  std::vector<float> cylinders(7 * numInputs, 0.); // 7: (center0 (3f), axis0 (3f), radius0 (1f)), (center1, axis1, radius1),...
 
   int index = 0;
   for (auto& input : this->Parent->AssembledInputs)
   {
+    vtkVolumeInputHelper& volumeInput = input.second;
     // Bind volume textures
-    auto block = input.second.Texture->GetCurrentBlock();
+    auto block = volumeInput.Texture->GetCurrentBlock();
     std::stringstream ss; ss << "in_volume[" << index << "]";
     block->TextureObject->Activate();
     prog->SetUniformi(ss.str().c_str(), block->TextureObject->GetTextureUnit());
@@ -3976,7 +3979,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
     float tbias[4] = {0.0, 0.0, 0.0, 0.0};
     float (*scalePtr) [4] = &tscale;
     float (*biasPtr) [4] = &tbias;
-    auto volTex = input.second.Texture.GetPointer();
+    auto volTex = volumeInput.Texture.GetPointer();
     if (!volTex->HandleLargeDataTypes &&
       (noOfComponents == 1 || noOfComponents == 2 || independentComponents))
     {
@@ -3989,13 +3992,13 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
     vtkInternal::CopyVector<float, 3>(volTex->CellSpacing, this->SpacingVec.data(), index * 3);
 
     // 8 elements stands for [min, max] per 4-components
-    vtkInternal::CopyVector<float, 8>(reinterpret_cast<float*>(volTex->ScalarRange),
-      this->RangeVec.data(), index * 8);
+    vtkInternal::CopyVector<float, 8>(reinterpret_cast<float*>(volTex->ScalarRange), this->RangeVec.data(), index * 8);
 
-    input.second.ActivateTransferFunction(prog, this->Parent->BlendMode);
+    volumeInput.ActivateTransferFunction(prog, this->Parent->BlendMode);
 
-    double* voimin = input.second.Volume->GetProperty()->GetVolumeOfInterestMin();
-    double* voimax = input.second.Volume->GetProperty()->GetVolumeOfInterestMax();
+    vtkVolumeProperty* const property = volumeInput.Volume->GetProperty();
+    double* const voimin = property->GetVolumeOfInterestMin(),
+          * const voimax = property->GetVolumeOfInterestMax();
     voiMinimums[3 * index] = voimin[0];
     voiMinimums[3 * index + 1] = voimin[1];
     voiMinimums[3 * index + 2] = voimin[2];
@@ -4003,7 +4006,21 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
     voiMaximums[3 * index + 1] = voimax[1];
     voiMaximums[3 * index + 2] = voimax[2];
 
-    volumeVisibility[index] = input.second.Volume->GetVisibility();
+    const struct vtkVolumeProperty::CylinderMask& cylinderMask = property->GetCylinderMask();
+    const double* const cylinderMaskCenter = cylinderMask.center,
+                * const cylinderMaskAxis = cylinderMask.axis,
+                        cylindeMaskRadius = cylinderMask.radius;
+
+    const size_t cylinderOffset = 7 * index;
+    cylinders[cylinderOffset]  = cylinderMaskCenter[0];
+    cylinders[cylinderOffset + 1] = cylinderMaskCenter[1];
+    cylinders[cylinderOffset + 2] = cylinderMaskCenter[2];
+    cylinders[cylinderOffset + 3] = cylinderMaskAxis[0];
+    cylinders[cylinderOffset + 4] = cylinderMaskAxis[1];
+    cylinders[cylinderOffset + 5] = cylinderMaskAxis[2];
+    cylinders[cylinderOffset + 6] = cylindeMaskRadius;
+
+    volumeVisibility[index] = volumeInput.Volume->GetVisibility();
 
     ++index;
   }
@@ -4023,6 +4040,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
   prog->SetUniform3fv("in_voi_max",
                       numInputs,
                       reinterpret_cast<const float(*)[3]>(voiMaximums.data()));
+  prog->SetUniform1fv("in_cylinderMask", 7 * numInputs, reinterpret_cast<const float(*)>(cylinders.data()));
 
   // upload volume visibility information
   prog->SetUniform1iv("in_volumeVisibility",

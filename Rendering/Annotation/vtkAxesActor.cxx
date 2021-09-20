@@ -14,6 +14,7 @@
 =========================================================================*/
 #include "vtkAxesActor.h"
 
+#include "vtkSmartPointer.h"
 #include "vtkActor.h"
 #include "vtkCaptionActor2D.h"
 #include "vtkConeSource.h"
@@ -33,9 +34,6 @@
 
 vtkStandardNewMacro(vtkAxesActor);
 
-vtkCxxSetObjectMacro( vtkAxesActor, UserDefinedTip, vtkPolyData );
-vtkCxxSetObjectMacro( vtkAxesActor, UserDefinedShaft, vtkPolyData );
-
 //----------------------------------------------------------------------------
 vtkAxesActor::vtkAxesActor()
 {
@@ -49,48 +47,37 @@ vtkAxesActor::vtkAxesActor()
   this->SetYAxisLabelText("Y");
   this->SetZAxisLabelText("Z");
 
-  this->XAxisShaft = vtkActor::New();
   this->XAxisShaft->GetProperty()->SetColor(1, 0, 0);
-  this->YAxisShaft = vtkActor::New();
   this->YAxisShaft->GetProperty()->SetColor(0, 1, 0);
-  this->ZAxisShaft = vtkActor::New();
   this->ZAxisShaft->GetProperty()->SetColor(0, 0, 1);
 
-  this->XAxisTip = vtkActor::New();
   this->XAxisTip->GetProperty()->SetColor(1, 0, 0);
-  this->YAxisTip = vtkActor::New();
   this->YAxisTip->GetProperty()->SetColor(0, 1, 0);
-  this->ZAxisTip = vtkActor::New();
   this->ZAxisTip->GetProperty()->SetColor(0, 0, 1);
 
-  this->CylinderSource = vtkCylinderSource::New();
   this->CylinderSource->SetHeight(1.0);
 
-  this->LineSource = vtkLineSource::New();
   this->LineSource->SetPoint1( 0.0, 0.0, 0.0 );
   this->LineSource->SetPoint2( 0.0, 1.0, 0.0 );
 
-  this->ConeSource = vtkConeSource::New();
   this->ConeSource->SetDirection( 0, 1, 0 );
   this->ConeSource->SetHeight( 1.0 );
 
-  this->SphereSource = vtkSphereSource::New();
+  vtkSmartPointer<vtkPolyDataMapper> xShaftMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+  vtkSmartPointer<vtkPolyDataMapper> yShaftMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+  vtkSmartPointer<vtkPolyDataMapper> zShaftMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
 
-  vtkPolyDataMapper *shaftMapper = vtkPolyDataMapper::New();
+  this->XAxisShaft->SetMapper( xShaftMapper );
+  this->YAxisShaft->SetMapper( yShaftMapper );
+  this->ZAxisShaft->SetMapper( zShaftMapper );
 
-  this->XAxisShaft->SetMapper( shaftMapper );
-  this->YAxisShaft->SetMapper( shaftMapper );
-  this->ZAxisShaft->SetMapper( shaftMapper );
+  vtkSmartPointer<vtkPolyDataMapper> xTipMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+  vtkSmartPointer<vtkPolyDataMapper> yTipMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+  vtkSmartPointer<vtkPolyDataMapper> zTipMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
 
-  shaftMapper->Delete();
-
-  vtkPolyDataMapper *tipMapper = vtkPolyDataMapper::New();
-
-  this->XAxisTip->SetMapper( tipMapper );
-  this->YAxisTip->SetMapper( tipMapper );
-  this->ZAxisTip->SetMapper( tipMapper );
-
-  tipMapper->Delete();
+  this->XAxisTip->SetMapper( xTipMapper );
+  this->YAxisTip->SetMapper( yTipMapper );
+  this->ZAxisTip->SetMapper( zTipMapper );
 
   this->TotalLength[0] = 1.0;
   this->TotalLength[1] = 1.0;
@@ -122,10 +109,6 @@ vtkAxesActor::vtkAxesActor()
   this->UserDefinedTip = nullptr;
   this->UserDefinedShaft = nullptr;
 
-  this->XAxisLabel = vtkCaptionActor2D::New();
-  this->YAxisLabel = vtkCaptionActor2D::New();
-  this->ZAxisLabel = vtkCaptionActor2D::New();
-
   this->XAxisLabel->ThreeDimensionalLeaderOff();
   this->XAxisLabel->LeaderOff();
   this->XAxisLabel->BorderOff();
@@ -147,29 +130,24 @@ vtkAxesActor::vtkAxesActor()
 //----------------------------------------------------------------------------
 vtkAxesActor::~vtkAxesActor()
 {
-  this->CylinderSource->Delete();
-  this->LineSource->Delete();
-  this->ConeSource->Delete();
-  this->SphereSource->Delete();
-
-  this->XAxisShaft->Delete();
-  this->YAxisShaft->Delete();
-  this->ZAxisShaft->Delete();
-
-  this->XAxisTip->Delete();
-  this->YAxisTip->Delete();
-  this->ZAxisTip->Delete();
-
   this->SetUserDefinedTip( nullptr );
   this->SetUserDefinedShaft( nullptr );
 
   this->SetXAxisLabelText( nullptr );
   this->SetYAxisLabelText( nullptr );
   this->SetZAxisLabelText( nullptr );
+}
 
-  this->XAxisLabel->Delete();
-  this->YAxisLabel->Delete();
-  this->ZAxisLabel->Delete();
+//----------------------------------------------------------------------------
+void vtkAxesActor::SetUserDefinedTip(vtkPolyData * udt)
+{
+    this->UserDefinedTip = udt;
+}
+
+//----------------------------------------------------------------------------
+void vtkAxesActor::SetUserDefinedShaft(vtkPolyData * uds)
+{
+    this->UserDefinedShaft = uds;
 }
 
 //----------------------------------------------------------------------------
@@ -582,14 +560,26 @@ void vtkAxesActor::UpdateProps()
     case vtkAxesActor::CYLINDER_SHAFT:
       (vtkPolyDataMapper::SafeDownCast(this->XAxisShaft->GetMapper()))->
         SetInputConnection( this->CylinderSource->GetOutputPort() );
+      (vtkPolyDataMapper::SafeDownCast(this->YAxisShaft->GetMapper()))->
+          SetInputConnection(this->CylinderSource->GetOutputPort());
+      (vtkPolyDataMapper::SafeDownCast(this->ZAxisShaft->GetMapper()))->
+          SetInputConnection(this->CylinderSource->GetOutputPort());
       break;
     case vtkAxesActor::LINE_SHAFT:
       (vtkPolyDataMapper::SafeDownCast(this->XAxisShaft->GetMapper()))->
         SetInputConnection( this->LineSource->GetOutputPort() );
+      (vtkPolyDataMapper::SafeDownCast(this->YAxisShaft->GetMapper()))->
+          SetInputConnection(this->LineSource->GetOutputPort());
+      (vtkPolyDataMapper::SafeDownCast(this->ZAxisShaft->GetMapper()))->
+          SetInputConnection(this->LineSource->GetOutputPort());
       break;
     case vtkAxesActor::USER_DEFINED_SHAFT:
       (vtkPolyDataMapper::SafeDownCast(this->XAxisShaft->GetMapper()))->
         SetInputData( this->UserDefinedShaft );
+      (vtkPolyDataMapper::SafeDownCast(this->YAxisShaft->GetMapper()))->
+          SetInputData(this->UserDefinedShaft);
+      (vtkPolyDataMapper::SafeDownCast(this->ZAxisShaft->GetMapper()))->
+          SetInputData(this->UserDefinedShaft);
   }
 
   switch ( this->TipType )
@@ -597,20 +587,41 @@ void vtkAxesActor::UpdateProps()
     case vtkAxesActor::CONE_TIP:
       (vtkPolyDataMapper::SafeDownCast(this->XAxisTip->GetMapper()))->
         SetInputConnection( this->ConeSource->GetOutputPort() );
+      (vtkPolyDataMapper::SafeDownCast(this->YAxisTip->GetMapper()))->
+          SetInputConnection(this->ConeSource->GetOutputPort());
+      (vtkPolyDataMapper::SafeDownCast(this->ZAxisTip->GetMapper()))->
+          SetInputConnection(this->ConeSource->GetOutputPort());
       break;
     case vtkAxesActor::SPHERE_TIP:
       (vtkPolyDataMapper::SafeDownCast(this->XAxisTip->GetMapper()))->
         SetInputConnection( this->SphereSource->GetOutputPort() );
+      (vtkPolyDataMapper::SafeDownCast(this->YAxisTip->GetMapper()))->
+          SetInputConnection(this->SphereSource->GetOutputPort());
+      (vtkPolyDataMapper::SafeDownCast(this->ZAxisTip->GetMapper()))->
+          SetInputConnection(this->SphereSource->GetOutputPort());
       break;
     case vtkAxesActor::USER_DEFINED_TIP:
       (vtkPolyDataMapper::SafeDownCast(this->XAxisTip->GetMapper()))->
         SetInputData( this->UserDefinedTip );
+      (vtkPolyDataMapper::SafeDownCast(this->YAxisTip->GetMapper()))->
+          SetInputData(this->UserDefinedTip);
+      (vtkPolyDataMapper::SafeDownCast(this->ZAxisTip->GetMapper()))->
+          SetInputData(this->UserDefinedTip);
   }
 
   vtkPolyDataMapper::SafeDownCast(this->XAxisTip->GetMapper())->
     GetInputAlgorithm()->Update();
+  vtkPolyDataMapper::SafeDownCast(this->YAxisTip->GetMapper())->
+      GetInputAlgorithm()->Update();
+  vtkPolyDataMapper::SafeDownCast(this->ZAxisTip->GetMapper())->
+      GetInputAlgorithm()->Update();
   vtkPolyDataMapper::SafeDownCast(this->XAxisShaft->GetMapper())->
     GetInputAlgorithm()->Update();
+  vtkPolyDataMapper::SafeDownCast(this->YAxisShaft->GetMapper())->
+      GetInputAlgorithm()->Update();
+  vtkPolyDataMapper::SafeDownCast(this->ZAxisShaft->GetMapper())->
+      GetInputAlgorithm()->Update();
+
 
   if ( this->GetUserTransform() )
   {
@@ -640,9 +651,9 @@ void vtkAxesActor::UpdateProps()
       (bounds[3] - bounds[2]);
   }
 
-  vtkTransform *xTransform = vtkTransform::New();
-  vtkTransform *yTransform = vtkTransform::New();
-  vtkTransform *zTransform = vtkTransform::New();
+  const vtkSmartPointer<vtkTransform> xTransform = vtkSmartPointer<vtkTransform>::New();
+  const vtkSmartPointer<vtkTransform> yTransform = vtkSmartPointer<vtkTransform>::New();
+  const vtkSmartPointer<vtkTransform> zTransform = vtkSmartPointer<vtkTransform>::New();
 
   xTransform->RotateZ( -90 );
   zTransform->RotateX( 90 );
@@ -724,10 +735,6 @@ void vtkAxesActor::UpdateProps()
   this->ZAxisTip->SetScale( zTransform->GetScale() );
   this->ZAxisTip->SetPosition( zTransform->GetPosition() );
   this->ZAxisTip->SetOrientation( zTransform->GetOrientation() );
-
-  xTransform->Delete();
-  yTransform->Delete();
-  zTransform->Delete();
 
   this->XAxisLabel->SetCaption( this->XAxisLabelText );
   this->YAxisLabel->SetCaption( this->YAxisLabelText );
