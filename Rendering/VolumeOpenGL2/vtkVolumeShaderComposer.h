@@ -1480,7 +1480,10 @@ namespace vtkvolume
     std::ostringstream toShaderStr;
     toShaderStr <<
       "      vec3 texPos;\n"
-      "      bool maskedByCylinder;\n";
+      "      bool noMask;"
+      "      bool maskedByBox;\n"
+      "      bool maskedByCylinder;\n"
+    "      bool maskedByRegion;\n";
 
     int i = 0;
     switch (mapper->GetBlendMode())
@@ -1501,38 +1504,49 @@ namespace vtkvolume
               "      texPos = (in_cellToPoint[" << idx << "] * in_inverseTextureDatasetMatrix[" << idx
               << "] * in_inverseVolumeMatrix[" << idx << "] *\n"
               "        in_volumeMatrix[0] * in_textureDatasetMatrix[0] * vec4(g_dataPos.xyz, 1.0)).xyz;\n";
-
+          
+          toShaderStr <<
+                 "    noMask = true;";
           if (maskInputs.find(i) != maskInputs.end())
           {
               toShaderStr <<
-                  "      vec4 maskValue = texture3D(in_mask[" << i << "], texPos);\n"
-                  "      if (maskValue.r <= 0)\n"
+                  "      maskedByRegion = false;\n"
+                  "      noMask = false;\n"
+                  "      if (texture3D(in_mask[" << i << "], texPos).r > 0)\n"
                   "      {\n"
-                  "        g_skip = true;\n"
+                  "        maskedByRegion = true;\n"
                   "      }\n";
           }
-          toShaderStr << "    { vec3 cylinderMaskCenter = vec3(in_cylinderMask[7 * " << i << " + 0], in_cylinderMask[7 * " << i << " + 1], in_cylinderMask[7 * " << i << " + 2]);\n"
-                 "    vec3 cylinderMaskAxis = vec3(in_cylinderMask[7 * " << i << " + 3], in_cylinderMask[7 * " << i << " + 4], in_cylinderMask[7 * " << i << " + 5]);\n"
-                 "    float cylinderMaskRadius = in_cylinderMask[7 * " << i << " + 6];\n"
-                 "    maskedByCylinder = true;\n"         
-                 "    if (cylinderMaskRadius > 0.)\n"
+          toShaderStr <<
+                 "    maskedByBox = false;\n"
+                 "    if (in_voi_min[" << i << "].x < in_voi_max[" << i << "].x)\n"
                  "    {\n"
-                 "      vec3 p = vec3(in_textureDatasetMatrix[" << idx << "] * vec4(texPos, 1.));\n"
-                 "      vec3 cylinderMaskLineOrigin = cylinderMaskCenter + cylinderMaskAxis;\n"
-                 "      vec3 cylinderMaskLineDir = 2. * -cylinderMaskAxis;\n"
-                 "      float cylinderMaskLineT = dot(p - cylinderMaskLineOrigin, cylinderMaskLineDir) / dot(cylinderMaskLineDir, cylinderMaskLineDir);\n"
-                 "      maskedByCylinder = (cylinderMaskLineT >= 0.) && (cylinderMaskLineT <= 1.);\n"
-                 "      if (maskedByCylinder == true)\n"
-                 "      {\n"
-                 "        vec3 projectedPoint = cylinderMaskLineOrigin + cylinderMaskLineT * cylinderMaskLineDir;\n"
-                 "        if (length(p - projectedPoint) > cylinderMaskRadius) { maskedByCylinder = false; }\n"
-                 "      }\n"
+                 "      noMask = false;\n"
+                 "      maskedByBox = all(lessThanEqual(texPos, in_voi_max[" << i << "])) && all(greaterThanEqual(texPos, in_voi_min[" << i << "]));\n"
                  "    }\n"
+                 "    {\n"
+                 "      vec3 cylinderMaskCenter = vec3(in_cylinderMask[7 * " << i << " + 0], in_cylinderMask[7 * " << i << " + 1], in_cylinderMask[7 * " << i << " + 2]);\n"
+                 "      vec3 cylinderMaskAxis = vec3(in_cylinderMask[7 * " << i << " + 3], in_cylinderMask[7 * " << i << " + 4], in_cylinderMask[7 * " << i << " + 5]);\n"
+                 "      float cylinderMaskRadius = in_cylinderMask[7 * " << i << " + 6];\n"
+                 "      maskedByCylinder = false;\n"         
+                 "      if (cylinderMaskRadius > 0.)\n"
+                 "      {\n"
+                 "        noMask = false;\n"
+                 "        vec3 p = vec3(in_textureDatasetMatrix[" << idx << "] * vec4(texPos, 1.));\n"
+                 "        vec3 cylinderMaskLineOrigin = cylinderMaskCenter + cylinderMaskAxis;\n"
+                 "        vec3 cylinderMaskLineDir = 2. * -cylinderMaskAxis;\n"
+                 "        float cylinderMaskLineT = dot(p - cylinderMaskLineOrigin, cylinderMaskLineDir) / dot(cylinderMaskLineDir, cylinderMaskLineDir);\n"
+                 "        maskedByCylinder = (cylinderMaskLineT >= 0.) && (cylinderMaskLineT <= 1.);\n"
+                 "        if (maskedByCylinder == true)\n"
+                 "        {\n"
+                 "          vec3 projectedPoint = cylinderMaskLineOrigin + cylinderMaskLineT * cylinderMaskLineDir;\n"
+                 "          if (length(p - projectedPoint) > cylinderMaskRadius) { maskedByCylinder = false; }\n"
+                 "        }\n"
+                 "      }\n"
                  "    }\n";
           toShaderStr <<
-              "      if (g_skip == false && \n"
-              "          all(lessThanEqual(texPos, in_voi_max[" << i << "])) &&\n"
-              "          all(greaterThanEqual(texPos, in_voi_min[" << i << "])) && maskedByCylinder)\n"
+              "      if (g_skip == false && all(lessThanEqual(texPos, vec3(1.))) && all(greaterThanEqual(texPos, vec3(0.))) &&\n"
+              "          (noMask || (maskedByBox || maskedByCylinder || maskedByRegion)))\n"
               "      {\n"
               "        bool computeFragColor = false;\n"
               "        vec4 scalar = texture3D(in_volume[" << i << "], texPos);\n"
@@ -1644,12 +1658,20 @@ namespace vtkvolume
   {
     auto glMapper = vtkOpenGLGPUVolumeRayCastMapper::SafeDownCast(mapper);
     std::string shaderStr;
-    shaderStr += "    vec3 cylinderMaskCenter = vec3(in_cylinderMask[0], in_cylinderMask[1], in_cylinderMask[2]);\n"
-                 "    vec3 cylinderMaskAxis = vec3(in_cylinderMask[3], in_cylinderMask[4], in_cylinderMask[5]);\n"
-                 "    float cylinderMaskRadius = in_cylinderMask[6];\n"
-                 "    bool maskedByCylinder = true;\n"         
+    shaderStr += "    bool noMask = true;\n"
+                 "    bool maskedByBox = false;\n"
+                 "    if (in_voi_min[0].x < in_voi_max[0].x)\n"
+                 "    {\n"
+                 "      noMask = false;\n"
+                 "      maskedByBox = all(lessThanEqual(g_dataPos, in_voi_max[0])) && all(greaterThanEqual(g_dataPos, in_voi_min[0]));\n"
+                 "    }\n";
+    shaderStr += "    float cylinderMaskRadius = in_cylinderMask[6];\n"     
+                 "    bool maskedByCylinder = false;\n"         
                  "    if (cylinderMaskRadius > 0.)\n"
                  "    {\n"
+                 "      noMask = false;\n"
+                 "      vec3 cylinderMaskCenter = vec3(in_cylinderMask[0], in_cylinderMask[1], in_cylinderMask[2]);\n"
+                 "      vec3 cylinderMaskAxis = vec3(in_cylinderMask[3], in_cylinderMask[4], in_cylinderMask[5]);\n"
                  "      vec3 p = vec3(in_textureDatasetMatrix[0] * vec4(g_dataPos, 1.));\n"
                  "      vec3 cylinderMaskLineOrigin = cylinderMaskCenter + cylinderMaskAxis;\n"
                  "      vec3 cylinderMaskLineDir = 2. * -cylinderMaskAxis;\n"
@@ -1661,11 +1683,20 @@ namespace vtkvolume
                  "        if (length(p - projectedPoint) > cylinderMaskRadius) { maskedByCylinder = false; }\n"
                  "      }\n"
                  "    }\n";
-    shaderStr += "\
-      \n    if (g_skip == false && all(lessThanEqual(g_dataPos, in_voi_max[0])) && all(greaterThanEqual(g_dataPos, in_voi_min[0])) && maskedByCylinder == true)\
-      \n    {\
-      \n      vec4 scalar = texture3D(in_volume[0], g_dataPos);\
-      \n      bool computeFragColor = false;"
+    if (maskInput)
+    {
+        shaderStr += "    bool maskedByRegion = false;\n"
+                     "    noMask = false;\n"
+                     "    if(texture3D(in_mask[0], g_dataPos).r > 0.)\n"
+                     "    {\n"
+                     "      maskedByRegion = true;\n"
+                     "    }\n";
+    }
+    shaderStr +=
+      "\n    if (g_skip == false && (noMask || (maskedByBox || maskedByCylinder" + std::string(maskInput ? " || maskedByRegion" : "") + ")))"
+      "\n    {"
+      "\n      vec4 scalar = texture3D(in_volume[0], g_dataPos);"
+      "\n      bool computeFragColor = false;"
     ;
 
     // simulate old intensity textures
@@ -2450,16 +2481,16 @@ namespace vtkvolume
     {
       return std::string();
     }
-    else if (mapper->GetTotalNumberOfInputConnections() == 1)
-    {
-      return std::string("\
-        \n    vec4 maskValue = texture3D(in_mask[0], g_dataPos);\
-        \n    if(maskValue.r <= 0)\
-        \n    {\
-        \n      g_skip = true;\
-        \n    }"
-      );
-    }
+    //else if (mapper->GetTotalNumberOfInputConnections() == 1)
+    //{
+    //  return std::string("\
+    //    \n    vec4 maskValue = texture3D(in_mask[0], g_dataPos);\
+    //    \n    if(maskValue.r <= 0)\
+    //    \n    {\
+    //    \n      g_skip = true;\
+    //    \n    }"
+    //  );
+    //}
 
     return "";
   }
