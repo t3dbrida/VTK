@@ -90,60 +90,71 @@ void vtkOpenGLState::CheckState()
   GLboolean params[4];
 
   ::glGetBooleanv(GL_DEPTH_WRITEMASK, params);
-  if (params[0] != this->CurrentState.DepthMask)
-  {
-    vtkGenericWarningMacro("Error in cache state for GL_DEPTH_WRITEMASK");
-    error = true;
-  }
+  this->CurrentState.DepthMask = params[0];
+  //if (params[0] != this->CurrentState.DepthMask)
+  //{
+  //  vtkGenericWarningMacro("Error in cache state for GL_DEPTH_WRITEMASK");
+  //  error = true;
+  //}
   ::glGetBooleanv(GL_COLOR_WRITEMASK, params);
-  if (
-      params[0] != this->CurrentState.ColorMask[0] ||
-      params[1] != this->CurrentState.ColorMask[1] ||
-      params[2] != this->CurrentState.ColorMask[2] ||
-      params[3] != this->CurrentState.ColorMask[3]
-      )
+  for (int i = 0; i < 4; ++i)
   {
-    vtkGenericWarningMacro("Error in cache state for GL_COLOR_WRITEMASK");
-    error = true;
+      this->CurrentState.ColorMask[0] = params[i];
   }
+  //if (
+  //    params[0] != this->CurrentState.ColorMask[0] ||
+  //    params[1] != this->CurrentState.ColorMask[1] ||
+  //    params[2] != this->CurrentState.ColorMask[2] ||
+  //    params[3] != this->CurrentState.ColorMask[3]
+  //    )
+  //{
+  //  vtkGenericWarningMacro("Error in cache state for GL_COLOR_WRITEMASK");
+  //  error = true;
+  //}
   ::glGetBooleanv(GL_BLEND, params);
-  if ((params[0] != 0) != this->CurrentState.Blend)
-  {
-    vtkGenericWarningMacro("Error in cache state for GL_BLEND");
-    error = true;
-  }
+  this->CurrentState.Blend = params[0];
+  //if ((params[0] != 0) != this->CurrentState.Blend)
+  //{
+  //  vtkGenericWarningMacro("Error in cache state for GL_BLEND");
+  //  error = true;
+  //}
   ::glGetBooleanv(GL_DEPTH_TEST, params);
-  if ((params[0] != 0) != this->CurrentState.DepthTest)
-  {
-    vtkGenericWarningMacro("Error in cache state for GL_DEPTH_TEST");
-    error = true;
-  }
+  this->CurrentState.DepthTest = params[0];
+  //if ((params[0] != 0) != this->CurrentState.DepthTest)
+  //{
+  //  vtkGenericWarningMacro("Error in cache state for GL_DEPTH_TEST");
+  //  error = true;
+  //}
   ::glGetBooleanv(GL_CULL_FACE, params);
-  if ((params[0] != 0) != this->CurrentState.CullFace)
-  {
-    vtkGenericWarningMacro("Error in cache state for GL_CULL_FACE");
-    error = true;
-  }
+  this->CurrentState.CullFace = params[0];
+  //if ((params[0] != 0) != this->CurrentState.CullFace)
+  //{
+  //  vtkGenericWarningMacro("Error in cache state for GL_CULL_FACE");
+  //  error = true;
+  //}
 #ifdef GL_MULTISAMPLE
   ::glGetBooleanv(GL_MULTISAMPLE, params);
-  if ((params[0] != 0) != this->CurrentState.MultiSample)
-  {
-    vtkGenericWarningMacro("Error in cache state for GL_MULTISAMPLE");
-    error = true;
-  }
+  this->CurrentState.MultiSample = params[0];
+  //if ((params[0] != 0) != this->CurrentState.MultiSample)
+  //{
+  //  vtkGenericWarningMacro("Error in cache state for GL_MULTISAMPLE");
+  //  error = true;
+  //}
 #endif
   ::glGetBooleanv(GL_SCISSOR_TEST, params);
-  if ((params[0] != 0) != this->CurrentState.ScissorTest)
-  {
-    vtkGenericWarningMacro("Error in cache state for GL_SCISSOR_TEST");
-    error = true;
-  }
+  this->CurrentState.ScissorTest = params[0];
+  //if ((params[0] != 0) != this->CurrentState.ScissorTest)
+  //{
+  //  vtkGenericWarningMacro("Error in cache state for GL_SCISSOR_TEST");
+  //  error = true;
+  //}
   ::glGetBooleanv(GL_STENCIL_TEST, params);
-  if ((params[0] != 0) != this->CurrentState.StencilTest)
-  {
-    vtkGenericWarningMacro("Error in cache state for GL_STENCIL_TEST");
-    error = true;
-  }
+  this->CurrentState.StencilTest = params[0];
+  //if ((params[0] != 0) != this->CurrentState.StencilTest)
+  //{
+  //  vtkGenericWarningMacro("Error in cache state for GL_STENCIL_TEST");
+  //  error = true;
+  //}
 
   GLint iparams[4];
 #if defined(__APPLE__) || defined(_WIN32) || defined(WIN32)
@@ -164,65 +175,79 @@ void vtkOpenGLState::CheckState()
     error = true;
   }
   ::glGetIntegerv(GL_SCISSOR_BOX, iparams);
-  if (
-      iparams[0] != this->CurrentState.Scissor[0] ||
-      iparams[1] != this->CurrentState.Scissor[1] ||
-      iparams[2] != this->CurrentState.Scissor[2] ||
-      iparams[3] != this->CurrentState.Scissor[3]
-      )
+  for (int i = 0; i < 4; ++i)
   {
-    vtkGenericWarningMacro("Error in cache state for GL_SCISSOR_BOX");
-    error = true;
+      this->CurrentState.Scissor[i] = iparams[i];
   }
+  //if (
+  //    iparams[0] != this->CurrentState.Scissor[0] ||
+  //    iparams[1] != this->CurrentState.Scissor[1] ||
+  //    iparams[2] != this->CurrentState.Scissor[2] ||
+  //    iparams[3] != this->CurrentState.Scissor[3]
+  //    )
+  //{
+  //  vtkGenericWarningMacro("Error in cache state for GL_SCISSOR_BOX");
+  //  error = true;
+  //}
   ::glGetIntegerv(GL_CULL_FACE_MODE, iparams);
-  if (iparams[0] != static_cast<int>(this->CurrentState.CullFaceMode))
-  {
-    vtkGenericWarningMacro("Error in cache state for GL_CULL_FACE_MODE");
-    error = true;
-  }
+  this->CurrentState.CullFaceMode = iparams[0];
+  //if (iparams[0] != static_cast<int>(this->CurrentState.CullFaceMode))
+  //{
+  //  vtkGenericWarningMacro("Error in cache state for GL_CULL_FACE_MODE");
+  //  error = true;
+  //}
   ::glGetIntegerv(GL_DEPTH_FUNC, iparams);
-  if (iparams[0] != static_cast<int>(this->CurrentState.DepthFunc))
-  {
-    vtkGenericWarningMacro("Error in cache state for GL_DEPTH_FUNC");
-    error = true;
-  }
+  this->CurrentState.DepthFunc = iparams[0];
+  //if (iparams[0] != static_cast<int>(this->CurrentState.DepthFunc))
+  //{
+  //  vtkGenericWarningMacro("Error in cache state for GL_DEPTH_FUNC");
+  //  error = true;
+  //}
   ::glGetIntegerv(GL_BLEND_SRC_RGB, iparams);
-  if (iparams[0] != static_cast<int>(this->CurrentState.BlendFunc[0]))
-  {
-    vtkGenericWarningMacro("Error in cache state for GL_BLEND_SRC_RGB");
-    error = true;
-  }
+  this->CurrentState.BlendFunc[0] = iparams[0];
+  //if (iparams[0] != static_cast<int>(this->CurrentState.BlendFunc[0]))
+  //{
+  //  vtkGenericWarningMacro("Error in cache state for GL_BLEND_SRC_RGB");
+  //  error = true;
+  //}
   ::glGetIntegerv(GL_BLEND_SRC_ALPHA, iparams);
-  if (iparams[0] != static_cast<int>(this->CurrentState.BlendFunc[2]))
-  {
-    vtkGenericWarningMacro("Error in cache state for GL_BLEND_SRC_ALPHA");
-    error = true;
-  }
+  this->CurrentState.BlendFunc[2] = iparams[0];
+  //if (iparams[0] != static_cast<int>(this->CurrentState.BlendFunc[2]))
+  //{
+  //  vtkGenericWarningMacro("Error in cache state for GL_BLEND_SRC_ALPHA");
+  //  error = true;
+  //}
   ::glGetIntegerv(GL_BLEND_DST_RGB, iparams);
-  if (iparams[0] != static_cast<int>(this->CurrentState.BlendFunc[1]))
-  {
-    vtkGenericWarningMacro("Error in cache state for GL_BLEND_DST_RGB");
-    error = true;
-  }
+  this->CurrentState.BlendFunc[1] = iparams[0];
+  //if (iparams[0] != static_cast<int>(this->CurrentState.BlendFunc[1]))
+  //{
+  //  vtkGenericWarningMacro("Error in cache state for GL_BLEND_DST_RGB");
+  //  error = true;
+  //}
   ::glGetIntegerv(GL_BLEND_DST_ALPHA, iparams);
-  if (iparams[0] != static_cast<int>(this->CurrentState.BlendFunc[3]))
-  {
-    vtkGenericWarningMacro("Error in cache state for GL_BLEND_DST_ALPHA");
-    error = true;
-  }
+  this->CurrentState.BlendFunc[3] = iparams[0];
+  //if (iparams[0] != static_cast<int>(this->CurrentState.BlendFunc[3]))
+  //{
+  //  vtkGenericWarningMacro("Error in cache state for GL_BLEND_DST_ALPHA");
+  //  error = true;
+  //}
 
   GLfloat fparams[4];
   ::glGetFloatv(GL_COLOR_CLEAR_VALUE, fparams);
-  if (
-      fparams[0] != this->CurrentState.ClearColor[0] ||
-      fparams[1] != this->CurrentState.ClearColor[1] ||
-      fparams[2] != this->CurrentState.ClearColor[2] ||
-      fparams[3] != this->CurrentState.ClearColor[3]
-      )
+  for (int i = 0; i < 4; ++i)
   {
-    vtkGenericWarningMacro("Error in cache state for GL_COLOR_CLEAR_VALUE");
-    error = true;
+      this->CurrentState.ClearColor[i] = fparams[i];
   }
+  //if (
+  //    fparams[0] != this->CurrentState.ClearColor[0] ||
+  //    fparams[1] != this->CurrentState.ClearColor[1] ||
+  //    fparams[2] != this->CurrentState.ClearColor[2] ||
+  //    fparams[3] != this->CurrentState.ClearColor[3]
+  //    )
+  //{
+  //  vtkGenericWarningMacro("Error in cache state for GL_COLOR_CLEAR_VALUE");
+  //  error = true;
+  //}
 
   if (error)
   {

@@ -1519,7 +1519,7 @@ namespace vtkvolume
           }
           toShaderStr <<
                  "    maskedByBox = false;\n"
-                 "    if (in_voi_min[" << i << "].x < in_voi_max[" << i << "].x)\n"
+                 "    if (in_voi_min[" << i << "].x <= in_voi_max[" << i << "].x && in_voi_min[" << i << "].y <= in_voi_max[" << i << "].y && in_voi_min[" << i << "].z <= in_voi_max[" << i << "].z)\n"
                  "    {\n"
                  "      noMask = false;\n"
                  "      maskedByBox = all(lessThanEqual(texPos, in_voi_max[" << i << "])) && all(greaterThanEqual(texPos, in_voi_min[" << i << "]));\n"
@@ -1532,7 +1532,7 @@ namespace vtkvolume
                  "      if (cylinderMaskRadius > 0.)\n"
                  "      {\n"
                  "        noMask = false;\n"
-                 "        vec3 p = vec3(in_textureDatasetMatrix[" << idx << "] * vec4(texPos, 1.));\n"
+                 "        vec3 p = vec3(in_volumeMatrix[" << idx << "] * in_textureDatasetMatrix[" << idx << "] * vec4(texPos, 1.));\n"
                  "        vec3 cylinderMaskLineOrigin = cylinderMaskCenter + cylinderMaskAxis;\n"
                  "        vec3 cylinderMaskLineDir = 2. * -cylinderMaskAxis;\n"
                  "        float cylinderMaskLineT = dot(p - cylinderMaskLineOrigin, cylinderMaskLineDir) / dot(cylinderMaskLineDir, cylinderMaskLineDir);\n"
@@ -1660,7 +1660,7 @@ namespace vtkvolume
     std::string shaderStr;
     shaderStr += "    bool noMask = true;\n"
                  "    bool maskedByBox = false;\n"
-                 "    if (in_voi_min[0].x < in_voi_max[0].x)\n"
+                 "    if (in_voi_min[0].x <= in_voi_max[0].x && in_voi_min[0].y <= in_voi_max[0].y && in_voi_min[0].z <= in_voi_max[0].z)\n"
                  "    {\n"
                  "      noMask = false;\n"
                  "      maskedByBox = all(lessThanEqual(g_dataPos, in_voi_max[0])) && all(greaterThanEqual(g_dataPos, in_voi_min[0]));\n"
@@ -1672,7 +1672,7 @@ namespace vtkvolume
                  "      noMask = false;\n"
                  "      vec3 cylinderMaskCenter = vec3(in_cylinderMask[0], in_cylinderMask[1], in_cylinderMask[2]);\n"
                  "      vec3 cylinderMaskAxis = vec3(in_cylinderMask[3], in_cylinderMask[4], in_cylinderMask[5]);\n"
-                 "      vec3 p = vec3(in_textureDatasetMatrix[0] * vec4(g_dataPos, 1.));\n"
+                 "      vec3 p = vec3(in_volumeMatrix[0] * in_textureDatasetMatrix[0] * vec4(g_dataPos, 1.));\n"
                  "      vec3 cylinderMaskLineOrigin = cylinderMaskCenter + cylinderMaskAxis;\n"
                  "      vec3 cylinderMaskLineDir = 2. * -cylinderMaskAxis;\n"
                  "      float cylinderMaskLineT = dot(p - cylinderMaskLineOrigin, cylinderMaskLineDir) / dot(cylinderMaskLineDir, cylinderMaskLineDir);\n"
