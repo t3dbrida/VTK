@@ -406,20 +406,26 @@ double vtkCellPicker::IntersectActorWithLine(const double p1[3],
     if (vtkActor* actor = vtkActor::SafeDownCast(prop))
     {
         vtkProperty* const property = actor->GetProperty();
-        double* voiMin = property->GetVolumeOfInterestMin(),
-              * voiMax = property->GetVolumeOfInterestMax();
-        for (int i = 0; i < 3; ++i)
+        const struct vtkProperty::BoxMask& boxMask = property->GetBoxMask();
+
+        if (boxMask.axisX[0] != 0. && boxMask.axisX[1] != 0. && boxMask.axisX[2] != 0. &&
+            boxMask.axisY[0] != 0. && boxMask.axisY[1] != 0. && boxMask.axisY[2] != 0. &&
+            boxMask.axisZ[0] != 0. && boxMask.axisZ[1] != 0. && boxMask.axisZ[2] != 0.)
         {
-            bounds[2 * i] = voiMin[i] * (bounds[2 * i + 1] - bounds[2 * i]) + bounds[2 * i];
-            bounds[2 * i + 1] = voiMax[i] * (bounds[2 * i + 1] - bounds[2 * i]) + bounds[2 * i];
+            bounds[0] = std::max(boxMask.origin[0], bounds[0]);
+            bounds[1] = std::min(bounds[0] + boxMask.axisX[0] + boxMask.axisY[0] + boxMask.axisZ[0], bounds[1]);
+            bounds[2] = std::max(boxMask.origin[1], bounds[1]);
+            bounds[3] = std::min(bounds[2] + boxMask.axisX[1] + boxMask.axisY[1] + boxMask.axisZ[1], bounds[3]);
+            bounds[4] = std::max(boxMask.origin[2], bounds[2]);
+            bounds[5] = std::min(bounds[4] + boxMask.axisX[2] + boxMask.axisY[2] + boxMask.axisZ[2], bounds[5]);
         }
         bounds[0] -= tol; bounds[1] += tol;
         bounds[2] -= tol; bounds[3] += tol;
         bounds[4] -= tol; bounds[5] += tol;
 
         ok &= minXYZ[0] >= bounds[0] && minXYZ[0] <= bounds[1] &&
-            minXYZ[1] >= bounds[2] && minXYZ[1] <= bounds[3] &&
-            minXYZ[2] >= bounds[4] && minXYZ[2] <= bounds[5];
+              minXYZ[1] >= bounds[2] && minXYZ[1] <= bounds[3] &&
+              minXYZ[2] >= bounds[4] && minXYZ[2] <= bounds[5];
     }
     if ( !ok )
     {

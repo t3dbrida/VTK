@@ -63,6 +63,14 @@ public:
   vtkTypeMacro(vtkProperty,vtkObject);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
+  struct BoxMask
+  {
+      double origin[3],
+             axisX[3],
+             axisY[3],
+             axisZ[3];
+  };
+
   /**
    * Construct object with object color, ambient color, diffuse color,
    * specular color, and edge color white; ambient coefficient=0; diffuse
@@ -425,23 +433,14 @@ public:
 
   //@{
   /**
-   * Set/Get volume of interest min/max. The volume of interest is defined
-   * in the volume space.
+   * Set/Get box mask.
    */
-  void SetVolumeOfInterestMin(double minX, double minY, double minZ);
-  double* GetVolumeOfInterestMin()
+  void SetBoxMask(const struct BoxMask& boxMask);
+  const struct BoxMask& GetBoxMask() const noexcept
   {
-      return this->VolumeOfInterestMin;
-  }
-  void SetVolumeOfInterestMax(double maxX, double maxY, double maxZ);
-  double* GetVolumeOfInterestMax()
-  {
-      return this->VolumeOfInterestMax;
+      return this->BoxMask;
   }
   //@}
-
-  vtkSetMacro(EnableVolumeOfInterest, bool);
-  vtkGetMacro(EnableVolumeOfInterest, bool);
 
   //@{
   /**
@@ -567,9 +566,7 @@ protected:
   // Arbitrary extra information associated with this Property.
   vtkInformation* Information;
 
-  double VolumeOfInterestMin[3];
-  double VolumeOfInterestMax[3];
-  bool EnableVolumeOfInterest;
+  struct BoxMask BoxMask;
 
 private:
   vtkProperty(const vtkProperty&) = delete;

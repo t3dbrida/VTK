@@ -76,6 +76,14 @@ public:
                 * transferFunction;
   };
 
+  struct BoxMask
+  {
+      double origin[3],
+             axisX[3],
+             axisY[3],
+             axisZ[3];
+  };
+
   struct CylinderMask
   {
       double center[3],
@@ -521,18 +529,12 @@ public:
 
   //@{
   /**
-   * Set/Get volume of interest min/max. The volume of interest is defined
-   * in the volume space.
+   * Set/Get box mask.
    */
-  void SetVolumeOfInterestMin(double minX, double minY, double minZ);
-  double* GetVolumeOfInterestMin()
+  void SetBoxMask(const struct BoxMask& boxMask);
+  const struct BoxMask& GetBoxMask() const noexcept
   {
-      return this->VolumeOfInterestMin;
-  }
-  void SetVolumeOfInterestMax(double maxX, double maxY, double maxZ);
-  double* GetVolumeOfInterestMax()
-  {
-      return this->VolumeOfInterestMax;
+      return this->BoxMask;
   }
   //@}
 
@@ -614,8 +616,7 @@ protected:
   double ShadingGradientScaleMin[VTK_MAX_VRCOMP];
   double ShadingGradientScaleMax[VTK_MAX_VRCOMP];
 
-  double VolumeOfInterestMin[3];
-  double VolumeOfInterestMax[3];
+  struct BoxMask BoxMask;
 
   struct CylinderMask CylinderMask;
 

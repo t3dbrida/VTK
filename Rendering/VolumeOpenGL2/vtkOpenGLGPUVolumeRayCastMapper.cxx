@@ -3959,8 +3959,10 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
   this->RangeVec.resize(numInputs * 8, 0);
 
   std::vector<int> volumeVisibility(numInputs, 0);
-  std::vector<float> voiMinimums(3 * numInputs, 0.);
-  std::vector<float> voiMaximums(3 * numInputs, 1.);
+  std::vector<float> boxMaskOrigins(3 * numInputs, 0.);
+  std::vector<float> boxMaskAxesX(3 * numInputs, 0.);
+  std::vector<float> boxMaskAxesY(3 * numInputs, 0.);
+  std::vector<float> boxMaskAxesZ(3 * numInputs, 0.);
   std::vector<float> cylinders(7 * numInputs, 0.); // 7: (center0 (3f), axis0 (3f), radius0 (1f)), (center1, axis1, radius1),...
 
   int index = 0;
@@ -3997,14 +3999,23 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
     volumeInput.ActivateTransferFunction(prog, this->Parent->BlendMode);
 
     vtkVolumeProperty* const property = volumeInput.Volume->GetProperty();
-    double* const voimin = property->GetVolumeOfInterestMin(),
-          * const voimax = property->GetVolumeOfInterestMax();
-    voiMinimums[3 * index] = voimin[0];
-    voiMinimums[3 * index + 1] = voimin[1];
-    voiMinimums[3 * index + 2] = voimin[2];
-    voiMaximums[3 * index] = voimax[0];
-    voiMaximums[3 * index + 1] = voimax[1];
-    voiMaximums[3 * index + 2] = voimax[2];
+    const struct vtkVolumeProperty::BoxMask& boxMask = property->GetBoxMask();
+    const double* const boxMaskOrigin = boxMask.origin;
+    boxMaskOrigins[3 * index] = boxMaskOrigin[0];
+    boxMaskOrigins[3 * index + 1] = boxMaskOrigin[1];
+    boxMaskOrigins[3 * index + 2] = boxMaskOrigin[2];
+    const double* const boxMaskAxisX = boxMask.axisX;
+    boxMaskAxesX[3 * index] = boxMaskAxisX[0];
+    boxMaskAxesX[3 * index + 1] = boxMaskAxisX[1];
+    boxMaskAxesX[3 * index + 2] = boxMaskAxisX[2];
+    const double* const boxMaskAxisY = boxMask.axisY;
+    boxMaskAxesY[3 * index] = boxMaskAxisY[0];
+    boxMaskAxesY[3 * index + 1] = boxMaskAxisY[1];
+    boxMaskAxesY[3 * index + 2] = boxMaskAxisY[2];
+    const double* const boxMaskAxisZ = boxMask.axisZ;
+    boxMaskAxesZ[3 * index] = boxMaskAxisZ[0];
+    boxMaskAxesZ[3 * index + 1] = boxMaskAxisZ[1];
+    boxMaskAxesZ[3 * index + 2] = boxMaskAxisZ[2];
 
     const struct vtkVolumeProperty::CylinderMask& cylinderMask = property->GetCylinderMask();
     const double* const cylinderMaskCenter = cylinderMask.center,
@@ -4034,12 +4045,18 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
    reinterpret_cast<const float(*)[3]>(this->StepVec.data()));
   prog->SetUniform3fv("in_cellSpacing", numInputs,
    reinterpret_cast<const float(*)[3]>(this->SpacingVec.data()));
-  prog->SetUniform3fv("in_voi_min",
+  prog->SetUniform3fv("in_boxMaskOrigin",
                       numInputs,
-                      reinterpret_cast<const float(*)[3]>(voiMinimums.data()));
-  prog->SetUniform3fv("in_voi_max",
+                      reinterpret_cast<const float(*)[3]>(boxMaskOrigins.data()));
+  prog->SetUniform3fv("in_boxMaskAxisX",
                       numInputs,
-                      reinterpret_cast<const float(*)[3]>(voiMaximums.data()));
+                      reinterpret_cast<const float(*)[3]>(boxMaskAxesX.data()));
+  prog->SetUniform3fv("in_boxMaskAxisY",
+                      numInputs,
+                      reinterpret_cast<const float(*)[3]>(boxMaskAxesY.data()));
+  prog->SetUniform3fv("in_boxMaskAxisZ",
+                      numInputs,
+                      reinterpret_cast<const float(*)[3]>(boxMaskAxesZ.data()));
   prog->SetUniform1fv("in_cylinderMask", 7 * numInputs, reinterpret_cast<const float(*)>(cylinders.data()));
 
   // upload volume visibility information

@@ -62,11 +62,18 @@ vtkVolumeProperty::vtkVolumeProperty()
     this->ShadingGradientScaleMax[i]         = 1.0 / 65535.0;
   }
 
-  for (int i = 0; i < 3; ++i)
-  {
-    this->VolumeOfInterestMin[i] = 0.;
-    this->VolumeOfInterestMax[i] = 1.;
-  }
+  this->BoxMask.origin[0] = 0.;
+  this->BoxMask.origin[1] = 0.;
+  this->BoxMask.origin[2] = 0.;
+  this->BoxMask.axisX[0] = 0.;
+  this->BoxMask.axisX[1] = 0.;
+  this->BoxMask.axisX[2] = 0.;
+  this->BoxMask.axisY[0] = 0.;
+  this->BoxMask.axisY[1] = 0.;
+  this->BoxMask.axisY[2] = 0.;
+  this->BoxMask.axisZ[0] = 0.;
+  this->BoxMask.axisZ[1] = 0.;
+  this->BoxMask.axisZ[2] = 0.;
 
   this->CylinderMask.center[0] = 0.;
   this->CylinderMask.center[1] = 0.;
@@ -175,10 +182,7 @@ void vtkVolumeProperty::DeepCopy(vtkVolumeProperty *p)
     this->SetShadingGradientScale(i, p->GetShadingGradientScaleMin(i), p->GetShadingGradientScaleMax(i));
   }
 
-  double* voiMin = p->GetVolumeOfInterestMin();
-  this->SetVolumeOfInterestMin(voiMin[0], voiMin[1], voiMin[2]);
-  double* voiMax = p->GetVolumeOfInterestMax();
-  this->SetVolumeOfInterestMax(voiMax[0], voiMax[1], voiMax[2]);
+  this->BoxMask = p->GetBoxMask();
 
   this->CylinderMask = p->CylinderMask;
 
@@ -751,19 +755,9 @@ vtkTimeStamp vtkVolumeProperty::GetGrayTransferFunctionMTime( int index )
   return this->GrayTransferFunctionMTime[index];
 }
 
-void vtkVolumeProperty::SetVolumeOfInterestMin(double minX, double minY, double minZ)
+void vtkVolumeProperty::SetBoxMask(const struct BoxMask& boxMask)
 {
-    this->VolumeOfInterestMin[0] = minX >= 0. && minX <= 1. ? minX : 0.;
-    this->VolumeOfInterestMin[1] = minY >= 0. && minY <= 1. ? minY : 0.;
-    this->VolumeOfInterestMin[2] = minZ >= 0. && minZ <= 1. ? minZ : 0.;
-    this->Modified();
-}
-
-void vtkVolumeProperty::SetVolumeOfInterestMax(double maxX, double maxY, double maxZ)
-{
-    this->VolumeOfInterestMax[0] = maxX >= 0. && maxX <= 1. ? maxX : 1.;
-    this->VolumeOfInterestMax[1] = maxY >= 0. && maxY <= 1. ? maxY : 1.;
-    this->VolumeOfInterestMax[2] = maxZ >= 0. && maxZ <= 1. ? maxZ : 1.;
+    this->BoxMask = boxMask;
     this->Modified();
 }
 

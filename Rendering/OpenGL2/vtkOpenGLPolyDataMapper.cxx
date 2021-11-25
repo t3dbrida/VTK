@@ -1286,17 +1286,25 @@ void vtkOpenGLPolyDataMapper::ReplaceShaderVoi(
   {
       vtkShaderProgram::Substitute(FSSource,
                                    "//VTK::VOI::Dec",
-                                   "uniform int enableVoiUniform;\n"
-                                   "uniform vec3 voiMinUniform;\n"
-                                   "uniform vec3 voiMaxUniform;\n");
+                                   "uniform vec3 boxMaskOriginUniform;\n"
+                                   "uniform vec3 boxMaskAxisXUniform;\n"
+                                   "uniform vec3 boxMaskAxisYUniform;\n"
+                                   "uniform vec3 boxMaskAxisZUniform;\n");
       vtkShaderProgram::Substitute(FSSource,
                                    "//VTK::VOI::Impl",
-                                   "if (enableVoiUniform == 1 && (vertexMC.x < voiMinUniform.x || vertexMC.x > voiMaxUniform.x ||\n"
-                                   "                              vertexMC.y < voiMinUniform.y || vertexMC.y > voiMaxUniform.y ||\n"
-                                   "                              vertexMC.z < voiMinUniform.z || vertexMC.z > voiMaxUniform.z))\n"
+                                   "if (boxMaskAxisXUniform != vec3(0.) && boxMaskAxisYUniform != vec3(0.) && boxMaskAxisZUniform != vec3(0.))\n"
+                                   "{\n"    
+                                   "  vec3 p = vertexMC - boxMaskOriginUniform;\n"
+                                   "  float projX = dot(p, boxMaskAxisXUniform) / dot(boxMaskAxisXUniform, boxMaskAxisXUniform);\n"
+                                   "  float projY = dot(p, boxMaskAxisYUniform) / dot(boxMaskAxisYUniform, boxMaskAxisYUniform);\n"
+                                   "  float projZ = dot(p, boxMaskAxisZUniform) / dot(boxMaskAxisZUniform, boxMaskAxisZUniform);\n"
+                                   "  if (projX < 0. || projX > 1. ||\n"
+                                   "      projY < 0. || projY > 1. ||\n"
+                                   "      projZ < 0. || projZ > 1.)\n"
                                    "  {\n"
                                    "    discard;\n"
-                                   "  }\n");
+                                   "  }\n"
+                                   "}\n");
   }
 
   shaders[vtkShader::Fragment]->SetSource(FSSource);
@@ -1555,7 +1563,7 @@ void vtkOpenGLPolyDataMapper::ReplaceShaderPositionVC(
       "out vec4 vertexVCVSOutput;");
     vtkShaderProgram::Substitute(VSSource,
       "//VTK::PositionVC::Impl",
-      "vertexMCVSOutput = vec3(vertexMC);\n"
+      "  vertexMCVSOutput = vec3(vertexMC);\n"
       "  vertexVCVSOutput = MCVCMatrix * vertexMC;\n"
       "  gl_Position = MCDCMatrix * vertexMC;\n");
     vtkShaderProgram::Substitute(VSSource,
@@ -2252,60 +2260,33 @@ void vtkOpenGLPolyDataMapper::SetPropertyShaderParameters(vtkOpenGLHelper &cellB
   program->SetUniform3f("ambientColorUniform", aColor);
   program->SetUniform3f("diffuseColorUniform", dColor);
 
-  const bool enableVoi = ppty->GetEnableVolumeOfInterest();
-  if (program->IsUniformUsed("enableVoiUniform"))
-  {
-      program->SetUniformi("enableVoiUniform", static_cast<int>(enableVoi));
-  }
-  if (program->IsUniformUsed("voiMinUniform") && program->IsUniformUsed("voiMaxUniform"))
+  if (program->IsUniformUsed("boxMaskOriginUniform") && program->IsUniformUsed("boxMaskAxisXUniform") && program->IsUniformUsed("boxMaskAxisYUniform") && program->IsUniformUsed("boxMaskAxisZUniform"))
   {
       double* bounds = GetBounds();
-      double bounds_min[3]{ bounds[0], bounds[2], bounds[4] };
-      double bounds_max[3]{ bounds[1], bounds[3], bounds[5] };
+      double bounds_min[3]{bounds[0], bounds[2], bounds[4]};
+      double bounds_max[3]{bounds[1], bounds[3], bounds[5]};
 
-      double in_voi_min[3];
-      double in_voi_max[3];
+      double boxMaskOrigin[3]{0., 0., 0.},
+             boxMaskAxisX[3]{0., 0., 0.},
+             boxMaskAxisY[3]{0., 0., 0.},
+             boxMaskAxisZ[3]{0., 0., 0.};
 
-      if (bounds_min[0] == bounds_max[0] || bounds_min[1] == bounds_max[1] || bounds_min[2] == bounds_max[2])
+      if (bounds_min[0] != bounds_max[0] && bounds_min[1] != bounds_max[1] && bounds_min[2] != bounds_max[2])
       {
-          in_voi_min[0] = std::numeric_limits<float>::lowest();
-          in_voi_min[1] = std::numeric_limits<float>::lowest();
-          in_voi_min[2] = std::numeric_limits<float>::lowest();
-          in_voi_max[0] = std::numeric_limits<float>::max();
-          in_voi_max[1] = std::numeric_limits<float>::max();
-          in_voi_max[2] = std::numeric_limits<float>::max();
-      }
-      else
-      {
-
-          double* voiMin = ppty->GetVolumeOfInterestMin();
-          double* voiMax = ppty->GetVolumeOfInterestMax();
-
-          in_voi_min[0] = (voiMin[0] == voiMax[0]) ? bounds_min[0] : (voiMin[0] * (bounds_max[0] - bounds_min[0]) + bounds_min[0]);
-          in_voi_min[1] = (voiMin[1] == voiMax[1]) ? bounds_min[1] : (voiMin[1] * (bounds_max[1] - bounds_min[1]) + bounds_min[1]);
-          in_voi_min[2] = (voiMin[2] == voiMax[2]) ? bounds_min[2] : (voiMin[2] * (bounds_max[2] - bounds_min[2]) + bounds_min[2]);
-
-          in_voi_max[0] = (voiMin[0] == voiMax[0]) ? bounds_min[0] : (voiMax[0] * (bounds_max[0] - bounds_min[0]) + bounds_min[0]);
-          in_voi_max[1] = (voiMin[1] == voiMax[1]) ? bounds_min[1] : (voiMax[1] * (bounds_max[1] - bounds_min[1]) + bounds_min[1]);
-          in_voi_max[2] = (voiMin[2] == voiMax[2]) ? bounds_min[2] : (voiMax[2] * (bounds_max[2] - bounds_min[2]) + bounds_min[2]);
-
-          const double decimalTol = 3.;
-          double decimals[3] = { std::abs(std::log10(std::abs(in_voi_max[0] - in_voi_min[0]))) + decimalTol,
-                                std::abs(std::log10(std::abs(in_voi_max[1] - in_voi_min[1]))) + decimalTol,
-                                std::abs(std::log10(std::abs(in_voi_max[2] - in_voi_min[2]))) + decimalTol };
-          double bias[3] = { 1. / std::pow(10., std::ceil(decimals[0])),
-                            1. / std::pow(10., std::ceil(decimals[1])),
-                            1. / std::pow(10., std::ceil(decimals[2])) };
-          in_voi_min[0] -= bias[0];
-          in_voi_min[1] -= bias[1];
-          in_voi_min[2] -= bias[2];
-          in_voi_max[0] += bias[0];
-          in_voi_max[1] += bias[1];
-          in_voi_max[2] += bias[2];
+          const struct vtkProperty::BoxMask& boxMask = ppty->GetBoxMask();
+          for (int i = 0; i < 3; ++i)
+          {
+              boxMaskOrigin[i] = boxMask.origin[i];
+              boxMaskAxisX[i] = boxMask.axisX[i];
+              boxMaskAxisY[i] = boxMask.axisY[i];
+              boxMaskAxisZ[i] = boxMask.axisZ[i];
+          }
       }
 
-      program->SetUniform3f("voiMinUniform", in_voi_min);
-      program->SetUniform3f("voiMaxUniform", in_voi_max);
+      program->SetUniform3f("boxMaskOriginUniform", boxMaskOrigin);
+      program->SetUniform3f("boxMaskAxisXUniform", boxMaskAxisX);
+      program->SetUniform3f("boxMaskAxisYUniform", boxMaskAxisY);
+      program->SetUniform3f("boxMaskAxisZUniform", boxMaskAxisZ);
   }
 
   // handle specular
