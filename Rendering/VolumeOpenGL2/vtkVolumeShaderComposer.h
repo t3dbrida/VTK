@@ -1490,6 +1490,7 @@ namespace vtkvolume
     "      bool maskedByRegion;\n";
 
     int i = 0;
+    int maskI = 0;
     switch (mapper->GetBlendMode())
     {
       case vtkVolumeMapper::COMPOSITE_BLEND:
@@ -1516,7 +1517,7 @@ namespace vtkvolume
               toShaderStr <<
                   "      maskedByRegion = false;\n"
                   "      noMask = false;\n"
-                  "      if (texture3D(in_mask[" << i << "], texPos).r > 0)\n"
+                  "      if (texture3D(in_mask[" << maskI++ << "], texPos).r > 0)\n"
                   "      {\n"
                   "        maskedByRegion = true;\n"
                   "      }\n";

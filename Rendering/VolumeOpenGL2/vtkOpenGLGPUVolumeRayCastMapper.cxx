@@ -721,7 +721,7 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadMasks(vtkRenderer* ren)
   {
     const int volumeIndex = mask.first;
     vtkImageData* maskInput = mask.second.Input;
-    if (maskInput && (maskInput->GetMTime() > this->MaskUpdateTime[volumeIndex]))
+    if (maskInput && (this->MaskUpdateTime.find(volumeIndex) == this->MaskUpdateTime.end() || maskInput->GetMTime() > this->MaskUpdateTime[volumeIndex]))
     {
       vtkSmartPointer<vtkVolumeTexture> currentMask = this->CurrentMasks[volumeIndex];
       if (!currentMask)
@@ -735,13 +735,32 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadMasks(vtkRenderer* ren)
     
       int isCellData;
       vtkDataArray* arr = this->Parent->GetScalars(maskInput,
-        this->Parent->ScalarMode, this->Parent->ArrayAccessMode,
-        this->Parent->ArrayId, this->Parent->ArrayName, isCellData);
+                                                   this->Parent->ScalarMode,
+                                                   this->Parent->ArrayAccessMode,
+                                                   this->Parent->ArrayId,
+                                                   this->Parent->ArrayName,
+                                                   isCellData);
     
-      result |= this->CurrentMasks[volumeIndex]->LoadVolume(ren, maskInput, arr,
-        isCellData, VTK_NEAREST_INTERPOLATION);
+      result |= this->CurrentMasks[volumeIndex]->LoadVolume(ren,
+                                                            maskInput,
+                                                            arr,
+                                                            isCellData,
+                                                            VTK_NEAREST_INTERPOLATION);
     
       this->MaskUpdateTime[volumeIndex].Modified();
+    }
+    else if (!maskInput)
+    {
+      auto it = this->CurrentMasks.find(volumeIndex);
+      if (it != this->CurrentMasks.end())
+      {
+        if (vtkVolumeTexture* const volumeTexture = it->second)
+        {
+          volumeTexture->ReleaseGraphicsResources(ren->GetRenderWindow());
+        }
+        this->CurrentMasks.erase(it);
+        this->MaskUpdateTime.erase(volumeIndex);
+      }
     }
   }
 
@@ -773,6 +792,7 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadRegions(vtkRenderer* ren)
 
               if (!found)
               {
+                  rit->texture->ReleaseGraphicsResources(ren->GetRenderWindow());
                   rit = regionTextures.erase(rit);
                   rend = regionTextures.end();
               }
@@ -788,7 +808,7 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadRegions(vtkRenderer* ren)
           }
       }
       
-      if (regions.size() && it == this->RegionMaskTextures.end())
+      if (regions.size() && (it == this->RegionMaskTextures.end() || it->first != in.first))
       {
           it = this->RegionMaskTextures.insert({in.first, {}}).first;
       }
@@ -855,6 +875,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadRegionTransferFunctions(v
 
               if (!found)
               {
+                  rtftIt->texture->ReleaseGraphicsResources(ren->GetRenderWindow());
                   rtftIt = regionTransferFunctionTextures.erase(rtftIt);
                   rend = regionTransferFunctionTextures.end();
               }
@@ -870,7 +891,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadRegionTransferFunctions(v
           }
       }
       
-      if (regions.size() && it == this->RegionTransferFunctionTextures.end())
+      if (regions.size() && (it == this->RegionTransferFunctionTextures.end() || it->first != in.first))
       {
           it = this->RegionTransferFunctionTextures.insert({in.first, {}}).first;
       }
@@ -2586,7 +2607,23 @@ void vtkOpenGLGPUVolumeRayCastMapper::ReleaseGraphicsResources(
   {
     currentMask.second->ReleaseGraphicsResources(window);
   }
+  for (auto & rmt : this->Impl->RegionMaskTextures)
+  {
+      for (auto& rm : rmt.second)
+      {
+          rm.texture->ReleaseGraphicsResources(window);
+      }
+  }
+  for (auto& rtft : this->Impl->RegionTransferFunctionTextures)
+  {
+      for (auto& rtf : rtft.second)
+      {
+          rtf.texture->ReleaseGraphicsResources(window);
+      }
+  }
   this->Impl->CurrentMasks.clear();
+  this->Impl->RegionTransferFunctionTextures.clear();
+  this->Impl->MaskUpdateTime.clear();
   this->Impl->RegionMaskTextures.clear();
 
   this->Impl->ReleaseGraphicsMaskTransfer(window);
