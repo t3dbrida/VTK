@@ -6,6 +6,8 @@ endif()
 
 project(VTK)
 
+set(CMAKE_DEBUG_POSTFIX d)
+
 set(VTK_CMAKE_DIR "${VTK_SOURCE_DIR}/CMake")
 set(CMAKE_MODULE_PATH ${VTK_CMAKE_DIR} ${CMAKE_MODULE_PATH})
 

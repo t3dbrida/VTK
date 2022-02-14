@@ -764,6 +764,18 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadMasks(vtkRenderer* ren)
     }
   }
 
+  for (auto currentMaskIt = this->CurrentMasks.begin(); currentMaskIt != this->CurrentMasks.end();)
+  {
+      if (this->Parent->Masks.find(currentMaskIt->first) == this->Parent->Masks.end())
+      {
+          currentMaskIt = this->CurrentMasks.erase(currentMaskIt);
+      }
+      else
+      {
+          ++currentMaskIt;
+      }
+  }
+
   return result;
 }
 
@@ -2897,11 +2909,11 @@ void vtkOpenGLGPUVolumeRayCastMapper::ReplaceShaderShading(std::map<vtkShader::T
   {
     vtkImageData* mask = nullptr;
     vtkVolumeTexture* currentMask = nullptr;
-    auto it = this->Masks.find(0);
-    if (it != this->Masks.end())
+    if (this->Masks.size())
     {
-      mask = it->second.Input;
-      currentMask = this->Impl->CurrentMasks.at(0);
+        auto it = this->Masks.begin();
+        mask = it->second.Input;
+        currentMask = this->Impl->CurrentMasks.at(it->first);
     }
     vtkShaderProgram::Substitute(fragmentShader,
       "//VTK::Shading::Impl",
@@ -4465,9 +4477,9 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderSingleInput(vtkRenderer
   vtkVolumeTexture::VolumeBlock* block = volumeTex->GetCurrentBlock();
 
   vtkVolumeTexture* currentMask = nullptr;
-  if (this->CurrentMasks.find(0) != this->CurrentMasks.end())
+  if (this->CurrentMasks.size() == 1)
   {
-    currentMask = this->CurrentMasks[0];
+    currentMask = this->CurrentMasks.begin()->second;
     currentMask->SortBlocksBackToFront(ren, vol->GetMatrix());
   }
   if (this->RegionMaskTextures.find(0) != this->RegionMaskTextures.end())

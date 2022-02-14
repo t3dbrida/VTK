@@ -1485,9 +1485,9 @@ namespace vtkvolume
     toShaderStr <<
       "      vec3 texPos, p;\n"
       "      bool noMask;"
-      "      bool maskedByBox;\n"
-      "      bool maskedByCylinder;\n"
-    "      bool maskedByRegion;\n";
+      "      bool maskedByBox = false;\n"
+      "      bool maskedByCylinder = false;\n"
+    "      bool maskedByRegion = false;\n";
 
     int i = 0;
     int maskI = 0;
@@ -1702,7 +1702,7 @@ namespace vtkvolume
     {
         shaderStr += "    bool maskedByRegion = false;\n"
                      "    noMask = false;\n"
-                     "    if(texture3D(in_mask[0], g_dataPos).r > 0.)\n"
+                     "    if (texture3D(in_mask[0], g_dataPos).r > 0.)\n"
                      "    {\n"
                      "      maskedByRegion = true;\n"
                      "    }\n";
