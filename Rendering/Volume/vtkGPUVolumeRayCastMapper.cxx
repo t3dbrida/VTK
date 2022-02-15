@@ -593,9 +593,9 @@ void vtkGPUVolumeRayCastMapper::CreateCanonicalView(
   this->GeneratingCanonicalView = 0;
 }
 
-void vtkGPUVolumeRayCastMapper::SetMask(const int volumeIndex, vtkImageData* const mask) noexcept
+void vtkGPUVolumeRayCastMapper::SetMask(vtkVolume* const volume, vtkImageData* const mask) noexcept
 {
-  auto it = this->Masks.find(volumeIndex);
+  auto it = this->Masks.find(volume);
   const bool exists = it != this->Masks.end();
   if (exists)
   {
@@ -603,7 +603,7 @@ void vtkGPUVolumeRayCastMapper::SetMask(const int volumeIndex, vtkImageData* con
   }
   if (mask)
   {
-    this->Masks[volumeIndex] = {mask, BinaryMaskType};
+    this->Masks[volume] = {mask, BinaryMaskType};
     mask->Register(this);
   }
   else if (exists)
@@ -613,9 +613,9 @@ void vtkGPUVolumeRayCastMapper::SetMask(const int volumeIndex, vtkImageData* con
   this->Modified();
 }
 
-vtkImageData* vtkGPUVolumeRayCastMapper::GetMask(const int volumeIndex) const
+vtkImageData* vtkGPUVolumeRayCastMapper::GetMask(vtkVolume* const volume) const
 {
-  return this->Masks.at(volumeIndex).Input;
+  return this->Masks.at(volume).Input;
 }
 
 // ----------------------------------------------------------------------------

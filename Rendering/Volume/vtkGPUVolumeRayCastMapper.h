@@ -41,6 +41,7 @@
 class vtkContourValues;
 class vtkRenderWindow;
 class vtkVolumeProperty;
+class vtkVolume;
 
 class VTKRENDERINGVOLUME_EXPORT vtkGPUVolumeRayCastMapper : public vtkVolumeMapper
 {
@@ -240,8 +241,8 @@ public:
    * component 0, with the blending weight being determined by
    * MaskBlendFactor.
    */
-  void SetMask(const int volumeIndex, vtkImageData* const mask) noexcept;
-  vtkImageData* GetMask(const int volumeIndex) const;
+  void SetMask(vtkVolume* const volume, vtkImageData* const mask) noexcept;
+  vtkImageData* GetMask(vtkVolume* const volume) const;
 
   //void SetMaskInput(vtkImageData *mask);
   //vtkGetObjectMacro(MaskInput, vtkImageData);
@@ -569,7 +570,7 @@ protected:
       int MaskType;
   };
 
-  std::map<int, Mask> Masks;
+  std::map<vtkVolume*, Mask> Masks;
 
   //vtkImageData * MaskInput;
   //float          MaskBlendFactor;

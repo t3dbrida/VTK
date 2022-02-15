@@ -1478,8 +1478,8 @@ namespace vtkvolume
   //--------------------------------------------------------------------------
   std::string ShadingMultipleInputs(vtkVolumeMapper* mapper,
                                     vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs,
-                                    const std::map<int, vtkImageData*>& maskInputs,
-                                    const std::map<int, vtkSmartPointer<vtkVolumeTexture>>& masks)
+                                    const std::map<vtkVolume*, vtkImageData*>& maskInputs,
+                                    const std::map<vtkVolume*, vtkSmartPointer<vtkVolumeTexture>>& masks)
   {
     std::ostringstream toShaderStr;
     toShaderStr <<
@@ -1487,7 +1487,7 @@ namespace vtkvolume
       "      bool noMask;"
       "      bool maskedByBox = false;\n"
       "      bool maskedByCylinder = false;\n"
-    "      bool maskedByRegion = false;\n";
+      "      bool maskedByRegion = false;\n";
 
     int i = 0;
     int maskI = 0;
@@ -1512,7 +1512,7 @@ namespace vtkvolume
           
           toShaderStr <<
                  "    noMask = true;";
-          if (maskInputs.find(i) != maskInputs.end())
+          if (maskInputs.find(input.Volume) != maskInputs.end())
           {
               toShaderStr <<
                   "      maskedByRegion = false;\n"
@@ -2471,8 +2471,8 @@ namespace vtkvolume
   std::string BinaryMaskDeclaration(vtkRenderer* vtkNotUsed(ren),
                                     vtkVolumeMapper* vtkNotUsed(mapper),
                                     vtkVolume* vtkNotUsed(vol),
-                                    const std::map<int, vtkImageData*>& maskInputs,
-                                    const std::map<int, vtkSmartPointer<vtkVolumeTexture>>& masks)
+                                    const std::map<vtkVolume*, vtkImageData*>& maskInputs,
+                                    const std::map<vtkVolume*, vtkSmartPointer<vtkVolumeTexture>>& masks)
   {
     if (masks.empty() || maskInputs.empty())
     {
@@ -2488,8 +2488,8 @@ namespace vtkvolume
   std::string BinaryMaskImplementation(vtkRenderer* vtkNotUsed(ren),
                                        vtkVolumeMapper* mapper,
                                        vtkVolume* vtkNotUsed(vol),
-                                       const std::map<int, vtkImageData*>& maskInputs,
-                                       const std::map<int, vtkSmartPointer<vtkVolumeTexture>>& masks)
+                                       const std::map<vtkVolume*, vtkImageData*>& maskInputs,
+                                       const std::map<vtkVolume*, vtkSmartPointer<vtkVolumeTexture>>& masks)
   {
     if (masks.empty() || maskInputs.empty()/* ||
         maskType == vtkGPUVolumeRayCastMapper::LabelMapMaskType*/)
