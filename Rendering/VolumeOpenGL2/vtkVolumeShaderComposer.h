@@ -1495,6 +1495,19 @@ namespace vtkvolume
     {
       case vtkVolumeMapper::COMPOSITE_BLEND:
       default:
+      {
+        int visibleCount = 0;
+        for (auto& item : inputs)
+        {
+            if (item.second.Volume->GetVisibility())
+            {
+                ++visibleCount;
+            }
+        }
+        if (visibleCount == 1)
+        {
+            visibleCount = 2;
+        }
         for (auto& item : inputs)
         {
           auto& input = item.second;
@@ -1643,15 +1656,17 @@ namespace vtkvolume
           toShaderStr <<
           "          if (computeFragColor == true)\n"
           "          {\n"
-          "              g_srcColor.a *= in_downsampleCompensation / " + std::to_string(inputs.size()) +  ";\n"
+          "              g_srcColor.a *= in_downsampleCompensation / " + std::to_string(visibleCount) +  ";\n"
           "              g_srcColor.rgb *= g_srcColor.a;\n"
-          "              g_fragColor = (1. - g_fragColor.a) * g_srcColor + g_fragColor;\n"
+          "              for (int ds = 0; ds < " + std::to_string(visibleCount) + "; ++ds)\n"
+          "                g_fragColor = (1. - g_fragColor.a) * g_srcColor + g_fragColor;\n"
           "          }\n"
           "        }\n\n";
 
           i++;
         }
         break;
+      }
     }
 
     return toShaderStr.str();
