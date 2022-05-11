@@ -109,39 +109,39 @@ public:
       // Correct the opacity array for the spacing between the planes if we
       // are using a composite blending operation
       // TODO Fix this code for sample distance in three dimensions
-        if(blendMode == vtkVolumeMapper::COMPOSITE_BLEND)
-        {
-          float* ptr = this->Table;
-          double factor = sampleDistance/unitDistance;
-          int i=0;
-          while(i < this->TextureWidth)
-          {
-            if(*ptr > 0.0001f)
-            {
-              *ptr = static_cast<float>(1.0-pow(1.0-static_cast<double>(*ptr),
-                                        factor));
-            }
-            ++ptr;
-            ++i;
-          }
-          this->LastSampleDistance = sampleDistance;
-        }
-        else if (blendMode==vtkVolumeMapper::ADDITIVE_BLEND)
-        {
-          float* ptr = this->Table;
-          double factor = sampleDistance/unitDistance;
-          int i = 0;
-          while( i < this->TextureWidth)
-          {
-            if(*ptr > 0.0001f)
-            {
-              *ptr = static_cast<float>(static_cast<double>(*ptr)*factor);
-            }
-            ++ptr;
-            ++i;
-          }
-          this->LastSampleDistance = sampleDistance;
-        }
+        //if(blendMode == vtkVolumeMapper::COMPOSITE_BLEND)
+        //{
+        //  float* ptr = this->Table;
+        //  double factor = sampleDistance/unitDistance;
+        //  int i=0;
+        //  while(i < this->TextureWidth)
+        //  {
+        //    if(*ptr > 0.0001f)
+        //    {
+        //      *ptr = static_cast<float>(1.0-pow(1.0-static_cast<double>(*ptr),
+        //                                factor));
+        //    }
+        //    ++ptr;
+        //    ++i;
+        //  }
+        //  this->LastSampleDistance = sampleDistance;
+        //}
+        //else if (blendMode==vtkVolumeMapper::ADDITIVE_BLEND)
+        //{
+        //  float* ptr = this->Table;
+        //  double factor = sampleDistance/unitDistance;
+        //  int i = 0;
+        //  while( i < this->TextureWidth)
+        //  {
+        //    if(*ptr > 0.0001f)
+        //    {
+        //      *ptr = static_cast<float>(static_cast<double>(*ptr)*factor);
+        //    }
+        //    ++ptr;
+        //    ++i;
+        //  }
+        //  this->LastSampleDistance = sampleDistance;
+        //}
 
       this->TextureObject->SetWrapS(vtkTextureObject::ClampToEdge);
       this->TextureObject->SetMagnificationFilter(filterValue);

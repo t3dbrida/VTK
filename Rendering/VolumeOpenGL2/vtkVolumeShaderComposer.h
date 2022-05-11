@@ -106,8 +106,7 @@ namespace vtkvolume
     return std::string(
       "  // Transform vertex (data coordinates) to texture coordinates.\n"
       "  // p_texture = T_dataToTex * p_data\n"
-      "  vec3 uvx = sign(in_cellSpacing[0]) * (in_inverseTextureDatasetMatrix[0] *\n"
-      "  vec4(in_vertexPos, 1.0)).xyz;\n"
+      "  vec3 uvx = sign(in_cellSpacing[0]) * (in_inverseTextureDatasetMatrix[0] * vec4(in_vertexPos, 1.0)).xyz;\n"
       "\n"
       "  // For point dataset, we offset the texture coordinate\n"
       "  // to account for OpenGL treating voxel at the center of the cell.\n"
@@ -157,19 +156,91 @@ namespace vtkvolume
     const int numInputs = static_cast<int>(inputs.size());
 
     std::ostringstream toShaderStr;
-    toShaderStr <<
-      "uniform sampler3D in_volume[" << numInputs <<"];\n";
+    toShaderStr << "uniform sampler3D in_volume[" << numInputs <<"];\n";
+    toShaderStr << "uniform vec3 in_boundsMin[" << numInputs << "];\n";
+    toShaderStr << "uniform vec3 in_boundsMax[" << numInputs << "];\n";
 
-    toShaderStr <<
-        "uniform vec3 in_boxMaskOrigin[" << numInputs << "];\n";
-    toShaderStr <<
-        "uniform vec3 in_boxMaskAxisX[" << numInputs << "];\n";
-    toShaderStr <<
-        "uniform vec3 in_boxMaskAxisY[" << numInputs << "];\n";
-    toShaderStr <<
-        "uniform vec3 in_boxMaskAxisZ[" << numInputs << "];\n";
-    toShaderStr <<
-        "uniform float in_cylinderMask[" << (7 * numInputs) << "];\n";
+    toShaderStr << "struct Mark\n"
+                   "{\n"
+                   "  float t;\n"
+                   "  int volumeIndex;\n"
+                   "  bool start;\n"
+                   "};\n";
+    const int numInputs2 = 2 * numInputs;
+    toShaderStr << "vec3 g_dirSteps[" << numInputs << "];\n";
+    toShaderStr << "vec3 g_dirStepOrig;\n";
+
+    
+    toShaderStr << "\n"
+                   "Mark[" << numInputs2 << "] sortIntervals(vec2 intervals[" << numInputs << "])\n"
+                   "{\n"
+                   "  Mark marks[" << numInputs2 << "];\n"
+                   "  for (int i = 0; i < " << numInputs << "; ++i)\n"
+                   "  {\n"
+                   "    int index0 = 2 * i,\n"
+                   "        index1 = index0 + 1;\n"
+                   "    marks[index0].t = intervals[i].x;\n"
+                   "    marks[index0].volumeIndex = i;\n"
+                   "    marks[index0].start = true;\n"
+                   "    marks[index1].t = intervals[i].y;\n"
+                   "    marks[index1].volumeIndex = i;\n"
+                   "    marks[index1].start = false;\n"
+                   "    if (marks[index0].t == 0. && marks[index1].t == 0.)\n"
+                   "    {\n"
+                   "      marks[index0].volumeIndex = -1;\n"
+                   "      marks[index0].t = 1000000.;\n"
+                   "      marks[index1].volumeIndex = -1;\n"
+                   "      marks[index1].t = 1000000.;\n"
+                   "    }\n"
+                   "  }\n"
+                   "\n"
+                   "  // actual sorting\n"
+                   "  bool swapped;\n"
+                   "  int iter = 0;\n"
+                   "  do\n"
+                   "  {\n"
+                   "    swapped = false;\n"
+                   "    for (int i = 0; i < " << (numInputs2 - 1) << "; ++i)\n"
+                   "    {\n"
+                   "      if (marks[i + 1].t < marks[i].t)\n"
+                   "      {\n"
+                   "        Mark tmp = marks[i];\n"
+                   "        marks[i] = marks[i + 1];\n"
+                   "        marks[i + 1] = tmp;\n"
+                   "        swapped = true;\n"
+                   "      }\n"
+                   "    }\n"
+                   "    ++iter;\n"
+                   "  } while (swapped && iter < 50);\n"
+                   "\n"
+                   "  // update interval exit volume indices\n"
+                   "  int volumeIndexStack[" << numInputs2 << "];"
+                   "  int stackPtr = -1;"
+                   "  for (int i = 0; i < " << (numInputs2 - 1) << "; ++i)\n"
+                   "  {\n"
+                   "    if (marks[i].start == true)\n"
+                   "    {\n"
+                   "      volumeIndexStack[++stackPtr] = marks[i].volumeIndex;\n"
+                   "    }\n"
+                   "    else\n" // TODO what if i'm inside, then i don't start the way i expect!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                   "    {\n"
+                   "      if (marks[i].volumeIndex == volumeIndexStack[stackPtr])\n"
+                   "      {\n"
+                   "        --stackPtr;\n"
+                   "      }\n"
+                   "      marks[i].volumeIndex = volumeIndexStack[stackPtr--];\n"
+                   "    }\n"
+                   "  }\n"
+                   "  marks[" << (numInputs2 - 1) << "].volumeIndex = -1;\n"
+                   "\n"
+                   "  return marks;\n"
+                   "}\n";
+
+    toShaderStr << "uniform vec3 in_boxMaskOrigin[" << numInputs << "];\n";
+    toShaderStr << "uniform vec3 in_boxMaskAxisX[" << numInputs << "];\n";
+    toShaderStr << "uniform vec3 in_boxMaskAxisY[" << numInputs << "];\n";
+    toShaderStr << "uniform vec3 in_boxMaskAxisZ[" << numInputs << "];\n";
+    toShaderStr << "uniform float in_cylinderMask[" << (7 * numInputs) << "];\n";
 
     toShaderStr <<
       "uniform vec4 in_volume_scale[" << numInputs << "];\n"
@@ -187,13 +258,11 @@ namespace vtkvolume
       "// Camera position\n"
       "uniform vec3 in_cameraPos;\n";
 
-    toShaderStr <<
-        "uniform float in_gradMagMax[" << numInputs << "];\n";
+    toShaderStr << "uniform float in_gradMagMax[" << numInputs << "];\n";
 
     // For multiple inputs (numInputs > 1), an additional transformation is
     // needed for the bounding-box.
-    const int numTransf = (numInputs > 1) ? numInputs + 1 :
-      1;
+    const int numTransf = (numInputs > 1) ? numInputs + 1 : 1;
     toShaderStr <<
       "uniform mat4 in_volumeMatrix[" << numTransf << "];\n"
       "uniform mat4 in_inverseVolumeMatrix[" << numTransf << "];\n"
@@ -377,12 +446,17 @@ namespace vtkvolume
         \n  g_eyePosObj = in_inverseVolumeMatrix[0] * vec4(in_cameraPos, 1.0);\
         \n\
         \n  // Getting the ray marching direction (in dataset space);\
-        \n  vec3 rayDir = computeRayDirection();\
+        \n  g_rayDir = normalize(ip_vertexPos.xyz - g_eyePosObj.xyz);\
+        \n  g_rayDirDot = dot(g_rayDir, g_rayDir);\
         \n\
         \n  // Multiply the raymarching direction with the step size to get the\
         \n  // sub-step size we need to take at each raymarching step\
-        \n  g_dirStep = (ip_inverseTextureDataAdjusted *\
-        \n              vec4(rayDir, 0.0)).xyz * in_sampleDistance;\
+        \n  g_dirStep = (ip_inverseTextureDataAdjusted * vec4(g_rayDir, 0.0)).xyz * in_sampleDistance;\
+        \n  g_dirStepOrig = g_dirStep;\
+        \n  for (int i = 0; i < " + std::to_string(inputs.size()) + "; ++i)\
+        \n  {\
+        \n    g_dirSteps[i] = (ip_inverseTextureDataAdjusted * vec4(g_rayDir, 0.0)).xyz * min(abs(in_cellSpacing[i].x), min(abs(in_cellSpacing[i].y), abs(in_cellSpacing[i].z)));\
+        \n  }\
         \n\
         \n  // 2D Texture fragment coordinates [0,1] from fragment coordinates.\
         \n  // The frame buffer texture has the size of the plain buffer but \
@@ -391,8 +465,7 @@ namespace vtkvolume
         \n  // Device coordinates are between -1 and 1. We need texture\
         \n  // coordinates between 0 and 1. The in_depthSampler\
         \n  // buffer has the original size buffer.\
-        \n  vec2 fragTexCoord = (gl_FragCoord.xy - in_windowLowerLeftCorner) *\
-        \n                      in_inverseWindowSize;\
+        \n  vec2 fragTexCoord = (gl_FragCoord.xy - in_windowLowerLeftCorner) * in_inverseWindowSize;\
         \n\
         \n  if (in_useJittering)\
         \n  {\
@@ -887,21 +960,23 @@ namespace vtkvolume
     if (!ren->GetActiveCamera()->GetParallelProjection())
     {
       return std::string("\
-        \nvec3 computeRayDirection()\
-        \n  {\
-        \n  return normalize(ip_vertexPos.xyz - g_eyePosObj.xyz);\
-        \n  }");
+        \nvec3 g_rayDir;\
+        \n\
+        \nvoid computeRayDirection()\
+        \n{\
+        \n  g_rayDir = normalize(ip_vertexPos.xyz - g_eyePosObj.xyz);\
+        \n}");
     }
-    else
-    {
-      return std::string("\
-        \nuniform vec3 in_projectionDirection;\
-        \nvec3 computeRayDirection()\
-        \n  {\
-        \n  return normalize((in_inverseVolumeMatrix[0] *\
-        \n                   vec4(in_projectionDirection, 0.0)).xyz);\
-        \n  }");
-    }
+    //else
+   // {
+   //   return std::string("\
+   //     \nuniform vec3 in_projectionDirection;\
+   //     \nvec3 computeRayDirection()\
+   //     \n{\
+   //     \n  return normalize((in_inverseVolumeMatrix[0] *\
+   //     \n                   vec4(in_projectionDirection, 0.0)).xyz);\
+   //     \n}");
+   // }
   }
 
   //--------------------------------------------------------------------------
@@ -1313,7 +1388,7 @@ namespace vtkvolume
     auto gpuMapper = vtkGPUVolumeRayCastMapper::SafeDownCast(mapper);
     const int numInputs = gpuMapper->GetInputCount();
 
-    if (mapper->GetBlendMode() == vtkVolumeMapper::MAXIMUM_INTENSITY_BLEND)
+    /*if (mapper->GetBlendMode() == vtkVolumeMapper::MAXIMUM_INTENSITY_BLEND)
     {
       return std::string("\
         \n bool l_firstValue;\
@@ -1347,11 +1422,8 @@ namespace vtkvolume
                "\nfloat l_normValues_" + istr + "[NUMBER_OF_CONTOURS_" + istr + " + 2];";
       }
       return str;
-    }
-    else
-    {
-      return std::string();
-    }
+    }*/
+    return std::string();
   }
 
   //--------------------------------------------------------------------------
@@ -1361,8 +1433,29 @@ namespace vtkvolume
   {
     auto gpuMapper = vtkGPUVolumeRayCastMapper::SafeDownCast(mapper);
     const int numInputs = gpuMapper->GetInputCount();
+    const std::string numInputsStr = std::to_string(numInputs);
+    const std::string numInputs2Str = std::to_string(2 * numInputs);
 
     std::string str = "";
+    if (numInputs > 1)
+    {
+      str += "  \n"
+             "  vec2 intervals[" + numInputsStr + "];\n"
+             "  for (int i = 0; i < " + numInputsStr + "; ++i)\n"
+             "  {\n"
+             "    intervals[i] = intersectRayBox(g_eyePosObj.xyz, g_rayDir, in_boundsMin[i], in_boundsMax[i], in_inverseVolumeMatrix[0] * in_volumeMatrix[i + 1]);\n"
+             "  }\n"
+             "  Mark marks[" + numInputs2Str + "] = sortIntervals(intervals);\n"
+             "\n"
+             "  int currentMarkIndex = 0;\n"
+             "  if (marks[currentMarkIndex].volumeIndex >= 0)\n"
+             "  {\n"
+             "    g_dirStep = g_dirSteps[marks[currentMarkIndex].volumeIndex];\n"
+             "    g_dataPos = (ip_inverseTextureDataAdjusted * vec4(g_eyePosObj.xyz + marks[currentMarkIndex].t * g_rayDir, 1.)).xyz;\n"
+             "  }\n"
+             "\n";
+    }
+
     if (mapper->GetBlendMode() == vtkVolumeMapper::MAXIMUM_INTENSITY_BLEND)
     {
       str = "\n  // We get data between 0.0 - 1.0 range"
@@ -1506,7 +1599,7 @@ namespace vtkvolume
         }
         if (visibleCount == 1)
         {
-            visibleCount = 2;
+            visibleCount = 2; // this is for downsample compensation to match single input shading
         }
         for (auto& item : inputs)
         {
@@ -1519,9 +1612,8 @@ namespace vtkvolume
               // texPos = T * g_dataPos
               // T = T_dataToTex1 * T_worldToData * T_bboxTexToWorld;
               "      g_skip = false;\n"
-              "      texPos = (in_cellToPoint[" << idx << "] * in_inverseTextureDatasetMatrix[" << idx
-              << "] * in_inverseVolumeMatrix[" << idx << "] *\n"
-              "        in_volumeMatrix[0] * in_textureDatasetMatrix[0] * vec4(g_dataPos.xyz, 1.0)).xyz;\n";
+              "      texPos = (in_cellToPoint[" << idx << "] * in_inverseTextureDatasetMatrix[" << idx << "] * in_inverseVolumeMatrix[" << idx << "] *\n"
+              "                in_volumeMatrix[0] * in_textureDatasetMatrix[0] * vec4(g_dataPos.xyz, 1.0)).xyz;\n";
           
           toShaderStr <<
                  "    noMask = true;";
@@ -2085,9 +2177,9 @@ namespace vtkvolume
       \n#endif\
       \n  // Depth test\
       \n  if(gl_FragCoord.z >= l_depthValue.x)\
-      \n    {\
+      \n  {\
       \n    discard;\
-      \n    }\
+      \n  }\
       \n\
       \n  // color buffer or max scalar buffer have a reduced size.\
       \n  fragTexCoord = (gl_FragCoord.xy - in_windowLowerLeftCorner) *\
@@ -2110,35 +2202,65 @@ namespace vtkvolume
       \n                    terminatePosTmp;\
       \n  g_terminatePos = terminatePosTmp.xyz / terminatePosTmp.w;\
       \n\
-      \n  g_terminatePointMax = length(g_terminatePos.xyz - g_dataPos.xyz) /\
-      \n                        length(g_dirStep);\
-      \n  g_currentT = 0.0;");
+      \n  g_terminatePointMax = length(g_terminatePos.xyz - g_dataPos.xyz) / length(g_dirStep);\
+      \n  g_currentT = 0.0;"
+    );
   }
 
   //--------------------------------------------------------------------------
   std::string TerminationImplementation(vtkRenderer* vtkNotUsed(ren),
-                                        vtkVolumeMapper* vtkNotUsed(mapper),
+                                        vtkVolumeMapper* mapper,
                                         vtkVolume* vtkNotUsed(vol))
   {
-    return std::string("\
-      \n    if(any(greaterThan(g_dataPos, in_texMax[0])) ||\
-      \n      any(lessThan(g_dataPos, in_texMin[0])))\
-      \n      {\
+    std::string str("\
+      \n    if(any(greaterThan(g_dataPos, in_texMax[0])) || any(lessThan(g_dataPos, in_texMin[0])))\
+      \n    {\
       \n      break;\
-      \n      }\
+      \n    }\
       \n\
       \n    // Early ray termination\
       \n    // if the currently composited colour alpha is already fully saturated\
       \n    // we terminated the loop or if we have hit an obstacle in the\
       \n    // direction of they ray (using depth buffer) we terminate as well.\
-      \n    if((g_fragColor.a > g_opacityThreshold) || \
-      \n       g_currentT >= g_terminatePointMax)\
-      \n      {\
+      \n    if ((g_fragColor.a > g_opacityThreshold) || g_currentT >= 10000/*g_terminatePointMax*/)\
+      \n    {\
       \n      break;\
-      \n      }\
-      \n    ++g_currentT;"
+      \n    }\
+      \n    ++g_currentT;\
+      \n"
     );
+    return str;
   }
+
+  std::string BaseAdvance(vtkRenderer* vtkNotUsed(ren),
+                          vtkVolumeMapper* mapper,
+                          vtkVolume* vtkNotUsed(vol))
+  {
+    std::string str = "";
+    if (static_cast<vtkGPUVolumeRayCastMapper*>(mapper)->GetInputCount() > 1)
+    {
+      str += "\
+        \n    vec3 diff = (in_textureDatasetMatrix[0] * vec4(g_dataPos + g_dirStep, 1.0) - g_eyePosObj).xyz;\
+        \n    float t = dot(diff, g_rayDir) / g_rayDirDot;\
+        \n\
+        \n    if (t > marks[currentMarkIndex + 1].t)\
+        \n    {\
+        \n      if (marks[++currentMarkIndex].volumeIndex >= 0)\
+        \n      {\
+        \n        g_dirStep = g_dirSteps[marks[currentMarkIndex].volumeIndex];\
+        \n        g_dataPos = (ip_inverseTextureDataAdjusted * vec4(g_eyePosObj.xyz + marks[currentMarkIndex].t * g_rayDir, 1.)).xyz;\
+        \n        dontAdvance = true;\
+        \n      }\
+        \n      else\
+        \n      {\
+        \n        g_dirStep = g_dirStepOrig;\
+        \n      }\
+        \n    }\
+        \n    "
+      ;
+    }
+    return str;
+   }      
 
   //--------------------------------------------------------------------------
   std::string TerminationExit(vtkRenderer* vtkNotUsed(ren),
@@ -2425,7 +2547,7 @@ namespace vtkvolume
     if (!ren->GetActiveCamera()->GetParallelProjection())
     {
       shaderStr = std::string("\
-        \n  vec4 tempClip = in_volumeMatrix[0] * vec4(rayDir, 0.0);\
+        \n  vec4 tempClip = in_volumeMatrix[0] * vec4(g_rayDir, 0.0);\
         \n  if (tempClip.w != 0.0)\
         \n  {\
         \n    tempClip = tempClip/tempClip.w;\
@@ -2468,8 +2590,7 @@ namespace vtkvolume
       \n  // Update the number of ray marching steps to account for the clipped entry point (\
       \n  // this is necessary in case the ray hits geometry after marching behind the plane,\
       \n  // given that the number of steps was assumed to be from the not-clipped entry).\
-      \n  g_terminatePointMax = length(g_terminatePos.xyz - g_dataPos.xyz) /\
-      \n    length(g_dirStep);\
+      \n  g_terminatePointMax = length(g_terminatePos.xyz - g_dataPos.xyz) / length(g_dirStep);\
       \n");
     }
   }
@@ -2511,7 +2632,7 @@ namespace vtkvolume
     {
       return std::string();
     }
-    //else if (mapper->GetTotalNumberOfInputConnections() == 1)
+    //else if (mapper->GetInputCount() == 1)
     //{
     //  return std::string("\
     //    \n    vec4 maskValue = texture3D(in_mask[0], g_dataPos);\

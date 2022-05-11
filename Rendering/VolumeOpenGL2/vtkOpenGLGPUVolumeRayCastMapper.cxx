@@ -1738,7 +1738,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateSamplingDistance(
   double maxCellSpacing[3] = {std::numeric_limits<double>::lowest(),
                               std::numeric_limits<double>::lowest(),
                               std::numeric_limits<double>::lowest()};
-  for (int i = 0; i < this->Parent->GetTotalNumberOfInputConnections(); ++i)
+  for (int i = 0; i < this->Parent->GetInputCount(); ++i)
   {
     auto input = this->Parent->GetTransformedInput(i);
     auto vol = this->Parent->AssembledInputs[i].Volume;
@@ -1774,7 +1774,6 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateSamplingDistance(
   double cellSpacing[3];
   input->GetSpacing(cellSpacing);
 
-  input->GetSpacing(cellSpacing);
   vtkMatrix4x4* worldToDataset = vol->GetMatrix();
   double minWorldSpacing = VTK_DOUBLE_MAX;
 
@@ -2837,6 +2836,9 @@ void vtkOpenGLGPUVolumeRayCastMapper::ReplaceShaderBase(
     vtkvolume::BaseImplementation(ren, this, vol));
 
   vtkShaderProgram::Substitute(
+    fragmentShader, "//VTK::Base::Advance", vtkvolume::BaseAdvance(ren, this, vol));
+
+  vtkShaderProgram::Substitute(
     fragmentShader, "//VTK::Base::Exit", vtkvolume::BaseExit(ren, this, vol));
 }
 
@@ -3035,9 +3037,9 @@ void vtkOpenGLGPUVolumeRayCastMapper::ReplaceShaderCompute(
       this->Impl->NumberOfLights,
       this->Impl->LightComplexity));
 
-  vtkShaderProgram::Substitute(fragmentShader,
-    "//VTK::ComputeRayDirection::Dec",
-    vtkvolume::ComputeRayDirectionDeclaration(ren, this, vol, numComps));
+  //vtkShaderProgram::Substitute(fragmentShader,
+  //  "//VTK::ComputeRayDirection::Dec",
+  ////  vtkvolume::ComputeRayDirectionDeclaration(ren, this, vol, numComps));
 }
 
 //-----------------------------------------------------------------------------
@@ -4009,6 +4011,9 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
   this->SpacingVec.resize(numInputs * 3, 0);
   this->RangeVec.resize(numInputs * 8, 0);
 
+  std::vector<float> boundsMin(3 * numInputs, 0.);
+  std::vector<float> boundsMax(3 * numInputs, 0.);
+  //std::vector<float> sampling(numInputs, 0.);
   std::vector<int> volumeVisibility(numInputs, 0);
   std::vector<float> boxMaskOrigins(3 * numInputs, 0.);
   std::vector<float> boxMaskAxesX(3 * numInputs, 0.);
@@ -4020,6 +4025,35 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
   for (auto& input : this->Parent->AssembledInputs)
   {
     vtkVolumeInputHelper& volumeInput = input.second;
+    vtkVolume* const volume = volumeInput.Volume;
+    vtkImageData* const imgData = this->Parent->TransformedInputs.at(input.first);
+    double bounds[6];
+    imgData->GetBounds(bounds);
+    float min[3]{bounds[0], bounds[2], bounds[4]};
+    float max[3]{bounds[1], bounds[3], bounds[5]};
+    vtkInternal::CopyVector<float, 3>(min, boundsMin.data(), 3 * index);
+    vtkInternal::CopyVector<float, 3>(max, boundsMax.data(), 3 * index);
+
+    /*const double* const spacing = imageData->GetSpacing();
+    sampling[index] = VTK_DOUBLE_MAX;
+    vtkMatrix4x4* const worldToDataset = input.second.Volume->GetMatrix();
+    for (int j = 0; j < 3; ++j)
+    {
+        double tmp = worldToDataset->GetElement(0, j);
+        double tmp2 = tmp * tmp;
+        tmp = worldToDataset->GetElement(1, j);
+        tmp2 += tmp * tmp;
+        tmp = worldToDataset->GetElement(2, j);
+        tmp2 += tmp * tmp;
+
+        // We use fabs() in case the spacing is negative.
+        double worldSpacing = fabs(spacing[j] * sqrt(tmp2));
+        if (worldSpacing < sampling[index])
+        {
+            sampling[index] = worldSpacing;
+        }
+    }*/
+
     // Bind volume textures
     auto block = volumeInput.Texture->GetCurrentBlock();
     std::stringstream ss; ss << "in_volume[" << index << "]";
@@ -4082,38 +4116,25 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
     cylinders[cylinderOffset + 5] = cylinderMaskAxis[2];
     cylinders[cylinderOffset + 6] = cylindeMaskRadius;
 
-    volumeVisibility[index] = volumeInput.Volume->GetVisibility();
+    volumeVisibility[index] = volume->GetVisibility();
 
     ++index;
   }
-  prog->SetUniform4fv("in_volume_scale", numInputs,
-   reinterpret_cast<const float(*)[4]>(this->ScaleVec.data()));
-  prog->SetUniform4fv("in_volume_bias", numInputs,
-   reinterpret_cast<const float(*)[4]>(this->BiasVec.data()));
-  prog->SetUniform2fv("in_scalarsRange", 4 * numInputs,
-   reinterpret_cast<const float(*)[2]>(this->RangeVec.data()));
-  prog->SetUniform3fv("in_cellStep", numInputs,
-   reinterpret_cast<const float(*)[3]>(this->StepVec.data()));
-  prog->SetUniform3fv("in_cellSpacing", numInputs,
-   reinterpret_cast<const float(*)[3]>(this->SpacingVec.data()));
-  prog->SetUniform3fv("in_boxMaskOrigin",
-                      numInputs,
-                      reinterpret_cast<const float(*)[3]>(boxMaskOrigins.data()));
-  prog->SetUniform3fv("in_boxMaskAxisX",
-                      numInputs,
-                      reinterpret_cast<const float(*)[3]>(boxMaskAxesX.data()));
-  prog->SetUniform3fv("in_boxMaskAxisY",
-                      numInputs,
-                      reinterpret_cast<const float(*)[3]>(boxMaskAxesY.data()));
-  prog->SetUniform3fv("in_boxMaskAxisZ",
-                      numInputs,
-                      reinterpret_cast<const float(*)[3]>(boxMaskAxesZ.data()));
+  prog->SetUniform3fv("in_boundsMin", numInputs, reinterpret_cast<const float(*)[3]>(boundsMin.data()));
+  prog->SetUniform3fv("in_boundsMax", numInputs, reinterpret_cast<const float(*)[3]>(boundsMax.data()));
+  prog->SetUniform4fv("in_volume_scale", numInputs, reinterpret_cast<const float(*)[4]>(this->ScaleVec.data()));
+  prog->SetUniform4fv("in_volume_bias", numInputs, reinterpret_cast<const float(*)[4]>(this->BiasVec.data()));
+  prog->SetUniform2fv("in_scalarsRange", 4 * numInputs, reinterpret_cast<const float(*)[2]>(this->RangeVec.data()));
+  prog->SetUniform3fv("in_cellStep", numInputs, reinterpret_cast<const float(*)[3]>(this->StepVec.data()));
+  prog->SetUniform3fv("in_cellSpacing", numInputs, reinterpret_cast<const float(*)[3]>(this->SpacingVec.data()));
+  prog->SetUniform3fv("in_boxMaskOrigin", numInputs, reinterpret_cast<const float(*)[3]>(boxMaskOrigins.data()));
+  prog->SetUniform3fv("in_boxMaskAxisX", numInputs, reinterpret_cast<const float(*)[3]>(boxMaskAxesX.data()));
+  prog->SetUniform3fv("in_boxMaskAxisY", numInputs, reinterpret_cast<const float(*)[3]>(boxMaskAxesY.data()));
+  prog->SetUniform3fv("in_boxMaskAxisZ", numInputs, reinterpret_cast<const float(*)[3]>(boxMaskAxesZ.data()));
   prog->SetUniform1fv("in_cylinderMask", 7 * numInputs, reinterpret_cast<const float(*)>(cylinders.data()));
 
   // upload volume visibility information
-  prog->SetUniform1iv("in_volumeVisibility",
-                      numInputs,
-                      volumeVisibility.data());
+  prog->SetUniform1iv("in_volumeVisibility", numInputs, volumeVisibility.data());
   prog->SetUniform1fv("in_gradMagMax", this->Parent->GradMagMaxs.size(), this->Parent->GradMagMaxs.data());
 }
 
