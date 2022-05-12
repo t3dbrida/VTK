@@ -4034,26 +4034,6 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
     vtkInternal::CopyVector<float, 3>(min, boundsMin.data(), 3 * index);
     vtkInternal::CopyVector<float, 3>(max, boundsMax.data(), 3 * index);
 
-    /*const double* const spacing = imageData->GetSpacing();
-    sampling[index] = VTK_DOUBLE_MAX;
-    vtkMatrix4x4* const worldToDataset = input.second.Volume->GetMatrix();
-    for (int j = 0; j < 3; ++j)
-    {
-        double tmp = worldToDataset->GetElement(0, j);
-        double tmp2 = tmp * tmp;
-        tmp = worldToDataset->GetElement(1, j);
-        tmp2 += tmp * tmp;
-        tmp = worldToDataset->GetElement(2, j);
-        tmp2 += tmp * tmp;
-
-        // We use fabs() in case the spacing is negative.
-        double worldSpacing = fabs(spacing[j] * sqrt(tmp2));
-        if (worldSpacing < sampling[index])
-        {
-            sampling[index] = worldSpacing;
-        }
-    }*/
-
     // Bind volume textures
     auto block = volumeInput.Texture->GetCurrentBlock();
     std::stringstream ss; ss << "in_volume[" << index << "]";

@@ -188,9 +188,9 @@ namespace vtkvolume
                    "    if (marks[index0].t == 0. && marks[index1].t == 0.)\n"
                    "    {\n"
                    "      marks[index0].volumeIndex = -1;\n"
-                   "      marks[index0].t = 1000000.;\n"
+                   "      marks[index0].t = 1. / 0.;\n"
                    "      marks[index1].volumeIndex = -1;\n"
-                   "      marks[index1].t = 1000000.;\n"
+                   "      marks[index1].t = 1. / 0.;\n"
                    "    }\n"
                    "  }\n"
                    "\n"
@@ -214,24 +214,33 @@ namespace vtkvolume
                    "  } while (swapped && iter < 50);\n"
                    "\n"
                    "  // update interval exit volume indices\n"
-                   "  int volumeIndexStack[" << numInputs2 << "];"
-                   "  int stackPtr = -1;"
-                   "  for (int i = 0; i < " << (numInputs2 - 1) << "; ++i)\n"
+                   "  int volumeIndexStack[" << numInputs2 << "];\n"
+                   "  volumeIndexStack[0] = -1\n;"
+                   "  int stackPtr = 0;\n"
+                   "  for (int i = 0; i < " << numInputs2 << "; ++i)\n"
                    "  {\n"
                    "    if (marks[i].start == true)\n"
                    "    {\n"
                    "      volumeIndexStack[++stackPtr] = marks[i].volumeIndex;\n"
                    "    }\n"
-                   "    else\n" // TODO what if i'm inside, then i don't start the way i expect!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                   "    else\n"
                    "    {\n"
-                   "      if (marks[i].volumeIndex == volumeIndexStack[stackPtr])\n"
+                   "      int volumeIndex = marks[i].volumeIndex;\n"
+                   "      for (int j = 0; j <= stackPtr; ++j)\n"
                    "      {\n"
-                   "        --stackPtr;\n"
+                   "        if (volumeIndexStack[j] == volumeIndex)\n"
+                   "        {\n"
+                   "          --stackPtr;\n"
+                   "          for (int k = j; k <= stackPtr; ++k)\n"
+                   "          {\n"
+                   "            volumeIndexStack[j] = volumeIndexStack[j + 1];\n"
+                   "          }\n"
+                   "          break;\n"
+                   "        }\n"
                    "      }\n"
-                   "      marks[i].volumeIndex = volumeIndexStack[stackPtr--];\n"
+                   "      marks[i].volumeIndex = volumeIndexStack[stackPtr];\n"
                    "    }\n"
                    "  }\n"
-                   "  marks[" << (numInputs2 - 1) << "].volumeIndex = -1;\n"
                    "\n"
                    "  return marks;\n"
                    "}\n";
@@ -309,7 +318,7 @@ namespace vtkvolume
         "\n"
       "// Others\n"
       "uniform bool in_useJittering;\n"
-      "vec3 g_rayJitter = vec3(0.0);\n"
+      "vec3 g_rayJitter[" << (numInputs + 1) << "];\n"
       "\n"
       "uniform vec2 in_averageIPRange;\n";
 
@@ -470,13 +479,21 @@ namespace vtkvolume
         \n  if (in_useJittering)\
         \n  {\
         \n    float jitterValue = texture2D(in_noiseSampler, gl_FragCoord.xy / textureSize(in_noiseSampler, 0)).x;\
-        \n    g_rayJitter = g_dirStep * jitterValue;\
+        \n    g_rayJitter[0] = g_dirStep * jitterValue;\
+        \n    for (int i = 0; i < " + std::to_string(inputs.size()) + "; ++i)\
+        \n    {\
+        \n      g_rayJitter[i + 1] = g_dirSteps[i] * jitterValue;\
+        \n    }\
         \n  }\
         \n  else\
         \n  {\
-        \n    g_rayJitter = g_dirStep;\
+        \n    g_rayJitter[0] = g_dirStep;\
+        \n    for (int i = 0; i < " + std::to_string(inputs.size()) + "; ++i)\
+        \n    {\
+        \n      g_rayJitter[i + 1] = vec3(0., 0., 0.);\
+        \n    }\
         \n  }\
-        \n  g_dataPos += g_rayJitter;\
+        \n  g_dataPos += g_rayJitter[0];\
         \n\
         \n  // Flag to deternmine if voxel should be considered for the rendering\
         \n  g_skip = false;");
@@ -752,8 +769,8 @@ namespace vtkvolume
             "\n              in_lightDiffuseColor[0] * color.rgb;"
             "\n  }"
             "\n  specular = pow(nDotH, in_shininess[" + index + "]) *"
-            "\n               in_specular[" + index + "] *"
-            "\n               in_lightSpecularColor[0];"
+            "\n                        in_specular[" + index + "] *"
+            "\n                        in_lightSpecularColor[0];"
             "\n  // For the headlight, ignore the light's ambient color"
             "\n  // for now as it is causing the old mapper tests to fail"
             "\n  //finalColor.xyz = in_ambient[" + index + "] * color.rgb +"
@@ -1439,7 +1456,7 @@ namespace vtkvolume
     std::string str = "";
     if (numInputs > 1)
     {
-      str += "  \n"
+      str += "\n"
              "  vec2 intervals[" + numInputsStr + "];\n"
              "  for (int i = 0; i < " + numInputsStr + "; ++i)\n"
              "  {\n"
@@ -1447,11 +1464,12 @@ namespace vtkvolume
              "  }\n"
              "  Mark marks[" + numInputs2Str + "] = sortIntervals(intervals);\n"
              "\n"
-             "  int currentMarkIndex = 0;\n"
-             "  if (marks[currentMarkIndex].volumeIndex >= 0)\n"
+             "  int currentMarkIndex = 0,\n"
+             "      volumeIndex = marks[currentMarkIndex].volumeIndex;\n"
+             "  if (volumeIndex >= 0)\n"
              "  {\n"
-             "    g_dirStep = g_dirSteps[marks[currentMarkIndex].volumeIndex];\n"
-             "    g_dataPos = (ip_inverseTextureDataAdjusted * vec4(g_eyePosObj.xyz + marks[currentMarkIndex].t * g_rayDir, 1.)).xyz;\n"
+             "    g_dirStep = g_dirSteps[volumeIndex];\n"
+             "    g_dataPos = (ip_inverseTextureDataAdjusted * vec4(g_eyePosObj.xyz + marks[currentMarkIndex].t * g_rayDir, 1.)).xyz + g_rayJitter[volumeIndex + 1];\n"
              "  }\n"
              "\n";
     }
@@ -1462,8 +1480,7 @@ namespace vtkvolume
             "\n  l_firstValue = true;"
             "\n  l_maxValue = vec4(0.0);";
     }
-    else if (mapper->GetBlendMode() ==
-             vtkVolumeMapper::MINIMUM_INTENSITY_BLEND)
+    else if (mapper->GetBlendMode() == vtkVolumeMapper::MINIMUM_INTENSITY_BLEND)
     {
       str = "\n  //We get data between 0.0 - 1.0 range"
             "\n  l_firstValue = true;"
@@ -2237,23 +2254,27 @@ namespace vtkvolume
                           vtkVolume* vtkNotUsed(vol))
   {
     std::string str = "";
-    if (static_cast<vtkGPUVolumeRayCastMapper*>(mapper)->GetInputCount() > 1)
+    const int inputCount = static_cast<vtkGPUVolumeRayCastMapper*>(mapper)->GetInputCount();
+    if (inputCount > 1)
     {
+      const std::string inputCount2xStr = std::to_string(2 * inputCount);
       str += "\
         \n    vec3 diff = (in_textureDatasetMatrix[0] * vec4(g_dataPos + g_dirStep, 1.0) - g_eyePosObj).xyz;\
         \n    float t = dot(diff, g_rayDir) / g_rayDirDot;\
-        \n\
-        \n    if (t > marks[currentMarkIndex + 1].t)\
+        \n    int nextMarkIndex = currentMarkIndex + 1;\
+        \n    if (nextMarkIndex < " + inputCount2xStr + " && t >= marks[nextMarkIndex].t)\
         \n    {\
-        \n      if (marks[++currentMarkIndex].volumeIndex >= 0)\
+        \n      while (++currentMarkIndex < " + inputCount2xStr + " && marks[currentMarkIndex].volumeIndex < 0);\
+        \n      if (currentMarkIndex < " + inputCount2xStr + ")\
         \n      {\
-        \n        g_dirStep = g_dirSteps[marks[currentMarkIndex].volumeIndex];\
+        \n        volumeIndex = marks[currentMarkIndex].volumeIndex;\
+        \n        g_dirStep = g_dirSteps[volumeIndex];\
         \n        g_dataPos = (ip_inverseTextureDataAdjusted * vec4(g_eyePosObj.xyz + marks[currentMarkIndex].t * g_rayDir, 1.)).xyz;\
         \n        dontAdvance = true;\
         \n      }\
         \n      else\
         \n      {\
-        \n        g_dirStep = g_dirStepOrig;\
+        \n        g_exit = true;\
         \n      }\
         \n    }\
         \n    "
@@ -2456,7 +2477,7 @@ namespace vtkvolume
       \n{ \
       \n  vec4 startPosObj = vec4(0.0);\
       \n  {\
-      \n    startPosObj = clip_texToObjMat * vec4(startPosTex - g_rayJitter, 1.0);\
+      \n    startPosObj = clip_texToObjMat * vec4(startPosTex - g_rayJitter[0], 1.0);\
       \n    startPosObj = startPosObj / startPosObj.w;\
       \n    startPosObj.w = 1.0;\
       \n  }\
@@ -2503,7 +2524,7 @@ namespace vtkvolume
       \n      vec4 newStartPosTex = clip_objToTexMat * vec4(startPosObj.xyz, 1.0);\
       \n      newStartPosTex /= newStartPosTex.w;\
       \n      startPosTex = newStartPosTex.xyz;\
-      \n      startPosTex += g_rayJitter;\
+      \n      startPosTex += g_rayJitter[0];\
       \n    }\
       \n\
       \n    // Move the end position closer to the eye if needed:\
