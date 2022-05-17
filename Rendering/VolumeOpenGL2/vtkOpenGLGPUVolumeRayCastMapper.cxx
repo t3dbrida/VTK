@@ -4013,7 +4013,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
 
   std::vector<float> boundsMin(3 * numInputs, 0.);
   std::vector<float> boundsMax(3 * numInputs, 0.);
-  //std::vector<float> sampling(numInputs, 0.);
+  std::vector<float> sampling(numInputs, 0.);
   std::vector<int> volumeVisibility(numInputs, 0);
   std::vector<float> boxMaskOrigins(3 * numInputs, 0.);
   std::vector<float> boxMaskAxesX(3 * numInputs, 0.);
@@ -4029,10 +4029,37 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
     vtkImageData* const imgData = this->Parent->TransformedInputs.at(input.first);
     double bounds[6];
     imgData->GetBounds(bounds);
+    double* const cellSpacing = imgData->GetSpacing();
     float min[3]{bounds[0], bounds[2], bounds[4]};
     float max[3]{bounds[1], bounds[3], bounds[5]};
+    //for (int i = 0; i < 3; ++i)
+    //{
+    //    const double halfCellSpacingI = cellSpacing[i];
+    //    min[i] -= halfCellSpacingI;
+    //    max[i] += halfCellSpacingI;
+    //}
     vtkInternal::CopyVector<float, 3>(min, boundsMin.data(), 3 * index);
     vtkInternal::CopyVector<float, 3>(max, boundsMax.data(), 3 * index);
+
+    double minWorldSpacing = std::numeric_limits<double>::max();
+    vtkMatrix4x4* const worldToDataset = volume->GetMatrix();
+    for (int j = 0; j < 3; ++j)
+    {
+        double tmp = worldToDataset->GetElement(0, j);
+        double tmp2 = tmp * tmp;
+        tmp = worldToDataset->GetElement(1, j);
+        tmp2 += tmp * tmp;
+        tmp = worldToDataset->GetElement(2, j);
+        tmp2 += tmp * tmp;
+
+        // We use fabs() in case the spacing is negative.
+        double worldSpacing = fabs(cellSpacing[j] * sqrt(tmp2));
+        if (worldSpacing < minWorldSpacing)
+        {
+            minWorldSpacing = worldSpacing;
+        }
+    }
+    sampling[index] = static_cast<float>(minWorldSpacing);
 
     // Bind volume textures
     auto block = volumeInput.Texture->GetCurrentBlock();
@@ -4102,6 +4129,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
   }
   prog->SetUniform3fv("in_boundsMin", numInputs, reinterpret_cast<const float(*)[3]>(boundsMin.data()));
   prog->SetUniform3fv("in_boundsMax", numInputs, reinterpret_cast<const float(*)[3]>(boundsMax.data()));
+  prog->SetUniform1fv("in_sampling", numInputs, sampling.data());
   prog->SetUniform4fv("in_volume_scale", numInputs, reinterpret_cast<const float(*)[4]>(this->ScaleVec.data()));
   prog->SetUniform4fv("in_volume_bias", numInputs, reinterpret_cast<const float(*)[4]>(this->BiasVec.data()));
   prog->SetUniform2fv("in_scalarsRange", 4 * numInputs, reinterpret_cast<const float(*)[2]>(this->RangeVec.data()));

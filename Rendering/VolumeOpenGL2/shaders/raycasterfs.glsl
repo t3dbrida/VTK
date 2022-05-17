@@ -108,12 +108,9 @@ vec4 WindowToNDC(const float xCoord, const float yCoord, const float zCoord)
 {
   vec4 NDCCoord = vec4(0.0, 0.0, 0.0, 1.0);
 
-  NDCCoord.x = (xCoord - in_windowLowerLeftCorner.x) * 2.0 *
-    in_inverseWindowSize.x - 1.0;
-  NDCCoord.y = (yCoord - in_windowLowerLeftCorner.y) * 2.0 *
-    in_inverseWindowSize.y - 1.0;
-  NDCCoord.z = (2.0 * zCoord - (gl_DepthRange.near + gl_DepthRange.far)) /
-    gl_DepthRange.diff;
+  NDCCoord.x = (xCoord - in_windowLowerLeftCorner.x) * 2.0 * in_inverseWindowSize.x - 1.0;
+  NDCCoord.y = (yCoord - in_windowLowerLeftCorner.y) * 2.0 * in_inverseWindowSize.y - 1.0;
+  NDCCoord.z = (2.0 * zCoord - (gl_DepthRange.near + gl_DepthRange.far)) / gl_DepthRange.diff;
 
   return NDCCoord;
 }
@@ -125,12 +122,9 @@ vec4 NDCToWindow(const float xNDC, const float yNDC, const float zNDC)
 {
   vec4 WinCoord = vec4(0.0, 0.0, 0.0, 1.0);
 
-  WinCoord.x = (xNDC + 1.f) / (2.f * in_inverseWindowSize.x) +
-    in_windowLowerLeftCorner.x;
-  WinCoord.y = (yNDC + 1.f) / (2.f * in_inverseWindowSize.y) +
-    in_windowLowerLeftCorner.y;
-  WinCoord.z = (zNDC * gl_DepthRange.diff +
-    (gl_DepthRange.near + gl_DepthRange.far)) / 2.f;
+  WinCoord.x = (xNDC + 1.f) / (2.f * in_inverseWindowSize.x) + in_windowLowerLeftCorner.x;
+  WinCoord.y = (yNDC + 1.f) / (2.f * in_inverseWindowSize.y) + in_windowLowerLeftCorner.y;
+  WinCoord.z = (zNDC * gl_DepthRange.diff + (gl_DepthRange.near + gl_DepthRange.far)) / 2.f;
 
   return WinCoord;
 }
@@ -138,8 +132,8 @@ vec4 NDCToWindow(const float xNDC, const float yNDC, const float zNDC)
 vec2 intersectRayBox(vec3 ray_origin, vec3 ray_direction, vec3 aabb_min, vec3 aabb_max, mat4 transform)
 {
     // Intersection method from Real-Time Rendering and Essential Mathematics for Games
-	float tMin = -1. / 0.,
-	      tMax = 1. / 0.;
+	float tMin = -1e20,
+	      tMax = 1e20;
 
 	vec3 obbPos = vec3(transform[3].x, transform[3].y, transform[3].z),
 		 delta = obbPos - ray_origin;
@@ -150,7 +144,7 @@ vec2 intersectRayBox(vec3 ray_origin, vec3 ray_direction, vec3 aabb_min, vec3 aa
 		float e = dot(xaxis, delta),
 			  f = dot(ray_direction, xaxis);
 
-		if (abs(f) > 0.)
+		if (abs(f) > 1e-5)
 		{
 		    // Standard case
 			float t1 = (e + aabb_min.x) / f, // Intersection with the "left" plane
@@ -189,7 +183,7 @@ vec2 intersectRayBox(vec3 ray_origin, vec3 ray_direction, vec3 aabb_min, vec3 aa
 		else
 		{
 			// Rare case : the ray is almost parallel to the planes, so they don't have any "intersection"
-			if(-e + aabb_min.x > 0. || -e + aabb_max.x < 0.)
+			if (-e + aabb_min.x > 0. || -e + aabb_max.x < 0.)
 			{
 				return vec2(0., 0.);
 			}
@@ -204,7 +198,7 @@ vec2 intersectRayBox(vec3 ray_origin, vec3 ray_direction, vec3 aabb_min, vec3 aa
 		float e = dot(yaxis, delta),
 			  f = dot(ray_direction, yaxis);
 
-		if (abs(f) > 0.)
+		if (abs(f) > 1e-5)
 		{
 			float t1 = (e + aabb_min.y) / f,
 			      t2 = (e + aabb_max.y) / f;
@@ -245,7 +239,7 @@ vec2 intersectRayBox(vec3 ray_origin, vec3 ray_direction, vec3 aabb_min, vec3 aa
 		float e = dot(zaxis, delta),
 			  f = dot(ray_direction, zaxis);
 
-		if (abs(f) > 0.)
+		if (abs(f) > 1e-5)
 		{
 			float t1 = (e + aabb_min.z) / f,
 			      t2 = (e + aabb_max.z) / f;

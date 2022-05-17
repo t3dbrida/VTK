@@ -166,15 +166,17 @@ namespace vtkvolume
                    "  int volumeIndex;\n"
                    "  bool start;\n"
                    "};\n";
-    const int numInputs2 = 2 * numInputs;
+    const int numInputs2x = 2 * numInputs;
     toShaderStr << "vec3 g_dirSteps[" << numInputs << "];\n";
     toShaderStr << "vec3 g_dirStepOrig;\n";
+    toShaderStr << "float g_minDirStepLength;\n";
 
     
     toShaderStr << "\n"
-                   "Mark[" << numInputs2 << "] sortIntervals(vec2 intervals[" << numInputs << "])\n"
+                   "Mark[" << numInputs2x << "] sortIntervals(vec2 intervals[" << numInputs << "])\n"
                    "{\n"
-                   "  Mark marks[" << numInputs2 << "];\n"
+                   "  Mark marks[" << numInputs2x << "];\n"
+                   "\n"
                    "  for (int i = 0; i < " << numInputs << "; ++i)\n"
                    "  {\n"
                    "    int index0 = 2 * i,\n"
@@ -185,24 +187,22 @@ namespace vtkvolume
                    "    marks[index1].t = intervals[i].y;\n"
                    "    marks[index1].volumeIndex = i;\n"
                    "    marks[index1].start = false;\n"
-                   "    if (marks[index0].t == 0. && marks[index1].t == 0.)\n"
+                   "    if (marks[index0].t <= 0. && marks[index1].t <= 0.)\n"
                    "    {\n"
                    "      marks[index0].volumeIndex = -1;\n"
-                   "      marks[index0].t = 1. / 0.;\n"
+                   "      marks[index0].t = 1e20;\n"
                    "      marks[index1].volumeIndex = -1;\n"
-                   "      marks[index1].t = 1. / 0.;\n"
+                   "      marks[index1].t = 1e20;\n"
                    "    }\n"
                    "  }\n"
                    "\n"
-                   "  // actual sorting\n"
-                   "  bool swapped;\n"
-                   "  int iter = 0;\n"
-                   "  do\n"
+                   "  // bubble sort (array size is very small so it doesn't matter which alg. we use)\n"
+                   "  for (bool swapped = true; swapped;)\n"
                    "  {\n"
                    "    swapped = false;\n"
-                   "    for (int i = 0; i < " << (numInputs2 - 1) << "; ++i)\n"
+                   "    for (int i = 0; i < " << (numInputs2x - 1) << "; ++i)\n"
                    "    {\n"
-                   "      if (marks[i + 1].t < marks[i].t)\n"
+                   "      if (marks[i].t > marks[i + 1].t)\n"
                    "      {\n"
                    "        Mark tmp = marks[i];\n"
                    "        marks[i] = marks[i + 1];\n"
@@ -210,35 +210,50 @@ namespace vtkvolume
                    "        swapped = true;\n"
                    "      }\n"
                    "    }\n"
-                   "    ++iter;\n"
-                   "  } while (swapped && iter < 50);\n"
+                   "  }\n"
+                   "\n"
+                   "  // clamp negative starting times to zero\n"
+                   "  for (int i = 0; i < " << numInputs2x << "; ++i)\n"
+                   "  {\n"
+                   "    if (marks[i].start == true && marks[i].t < 0)\n"
+                   "    {\n"
+                   "      marks[i].t = 0;\n"
+                   "    }\n"
+                   "  }\n"
+                   "\n"
+                   "  int volumeIndexStack[" << numInputs2x << "];\n"
+                   "  for (int i = 0; i < " << numInputs2x << "; ++i)\n"
+                   "  {\n"
+                   "    volumeIndexStack[i] = -1;\n"
+                   "  }\n"
+                   "  int volumeIndexStackTop = 0;\n"
                    "\n"
                    "  // update interval exit volume indices\n"
-                   "  int volumeIndexStack[" << numInputs2 << "];\n"
-                   "  volumeIndexStack[0] = -1\n;"
-                   "  int stackPtr = 0;\n"
-                   "  for (int i = 0; i < " << numInputs2 << "; ++i)\n"
+                   "  for (int i = 0; i < " << numInputs2x << "; ++i)\n"
                    "  {\n"
                    "    if (marks[i].start == true)\n"
                    "    {\n"
-                   "      volumeIndexStack[++stackPtr] = marks[i].volumeIndex;\n"
+                   "      if (marks[i].t != 0)\n"
+                   "      {\n"
+                   "        volumeIndexStack[++volumeIndexStackTop] = marks[i].volumeIndex;\n"
+                   "      }\n"
                    "    }\n"
                    "    else\n"
                    "    {\n"
                    "      int volumeIndex = marks[i].volumeIndex;\n"
-                   "      for (int j = 0; j <= stackPtr; ++j)\n"
+                   "      for (int j = 0; j <= volumeIndexStackTop; ++j)\n"
                    "      {\n"
                    "        if (volumeIndexStack[j] == volumeIndex)\n"
                    "        {\n"
-                   "          --stackPtr;\n"
-                   "          for (int k = j; k <= stackPtr; ++k)\n"
+                   "          for (int k = j; k <= volumeIndexStackTop; ++k)\n"
                    "          {\n"
                    "            volumeIndexStack[j] = volumeIndexStack[j + 1];\n"
                    "          }\n"
+                   "          --volumeIndexStackTop;\n"
                    "          break;\n"
                    "        }\n"
                    "      }\n"
-                   "      marks[i].volumeIndex = volumeIndexStack[stackPtr];\n"
+                   "      marks[i].volumeIndex = volumeIndexStack[volumeIndexStackTop];\n"
                    "    }\n"
                    "  }\n"
                    "\n"
@@ -299,6 +314,7 @@ namespace vtkvolume
       "\n"
       "// Sample distance\n"
       "uniform float in_sampleDistance;\n"
+      "uniform float in_sampling[" << numInputs << "];\n"
       "uniform float in_downsampleCompensation;\n"
       "\n"
       "// Scales\n"
@@ -464,7 +480,7 @@ namespace vtkvolume
         \n  g_dirStepOrig = g_dirStep;\
         \n  for (int i = 0; i < " + std::to_string(inputs.size()) + "; ++i)\
         \n  {\
-        \n    g_dirSteps[i] = (ip_inverseTextureDataAdjusted * vec4(g_rayDir, 0.0)).xyz * min(abs(in_cellSpacing[i].x), min(abs(in_cellSpacing[i].y), abs(in_cellSpacing[i].z)));\
+        \n    g_dirSteps[i] = in_sampling[i] * (ip_inverseTextureDataAdjusted * vec4(g_rayDir, 0.0)).xyz;\
         \n  }\
         \n\
         \n  // 2D Texture fragment coordinates [0,1] from fragment coordinates.\
@@ -490,10 +506,18 @@ namespace vtkvolume
         \n    g_rayJitter[0] = g_dirStep;\
         \n    for (int i = 0; i < " + std::to_string(inputs.size()) + "; ++i)\
         \n    {\
-        \n      g_rayJitter[i + 1] = vec3(0., 0., 0.);\
+        \n      g_rayJitter[i + 1] = g_dirSteps[i];\
         \n    }\
         \n  }\
-        \n  g_dataPos += g_rayJitter[0];\
+        \n  vec3 minRayJitter = vec3(1e20);\
+        \n  for (int i = 0; i < " + std::to_string(inputs.size()) + "; ++i)\
+        \n  {\
+        \n    if (any(lessThan(g_rayJitter[i + 1], minRayJitter)))\
+        \n    {\
+        \n      minRayJitter = g_rayJitter[i + 1];\
+        \n    }\
+        \n  }\
+        \n  g_dataPos += minRayJitter;\
         \n\
         \n  // Flag to deternmine if voxel should be considered for the rendering\
         \n  g_skip = false;");
@@ -1451,7 +1475,7 @@ namespace vtkvolume
     auto gpuMapper = vtkGPUVolumeRayCastMapper::SafeDownCast(mapper);
     const int numInputs = gpuMapper->GetInputCount();
     const std::string numInputsStr = std::to_string(numInputs);
-    const std::string numInputs2Str = std::to_string(2 * numInputs);
+    const std::string numInputs2xStr = std::to_string(2 * numInputs);
 
     std::string str = "";
     if (numInputs > 1)
@@ -1462,15 +1486,13 @@ namespace vtkvolume
              "  {\n"
              "    intervals[i] = intersectRayBox(g_eyePosObj.xyz, g_rayDir, in_boundsMin[i], in_boundsMax[i], in_inverseVolumeMatrix[0] * in_volumeMatrix[i + 1]);\n"
              "  }\n"
-             "  Mark marks[" + numInputs2Str + "] = sortIntervals(intervals);\n"
+             "  Mark marks[" + numInputs2xStr + "] = sortIntervals(intervals);\n"
              "\n"
-             "  int currentMarkIndex = 0,\n"
-             "      volumeIndex = marks[currentMarkIndex].volumeIndex;\n"
-             "  if (volumeIndex >= 0)\n"
-             "  {\n"
-             "    g_dirStep = g_dirSteps[volumeIndex];\n"
-             "    g_dataPos = (ip_inverseTextureDataAdjusted * vec4(g_eyePosObj.xyz + marks[currentMarkIndex].t * g_rayDir, 1.)).xyz + g_rayJitter[volumeIndex + 1];\n"
-             "  }\n"
+             "  int currentMarkIndex = -1;\n"
+             "  while (++currentMarkIndex < " + numInputs2xStr + " && marks[currentMarkIndex].volumeIndex < 0);\n"
+             "  int volumeIndex = marks[currentMarkIndex].volumeIndex;\n"
+             "  g_dirStep = g_dirSteps[volumeIndex];\n"
+             "  g_dataPos = (ip_inverseTextureDataAdjusted * vec4(g_eyePosObj.xyz + marks[currentMarkIndex].t * g_rayDir, 1.)).xyz + g_rayJitter[volumeIndex + 1];\n"
              "\n";
     }
 
@@ -2178,7 +2200,7 @@ namespace vtkvolume
 
   //--------------------------------------------------------------------------
   std::string TerminationInit(vtkRenderer* vtkNotUsed(ren),
-                              vtkVolumeMapper* vtkNotUsed(mapper),
+                              vtkVolumeMapper* mapper,
                               vtkVolume* vtkNotUsed(vol))
   {
     return std::string("\
@@ -2219,7 +2241,13 @@ namespace vtkvolume
       \n                    terminatePosTmp;\
       \n  g_terminatePos = terminatePosTmp.xyz / terminatePosTmp.w;\
       \n\
-      \n  g_terminatePointMax = length(g_terminatePos.xyz - g_dataPos.xyz) / length(g_dirStep);\
+      \n  g_minDirStepLength = 1e20;\
+      \n  for (int i = 0; i < " + std::to_string(static_cast<vtkOpenGLGPUVolumeRayCastMapper*>(mapper)->GetInputCount()) + "; ++i)\
+      \n  {\
+      \n    float dirStepLength = length(g_dirSteps[i]);\
+      \n    g_minDirStepLength = (dirStepLength > 0 && dirStepLength < g_minDirStepLength) ? dirStepLength : g_minDirStepLength;\
+      \n  }\
+      \n  g_terminatePointMax = length(g_terminatePos.xyz - g_dataPos.xyz) / g_minDirStepLength;\
       \n  g_currentT = 0.0;"
     );
   }
@@ -2230,7 +2258,7 @@ namespace vtkvolume
                                         vtkVolume* vtkNotUsed(vol))
   {
     std::string str("\
-      \n    if(any(greaterThan(g_dataPos, in_texMax[0])) || any(lessThan(g_dataPos, in_texMin[0])))\
+      \n    if (any(greaterThan(g_dataPos, in_texMax[0])) || any(lessThan(g_dataPos, in_texMin[0])))\
       \n    {\
       \n      break;\
       \n    }\
@@ -2239,7 +2267,7 @@ namespace vtkvolume
       \n    // if the currently composited colour alpha is already fully saturated\
       \n    // we terminated the loop or if we have hit an obstacle in the\
       \n    // direction of they ray (using depth buffer) we terminate as well.\
-      \n    if ((g_fragColor.a > g_opacityThreshold) || g_currentT >= 10000/*g_terminatePointMax*/)\
+      \n    if ((g_fragColor.a > g_opacityThreshold) || g_currentT >= g_terminatePointMax)\
       \n    {\
       \n      break;\
       \n    }\
@@ -2611,7 +2639,7 @@ namespace vtkvolume
       \n  // Update the number of ray marching steps to account for the clipped entry point (\
       \n  // this is necessary in case the ray hits geometry after marching behind the plane,\
       \n  // given that the number of steps was assumed to be from the not-clipped entry).\
-      \n  g_terminatePointMax = length(g_terminatePos.xyz - g_dataPos.xyz) / length(g_dirStep);\
+      \n  g_terminatePointMax = length(g_terminatePos.xyz - g_dataPos.xyz) / g_minDirStepLength;\
       \n");
     }
   }
