@@ -190,9 +190,9 @@ namespace vtkvolume
                    "    if (marks[index0].t <= 0. && marks[index1].t <= 0.)\n"
                    "    {\n"
                    "      marks[index0].volumeIndex = -1;\n"
-                   "      marks[index0].t = 1e20;\n"
+                   "      marks[index0].t = FLOAT_MAX;\n"
                    "      marks[index1].volumeIndex = -1;\n"
-                   "      marks[index1].t = 1e20;\n"
+                   "      marks[index1].t = FLOAT_MAX;\n"
                    "    }\n"
                    "  }\n"
                    "\n"
@@ -221,7 +221,7 @@ namespace vtkvolume
                    "    }\n"
                    "  }\n"
                    "\n"
-                   "  int volumeIndexStack[" << numInputs2x << "];\n"
+                   "  /*int volumeIndexStack[" << numInputs2x << "];\n"
                    "  for (int i = 0; i < " << numInputs2x << "; ++i)\n"
                    "  {\n"
                    "    volumeIndexStack[i] = -1;\n"
@@ -255,10 +255,56 @@ namespace vtkvolume
                    "      }\n"
                    "      marks[i].volumeIndex = volumeIndexStack[volumeIndexStackTop];\n"
                    "    }\n"
-                   "  }\n"
+                   "  }*/\n"
                    "\n"
                    "  return marks;\n"
                    "}\n";
+    toShaderStr <<
+      "\n"
+      "struct SamplePoint\n"
+      "{\n"
+      "  int volumeIndex;\n"
+      "\n"
+      "  vec3 dataPos;\n"
+      "\n"
+      "  float t;\n"
+      "};\n"
+      "\n"
+      "void insertSamplePoint(inout SamplePoint samplePointSet[" << numInputs << "], in SamplePoint samplePoint)\n"
+      "{\n"
+      "  samplePointSet[" << (numInputs - 1) << "] = samplePoint;\n"
+      "  for (bool swapped = true; swapped;)\n"
+      "  {\n"
+      "    swapped = false;\n"
+      "    for (int i = 0; i < " << (numInputs - 1) << "; ++i)\n"
+      "    {\n"
+      "      if (samplePointSet[i].t > samplePointSet[i + 1].t)\n"
+      "      {\n"
+      "        SamplePoint tmp = samplePointSet[i];\n"
+      "        samplePointSet[i] = samplePointSet[i + 1];\n"
+      "        samplePointSet[i + 1] = tmp;\n"
+      "        swapped = true;\n"
+      "      }\n"
+      "    }\n"
+      "  }\n"
+      "}\n"
+      "\n"
+      "SamplePoint popSamplePoint(inout SamplePoint samplePointSet[" << numInputs << "])\n"
+      "{\n"
+      "  SamplePoint front = samplePointSet[0];\n"
+      "\n"
+      "  for (int i = 0; i < " << (numInputs - 1) << "; ++i)\n"
+      "  {\n"
+      "    samplePointSet[i] = samplePointSet[i + 1];\n"
+      "  }\n"
+      "\n"
+      "  samplePointSet[" << (numInputs - 1) << "].volumeIndex = -1;\n"
+      "  samplePointSet[" << (numInputs - 1) << "].dataPos = vec3(1., 1., 1.);\n"
+      "  samplePointSet[" << (numInputs - 1) << "].t = FLOAT_MAX;\n"
+      "\n"
+      "  return front;\n"
+      "}\n"
+      "\n";
 
     toShaderStr << "uniform vec3 in_boxMaskOrigin[" << numInputs << "];\n";
     toShaderStr << "uniform vec3 in_boxMaskAxisX[" << numInputs << "];\n";
@@ -509,7 +555,7 @@ namespace vtkvolume
         \n      g_rayJitter[i + 1] = g_dirSteps[i];\
         \n    }\
         \n  }\
-        \n  vec3 minRayJitter = vec3(1e20);\
+        \n  vec3 minRayJitter = vec3(FLOAT_MAX);\
         \n  for (int i = 0; i < " + std::to_string(inputs.size()) + "; ++i)\
         \n  {\
         \n    if (any(lessThan(g_rayJitter[i + 1], minRayJitter)))\
@@ -1488,12 +1534,26 @@ namespace vtkvolume
              "  }\n"
              "  Mark marks[" + numInputs2xStr + "] = sortIntervals(intervals);\n"
              "\n"
-             "  int currentMarkIndex = -1;\n"
-             "  while (++currentMarkIndex < " + numInputs2xStr + " && marks[currentMarkIndex].volumeIndex < 0);\n"
-             "  int volumeIndex = marks[currentMarkIndex].volumeIndex;\n"
-             "  g_dirStep = g_dirSteps[volumeIndex];\n"
-             "  g_dataPos = (ip_inverseTextureDataAdjusted * vec4(g_eyePosObj.xyz + marks[currentMarkIndex].t * g_rayDir, 1.)).xyz + g_rayJitter[volumeIndex + 1];\n"
-             "\n";
+             "  SamplePoint samplePointSet[" + numInputsStr + "];\n"
+             "  for (int i = 0; i < " + numInputsStr + "; ++i)\n"
+             "  {\n"
+             "    samplePointSet[i].t = FLOAT_MAX;\n"
+             "  }\n"
+             "\n"
+             "  {\n"
+             "    int samplePointSetBack = 0;\n"
+             "    for (int i = 0; i < " + numInputs2xStr + "; ++i)\n"
+             "    {\n"
+             "      if (marks[i].start && marks[i].t >= 0.)\n"
+             "      {\n"
+             "        samplePointSet[samplePointSetBack].volumeIndex = marks[i].volumeIndex;\n"
+             "        samplePointSet[samplePointSetBack].dataPos = (ip_inverseTextureDataAdjusted * vec4(g_eyePosObj.xyz + marks[i].t * g_rayDir, 1.)).xyz + g_rayJitter[marks[i].volumeIndex + 1];\n"
+             "        samplePointSet[samplePointSetBack++].t = marks[i].t;\n"
+             "      }\n"
+             "    }\n"
+             "  }\n"
+             "\n"
+          ;
     }
 
     if (mapper->GetBlendMode() == vtkVolumeMapper::MAXIMUM_INTENSITY_BLEND)
@@ -1532,8 +1592,8 @@ namespace vtkvolume
           str +=
            "\n  initialIndexUnset[" + ii + "] = true;"
            "\n#if NUMBER_OF_CONTOURS_" + ii + "\
-            \n  l_normValues_" + ii + "[0] = -1e20; //-infinity\
-            \n  l_normValues_" + ii + "[NUMBER_OF_CONTOURS_" + ii + " + 1] = +1e20; //+infinity\
+            \n  l_normValues_" + ii + "[0] = -FLOAT_MAX; //-infinity\
+            \n  l_normValues_" + ii + "[NUMBER_OF_CONTOURS_" + ii + " + 1] = +FLOAT_MAX; //+infinity\
             \n  for (int i = 0; i < NUMBER_OF_CONTOURS_" + ii + "; ++i)\
             \n  {\
             \n    l_normValues_" + ii + "[i + 1] = (in_isosurfacesValues_" + ii + "[i] - "
@@ -1615,6 +1675,8 @@ namespace vtkvolume
   {
     std::ostringstream toShaderStr;
     toShaderStr <<
+      "      SamplePoint frontSamplePoint = popSamplePoint(samplePointSet);\n"
+      "      g_dataPos = frontSamplePoint.dataPos;\n"
       "      vec3 texPos, p;\n"
       "      bool noMask;"
       "      bool maskedByBox = false;\n"
@@ -1650,6 +1712,8 @@ namespace vtkvolume
               // From global texture coordinates (bbox) to volume_i texture coords.
               // texPos = T * g_dataPos
               // T = T_dataToTex1 * T_worldToData * T_bboxTexToWorld;
+              "      if (frontSamplePoint.volumeIndex == " << i << ")\n"
+              "      {\n"
               "      g_skip = false;\n"
               "      texPos = (in_cellToPoint[" << idx << "] * in_inverseTextureDatasetMatrix[" << idx << "] * in_inverseVolumeMatrix[" << idx << "] *\n"
               "                in_volumeMatrix[0] * in_textureDatasetMatrix[0] * vec4(g_dataPos.xyz, 1.0)).xyz;\n";
@@ -1792,6 +1856,7 @@ namespace vtkvolume
           "              for (int ds = 0; ds < " + std::to_string(visibleCount) + "; ++ds)\n"
           "                g_fragColor = (1. - g_fragColor.a) * g_srcColor + g_fragColor;\n"
           "          }\n"
+          "        }\n"
           "        }\n\n";
 
           i++;
@@ -2241,7 +2306,7 @@ namespace vtkvolume
       \n                    terminatePosTmp;\
       \n  g_terminatePos = terminatePosTmp.xyz / terminatePosTmp.w;\
       \n\
-      \n  g_minDirStepLength = 1e20;\
+      \n  g_minDirStepLength = FLOAT_MAX;\
       \n  for (int i = 0; i < " + std::to_string(static_cast<vtkOpenGLGPUVolumeRayCastMapper*>(mapper)->GetInputCount()) + "; ++i)\
       \n  {\
       \n    float dirStepLength = length(g_dirSteps[i]);\
@@ -2287,6 +2352,23 @@ namespace vtkvolume
     {
       const std::string inputCount2xStr = std::to_string(2 * inputCount);
       str += "\
+        \n    vec3 nextDataPos = g_dataPos + g_dirSteps[frontSamplePoint.volumeIndex];\
+        \n    float t = dot((in_textureDatasetMatrix[0] * vec4(nextDataPos, 1.0) - g_eyePosObj).xyz, g_rayDir) / g_rayDirDot;\
+        \n    for (int mi = 0; mi < " + inputCount2xStr + "; ++mi)\
+        \n    {\
+        \n      if (marks[mi].start == false && marks[mi].volumeIndex == frontSamplePoint.volumeIndex && t < marks[mi].t)\
+        \n      {\
+        \n        SamplePoint newSamplePoint;\
+        \n        newSamplePoint.volumeIndex = frontSamplePoint.volumeIndex;\
+        \n        newSamplePoint.dataPos = nextDataPos;\
+        \n        newSamplePoint.t = t;\
+        \n        insertSamplePoint(samplePointSet, newSamplePoint);\
+        \n        break;\
+        \n      }\
+        \n    }\
+        \n    "
+      ;
+      /*str += "\
         \n    vec3 diff = (in_textureDatasetMatrix[0] * vec4(g_dataPos + g_dirStep, 1.0) - g_eyePosObj).xyz;\
         \n    float t = dot(diff, g_rayDir) / g_rayDirDot;\
         \n    int nextMarkIndex = currentMarkIndex + 1;\
@@ -2298,7 +2380,7 @@ namespace vtkvolume
         \n        volumeIndex = marks[currentMarkIndex].volumeIndex;\
         \n        g_dirStep = g_dirSteps[volumeIndex];\
         \n        g_dataPos = (ip_inverseTextureDataAdjusted * vec4(g_eyePosObj.xyz + marks[currentMarkIndex].t * g_rayDir, 1.)).xyz;\
-        \n        dontAdvance = true;\
+        \n        g_dataPos += g_dirStep;\
         \n      }\
         \n      else\
         \n      {\
@@ -2306,7 +2388,11 @@ namespace vtkvolume
         \n      }\
         \n    }\
         \n    "
-      ;
+      ;*/
+    }
+    else
+    {
+        str += "g_dataPos += g_dirStep;\n";
     }
     return str;
    }      

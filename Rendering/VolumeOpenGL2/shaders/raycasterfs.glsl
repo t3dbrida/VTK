@@ -15,6 +15,8 @@
 
 =========================================================================*/
 
+#define FLOAT_MAX 1e20
+
 //////////////////////////////////////////////////////////////////////////////
 ///
 /// Inputs
@@ -391,14 +393,8 @@ vec4 castRay(const float zStart, const float zEnd)
 
     //VTK::DepthPass::Impl
 
-    bool dontAdvance = false;
     //VTK::Base::Advance
 
-    /// Advance ray
-    if (dontAdvance == false)
-    {
-      g_dataPos += g_dirStep;
-    }
     //VTK::Terminate::Impl
   }
 
