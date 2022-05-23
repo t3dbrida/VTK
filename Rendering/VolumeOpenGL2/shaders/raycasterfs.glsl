@@ -16,6 +16,7 @@
 =========================================================================*/
 
 #define FLOAT_MAX 1e20
+#define FLOAT_EPS 1e-7
 
 //////////////////////////////////////////////////////////////////////////////
 ///
@@ -131,11 +132,45 @@ vec4 NDCToWindow(const float xNDC, const float yNDC, const float zNDC)
   return WinCoord;
 }
 
-vec2 intersectRayBox(vec3 ray_origin, vec3 ray_direction, vec3 aabb_min, vec3 aabb_max, mat4 transform)
+vec2 intersectRayBox(vec3 rayOrigin, vec3 rayDir, vec3 aabbMin, vec3 aabbMax, mat4 transform)
+{
+  // This is actually correct, even though it appears not to handle edge cases
+  // (rayDir.{x,y,z} == 0).  It works because the infinities that result from
+  // dividing by zero will still behave correctly in the comparisons. Rays
+  // which are parallel to an axis and outside the box will have tmin == inf
+  // or tmax == -inf, while rays inside the box will have tmin and tmax
+  // unchanged.
+
+  rayOrigin = (transform * vec4(rayOrigin, 1.)).xyz;
+  rayDir = (transform * vec4(rayDir, 0.)).xyz;
+
+  vec3 rayDirInv = vec3(1.) / rayDir;
+
+  float t1 = (aabbMin.x - rayOrigin.x) * rayDirInv.x,
+        t2 = (aabbMax.x - rayOrigin.x) * rayDirInv.x,
+        tMin = min(t1, t2),
+        tMax = max(t1, t2);
+
+  t1 = (aabbMin.y - rayOrigin.y) * rayDirInv.y;
+  t2 = (aabbMax.y - rayOrigin.y) * rayDirInv.y;
+
+  tMin = max(tMin, min(t1, t2));
+  tMax = min(tMax, max(t1, t2));
+
+  t1 = (aabbMin.z - rayOrigin.z) * rayDirInv.z;
+  t2 = (aabbMax.z - rayOrigin.z) * rayDirInv.z;
+
+  tMin = max(tMin, min(t1, t2));
+  tMax = min(tMax, max(t1, t2));
+
+  return vec2(tMin, tMax);
+}
+
+/*vec2 intersectRayBox(vec3 ray_origin, vec3 ray_direction, vec3 aabb_min, vec3 aabb_max, mat4 transform)
 {
     // Intersection method from Real-Time Rendering and Essential Mathematics for Games
-	float tMin = -1e20,
-	      tMax = 1e20;
+	float tMin = -FLOAT_MAX,
+	      tMax = FLOAT_MAX;
 
 	vec3 obbPos = vec3(transform[3].x, transform[3].y, transform[3].z),
 		 delta = obbPos - ray_origin;
@@ -146,7 +181,7 @@ vec2 intersectRayBox(vec3 ray_origin, vec3 ray_direction, vec3 aabb_min, vec3 aa
 		float e = dot(xaxis, delta),
 			  f = dot(ray_direction, xaxis);
 
-		if (abs(f) > 1e-5)
+		if (abs(f) > FLOAT_EPS)
 		{
 		    // Standard case
 			float t1 = (e + aabb_min.x) / f, // Intersection with the "left" plane
@@ -173,9 +208,7 @@ vec2 intersectRayBox(vec3 ray_origin, vec3 ray_direction, vec3 aabb_min, vec3 aa
 				tMin = t1;
 			}
 
-			// And here's the trick :
 			// If "far" is closer than "near", then there is NO intersection.
-			// See the images in the tutorials for the visual explanation.
 			if (tMax < tMin)
 			{
 				return vec2(0., 0.);
@@ -200,7 +233,7 @@ vec2 intersectRayBox(vec3 ray_origin, vec3 ray_direction, vec3 aabb_min, vec3 aa
 		float e = dot(yaxis, delta),
 			  f = dot(ray_direction, yaxis);
 
-		if (abs(f) > 1e-5)
+		if (abs(f) > FLOAT_EPS)
 		{
 			float t1 = (e + aabb_min.y) / f,
 			      t2 = (e + aabb_max.y) / f;
@@ -241,7 +274,7 @@ vec2 intersectRayBox(vec3 ray_origin, vec3 ray_direction, vec3 aabb_min, vec3 aa
 		float e = dot(zaxis, delta),
 			  f = dot(ray_direction, zaxis);
 
-		if (abs(f) > 1e-5)
+		if (abs(f) > FLOAT_EPS)
 		{
 			float t1 = (e + aabb_min.z) / f,
 			      t2 = (e + aabb_max.z) / f;
@@ -276,7 +309,7 @@ vec2 intersectRayBox(vec3 ray_origin, vec3 ray_direction, vec3 aabb_min, vec3 aa
 	}
 
 	return vec2(tMin, tMax);
-}
+}*/
 
 /**
  * Clamps the texture coordinate vector @a pos to a new position in the set
