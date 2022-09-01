@@ -1524,11 +1524,11 @@ namespace vtkvolume
               "        in_volumeMatrix[0] * in_textureDatasetMatrix[0] * vec4(g_dataPos.xyz, 1.0)).xyz;\n";
           
           toShaderStr <<
-                 "    noMask = true;";
+              "    noMask = true;\n"
+              "    maskedByRegion = false;\n";
           if (maskInputs.find(input.Volume) != maskInputs.end())
           {
               toShaderStr <<
-                  "      maskedByRegion = false;\n"
                   "      noMask = false;\n"
                   "      if (texture3D(in_mask[" << maskI++ << "], texPos).r > 0)\n"
                   "      {\n"
