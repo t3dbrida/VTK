@@ -545,7 +545,7 @@ public:
 
   std::vector<float> VolMatVec, InvMatVec, TexMatVec, InvTexMatVec,
     TexEyeMatVec, CellToPointVec, TexMinVec, TexMaxVec, ScaleVec,
-    BiasVec, StepVec, SpacingVec, RangeVec;
+    BiasVec, StepVec, SpacingVec, RangeVec, SamplingVec;
 };
 
 //----------------------------------------------------------------------------
@@ -1715,8 +1715,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::EndPicking(vtkRenderer* ren)
 }
 
 //----------------------------------------------------------------------------
-void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateSamplingDistance(
-  vtkRenderer* vtkNotUsed(ren))
+void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateSamplingDistance(vtkRenderer* vtkNotUsed(ren))
 {
   struct CellSpacingSortedInput
   {
@@ -1799,8 +1798,36 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateSamplingDistance(
   // by 1/reduceFactor.
   double actualSampleDistance = static_cast<float>(minWorldSpacing);
 
+  this->SamplingVec.resize(this->Parent->GetInputCount());
+
+  for (int index = 0; index < this->Parent->GetInputCount(); ++index)
+  {
+    double minWorldSpacing = std::numeric_limits<double>::max();
+    vtkMatrix4x4* const worldToDataset = this->Parent->AssembledInputs.at(index).Volume->GetMatrix();
+    for (int j = 0; j < 3; ++j)
+    {
+        double tmp = worldToDataset->GetElement(0, j);
+        double tmp2 = tmp * tmp;
+        tmp = worldToDataset->GetElement(1, j);
+        tmp2 += tmp * tmp;
+        tmp = worldToDataset->GetElement(2, j);
+        tmp2 += tmp * tmp;
+
+        // We use fabs() in case the spacing is negative.
+        double localCellSpacing[3];
+        this->Parent->GetTransformedInput(index)->GetSpacing(localCellSpacing);
+        double worldSpacing = fabs(localCellSpacing[j] * sqrt(tmp2));
+        if (worldSpacing < minWorldSpacing)
+        {
+            minWorldSpacing = worldSpacing;
+        }
+    }
+    this->SamplingVec[index] = static_cast<float>(minWorldSpacing);
+  }
+
   if (!this->Parent->AutoAdjustSampleDistances)
   {
+    double factor = 1.;
     if (this->Parent->LockSampleDistanceToInputSpacing)
     {
       int extents[6];
@@ -1817,19 +1844,28 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateSamplingDistance(
     }
     else
     {
+      factor = this->Parent->SampleDistance / actualSampleDistance;
       this->ActualSampleDistance = this->Parent->SampleDistance;
     }
     if (this->ActualSampleDistance < actualSampleDistance)
     {
       this->ActualSampleDistance = actualSampleDistance;
     }
+    for (float& sampling : this->SamplingVec)
+    {
+      sampling *= static_cast<GLfloat>(factor);
+    }
   }
   else
   {
-    this->ActualSampleDistance =actualSampleDistance;
+    this->ActualSampleDistance = actualSampleDistance;
     if (this->Parent->ReductionFactor < 1.0 && this->Parent->ReductionFactor != 0.0)
     {
       this->ActualSampleDistance /= static_cast<GLfloat>(this->Parent->ReductionFactor);
+      for (float& sampling : this->SamplingVec)
+      {
+        sampling /= static_cast<GLfloat>(this->Parent->ReductionFactor);
+      }
     }
   }
 }
@@ -4013,7 +4049,6 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
 
   std::vector<float> boundsMin(3 * numInputs, 0.);
   std::vector<float> boundsMax(3 * numInputs, 0.);
-  std::vector<float> sampling(numInputs, 0.);
   std::vector<int> volumeVisibility(numInputs, 0);
   std::vector<float> boxMaskOrigins(3 * numInputs, 0.);
   std::vector<float> boxMaskAxesX(3 * numInputs, 0.);
@@ -4040,26 +4075,6 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
     //}
     vtkInternal::CopyVector<float, 3>(min, boundsMin.data(), 3 * index);
     vtkInternal::CopyVector<float, 3>(max, boundsMax.data(), 3 * index);
-
-    double minWorldSpacing = std::numeric_limits<double>::max();
-    vtkMatrix4x4* const worldToDataset = volume->GetMatrix();
-    for (int j = 0; j < 3; ++j)
-    {
-        double tmp = worldToDataset->GetElement(0, j);
-        double tmp2 = tmp * tmp;
-        tmp = worldToDataset->GetElement(1, j);
-        tmp2 += tmp * tmp;
-        tmp = worldToDataset->GetElement(2, j);
-        tmp2 += tmp * tmp;
-
-        // We use fabs() in case the spacing is negative.
-        double worldSpacing = fabs(cellSpacing[j] * sqrt(tmp2));
-        if (worldSpacing < minWorldSpacing)
-        {
-            minWorldSpacing = worldSpacing;
-        }
-    }
-    sampling[index] = static_cast<float>(minWorldSpacing);
 
     // Bind volume textures
     auto block = volumeInput.Texture->GetCurrentBlock();
@@ -4129,7 +4144,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
   }
   prog->SetUniform3fv("in_boundsMin", numInputs, reinterpret_cast<const float(*)[3]>(boundsMin.data()));
   prog->SetUniform3fv("in_boundsMax", numInputs, reinterpret_cast<const float(*)[3]>(boundsMax.data()));
-  prog->SetUniform1fv("in_sampling", numInputs, sampling.data());
+  prog->SetUniform1fv("in_sampling", numInputs, this->SamplingVec.data());
   prog->SetUniform4fv("in_volume_scale", numInputs, reinterpret_cast<const float(*)[4]>(this->ScaleVec.data()));
   prog->SetUniform4fv("in_volume_bias", numInputs, reinterpret_cast<const float(*)[4]>(this->BiasVec.data()));
   prog->SetUniform2fv("in_scalarsRange", 4 * numInputs, reinterpret_cast<const float(*)[2]>(this->RangeVec.data()));
