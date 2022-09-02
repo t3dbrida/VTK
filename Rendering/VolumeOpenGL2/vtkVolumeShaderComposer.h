@@ -1084,8 +1084,11 @@ namespace vtkvolume
 
       auto& map = item.second.GradientOpacityTablesMap;
       const auto numComp = map.size();
-      ss << "uniform sampler2D " << ArrayBaseName(map[0])
-        << "[" << numComp <<"];\n";
+      if (numComp == 1)
+      {
+          ss << "uniform sampler2D " << ArrayBaseName(map[0])
+              << "[" << numComp << "];\n";
+      }
       i++;
     }
 
@@ -1238,8 +1241,11 @@ namespace vtkvolume
 
       auto& map = item.second.TransferFunctions2DMap;
       const auto numComp = map.size();
-      ss << "uniform sampler2D " << ArrayBaseName(map[0])
-          << "[" << numComp <<"];\n";
+      if (numComp == 1)
+      {
+          ss << "uniform sampler2D " << ArrayBaseName(map[0])
+              << "[" << numComp << "];\n";
+      }
       i++;
     }
 
