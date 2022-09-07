@@ -541,6 +541,7 @@ public:
   vtkNew<vtkActor> ContourActor;
 
   unsigned short Partitions[3];
+  vtkVolume* ActiveVolume = nullptr;
   vtkMultiVolume* MultiVolume = nullptr;
 
   std::vector<float> VolMatVec, InvMatVec, TexMatVec, InvTexMatVec,
@@ -3377,7 +3378,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::BuildShader(vtkRenderer* ren)
     }
   }
 
-  auto vol = this->Impl->GetActiveVolume();
+  auto vol = this->Impl->ActiveVolume;
   auto numComp = this->AssembledInputs[0].Texture->GetLoadedScalars()->GetNumberOfComponents();
   this->ReplaceShaderValues(shaders, ren, vol, numComp);
 
@@ -3662,6 +3663,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::GPURender(vtkRenderer* ren,
 {
   vtkOpenGLClearErrorMacro();
 
+  this->Impl->ActiveVolume = vol;
   const auto multiVol = vtkMultiVolume::SafeDownCast(vol);
   const bool wasMultiVolume = this->Impl->MultiVolume;
   this->Impl->MultiVolume = multiVol && this->GetInputCount() > 1 ? multiVol : nullptr;
@@ -4652,7 +4654,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::ReplaceShaderRenderPass(
 //------------------------------------------------------------------------------
 void vtkOpenGLGPUVolumeRayCastMapper::SetShaderParametersRenderPass()
 {
-  auto vol = this->Impl->GetActiveVolume();
+  auto vol = this->Impl->ActiveVolume;
   vtkInformation* info = vol->GetPropertyKeys();
   if (info && info->Has(vtkOpenGLRenderPass::RenderPasses()))
   {
