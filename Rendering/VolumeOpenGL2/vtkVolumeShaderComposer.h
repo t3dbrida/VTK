@@ -447,8 +447,10 @@ namespace vtkvolume
                                            std::map<int, std::string> gradientTableMap)
   {
     std::ostringstream ss;
-    ss << "uniform sampler2D " << ArrayBaseName(gradientTableMap[0])
-      << "[" << noOfComponents << "];\n";
+    if (noOfComponents == 1)
+    {
+        ss << "uniform sampler2D " << ArrayBaseName(gradientTableMap[0]) << "[" << noOfComponents << "];\n";
+    }
 
     std::string shaderStr = ss.str();
     if (vol->GetProperty()->HasGradientOpacity() &&
@@ -913,8 +915,10 @@ namespace vtkvolume
                                       std::map<int, std::string> colorTableMap)
   {
       std::ostringstream ss;
-      ss << "uniform sampler2D " << ArrayBaseName(colorTableMap[0])
-        << "[" << noOfComponents << "];\n";
+      if (noOfComponents == 1)
+      {
+          ss << "uniform sampler2D " << ArrayBaseName(colorTableMap[0]) << "[" << noOfComponents << "];\n";
+      }
 
       std::string shaderStr = ss.str();
       if (noOfComponents == 1)
