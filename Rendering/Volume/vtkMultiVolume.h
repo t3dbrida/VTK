@@ -127,7 +127,9 @@ public:
    * Total bounds in data coordinates.
    */
   double* GetDataBounds()
-    { return this->DataBounds.data(); };
+  {
+      this->GetBounds(); return this->DataBounds.data();
+  };
 
   vtkMTimeType GetBoundsTime()
     { return this->BoundsComputeTime.GetMTime(); };

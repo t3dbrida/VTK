@@ -251,7 +251,7 @@ namespace vtkvolume
       "  {\n"
       "    samplePointSet.samplePoints[samplePointSet.size++] = samplePoint;\n"
       "\n"
-      // TODO don't do bubble sort but find where to put the new sample point
+      //   TODO don't do bubble sort but find where to put the new sample point
       "    for (bool swapped = true; swapped;)\n"
       "    {\n"
       "      swapped = false;\n"
@@ -636,7 +636,10 @@ namespace vtkvolume
                                            std::map<int, std::string> gradientTableMap)
   {
     std::ostringstream ss;
-    ss << "uniform sampler2D " << ArrayBaseName(gradientTableMap[0]) << "[" << noOfComponents << "];\n";
+    if (noOfComponents == 1)
+    {
+        ss << "uniform sampler2D " << ArrayBaseName(gradientTableMap[0]) << "[" << noOfComponents << "];\n";
+    }
 
     std::string shaderStr = ss.str();
     if (vol->GetProperty()->HasGradientOpacity() &&
@@ -1103,8 +1106,10 @@ namespace vtkvolume
                                       std::map<int, std::string> colorTableMap)
   {
       std::ostringstream ss;
-      ss << "uniform sampler2D " << ArrayBaseName(colorTableMap[0])
-        << "[" << noOfComponents << "];\n";
+      if (noOfComponents == 1)
+      {
+          ss << "uniform sampler2D " << ArrayBaseName(colorTableMap[0]) << "[" << noOfComponents << "];\n";
+      }
 
       std::string shaderStr = ss.str();
       if (noOfComponents == 1)
@@ -1274,8 +1279,10 @@ namespace vtkvolume
 
       auto& map = item.second.GradientOpacityTablesMap;
       const auto numComp = map.size();
-      ss << "uniform sampler2D " << ArrayBaseName(map[0])
-        << "[" << numComp <<"];\n";
+      if (numComp == 1)
+      {
+          ss << "uniform sampler2D " << ArrayBaseName(map[0]) << "[" << numComp << "];\n";
+      }
       i++;
     }
 
@@ -1428,8 +1435,11 @@ namespace vtkvolume
 
       auto& map = item.second.TransferFunctions2DMap;
       const auto numComp = map.size();
-      ss << "uniform sampler2D " << ArrayBaseName(map[0])
-          << "[" << numComp <<"];\n";
+      if (numComp == 1)
+      {
+          ss << "uniform sampler2D " << ArrayBaseName(map[0])
+              << "[" << numComp << "];\n";
+      }
       i++;
     }
 
@@ -1780,16 +1790,16 @@ namespace vtkvolume
               "                  in_volumeMatrix[0] * in_textureDatasetMatrix[0] * vec4(g_dataPos.xyz, 1.0)).xyz;\n";
           
           toShaderStr <<
-                 "      noMask = true;";
+              "    noMask = true;\n"
+              "    maskedByRegion = false;\n";
           if (maskInputs.find(input.Volume) != maskInputs.end())
           {
               toShaderStr <<
-                  "        maskedByRegion = false;\n"
-                  "        noMask = false;\n"
-                  "        if (texture3D(in_mask[" << maskI++ << "], texPos).r > 0)\n"
-                  "        {\n"
-                  "          maskedByRegion = true;\n"
-                  "        }\n";
+                  "      noMask = false;\n"
+                  "      if (texture3D(in_mask[" << maskI++ << "], texPos).r > 0)\n"
+                  "      {\n"
+                  "        maskedByRegion = true;\n"
+                  "      }\n";
           }
           toShaderStr <<
                  "      maskedByBox = false;\n"

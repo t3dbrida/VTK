@@ -278,6 +278,11 @@ void vtkVolumeInputHelper::UpdateTransferFunction2D(vtkRenderer* ren,
 
 void vtkVolumeInputHelper::ActivateTransferFunction(vtkShaderProgram* prog, const int blendMode)
 {
+  int nofComponents = this->Texture->GetLoadedScalars()->GetNumberOfComponents();
+  if (nofComponents == 3) // RGB
+  {
+      return;
+  }
   int const transferMode =
     this->Volume->GetProperty()->GetTransferFunctionMode();
   int const numActiveLuts = this->ComponentMode == INDEPENDENT ?
