@@ -135,40 +135,28 @@ vec4 NDCToWindow(const float xNDC, const float yNDC, const float zNDC)
 
 vec2 intersectRayBox(vec3 rayOrigin, vec3 rayDir, vec3 aabbMin, vec3 aabbMax)
 {
-  // This is actually correct, even though it appears not to handle edge cases
-  // (rayDir.{x,y,z} == 0).  It works because the infinities that result from
-  // dividing by zero will still behave correctly in the comparisons. Rays
-  // which are parallel to an axis and outside the box will have tmin == inf
-  // or tmax == -inf, while rays inside the box will have tmin and tmax
-  // unchanged.
+        float tMin = -FLOAT_INF;
+        float tMax = FLOAT_INF;
 
-  vec3 rayDirInv = vec3(1.) / rayDir;
+		vec3 inverseRayDirection = vec3(1.) / rayDir;
+        for (int i = 0; i < 3; ++i)
+        {
+            float t0, t1;
+            if (inverseRayDirection[i] >= 0.)
+            {
+                t0 = (aabbMin[i] - rayOrigin[i]) * inverseRayDirection[i];
+                t1 = (aabbMax[i] - rayOrigin[i]) * inverseRayDirection[i];
+            }
+            else {
+                t1 = (aabbMin[i] - rayOrigin[i]) * inverseRayDirection[i];
+                t0 = (aabbMax[i] - rayOrigin[i]) * inverseRayDirection[i];
+            }
 
-  float t1 = (aabbMin.x - rayOrigin.x) * rayDirInv.x,
-        t2 = (aabbMax.x - rayOrigin.x) * rayDirInv.x,
-        tMin = min(t1, t2),
-        tMax = max(t1, t2);
+            tMin = t0 > tMin ? t0 : tMin;
+            tMax = t1 < tMax ? t1 : tMax;
+        }
 
-  t1 = (aabbMin.y - rayOrigin.y) * rayDirInv.y;
-  t2 = (aabbMax.y - rayOrigin.y) * rayDirInv.y;
-
-  tMin = max(tMin, min(t1, t2));
-  tMax = min(tMax, max(t1, t2));
-
-  t1 = (aabbMin.z - rayOrigin.z) * rayDirInv.z;
-  t2 = (aabbMax.z - rayOrigin.z) * rayDirInv.z;
-
-  tMin = max(tMin, min(t1, t2));
-  tMax = min(tMax, max(t1, t2));
-
-  if (tMin > tMax)
-  {
-    float tmp = tMin;
-    tMin = tMax;
-    tMax = tmp;
-  }
-
-  return vec2(tMin, tMax);
+        return tMax/* + eps*/ >= tMin ? vec2(tMin, tMax) : vec2(FLOAT_INF, -FLOAT_INF);
 }
 
 /**

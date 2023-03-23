@@ -178,9 +178,6 @@ namespace vtkvolume
                    "};\n\n";
     const int numInputs2x = 2 * numInputs;
     toShaderStr << "vec3 g_dirSteps[" << numInputs << "];\n";
-    toShaderStr << "vec3 g_dirStepOrig;\n";
-    toShaderStr << "float g_minDirStepLength;\n";
-
     
     toShaderStr << "\n"
                    "Mark[" << numInputs2x << "] sortIntervals(Interval intervals[" << numInputs << "])\n"
@@ -460,7 +457,6 @@ namespace vtkvolume
     {
         shaderStr += "\
           \n\
-          \n  g_dirStepOrig = g_dirStep;\
           \n  for (int i = 0; i < " + std::to_string(inputCount) + "; ++i)\
           \n  {\
           \n    g_dirSteps[i] = in_sampling[i] * (ip_inverseTextureDataAdjusted * vec4(g_rayDir, 0.0)).xyz;\
@@ -1653,9 +1649,10 @@ namespace vtkvolume
   {
     std::ostringstream toShaderStr;
     toShaderStr <<
-      "//if (any(greaterThan(g_dataPos, in_texMax[0])) || any(lessThan(g_dataPos, in_texMin[0])))\n"
+      "\n"
+      "    if (any(greaterThan(g_dataPos, in_texMax[0])) || any(lessThan(g_dataPos, in_texMin[0])))\n"
       "    {\n"
-      "      //break;\n"
+      "      break;\n"
       "    }\n"
       "\n"
       "    vec3 texPos,\n"
@@ -2292,26 +2289,8 @@ namespace vtkvolume
       \n  g_terminatePos = terminatePosTmp.xyz / terminatePosTmp.w;\
       \n"
     ;
-    const int inputCount = static_cast<vtkOpenGLGPUVolumeRayCastMapper*>(mapper)->GetInputCount();
-    if (inputCount > 1)
-    {
-      str += "\
-        \n  g_minDirStepLength = FLOAT_MAX;\
-        \n  for (int i = 0; i < " + std::to_string(inputCount) + "; ++i)\
-        \n  {\
-        \n    float dirStepLength = length(g_dirSteps[i]);\
-        \n    g_minDirStepLength = (dirStepLength > 0 && dirStepLength < g_minDirStepLength) ? dirStepLength : g_minDirStepLength;\
-        \n  }"
-      ;
-    }
-    else
-    {
-      str += "\
-        \n  g_minDirStepLength = length(g_dirStep);"
-      ;
-    }
     str += "\
-      \n  g_terminatePointMax = length(g_terminatePos.xyz - g_dataPos.xyz) / g_minDirStepLength;\
+      \n  g_terminatePointMax = length(g_terminatePos.xyz - g_dataPos.xyz) / length(g_dirStep);\
       \n  g_currentT = 0.0;"
     ;
 
@@ -2360,7 +2339,7 @@ namespace vtkvolume
       const std::string inputCount2xStr = std::to_string(2 * inputCount);
       str += "\n"
         "    int idx = -1;\n"
-        "    float shortestIntervalRange = FLOAT_MAX;\n"
+        "    float shortestIntervalRange = FLOAT_INF;\n"
         "    for (int i = 0; i < " + std::to_string(inputCount) + "; ++i)\n"
         "    {\n"
         "      if (intervals[i].valid == true && t >= intervals[i].tEnter && t <= intervals[i].tExit)\n"
@@ -2391,10 +2370,10 @@ namespace vtkvolume
         "          break;\n"
         "        }\n"
         "      }\n"
-        "      /*if (idx < 0)\n"
+        "      if (idx < 0)\n"
         "      {\n"
         "        t = tMax;\n"
-        "      }*/\n"
+        "      }\n"
         "    }\n"
         "\n"
         "    if (t >= tMax)\n"
