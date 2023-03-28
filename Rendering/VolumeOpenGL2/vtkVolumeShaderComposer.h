@@ -176,14 +176,6 @@ namespace vtkvolume
                    "\n"
                    "  bool valid;\n"
                    "};\n\n";
-    toShaderStr << "struct Interval\n"
-                   "{\n"
-                   "  float tEnter;\n"
-                   "\n"
-                   "  float tExit;\n"
-                   "\n"
-                   "  bool valid;\n"
-                   "};\n\n";
     toShaderStr << "struct SamplePoint\n"
                    "{\n"
                    "  vec3 dataPos;\n"
