@@ -248,6 +248,7 @@ namespace vtkvolume
     ;
     const int numInputs2x = 2 * numInputs;
     toShaderStr << "vec3 g_dirSteps[" << numInputs << "];\n";
+    toShaderStr << "float g_minDirStepLength;\n";
     
     toShaderStr << "\n"
                    "Mark[" << numInputs2x << "] sortIntervals(Interval intervals[" << numInputs << "])\n"
@@ -2395,7 +2396,7 @@ namespace vtkvolume
     if (inputCount > 1)
     {
       str += "\
-        \n  float g_minDirStepLength = FLOAT_MAX;\
+        \n  g_minDirStepLength = FLOAT_MAX;\
         \n  for (int i = 0; i < " + std::to_string(inputCount) + "; ++i)\
         \n  {\
         \n    float dirStepLength = length(g_dirSteps[i]);\
@@ -2406,7 +2407,7 @@ namespace vtkvolume
     else
     {
       str += "\
-        \n  float g_minDirStepLength = length(g_dirStep);"
+        \n  g_minDirStepLength = length(g_dirStep);"
       ;
     }
     str += "\
