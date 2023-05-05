@@ -50,50 +50,51 @@ void vtkVolumeInputHelper::InitializeTransferFunction(vtkRenderer* ren, const in
   this->InitializeTransfer = false;
 }
 
-void vtkVolumeInputHelper::UpdateTransferFunctions(vtkRenderer* ren, const int blendMode,
-  const float samplingDist)
+void vtkVolumeInputHelper::UpdateTransferFunctions(vtkRenderer* ren, const int blendMode, const float samplingDist)
 {
   auto vol = this->Volume;
   const int transferMode = vol->GetProperty()->GetTransferFunctionMode();
-  const int numComp =
-    this->Texture->GetLoadedScalars()->GetNumberOfComponents();
-  switch(transferMode)
+  const int numComp = this->Texture->GetLoadedScalars()->GetNumberOfComponents();
+  if (numComp == 1)
   {
-    case vtkVolumeProperty::TF_1D:
-      switch(this->ComponentMode)
+      switch(transferMode)
       {
-        case vtkVolumeInputHelper::INDEPENDENT:
-          for (int i = 0; i < numComp; ++i)
+        case vtkVolumeProperty::TF_1D:
+          switch(this->ComponentMode)
           {
-            this->UpdateOpacityTransferFunction(ren, vol, i,
-              blendMode, samplingDist);
-            this->UpdateGradientOpacityTransferFunction(ren, vol, i,
-              samplingDist);
-            this->UpdateColorTransferFunction(ren, vol, i);
+            case vtkVolumeInputHelper::INDEPENDENT:
+              for (int i = 0; i < numComp; ++i)
+              {
+                this->UpdateOpacityTransferFunction(ren, vol, i,
+                  blendMode, samplingDist);
+                this->UpdateGradientOpacityTransferFunction(ren, vol, i,
+                  samplingDist);
+                this->UpdateColorTransferFunction(ren, vol, i);
+              }
+              break;
+            default: // RGBA or LA
+              this->UpdateOpacityTransferFunction(ren, vol, numComp - 1,
+                blendMode, samplingDist);
+              this->UpdateGradientOpacityTransferFunction(ren, vol, numComp - 1,
+                samplingDist);
+              this->UpdateColorTransferFunction(ren, vol, 0);
           }
           break;
-        default: // RGBA or LA
-          this->UpdateOpacityTransferFunction(ren, vol, numComp - 1,
-            blendMode, samplingDist);
-          this->UpdateGradientOpacityTransferFunction(ren, vol, numComp - 1,
-            samplingDist);
-          this->UpdateColorTransferFunction(ren, vol, 0);
-      }
-      break;
 
-    case vtkVolumeProperty::TF_2D:
-      switch(this->ComponentMode)
-      {
-        case vtkVolumeInputHelper::INDEPENDENT:
-          for (int i = 0; i < numComp; ++i)
+        case vtkVolumeProperty::TF_2D:
+          switch(this->ComponentMode)
           {
-            this->UpdateTransferFunction2D(ren, i);
+            case vtkVolumeInputHelper::INDEPENDENT:
+              for (int i = 0; i < numComp; ++i)
+              {
+                this->UpdateTransferFunction2D(ren, i);
+              }
+              break;
+            default: // RGBA or LA
+              this->UpdateTransferFunction2D(ren, 0);
           }
           break;
-        default: // RGBA or LA
-          this->UpdateTransferFunction2D(ren, 0);
       }
-      break;
   }
 }
 
@@ -256,13 +257,11 @@ int vtkVolumeInputHelper::UpdateGradientOpacityTransferFunction(vtkRenderer* ren
   return 0;
 }
 
-void vtkVolumeInputHelper::UpdateTransferFunction2D(vtkRenderer* ren,
-  unsigned int component)
+void vtkVolumeInputHelper::UpdateTransferFunction2D(vtkRenderer* ren, unsigned int component)
 {
   // Use the first LUT when using dependent components
   vtkVolumeProperty* prop = this->Volume->GetProperty();
-  unsigned int const lutIndex = prop->GetIndependentComponents() ?
-    component : 0;
+  unsigned int const lutIndex = prop->GetIndependentComponents() ?  component : 0;
 
   vtkImageData* transfer2D = prop->GetTransferFunction2D(lutIndex);
 #if GL_ES_VERSION_3_0 != 1
@@ -283,10 +282,8 @@ void vtkVolumeInputHelper::ActivateTransferFunction(vtkShaderProgram* prog, cons
   {
       return;
   }
-  int const transferMode =
-    this->Volume->GetProperty()->GetTransferFunctionMode();
-  int const numActiveLuts = this->ComponentMode == INDEPENDENT ?
-    Texture->GetLoadedScalars()->GetNumberOfComponents() : 1;
+  int const transferMode = this->Volume->GetProperty()->GetTransferFunctionMode();
+  int const numActiveLuts = this->ComponentMode == INDEPENDENT ? Texture->GetLoadedScalars()->GetNumberOfComponents() : 1;
   switch (transferMode)
   {
     case vtkVolumeProperty::TF_1D:
@@ -320,8 +317,7 @@ void vtkVolumeInputHelper::ActivateTransferFunction(vtkShaderProgram* prog, cons
         vtkOpenGLTransferFunction2D* table =
         this->TransferFunctions2D->GetTable(i);
         table->Activate();
-        prog->SetUniformi(this->TransferFunctions2DMap[i].c_str(),
-          table->GetTextureUnit());
+        prog->SetUniformi(this->TransferFunctions2DMap[i].c_str(), table->GetTextureUnit());
       }
       break;
   }
@@ -329,32 +325,33 @@ void vtkVolumeInputHelper::ActivateTransferFunction(vtkShaderProgram* prog, cons
 
 void vtkVolumeInputHelper::DeactivateTransferFunction(const int blendMode)
 {
-  int const transferMode =
-    this->Volume->GetProperty()->GetTransferFunctionMode();
-  int const numActiveLuts = this->ComponentMode == INDEPENDENT ?
-    Texture->GetLoadedScalars()->GetNumberOfComponents() : 1;
-  switch(transferMode)
+  int const transferMode = this->Volume->GetProperty()->GetTransferFunctionMode();
+  int const numActiveLuts = this->ComponentMode == INDEPENDENT ?  Texture->GetLoadedScalars()->GetNumberOfComponents() : 1;
+  if (Texture->GetLoadedScalars()->GetNumberOfComponents() == 1)
   {
-    case vtkVolumeProperty::TF_1D:
-      for (int i = 0; i < numActiveLuts; ++i)
+      switch(transferMode)
       {
-        this->OpacityTables->GetTable(i)->Deactivate();
-        if (blendMode != vtkGPUVolumeRayCastMapper::ADDITIVE_BLEND)
-        {
-          this->RGBTables->GetTable(i)->Deactivate();
-        }
-        if (this->GradientOpacityTables)
-        {
-          this->GradientOpacityTables->GetTable(i)->Deactivate();
-        }
+        case vtkVolumeProperty::TF_1D:
+          for (int i = 0; i < numActiveLuts; ++i)
+          {
+            this->OpacityTables->GetTable(i)->Deactivate();
+            if (blendMode != vtkGPUVolumeRayCastMapper::ADDITIVE_BLEND)
+            {
+              this->RGBTables->GetTable(i)->Deactivate();
+            }
+            if (this->GradientOpacityTables)
+            {
+              this->GradientOpacityTables->GetTable(i)->Deactivate();
+            }
+          }
+          break;
+        case vtkVolumeProperty::TF_2D:
+          for (int i = 0; i < numActiveLuts; ++i)
+          {
+            this->TransferFunctions2D->GetTable(i)->Deactivate();
+          }
+          break;
       }
-      break;
-    case vtkVolumeProperty::TF_2D:
-      for (int i = 0; i < numActiveLuts; ++i)
-      {
-        this->TransferFunctions2D->GetTable(i)->Deactivate();
-      }
-      break;
   }
 }
 
@@ -362,17 +359,16 @@ void vtkVolumeInputHelper::CreateTransferFunction1D(vtkRenderer* ren, const int 
 {
   this->ReleaseGraphicsTransfer1D(ren->GetRenderWindow());
 
-  int const numActiveLuts = this->ComponentMode == INDEPENDENT ?
-    Texture->GetLoadedScalars()->GetNumberOfComponents() : 1;
+  int const numActiveLuts = this->ComponentMode == INDEPENDENT ?  Texture->GetLoadedScalars()->GetNumberOfComponents() : 1;
 
   // Create RGB and opacity (scalar and gradient) lookup tables. Up to four
   // components are supported in single-input independentComponents mode.
   this->RGBTables = vtkSmartPointer<vtkOpenGLVolumeRGBTables>::New();
-    this->RGBTables->Create(numActiveLuts);
+  this->RGBTables->Create(numActiveLuts);
   this->OpacityTables = vtkSmartPointer<vtkOpenGLVolumeOpacityTables>::New();
-    this->OpacityTables->Create(numActiveLuts);
+  this->OpacityTables->Create(numActiveLuts);
   this->GradientOpacityTables =
-    vtkSmartPointer<vtkOpenGLVolumeGradientOpacityTables>::New();
+  vtkSmartPointer<vtkOpenGLVolumeGradientOpacityTables>::New();
   this->GradientOpacityTables->Create(numActiveLuts);
 
   this->OpacityTablesMap.clear();
@@ -382,23 +378,18 @@ void vtkVolumeInputHelper::CreateTransferFunction1D(vtkRenderer* ren, const int 
   std::ostringstream idx;
   idx << index;
 
-  this->GradientCacheName = "g_gradients_" + idx.str();
+  this->GradientCacheName = "g_gradients[" + idx.str() + "]";
 
   for (int i = 0; i < numActiveLuts; ++i)
   {
-    std::ostringstream comp;
-    comp << "[" << i << "]";
-
-    this->OpacityTablesMap[i] =
-      "in_opacityTransferFunc_" + idx.str() + comp.str();
-    this->RGBTablesMap[i] = "in_colorTransferFunc_" + idx.str() + comp.str();
+    this->OpacityTablesMap[i] = "in_opacityTransferFunc[" + idx.str() + "]";
+    this->RGBTablesMap[i] = "in_colorTransferFunc[" + idx.str() + "]";
 
     // Unlike color and scalar-op, graident-op is optional (some inputs may
     // or may not have gradient-op active).
     if (this->Volume->GetProperty()->HasGradientOpacity())
     {
-      this->GradientOpacityTablesMap[i] =
-        "in_gradientTransferFunc_" + idx.str() + comp.str();
+      this->GradientOpacityTablesMap[i] = "in_gradientTransferFunc[" + idx.str() + "]";
     }
   }
 
@@ -410,24 +401,19 @@ void vtkVolumeInputHelper::CreateTransferFunction2D(vtkRenderer* ren,
 {
   this->ReleaseGraphicsTransfer2D(ren->GetRenderWindow());
 
-  unsigned int const num = this->ComponentMode == INDEPENDENT ?
-     Texture->GetLoadedScalars()->GetNumberOfComponents() : 1;
+  unsigned int const num = this->ComponentMode == INDEPENDENT ? Texture->GetLoadedScalars()->GetNumberOfComponents() : 1;
 
-  this->TransferFunctions2D =
-    vtkSmartPointer<vtkOpenGLTransferFunctions2D>::New();
+  this->TransferFunctions2D = vtkSmartPointer<vtkOpenGLTransferFunctions2D>::New();
   this->TransferFunctions2D->Create(num);
 
   std::ostringstream idx;
   idx << index;
 
-  this->GradientCacheName = "g_gradients_" + idx.str();
+  this->GradientCacheName = "g_gradients[" + idx.str() + "]";
 
   for (unsigned int i = 0; i < num; i++)
   {
-    std::ostringstream comp;
-    comp << "[" << i << "]";
-
-    this->TransferFunctions2DMap[i] = "in_transfer2D_" + idx.str() + comp.str();
+    this->TransferFunctions2DMap[i] = "in_transfer2D[" + idx.str() + "]";
   }
 
   this->LutInit.Modified();

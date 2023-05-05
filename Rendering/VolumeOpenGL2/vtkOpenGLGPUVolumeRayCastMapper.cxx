@@ -702,8 +702,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateTransferFunctions(
     input.ColorRangeType = this->Parent->GetColorRangeType();
     input.ScalarOpacityRangeType = this->Parent->GetScalarOpacityRangeType();
     input.GradientOpacityRangeType = this->Parent->GetGradientOpacityRangeType();
-    input.RefreshTransferFunction(ren, uniformIndex,
-      this->Parent->BlendMode, this->ActualSampleDistance);
+    input.RefreshTransferFunction(ren, uniformIndex, this->Parent->BlendMode, this->ActualSampleDistance);
 
     uniformIndex++;
   }
@@ -1187,12 +1186,9 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetLightingShaderParameters(
     }
   }
 
-  prog->SetUniform3fv(
-    "in_lightAmbientColor", numberOfLights, lightAmbientColor);
-  prog->SetUniform3fv(
-    "in_lightDiffuseColor", numberOfLights, lightDiffuseColor);
-  prog->SetUniform3fv(
-    "in_lightSpecularColor", numberOfLights, lightSpecularColor);
+  prog->SetUniform3fv("in_lightAmbientColor", numberOfLights, lightAmbientColor);
+  prog->SetUniform3fv("in_lightDiffuseColor", numberOfLights, lightDiffuseColor);
+  prog->SetUniform3fv("in_lightSpecularColor", numberOfLights, lightSpecularColor);
   prog->SetUniform3fv("in_lightDirection", numberOfLights, lightDirection);
   prog->SetUniformi("in_numberOfLights", numberOfLights);
 
@@ -1286,8 +1282,7 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::IsCameraInside(
 
   dataToWorld->MultiplyPoint(camNearWorldPoint, camNearPoint);
 
-  int const result = vtkMath::PlaneIntersectsAABB(loadedBounds,
-    camPlaneNormal, camNearPoint);
+  int const result = vtkMath::PlaneIntersectsAABB(loadedBounds, camPlaneNormal, camNearPoint);
 
   if (result == 0)
   {
@@ -1298,8 +1293,7 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::IsCameraInside(
 }
 
 //----------------------------------------------------------------------------
-bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::IsGeometryUpdateRequired(vtkRenderer* ren,
-  vtkVolume* vol, double loadedBounds[6])
+bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::IsGeometryUpdateRequired(vtkRenderer* ren, vtkVolume* vol, double loadedBounds[6])
 {
   if (!this->BBoxPolyData)
     return true;
@@ -1636,8 +1630,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::CheckPropertyKeys(
   // currently supported by this mapper, the viewport will have to be adjusted
   // externally before adding support for other passes.
   vtkInformation* info = vol->GetPropertyKeys();
-  this->PreserveViewport =
-    info && info->Has(vtkOpenGLRenderPass::RenderPasses());
+  this->PreserveViewport = info && info->Has(vtkOpenGLRenderPass::RenderPasses());
 }
 
 // -----------------------------------------------------------------------------
@@ -1770,34 +1763,38 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateSamplingDistance(vtkRen
   // use the found cell spacing to compute the sampling distance
   vtkImageData* input = this->Parent->GetTransformedInput(i);
   vtkVolume* vol = this->Parent->AssembledInputs[i].Volume;
-  
+
   double cellSpacing[3];
   input->GetSpacing(cellSpacing);
 
-  vtkMatrix4x4* worldToDataset = vol->GetMatrix();
-  double minWorldSpacing = VTK_DOUBLE_MAX;
-
-  for (int j = 0; j < 3; ++j)
+  double actualSampleDistance;
   {
-      double tmp = worldToDataset->GetElement(0, j);
-      double tmp2 = tmp * tmp;
-      tmp = worldToDataset->GetElement(1, j);
-      tmp2 += tmp * tmp;
-      tmp = worldToDataset->GetElement(2, j);
-      tmp2 += tmp * tmp;
 
-      // We use fabs() in case the spacing is negative.
-      double worldSpacing = fabs(cellSpacing[j] * sqrt(tmp2));
-      if (worldSpacing < minWorldSpacing)
+      vtkMatrix4x4* worldToDataset = vol->GetMatrix();
+      double minWorldSpacing = VTK_DOUBLE_MAX;
+
+      for (int j = 0; j < 3; ++j)
       {
-          minWorldSpacing = worldSpacing;
-      }
-  }
+          double tmp = worldToDataset->GetElement(0, j);
+          double tmp2 = tmp * tmp;
+          tmp = worldToDataset->GetElement(1, j);
+          tmp2 += tmp * tmp;
+          tmp = worldToDataset->GetElement(2, j);
+          tmp2 += tmp * tmp;
 
-  // minWorldSpacing is the optimal sample distance in world space.
-  // To go faster (reduceFactor<1.0), we multiply this distance
-  // by 1/reduceFactor.
-  double actualSampleDistance = static_cast<float>(minWorldSpacing);
+          // We use fabs() in case the spacing is negative.
+          double worldSpacing = fabs(cellSpacing[j] * sqrt(tmp2));
+          if (worldSpacing < minWorldSpacing)
+          {
+              minWorldSpacing = worldSpacing;
+          }
+      }
+
+      // minWorldSpacing is the optimal sample distance in world space.
+      // To go faster (reduceFactor<1.0), we multiply this distance
+      // by 1/reduceFactor.
+      actualSampleDistance = static_cast<float>(minWorldSpacing);
+  }
 
   this->SamplingVec.resize(this->Parent->GetInputCount());
 
@@ -1805,6 +1802,8 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateSamplingDistance(vtkRen
   {
     double minWorldSpacing = std::numeric_limits<double>::max();
     vtkMatrix4x4* const worldToDataset = this->Parent->AssembledInputs.at(index).Volume->GetMatrix();
+    double localCellSpacing[3];
+    this->Parent->GetTransformedInput(index)->GetSpacing(localCellSpacing);
     for (int j = 0; j < 3; ++j)
     {
         double tmp = worldToDataset->GetElement(0, j);
@@ -1815,8 +1814,6 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateSamplingDistance(vtkRen
         tmp2 += tmp * tmp;
 
         // We use fabs() in case the spacing is negative.
-        double localCellSpacing[3];
-        this->Parent->GetTransformedInput(index)->GetSpacing(localCellSpacing);
         double worldSpacing = fabs(localCellSpacing[j] * sqrt(tmp2));
         if (worldSpacing < minWorldSpacing)
         {
@@ -3156,13 +3153,14 @@ void vtkOpenGLGPUVolumeRayCastMapper::ReplaceShaderMasking(
   {
       masks[mask.first] = mask.second.Input;
   }
-  if (masks.size())
+  //if (masks.size())
   {
     vtkShaderProgram::Substitute(fragmentShader,
       "//VTK::BinaryMask::Dec",
       vtkvolume::BinaryMaskDeclaration(ren,
         this,
         vol,
+        this->AssembledInputs,
         masks,
         this->Impl->CurrentMasks/*,
         this->MaskType*/));
@@ -3177,7 +3175,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::ReplaceShaderMasking(
         this->MaskType*/));
   }
   // TODO move this elsewhere?
-  if (this->Impl->RegionMaskTextures.size())
+  //if (this->Impl->RegionMaskTextures.size())
   {
       vtkShaderProgram::Substitute(fragmentShader,
                                    "//VTK::RegionMask::Dec",
@@ -4047,7 +4045,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
   this->BiasVec.resize(numInputs * 4, 0);
   this->StepVec.resize(numInputs * 3, 0);
   this->SpacingVec.resize(numInputs * 3, 0);
-  this->RangeVec.resize(numInputs * 8, 0);
+  this->RangeVec.resize(numInputs * 2, 0);
 
   std::vector<float> boundsMin(3 * numInputs, 0.);
   std::vector<float> boundsMax(3 * numInputs, 0.);
@@ -4071,9 +4069,9 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
     float max[3]{bounds[1], bounds[3], bounds[5]};
     //for (int i = 0; i < 3; ++i)
     //{
-    //    const double halfCellSpacingI = cellSpacing[i];
-    //    min[i] -= halfCellSpacingI;
-    //    max[i] += halfCellSpacingI;
+    //    const double halfCellSpacingI = .5 * cellSpacing[i];
+    //    min[i] += halfCellSpacingI;
+    //    max[i] -= halfCellSpacingI;
     //}
     vtkInternal::CopyVector<float, 3>(min, boundsMin.data(), 3 * index);
     vtkInternal::CopyVector<float, 3>(max, boundsMax.data(), 3 * index);
@@ -4103,7 +4101,11 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
     vtkInternal::CopyVector<float, 3>(volTex->CellSpacing, this->SpacingVec.data(), index * 3);
 
     // 8 elements stands for [min, max] per 4-components
-    vtkInternal::CopyVector<float, 8>(reinterpret_cast<float*>(volTex->ScalarRange), this->RangeVec.data(), index * 8);
+    float range[2]{
+        volTex->ScalarRange[0][0],
+        volTex->ScalarRange[0][1]
+    };
+    vtkInternal::CopyVector<float, 2>(reinterpret_cast<float*>(range), this->RangeVec.data(), index * 2);
 
     volumeInput.ActivateTransferFunction(prog, this->Parent->BlendMode);
 
@@ -4149,7 +4151,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
   prog->SetUniform1fv("in_sampling", numInputs, this->SamplingVec.data());
   prog->SetUniform4fv("in_volume_scale", numInputs, reinterpret_cast<const float(*)[4]>(this->ScaleVec.data()));
   prog->SetUniform4fv("in_volume_bias", numInputs, reinterpret_cast<const float(*)[4]>(this->BiasVec.data()));
-  prog->SetUniform2fv("in_scalarsRange", 4 * numInputs, reinterpret_cast<const float(*)[2]>(this->RangeVec.data()));
+  prog->SetUniform2fv("in_scalarsRange", numInputs, reinterpret_cast<const float(*)[2]>(this->RangeVec.data()));
   prog->SetUniform3fv("in_cellStep", numInputs, reinterpret_cast<const float(*)[3]>(this->StepVec.data()));
   prog->SetUniform3fv("in_cellSpacing", numInputs, reinterpret_cast<const float(*)[3]>(this->SpacingVec.data()));
   prog->SetUniform3fv("in_boxMaskOrigin", numInputs, reinterpret_cast<const float(*)[3]>(boxMaskOrigins.data()));
@@ -4188,8 +4190,14 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetMapperShaderParameters(
     prog->SetUniformi("in_noiseSampler", 0);
   }
 
+  std::size_t ind = 0;
+  for (auto& in : this->Parent->AssembledInputs)
+  {
+      const int noOfComponents = in.second.Texture->GetLoadedScalars()->GetNumberOfComponents();
+      prog->SetUniformi(("in_noOfComponents[" + std::to_string(ind++) + "]").c_str(), noOfComponents);
+  }
+
   prog->SetUniformi("in_useJittering", this->Parent->UseJittering);
-  prog->SetUniformi("in_noOfComponents", numComp);
   prog->SetUniformi("in_independentComponents", independent);
   prog->SetUniformf("in_sampleDistance", this->ActualSampleDistance);
   // setup alpha compensation when downsampling
@@ -4199,7 +4207,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetMapperShaderParameters(
   }
   else
   {
-      prog->SetUniformf("in_downsampleCompensation", this->Parent->Downsamplecompensation);
+      prog->SetUniformf("in_downsampleCompensation", this->Parent->DownsampleCompensation);
   }
 
   // Set the scale and bias for color correction
@@ -4263,15 +4271,25 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetMaskShaderParameters(
   vtkShaderProgram* prog, int noOfComponents)
 {
   int maskI = 0;
+  int i = 0;
   for (const auto& in : this->Parent->AssembledInputs)
   {
       auto it = this->CurrentMasks.find(in.second.Volume);
       if (it != this->CurrentMasks.end())
       {
+
           auto maskTex = it->second->GetCurrentBlock()->TextureObject;
           maskTex->Activate();
-          prog->SetUniformi((std::string("in_mask[") + std::to_string(maskI++) + "]").c_str(), maskTex->GetTextureUnit());
+          prog->SetUniformi((std::string("in_mask[") + std::to_string(maskI) + "]").c_str(), maskTex->GetTextureUnit());
+          prog->SetUniformi((std::string("in_maskIndex[") + std::to_string(i) + "]").c_str(), maskI);
+
+          ++maskI;
       }
+      else
+      {
+          prog->SetUniformi((std::string("in_maskIndex[") + std::to_string(i) + "]").c_str(), -1);
+      }
+      ++i;
   }
 
   //if(noOfComponents == 1 &&
@@ -4292,14 +4310,15 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetMaskShaderParameters(
 
 void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetRegionShaderParameters(vtkShaderProgram* prog)
 {
+  std::size_t ri = 0,
+              rtf = 0;
   for (const auto& in : this->Parent->AssembledInputs)
   {
     const int vi = in.first;
-    const std::string viStr = std::to_string(vi);
+    prog->SetUniformi(("in_regionOffset[" + std::to_string(vi) + "]").c_str(), ri);
     const std::vector<vtkVolumeProperty::Region>& regions = in.second.Volume->GetProperty()->GetRegions();
-    const std::string regionUniformName = "in_regionMask_" + viStr;
-    const std::string regionColorUniformName = "in_regionTransferFunction_" + viStr;
-    std::size_t i = 0;
+    const std::string regionUniformName = "in_regionMask";
+    const std::string regionColorUniformName = "in_regionTransferFunction";
     for (const vtkVolumeProperty::Region& region : regions)
     {
       auto it = this->RegionMaskTextures.find(vi);
@@ -4311,7 +4330,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetRegionShaderParameters(vtk
         {
             vtkTextureObject* const to = rmt->texture->GetCurrentBlock()->TextureObject;
             to->Activate();
-            const std::string iStr = std::to_string(i);
+            const std::string iStr = std::to_string(ri++);
             prog->SetUniformi((regionUniformName + '[' + iStr + ']').c_str(), to->GetTextureUnit());
         }
       }
@@ -4324,12 +4343,13 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetRegionShaderParameters(vtk
         {
             vtkOpenGLTransferFunction2D* const rmtftTexture = rmtft->texture;
             rmtftTexture->Activate();
-            const std::string iStr = std::to_string(i);
+            const std::string iStr = std::to_string(rtf++);
             prog->SetUniformi((regionColorUniformName + '[' + iStr + ']').c_str(), rmtftTexture->GetTextureUnit());
         }
       }
     }
   }
+  prog->SetUniformi(("in_regionOffset[" + std::to_string(this->Parent->AssembledInputs.size()) + "]").c_str(), ri);
 }
 
 //----------------------------------------------------------------------------

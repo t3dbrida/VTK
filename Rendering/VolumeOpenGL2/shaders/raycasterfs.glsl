@@ -17,7 +17,6 @@
 
 #define FLOAT_MAX 1e20
 #define FLOAT_EPS 1e-7
-#define FLOAT_INF (1. / 0.)
 
 //////////////////////////////////////////////////////////////////////////////
 ///
@@ -133,10 +132,55 @@ vec4 NDCToWindow(const float xNDC, const float yNDC, const float zNDC)
   return WinCoord;
 }
 
+/*void swap(inout float a, inout float b)
+{
+	float tmp = a;
+	a = b;
+	b = tmp;
+}
+
+vec2 intersectRayBox(vec3 rayOrigin, vec3 rayDir, vec3 aabbMin, vec3 aabbMax)
+{ 
+    float tmin = (aabbMin.x - rayOrigin.x) / rayDir.x; 
+    float tmax = (aabbMax.x - rayOrigin.x) / rayDir.x; 
+ 
+    if (tmin > tmax) swap(tmin, tmax); 
+ 
+    float tymin = (aabbMin.y - rayOrigin.y) / rayDir.y; 
+    float tymax = (aabbMax.y - rayOrigin.y) / rayDir.y; 
+ 
+    if (tymin > tymax) swap(tymin, tymax); 
+ 
+    if ((tmin > tymax) || (tymin > tmax)) 
+        return vec2(FLOAT_MAX, -FLOAT_MAX);
+ 
+    if (tymin > tmin)
+        tmin = tymin;
+ 
+    if (tymax < tmax) 
+        tmax = tymax; 
+ 
+    float tzmin = (aabbMin.z - rayOrigin.z) / rayDir.z; 
+    float tzmax = (aabbMax.z - rayOrigin.z) / rayDir.z; 
+ 
+    if (tzmin > tzmax) swap(tzmin, tzmax); 
+ 
+    if ((tmin > tzmax) || (tzmin > tmax)) 
+        return vec2(FLOAT_MAX, -FLOAT_MAX); 
+ 
+    if (tzmin > tmin) 
+        tmin = tzmin; 
+ 
+    if (tzmax < tmax) 
+        tmax = tzmax; 
+ 
+    return vec2(tmin, tmax); 
+}*/
+
 vec2 intersectRayBox(vec3 rayOrigin, vec3 rayDir, vec3 aabbMin, vec3 aabbMax)
 {
-        float tMin = -FLOAT_INF;
-        float tMax = FLOAT_INF;
+        float tMin = -FLOAT_MAX;
+        float tMax = FLOAT_MAX;
 
 		vec3 inverseRayDirection = vec3(1.) / rayDir;
         for (int i = 0; i < 3; ++i)
@@ -156,7 +200,7 @@ vec2 intersectRayBox(vec3 rayOrigin, vec3 rayDir, vec3 aabbMin, vec3 aabbMax)
             tMax = t1 < tMax ? t1 : tMax;
         }
 
-        return tMax/* + eps*/ >= tMin ? vec2(tMin, tMax) : vec2(FLOAT_INF, -FLOAT_INF);
+        return tMax >= tMin ? vec2(tMin, tMax) : vec2(FLOAT_MAX, -FLOAT_MAX);
 }
 
 /**

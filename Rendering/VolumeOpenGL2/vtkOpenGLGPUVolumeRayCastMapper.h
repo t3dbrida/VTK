@@ -202,8 +202,8 @@ public:
   vtkSetMacro(MaxCellSpacingDivisor, double);
 
 
-  vtkGetMacro(Downsamplecompensation, float);
-  vtkSetMacro(Downsamplecompensation, float);
+  vtkGetMacro(DownsampleCompensation, float);
+  vtkSetMacro(DownsampleCompensation, float);
 
   const std::vector<float>& GetGradMagMaxs() const noexcept
   {
@@ -349,7 +349,7 @@ protected:
 
   double ReductionFactor;
   double MaxCellSpacingDivisor;
-  float Downsamplecompensation = 1.f;
+  float DownsampleCompensation = 1.f;
   int    CurrentPass;
   char *VertexShaderCode;
   char *FragmentShaderCode;
