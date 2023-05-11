@@ -1509,7 +1509,7 @@ namespace vtkvolume
         int visibleCount = 0;
         for (auto& item : inputs)
         {
-            if (item.second.Volume->GetVisibility())
+            if (item.second.Volume->GetVisibility() || item.second.Volume->GetProperty()->GetRegions().size() > 0)
             {
                 ++visibleCount;
             }
