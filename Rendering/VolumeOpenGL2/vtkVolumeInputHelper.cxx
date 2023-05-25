@@ -277,57 +277,49 @@ void vtkVolumeInputHelper::UpdateTransferFunction2D(vtkRenderer* ren, unsigned i
 
 void vtkVolumeInputHelper::ActivateTransferFunction(vtkShaderProgram* prog, const int blendMode)
 {
-  int nofComponents = this->Texture->GetLoadedScalars()->GetNumberOfComponents();
-  if (nofComponents == 3) // RGB
-  {
-      return;
-  }
   int const transferMode = this->Volume->GetProperty()->GetTransferFunctionMode();
-  int const numActiveLuts = this->ComponentMode == INDEPENDENT ? Texture->GetLoadedScalars()->GetNumberOfComponents() : 1;
-  switch (transferMode)
+  int const numActiveLuts = this->ComponentMode == INDEPENDENT ? this->Texture->GetLoadedScalars()->GetNumberOfComponents() : 1;
+  if (numActiveLuts == 1)
   {
-    case vtkVolumeProperty::TF_1D:
-      for (int i = 0; i < numActiveLuts; ++i)
+      switch (transferMode)
       {
-        this->OpacityTables->GetTable(i)->Activate();
-        prog->SetUniformi(
-          this->OpacityTablesMap[i].c_str(),
-          this->OpacityTables->GetTable(i)->GetTextureUnit());
+        case vtkVolumeProperty::TF_1D:
+          for (int i = 0; i < numActiveLuts; ++i)
+          {
+            this->OpacityTables->GetTable(i)->Activate();
+            prog->SetUniformi(this->OpacityTablesMap[i].c_str(), this->OpacityTables->GetTable(i)->GetTextureUnit());
 
-        if (blendMode != vtkGPUVolumeRayCastMapper::ADDITIVE_BLEND)
-        {
-          this->RGBTables->GetTable(i)->Activate();
-          prog->SetUniformi(
-            this->RGBTablesMap[i].c_str(),
-            this->RGBTables->GetTable(i)->GetTextureUnit());
-        }
+            if (blendMode != vtkGPUVolumeRayCastMapper::ADDITIVE_BLEND)
+            {
+              this->RGBTables->GetTable(i)->Activate();
+              prog->SetUniformi(this->RGBTablesMap[i].c_str(), this->RGBTables->GetTable(i)->GetTextureUnit());
+            }
 
-        if (this->GradientOpacityTables)
-        {
-          this->GradientOpacityTables->GetTable(i)->Activate();
-          prog->SetUniformi(
-            this->GradientOpacityTablesMap[i].c_str(),
-            this->GradientOpacityTables->GetTable(i)->GetTextureUnit());
-        }
+            if (this->GradientOpacityTables)
+            {
+              this->GradientOpacityTables->GetTable(i)->Activate();
+              prog->SetUniformi(this->GradientOpacityTablesMap[i].c_str(), this->GradientOpacityTables->GetTable(i)->GetTextureUnit());
+            }
+          }
+          break;
+        case vtkVolumeProperty::TF_2D:
+          for (int i = 0; i < numActiveLuts; ++i)
+          {
+            vtkOpenGLTransferFunction2D* table =
+            this->TransferFunctions2D->GetTable(i);
+            table->Activate();
+            prog->SetUniformi(this->TransferFunctions2DMap[i].c_str(), table->GetTextureUnit());
+          }
+          break;
       }
-      break;
-    case vtkVolumeProperty::TF_2D:
-      for (int i = 0; i < numActiveLuts; ++i)
-      {
-        vtkOpenGLTransferFunction2D* table =
-        this->TransferFunctions2D->GetTable(i);
-        table->Activate();
-        prog->SetUniformi(this->TransferFunctions2DMap[i].c_str(), table->GetTextureUnit());
-      }
-      break;
   }
 }
 
 void vtkVolumeInputHelper::DeactivateTransferFunction(const int blendMode)
 {
   int const transferMode = this->Volume->GetProperty()->GetTransferFunctionMode();
-  int const numActiveLuts = this->ComponentMode == INDEPENDENT ?  Texture->GetLoadedScalars()->GetNumberOfComponents() : 1;
-  if (Texture->GetLoadedScalars()->GetNumberOfComponents() == 1)
+  int const numActiveLuts = this->ComponentMode == INDEPENDENT ? this->Texture->GetLoadedScalars()->GetNumberOfComponents() : 1;
+  if (numActiveLuts == 1)
   {
       switch(transferMode)
       {
@@ -359,7 +351,11 @@ void vtkVolumeInputHelper::CreateTransferFunction1D(vtkRenderer* ren, const int 
 {
   this->ReleaseGraphicsTransfer1D(ren->GetRenderWindow());
 
-  int const numActiveLuts = this->ComponentMode == INDEPENDENT ?  Texture->GetLoadedScalars()->GetNumberOfComponents() : 1;
+  int const numActiveLuts = this->ComponentMode == INDEPENDENT ? this->Texture->GetLoadedScalars()->GetNumberOfComponents() : 1;
+  if (numActiveLuts != 1)
+  {
+      return;
+  }
 
   // Create RGB and opacity (scalar and gradient) lookup tables. Up to four
   // components are supported in single-input independentComponents mode.
@@ -401,7 +397,11 @@ void vtkVolumeInputHelper::CreateTransferFunction2D(vtkRenderer* ren,
 {
   this->ReleaseGraphicsTransfer2D(ren->GetRenderWindow());
 
-  unsigned int const num = this->ComponentMode == INDEPENDENT ? Texture->GetLoadedScalars()->GetNumberOfComponents() : 1;
+  unsigned int const num = this->ComponentMode == INDEPENDENT ? this->Texture->GetLoadedScalars()->GetNumberOfComponents() : 1;
+  if (num != 1)
+  {
+      return;
+  }
 
   this->TransferFunctions2D = vtkSmartPointer<vtkOpenGLTransferFunctions2D>::New();
   this->TransferFunctions2D->Create(num);

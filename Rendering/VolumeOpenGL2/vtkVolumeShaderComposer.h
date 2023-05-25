@@ -156,17 +156,18 @@ namespace vtkvolume
     const int numInputs = static_cast<int>(inputs.size());
 
     std::ostringstream toShaderStr;
-    toShaderStr << "uniform sampler3D in_volume[" << numInputs <<"];\n";
-    toShaderStr << "uniform vec3 in_boundsMin[" << numInputs << "];\n";
-    toShaderStr << "uniform vec3 in_boundsMax[" << numInputs << "];\n";
-    toShaderStr << "\n";
+    toShaderStr << "uniform sampler3D in_volume[" << numInputs << "];\n"
+                   "uniform vec3 in_boundsMin[" << numInputs << "];\n"
+                   "uniform vec3 in_boundsMax[" << numInputs << "];\n"
+                   "\n";
 
     toShaderStr << "struct Intersection\n"
                    "{\n"
                    "  float t;\n"
                    "\n"
                    "  int volumeIndex;\n"
-                   "};\n\n";
+                   "};\n"
+                   "\n";
     toShaderStr << "struct Interval\n"
                    "{\n"
                    "  float tEnter;\n"
@@ -174,7 +175,8 @@ namespace vtkvolume
                    "  float tExit;\n"
                    "\n"
                    "  bool valid;\n"
-                   "};\n\n";
+                   "};\n"
+                   "\n";
     toShaderStr << "struct SamplePoint\n"
                    "{\n"
                    "  vec3 dataPos;\n"
@@ -182,13 +184,15 @@ namespace vtkvolume
                    "  float t;\n"
                    "\n"
                    "  int volumeIndex;\n"
-                   "};\n\n";
+                   "};\n"
+                   "\n";
     toShaderStr << "struct SamplePointSet\n"
                    "{\n"
                    "  SamplePoint samplePoints[" << numInputs << "];\n"
                    "\n"
                    "  int size; // actual size\n"
-                   "};\n\n";
+                   "};\n"
+                   "\n";
     toShaderStr << "bool insertSamplePoint(inout SamplePointSet samplePointSet, in SamplePoint samplePoint)\n"
                    "{\n"
                    "  bool inserted = false;\n"
@@ -249,6 +253,7 @@ namespace vtkvolume
                    "\n"
                    "  return popped;\n"
                    "}\n"
+                   "\n"
     ;
     toShaderStr << "vec3 g_dirSteps[" << numInputs << "];\n";
     toShaderStr << "float g_minDirStepLength;\n";
@@ -275,7 +280,7 @@ namespace vtkvolume
                    "  // bubble sort (array size is very small so it doesn't matter which alg. we use)\n"
                    "  for (int i = 0; i < " << (numInputs - 1) << "; ++i)\n"
                    "  {\n"
-                   "    for (int j = 0; j < " << numInputs << " - i - 1; ++j)\n"
+                   "    for (int j = 0; j < " << (numInputs - 1) << " - i; ++j)\n"
                    "    {\n"
                    "      if (intersections[j].t > intersections[j + 1].t)\n"
                    "      {\n"
@@ -380,7 +385,7 @@ namespace vtkvolume
 
     // volume visibility handling
     toShaderStr <<
-      "uniform int in_volumeVisibility[" << numInputs << "];\n";
+      "uniform bool in_volumeVisibility[" << numInputs << "];\n";
 
     const bool hasGradientOpacity = HasGradientOpacity(inputs);
     if (lightingComplexity > 0 || hasGradientOpacity)
@@ -1101,7 +1106,7 @@ namespace vtkvolume
       std::ostringstream ss;
       if (noOfComponents == 1)
       {
-          ss << "uniform sampler2D in_transfer2D[" << mapper->GetTotalNumberOfInputConnections() << "];\n";
+          ss << "uniform sampler2D in_transfer2D[1];\n";
           ss << "\
           \nvec4 computeColor(int index, vec4 scalar, float opacity)\
           \n{\
@@ -1154,7 +1159,7 @@ namespace vtkvolume
       else
       {
         ss << "\
-          \nvec4 computeColorRgb(int index, vec4 scalar, float opacity)\
+          \nvec4 computeColor(int index, vec4 scalar, float opacity)\
           \n{\
           \n  return computeLighting(index, vec4(scalar.xyz, opacity), computeGradient(index, g_dataPos));\
           \n}\n";
@@ -1192,9 +1197,16 @@ namespace vtkvolume
     //      "\n";
     ss <<
         "\n"
-        "float computeOpacityRgb(int index, vec4 scalar)\n"
+        "float computeOpacity(int index, vec4 scalar)\n"
         "{\n"
-        "  return scalar.rgb == vec3(0.) ? 0. : 1.;\n"
+        "  if (in_noOfComponents[index] == 3)\n"
+        "  {\n"
+        "    return scalar.rgb == vec3(0.) ? 0. : 1.;\n"
+        "  }\n"
+        "  else\n"
+        "  {\n"
+        "    return 0. /*texture2D(wut[0], vec2(scalar.w, 0)).r*/;\n"
+        "  }\n"
         "}\n"
         "\n";
     return ss.str();
@@ -1286,7 +1298,7 @@ namespace vtkvolume
     }
     else if (noOfComponents == 3)
     {
-      std::string shaderStr =  "\nfloat computeOpacityRgb(int index, vec4 scalar)\
+      std::string shaderStr =  "\nfloat computeOpacity(int index, vec4 scalar)\
                                 \n{\
                                 \n  return scalar.rgb == vec3(0.) ? 0. : 1.;\
                                 \n}";
@@ -1358,8 +1370,7 @@ namespace vtkvolume
       //}
   }
 
-  std::string Transfer2DDeclaration(
-            vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs)
+  std::string Transfer2DDeclaration(vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs)
   {
     std::ostringstream ss;
     ss << "uniform sampler2D in_transfer2D[" << inputs.size() << "];\n";
@@ -1508,7 +1519,7 @@ namespace vtkvolume
             "    intervals[i].tEnter = FLOAT_MAX;\n"
             "    intervals[i].tExit = -FLOAT_MAX;\n"
             "    intervals[i].valid = false;\n"
-            "    if (in_volumeVisibility[i] == 1)\n"
+            "    if (in_volumeVisibility[i] == true)\n"
             "    {\n"
             "      mat4 globalToLocalDatasetTransform = in_inverseVolumeMatrix[i + 1] * in_volumeMatrix[0];\n"
             "      vec3 localEye = (globalToLocalDatasetTransform * g_eyePosObj).xyz;\n"
@@ -1531,7 +1542,7 @@ namespace vtkvolume
             "  SamplePointSet samplePointSet;\n"
             "  for (int i = 0; i < " + numInputsStr + "; ++i)\n"
             "  {\n"
-            "    samplePointSet.samplePoints[i].dataPos = vec3(FLOAT_MAX, FLOAT_MAX, FLOAT_MAX);\n"
+            "    samplePoitSet.samplePoints[i].dataPos = vec3(FLOAT_MAX, FLOAT_MAX, FLOAT_MAX);\n"
             "    samplePointSet.samplePoints[i].t = FLOAT_MAX;\n"
             "    samplePointSet.samplePoints[i].volumeIndex = -1;\n"
             "  }\n"
@@ -1790,20 +1801,21 @@ namespace vtkvolume
               "        //}\n"
               "\n"
               "        g_srcColor = vec4(0.);\n"
-              "        if (in_volumeVisibility[i] == 1)\n"
+              "        if (in_volumeVisibility[i] == true)\n"
               "        {\n"
               "          vec4 color = vec4(0.);\n"
               "          vec4 grad = vec4(0.);\n"
               "\n"
               "          if (in_noOfComponents[i] == 1)\n"
               "          {\n"
+              "            scalar = vec4(scalar.r);\n"
               "            g_gradients[i] = computeGradient(i, texPos);\n"
               "            color = texture2D(in_transfer2D[i], vec2(scalar.r, g_gradients[i].w));\n"
               "            grad = g_gradients[i];\n"
               "          }\n"
               "          else if (in_noOfComponents[i] == 3)\n"
               "          {\n"
-              "            color = vec4(scalar.rgb, computeOpacityRgb(i, scalar));\n"
+              "            color = vec4(scalar.rgb, computeOpacity(i, scalar));\n"
               "            grad = computeGradient(i, texPos);\n"
               "          }\n"
               "          g_srcColor = computeColor(i, color, grad);\n"
@@ -1921,11 +1933,11 @@ namespace vtkvolume
       {
         shaderStr += "\
           \n      g_srcColor = vec4(0.);\
-          \n      g_srcColor.a = computeOpacityRgb(0, scalar);\
+          \n      g_srcColor.a = computeOpacity(0, scalar);\
           \n      if (g_srcColor.a > 0.)\
           \n      {\
           \n        computeFragColor = true;\
-          \n        g_srcColor = computeColorRgb(0, scalar, g_srcColor.a);\
+          \n        g_srcColor = computeColor(0, scalar, g_srcColor.a);\
           \n        g_srcColor.rgb *= g_srcColor.a;\
           \n        g_fragColor += (1. - g_fragColor.a) * g_srcColor;\
           \n      }";
@@ -1951,7 +1963,7 @@ namespace vtkvolume
         }
         shaderStr += "\
            \n      g_srcColor = vec4(0.0);\
-           \n      if (in_volumeVisibility[0] == 1)\
+           \n      if (in_volumeVisibility[0] == true)\
            \n      {\
            \n        g_srcColor.a = computeOpacity(0, scalar);\
            \n        if (g_srcColor.a > 0.0)\
@@ -2361,7 +2373,7 @@ namespace vtkvolume
         "      newSamplePoint.volumeIndex = frontSamplePoint.volumeIndex;\n"
         "      if (insertSamplePoint(samplePointSet, newSamplePoint) == false)\n"
         "      {\n"
-        "        g_exit = true; // something bad happened, let's better finish\n"
+        "        ;//g_exit = true; // something bad happened, let's better finish\n"
         "      }\n"
         "    }\n"
       ;
