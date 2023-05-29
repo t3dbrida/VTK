@@ -3155,34 +3155,34 @@ void vtkOpenGLGPUVolumeRayCastMapper::ReplaceShaderMasking(
   }
   //if (masks.size())
   {
-    //vtkShaderProgram::Substitute(fragmentShader,
-    //  "//VTK::BinaryMask::Dec",
-    //  vtkvolume::BinaryMaskDeclaration(ren,
-    //    this,
-    //    vol,
-    //    this->AssembledInputs,
-    //    masks,
-    //    this->Impl->CurrentMasks/*,
-    //    this->MaskType*/));
+    vtkShaderProgram::Substitute(fragmentShader,
+      "//VTK::BinaryMask::Dec",
+      vtkvolume::BinaryMaskDeclaration(ren,
+        this,
+        vol,
+        this->AssembledInputs,
+        masks,
+        this->Impl->CurrentMasks/*,
+        this->MaskType*/));
     
-    //vtkShaderProgram::Substitute(fragmentShader,
-    //  "//VTK::BinaryMask::Impl",
-    //  vtkvolume::BinaryMaskImplementation(ren,
-    //    this,
-    //    vol,
-    //    masks,
-    //    this->Impl->CurrentMasks/*,
-    //    this->MaskType*/));
+    vtkShaderProgram::Substitute(fragmentShader,
+      "//VTK::BinaryMask::Impl",
+      vtkvolume::BinaryMaskImplementation(ren,
+        this,
+        vol,
+        masks,
+        this->Impl->CurrentMasks/*,
+        this->MaskType*/));
   }
   // TODO move this elsewhere?
   //if (this->Impl->RegionMaskTextures.size())
   {
-      //vtkShaderProgram::Substitute(fragmentShader,
-      //                             "//VTK::RegionMask::Dec",
-      //                             vtkvolume::RegionMaskDeclaration(ren,
-      //                                                              this,
-      //                                                              vol,
-      //                                                              this->AssembledInputs));
+      vtkShaderProgram::Substitute(fragmentShader,
+                                   "//VTK::RegionMask::Dec",
+                                   vtkvolume::RegionMaskDeclaration(ren,
+                                                                    this,
+                                                                    vol,
+                                                                    this->AssembledInputs));
   }
 
   //vtkShaderProgram::Substitute(fragmentShader,
@@ -4269,7 +4269,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetCameraShaderParameters(
 void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetMaskShaderParameters(
   vtkShaderProgram* prog, int noOfComponents)
 {
-  /*int maskI = 0;
+  int maskI = 0;
   int i = 0;
   for (const auto& in : this->Parent->AssembledInputs)
   {
@@ -4289,7 +4289,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetMaskShaderParameters(
           prog->SetUniformi((std::string("in_maskIndex[") + std::to_string(i) + "]").c_str(), -1);
       }
       ++i;
-  }*/
+  }
 
   //if(noOfComponents == 1 &&
   //   this->Parent->BlendMode != vtkGPUVolumeRayCastMapper::ADDITIVE_BLEND)
@@ -4309,7 +4309,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetMaskShaderParameters(
 
 void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetRegionShaderParameters(vtkShaderProgram* prog)
 {
-  /*std::size_t ri = 0,
+  std::size_t ri = 0,
               rtf = 0;
   for (const auto& in : this->Parent->AssembledInputs)
   {
@@ -4348,7 +4348,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetRegionShaderParameters(vtk
       }
     }
   }
-  prog->SetUniformi(("in_regionOffset[" + std::to_string(this->Parent->AssembledInputs.size()) + "]").c_str(), ri);*/
+  prog->SetUniformi(("in_regionOffset[" + std::to_string(this->Parent->AssembledInputs.size()) + "]").c_str(), ri);
 }
 
 //----------------------------------------------------------------------------

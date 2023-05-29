@@ -305,6 +305,27 @@ namespace vtkvolume
     toShaderStr <<
       "\n";
 
+    toShaderStr <<
+        "\n"
+        "vec4 sampleVolume(int index, vec3 uvw)\n"
+        "{\n"
+        "  vec4 result = vec4(0.);\n"
+        "\n"
+        "  switch (index)\n"
+        "  {\n";
+    for (int i = 0; i < numInputs; ++i)
+    {
+        toShaderStr <<
+            "    case " << i << ":\n"
+            "      result = texture3D(in_volume[" << i << "], uvw);\n"
+            "      break;\n";
+    }
+    toShaderStr <<
+        "  }\n"
+        "\n"
+        "  return result;\n"
+        "}\n";
+
     toShaderStr << "uniform vec3 in_boxMaskOrigin[" << numInputs << "];\n";
     toShaderStr << "uniform vec3 in_boxMaskAxisX[" << numInputs << "];\n";
     toShaderStr << "uniform vec3 in_boxMaskAxisY[" << numInputs << "];\n";
@@ -712,21 +733,21 @@ namespace vtkvolume
         "  texPosNvec[2] = texPos - zvec;\n"
         "  if (in_noOfComponents[index] == 3)\n"
         "  {\n"
-        "    g1.x = (texPosPvec[0].x < in_cellStep[index].x || texPosPvec[0].x > 1. - in_cellStep[index].x || texture3D(in_volume[index], texPosPvec[0]).rgb == vec3(0.)) ? 1. : 0.;\n"
-        "    g1.y = (texPosPvec[1].y < in_cellStep[index].y || texPosPvec[1].y > 1. - in_cellStep[index].y || texture3D(in_volume[index], texPosPvec[1]).rgb == vec3(0.)) ? 1. : 0.;\n"
-        "    g1.z = (texPosPvec[2].z < in_cellStep[index].z || texPosPvec[2].z > 1. - in_cellStep[index].z || texture3D(in_volume[index], texPosPvec[2]).rgb == vec3(0.)) ? 1. : 0.;\n"
-        "    g2.x = (texPosNvec[0].x < in_cellStep[index].x || texPosNvec[0].x > 1. - in_cellStep[index].x || texture3D(in_volume[index], texPosNvec[0]).rgb == vec3(0.)) ? 1. : 0.;\n"
-        "    g2.y = (texPosNvec[1].y < in_cellStep[index].y || texPosNvec[1].y > 1. - in_cellStep[index].y || texture3D(in_volume[index], texPosNvec[1]).rgb == vec3(0.)) ? 1. : 0.;\n"
-        "    g2.z = (texPosNvec[2].z < in_cellStep[index].z || texPosNvec[2].z > 1. - in_cellStep[index].z || texture3D(in_volume[index], texPosNvec[2]).rgb == vec3(0.)) ? 1. : 0.;\n"
+        "    g1.x = (texPosPvec[0].x < in_cellStep[index].x || texPosPvec[0].x > 1. - in_cellStep[index].x || sampleVolume(index, texPosPvec[0]).rgb == vec3(0.)) ? 1. : 0.;\n"
+        "    g1.y = (texPosPvec[1].y < in_cellStep[index].y || texPosPvec[1].y > 1. - in_cellStep[index].y || sampleVolume(index, texPosPvec[1]).rgb == vec3(0.)) ? 1. : 0.;\n"
+        "    g1.z = (texPosPvec[2].z < in_cellStep[index].z || texPosPvec[2].z > 1. - in_cellStep[index].z || sampleVolume(index, texPosPvec[2]).rgb == vec3(0.)) ? 1. : 0.;\n"
+        "    g2.x = (texPosNvec[0].x < in_cellStep[index].x || texPosNvec[0].x > 1. - in_cellStep[index].x || sampleVolume(index, texPosNvec[0]).rgb == vec3(0.)) ? 1. : 0.;\n"
+        "    g2.y = (texPosNvec[1].y < in_cellStep[index].y || texPosNvec[1].y > 1. - in_cellStep[index].y || sampleVolume(index, texPosNvec[1]).rgb == vec3(0.)) ? 1. : 0.;\n"
+        "    g2.z = (texPosNvec[2].z < in_cellStep[index].z || texPosNvec[2].z > 1. - in_cellStep[index].z || sampleVolume(index, texPosNvec[2]).rgb == vec3(0.)) ? 1. : 0.;\n"
         "  }\n"
         "  else\n"
         "  {\n"
-        "      g1.x = texture3D(in_volume[index], texPosPvec[0])[0];\n"
-        "      g1.y = texture3D(in_volume[index], texPosPvec[1])[0];\n"
-        "      g1.z = texture3D(in_volume[index], texPosPvec[2])[0];\n"
-        "      g2.x = texture3D(in_volume[index], texPosNvec[0])[0];\n"
-        "      g2.y = texture3D(in_volume[index], texPosNvec[1])[0];\n"
-        "      g2.z = texture3D(in_volume[index], texPosNvec[2])[0];\n"
+        "      g1.x = sampleVolume(index, texPosPvec[0])[0];\n"
+        "      g1.y = sampleVolume(index, texPosPvec[1])[0];\n"
+        "      g1.z = sampleVolume(index, texPosPvec[2])[0];\n"
+        "      g2.x = sampleVolume(index, texPosNvec[0])[0];\n"
+        "      g2.y = sampleVolume(index, texPosNvec[1])[0];\n"
+        "      g2.z = sampleVolume(index, texPosNvec[2])[0];\n"
         "\n"
         "      // Apply scale and bias to the fetched values.\n"
         "      g1 = g1 * in_volume_scale[index][0] + in_volume_bias[index][0];\n"
@@ -1373,6 +1394,26 @@ namespace vtkvolume
   {
     std::ostringstream ss;
     ss << "uniform sampler2D in_transfer2D[" << inputs.size() << "];\n";
+    ss <<
+        "\n"
+        "vec4 sampleTransfer2D(int index, vec2 uv)\n"
+        "{\n"
+        "  vec4 result = vec4(0.);\n"
+        "\n"
+        "  switch (index)\n"
+        "  {\n";
+    for (int i = 0; i < inputs.size(); ++i)
+    {
+        ss <<
+            "    case " << i << ":\n"
+            "      result = texture2D(in_transfer2D[" << i << "], uv);\n"
+            "      break;\n";
+    }
+    ss <<
+        "  }\n"
+        "\n"
+        "  return result;\n"
+        "}\n";
     //int i = 0;
     //for (auto& item : inputs)
     //{
@@ -1524,7 +1565,7 @@ namespace vtkvolume
             "      vec3 localEye = (globalToLocalDatasetTransform * g_eyePosObj).xyz;\n"
             "      vec3 localDir = normalize((globalToLocalDatasetTransform * vec4(g_rayDir, 0.)).xyz);\n"
             "      vec2 interval = intersectRayBox(localEye, localDir, in_boundsMin[i], in_boundsMax[i]);\n"
-            "      intervals[i].valid = interval.x < FLOAT_MAX && interval.y > -FLOAT_MAX;\n"
+            "      intervals[i].valid = interval.x < interval.y && interval.x < FLOAT_MAX && interval.y > 0.;\n"
             "      if (intervals[i].valid == true)\n"
             "      {\n"
             "        mat4 localToGlobalDatasetTransform = in_inverseVolumeMatrix[0] * in_volumeMatrix[i + 1];\n"
@@ -1729,75 +1770,72 @@ namespace vtkvolume
               // T = T_dataToTex1 * T_worldToData * T_bboxTexToWorld;
               "    {\n"
               "      int i = frontSamplePoint.volumeIndex;\n"
-              "      int idx = i + 1;\n"
+              "      int idx = i + 1;\n" // when first item in an array is the global dataset (the multi-volume pseudo-object related data like in_volumeMatrix[0])
               "      g_skip = false;\n"
               "      texPos = (in_cellToPoint[idx] * in_inverseTextureDatasetMatrix[idx] * in_inverseVolumeMatrix[idx] *\n"
               "                in_volumeMatrix[0] * in_textureDatasetMatrix[0] * vec4(g_dataPos.xyz, 1.0)).xyz;\n"
               "\n"
-              "      //noMask = true;\n"
-              "      //maskedByRegion = false;\n"
+              "      noMask = true;\n"
+              "      maskedByRegion = false;\n"
               "\n"
-              "      //if (in_maskIndex[i] != -1)\n"
-              "      //{\n"
-              "      //  noMask = false;\n"
-              "      //  if (texture3D(in_mask[in_maskIndex[i]], texPos).r > 0)\n"
-              "      //  {\n"
-              "      //    maskedByRegion = true;\n"
-              "      //  }\n"
-              "      //}\n"
+              "      if (in_maskIndex[i] != -1)\n"
+              "      {\n"
+              "        noMask = false;\n"
+              "        if (sampleMask(in_maskIndex[i], texPos).r > 0)\n"
+              "        {\n"
+              "          maskedByRegion = true;\n"
+              "        }\n"
+              "      }\n"
               "\n"
-              "      //maskedByBox = false;\n"
-              "      //p = vec3(in_inverseVolumeMatrix[idx] * in_volumeMatrix[0] * in_textureDatasetMatrix[0] * vec4(g_dataPos.xyz, 1.)); \n"
-              "      //if (in_boxMaskAxisX[i] != vec3(0.) && in_boxMaskAxisY[i] != vec3(0.) && in_boxMaskAxisZ[i] != vec3(0.))\n"
-              "      //{\n"
-              "      //  noMask = false;\n"
-              "      //  float projX = dot(p - in_boxMaskOrigin[i], in_boxMaskAxisX[i]) / dot(in_boxMaskAxisX[i], in_boxMaskAxisX[i]);\n"
-              "      //  float projY = dot(p - in_boxMaskOrigin[i], in_boxMaskAxisY[i]) / dot(in_boxMaskAxisY[i], in_boxMaskAxisY[i]);\n"
-              "      //  float projZ = dot(p - in_boxMaskOrigin[i], in_boxMaskAxisZ[i]) / dot(in_boxMaskAxisZ[i], in_boxMaskAxisZ[i]);\n"
-              "      //  maskedByBox = projX >= 0. && projX <= 1. &&\n"
-              "      //                projY >= 0. && projY <= 1. &&\n"
-              "      //                projZ >= 0. && projZ <= 1.;\n"
-              "      //}\n"
-              "      //{\n"
-              "      //  float cylinderMaskRadius = in_cylinderMask[7 * i + 6];\n"
-              "      //  maskedByCylinder = false;\n"         
-              "      //  if (cylinderMaskRadius > 0.)\n"
-              "      //  {\n"
-              "      //    noMask = false;\n"
-              "      //    vec3 cylinderMaskCenter = vec3(in_cylinderMask[7 * i + 0], in_cylinderMask[7 * i + 1], in_cylinderMask[7 * i + 2]);\n"
-              "      //    vec3 cylinderMaskAxis = vec3(in_cylinderMask[7 * i + 3], in_cylinderMask[7 * i + 4], in_cylinderMask[7 * i + 5]);\n"
-              "      //    vec3 cylinderMaskLineOrigin = cylinderMaskCenter + cylinderMaskAxis;\n"
-              "      //    vec3 cylinderMaskLineDir = 2. * -cylinderMaskAxis;\n"
-              "      //    float cylinderMaskLineT = dot(p - cylinderMaskLineOrigin, cylinderMaskLineDir) / dot(cylinderMaskLineDir, cylinderMaskLineDir);\n"
-              "      //    maskedByCylinder = (cylinderMaskLineT >= 0.) && (cylinderMaskLineT <= 1.);\n"
-              "      //    if (maskedByCylinder == true)\n"
-              "      //    {\n"
-              "      //      vec3 projectedPoint = cylinderMaskLineOrigin + cylinderMaskLineT * cylinderMaskLineDir;\n"
-              "      //      if (length(p - projectedPoint) > cylinderMaskRadius) { maskedByCylinder = false; }\n"
-              "      //    }\n"
-              "      //  }\n"
-              "      //}\n"
-              "      if (g_skip == false && all(lessThanEqual(texPos, vec3(1.))) && all(greaterThanEqual(texPos, vec3(0.))) /*&&\n"
-              "          (noMask || (maskedByBox || maskedByCylinder || maskedByRegion))*/)\n"
+              "      maskedByBox = false;\n"
+              "      p = vec3(in_inverseVolumeMatrix[idx] * in_volumeMatrix[0] * in_textureDatasetMatrix[0] * vec4(g_dataPos.xyz, 1.)); \n"
+              "      if (in_boxMaskAxisX[i] != vec3(0.) && in_boxMaskAxisY[i] != vec3(0.) && in_boxMaskAxisZ[i] != vec3(0.))\n"
+              "      {\n"
+              "        noMask = false;\n"
+              "        float projX = dot(p - in_boxMaskOrigin[i], in_boxMaskAxisX[i]) / dot(in_boxMaskAxisX[i], in_boxMaskAxisX[i]);\n"
+              "        float projY = dot(p - in_boxMaskOrigin[i], in_boxMaskAxisY[i]) / dot(in_boxMaskAxisY[i], in_boxMaskAxisY[i]);\n"
+              "        float projZ = dot(p - in_boxMaskOrigin[i], in_boxMaskAxisZ[i]) / dot(in_boxMaskAxisZ[i], in_boxMaskAxisZ[i]);\n"
+              "        maskedByBox = projX >= 0. && projX <= 1. &&\n"
+              "                      projY >= 0. && projY <= 1. &&\n"
+              "                      projZ >= 0. && projZ <= 1.;\n"
+              "      }\n"
+              "      {\n"
+              "        float cylinderMaskRadius = in_cylinderMask[7 * i + 6];\n"
+              "        maskedByCylinder = false;\n"         
+              "        if (cylinderMaskRadius > 0.)\n"
+              "        {\n"
+              "          noMask = false;\n"
+              "          vec3 cylinderMaskCenter = vec3(in_cylinderMask[7 * i + 0], in_cylinderMask[7 * i + 1], in_cylinderMask[7 * i + 2]);\n"
+              "          vec3 cylinderMaskAxis = vec3(in_cylinderMask[7 * i + 3], in_cylinderMask[7 * i + 4], in_cylinderMask[7 * i + 5]);\n"
+              "          vec3 cylinderMaskLineOrigin = cylinderMaskCenter + cylinderMaskAxis;\n"
+              "          vec3 cylinderMaskLineDir = 2. * -cylinderMaskAxis;\n"
+              "          float cylinderMaskLineT = dot(p - cylinderMaskLineOrigin, cylinderMaskLineDir) / dot(cylinderMaskLineDir, cylinderMaskLineDir);\n"
+              "          maskedByCylinder = (cylinderMaskLineT >= 0.) && (cylinderMaskLineT <= 1.);\n"
+              "          if (maskedByCylinder == true)\n"
+              "          {\n"
+              "            vec3 projectedPoint = cylinderMaskLineOrigin + cylinderMaskLineT * cylinderMaskLineDir;\n"
+              "            if (length(p - projectedPoint) > cylinderMaskRadius) { maskedByCylinder = false; }\n"
+              "          }\n"
+              "        }\n"
+              "      }\n"
+              "      if (g_skip == false && all(lessThanEqual(texPos, in_texMax[idx])) && all(greaterThanEqual(texPos, in_texMin[idx])) &&\n"
+              "          (noMask || (maskedByBox || maskedByCylinder || maskedByRegion)))\n"
               "      {\n"
               "        bool computeFragColor = false;\n"
-              "        vec4 scalar = texture3D(in_volume[i], texPos);\n"
+              "        vec4 scalar = sampleVolume(i, texPos);\n"
               "        scalar = in_volume_scale[i] * scalar + in_volume_bias[i];\n"
               "\n"
-              "        //vec4 regionResultColor = vec4(0.);\n"
-              "        //if (in_noOfComponents[i] == 1)\n"
-              "        //{\n"
-              "        //  for (int regionIndex = 0; regionIndex < in_regionOffset[i + 1] - in_regionOffset[i]; ++regionIndex)\n"
-              "        //  {\n"
-              "        //    vec4 regionMaskValue = texture3D(in_regionMask[in_regionOffset[i] + regionIndex], texPos);\n"
-              "        //    vec4 regionColor = texture2D(in_regionTransferFunction[in_regionOffset[i] + regionIndex], vec2(regionMaskValue.r, 0.));\n"
-              "        //    if (regionColor.a > 0.)\n"
-              "        //    {\n"
-              "        //      regionColor.rgb *= regionColor.a;\n"
-              "        //      regionResultColor += (1. - regionResultColor.a) * regionColor;\n"
-              "        //    }\n"
-              "        //  }\n"
-              "        //}\n"
+              "        vec4 regionResultColor = vec4(0.);\n"
+              "        for (int regionIndex = 0; regionIndex < in_regionOffset[idx] - in_regionOffset[i]; ++regionIndex)\n"
+              "        {\n"
+              "          vec4 regionMaskValue = sampleRegionMask(in_regionOffset[i] + regionIndex, texPos);\n"
+              "          vec4 regionColor = sampleRegionTransferFunction(in_regionOffset[i] + regionIndex, vec2(regionMaskValue.r, 0.));\n"
+              "          if (regionColor.a > 0.)\n"
+              "          {\n"
+              "            regionColor.rgb *= regionColor.a;\n"
+              "            regionResultColor += (1. - regionResultColor.a) * regionColor;\n"
+              "          }\n"
+              "        }\n"
               "\n"
               "        g_srcColor = vec4(0.);\n"
               "        if (in_volumeVisibility[i] == true)\n"
@@ -1809,10 +1847,10 @@ namespace vtkvolume
               "          {\n"
               "            scalar = vec4(scalar.r);\n"
               "            g_gradients[i] = computeGradient(i, texPos);\n"
-              "            color = texture2D(in_transfer2D[i], vec2(scalar.r, g_gradients[i].w));\n"
+              "            color = sampleTransfer2D(i, vec2(scalar.r, g_gradients[i].w));\n"
               "            grad = g_gradients[i];\n"
               "          }\n"
-              "          else if (in_noOfComponents[i] == 3)\n"
+              "          else\n"
               "          {\n"
               "            color = vec4(scalar.rgb, computeOpacity(i, scalar));\n"
               "            grad = computeGradient(i, texPos);\n"
@@ -1825,13 +1863,13 @@ namespace vtkvolume
               "          }\n"
               "        }\n"
               "\n"
-              "        //if (regionResultColor.a > 0.)\n"
-              "        //{\n"
-              "        //  computeFragColor = true;\n"
-              "        //  regionResultColor = computeLighting(i, regionResultColor, computeGradient(i, texPos));\n"
-              "        //  g_srcColor.rgb *= g_srcColor.a;\n"
-              "        //  g_srcColor = regionResultColor + (1. - regionResultColor.a) * g_srcColor;\n"
-              "        //}\n"
+              "        if (regionResultColor.a > 0.)\n"
+              "        {\n"
+              "          computeFragColor = true;\n"
+              "          regionResultColor = computeLighting(i, regionResultColor, computeGradient(i, texPos));\n"
+              "          g_srcColor.rgb *= g_srcColor.a;\n"
+              "          g_srcColor = regionResultColor + (1. - regionResultColor.a) * g_srcColor;\n"
+              "        }\n"
               "\n"
               "        if (computeFragColor == true)\n"
               "        {\n"
@@ -1951,7 +1989,7 @@ namespace vtkvolume
                 "      vec4 regionResultColor = vec4(0.);\n"
                 "      for (int regionIndex = 0; regionIndex < " + std::to_string(regionCount) + "; ++regionIndex)\n"
                 "      {\n"
-                "        vec4 regionMaskValue = texture(in_regionMask[regionIndex], g_dataPos);\n"
+                "        vec4 regionMaskValue = sampleRegionMask(regionIndex, g_dataPos);\n"
                 "        vec4 regionColor = texture(in_regionTransferFunction[regionIndex], vec2(regionMaskValue.r, 0.));\n"
                 "        if (regionColor.a > 0.)\n"
                 "        {\n"
@@ -2303,7 +2341,7 @@ namespace vtkvolume
         \n  for (int i = 0; i < " + std::to_string(inputCount) + "; ++i)\
         \n  {\
         \n    float dirStepLength = length(g_dirSteps[i]);\
-        \n    g_minDirStepLength = (dirStepLength > 0 && dirStepLength < g_minDirStepLength) ? dirStepLength : g_minDirStepLength;\
+        \n    g_minDirStepLength = (dirStepLength > 0. && dirStepLength < g_minDirStepLength) ? dirStepLength : g_minDirStepLength;\
         \n  }"
       ;
     }
@@ -2343,7 +2381,7 @@ namespace vtkvolume
       \n    // if the currently composited colour alpha is already fully saturated\
       \n    // we terminated the loop or if we have hit an obstacle in the\
       \n    // direction of they ray (using depth buffer) we terminate as well.\
-      \n    if ((g_fragColor.a > g_opacityThreshold)/* || g_currentT >= g_terminatePointMax*/)\
+      \n    if ((g_fragColor.a > g_opacityThreshold) || g_currentT >= g_terminatePointMax)\
       \n    {\
       \n      break;\
       \n    }\
@@ -2372,7 +2410,7 @@ namespace vtkvolume
         "      newSamplePoint.volumeIndex = frontSamplePoint.volumeIndex;\n"
         "      if (insertSamplePoint(samplePointSet, newSamplePoint) == false)\n"
         "      {\n"
-        "        ;//g_exit = true; // something bad happened, let's better finish\n"
+        "        g_exit = true; // something bad happened, let's better finish\n"
         "      }\n"
         "    }\n"
       ;
@@ -2733,8 +2771,35 @@ namespace vtkvolume
                                     const std::map<vtkVolume*, vtkImageData*>& maskInputs,
                                     const std::map<vtkVolume*, vtkSmartPointer<vtkVolumeTexture>>& masks)
   {
-    return std::string("uniform sampler3D in_mask[" + std::to_string(maskInputs.empty() ? 1 : maskInputs.size()) + "];\n") +
-                       "uniform int in_maskIndex[" + std::to_string(inputs.size()) + "];\n";
+    std::string str = "uniform int in_maskIndex[" + std::to_string(inputs.size()) + "];\n";
+    if (maskInputs.size() > 1)
+    {
+        str += "uniform sampler3D in_mask[" + std::to_string(maskInputs.size()) + "];\n";
+    }
+
+    str +=
+        "\n"
+        "vec4 sampleMask(int index, vec3 uvw)\n"
+        "{\n"
+        "  vec4 result = vec4(0.);\n"
+        "\n"
+        "  switch (index)\n"
+        "  {\n";
+    for (int i = 0; i < maskInputs.size(); ++i)
+    {
+        str +=
+            "    case " + std::to_string(i) + ":\n"
+            "      result = texture3D(in_mask[" + std::to_string(i) + "], uvw);\n"
+            "      break;\n";
+    }
+    str +=
+        "    default: break;\n"
+        "  }\n"
+        "\n"
+        "  return result;\n"
+        "}\n";
+
+    return str;
   }
 
   //--------------------------------------------------------------------------
@@ -2774,15 +2839,60 @@ namespace vtkvolume
     {
        totalRegionCount += input.second.Volume->GetProperty()->GetRegions().size();
     }
-    if (totalRegionCount == 0)
-    {
-        totalRegionCount = 1;
-    }
     const std::string totalRegionCountStr = std::to_string(totalRegionCount);
 
-    return std::string{"uniform sampler3D in_regionMask[" + totalRegionCountStr + "];\n"} +
-           "uniform sampler2D in_regionTransferFunction[" + totalRegionCountStr + "];\n" +
-           "uniform int in_regionOffset[" + std::to_string(inputs.size() + 1) + "];\n";
+    std::string str = "uniform int in_regionOffset[" + std::to_string(inputs.size() + 1) + "];\n";
+    if (totalRegionCount > 0)
+    {
+        str += "uniform sampler3D in_regionMask[" + totalRegionCountStr + "];\n" +
+               "uniform sampler2D in_regionTransferFunction[" + totalRegionCountStr + "];\n";
+    }
+
+    str +=
+        "\n"
+        "vec4 sampleRegionMask(int index, vec3 uvw)\n"
+        "{\n"
+        "  vec4 result = vec4(0.);\n"
+        "\n"
+        "  switch (index)\n"
+        "  {\n";
+    for (int i = 0; i < totalRegionCount; ++i)
+    {
+        str +=
+            "    case " + std::to_string(i) + ":\n"
+            "      result = texture3D(in_regionMask[" + std::to_string(i) + "], uvw);\n"
+            "      break;\n";
+    }
+    str +=
+        "    default: break;\n"
+        "  }\n"
+        "\n"
+        "  return result;\n"
+        "}\n";
+
+    str +=
+        "\n"
+        "vec4 sampleRegionTransferFunction(int index, vec2 uv)\n"
+        "{\n"
+        "  vec4 result = vec4(0.);\n"
+        "\n"
+        "  switch (index)\n"
+        "  {\n";
+    for (int i = 0; i < totalRegionCount; ++i)
+    {
+        str +=
+            "    case " + std::to_string(i) + ":\n"
+            "      result = texture2D(in_regionTransferFunction[" + std::to_string(i) + "], uv);\n"
+            "      break;\n";
+    }
+    str +=
+        "    default: break;\n"
+        "  }\n"
+        "\n"
+        "  return result;\n"
+        "}\n";
+
+    return str;
   }
 
   //--------------------------------------------------------------------------
