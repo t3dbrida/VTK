@@ -1559,7 +1559,7 @@ namespace vtkvolume
             "    intervals[i].tEnter = FLOAT_MAX;\n"
             "    intervals[i].tExit = -FLOAT_MAX;\n"
             "    intervals[i].valid = false;\n"
-            "    if (in_volumeVisibility[i] == true)\n"
+            "    if (in_volumeVisibility[i] == true || in_regionOffset[i + 1] - in_regionOffset[i] > 0)\n"
             "    {\n"
             "      mat4 globalToLocalDatasetTransform = in_inverseVolumeMatrix[i + 1] * in_volumeMatrix[0];\n"
             "      vec3 localEye = (globalToLocalDatasetTransform * g_eyePosObj).xyz;\n"
