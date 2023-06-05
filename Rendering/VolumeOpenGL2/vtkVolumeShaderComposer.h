@@ -311,13 +311,15 @@ namespace vtkvolume
         "{\n"
         "  vec4 result = vec4(0.);\n"
         "\n"
+        "  vec3 diffx = dFdx(uvw);\n"
+        "  vec3 diffy = dFdy(uvw);\n"
         "  switch (index)\n"
         "  {\n";
     for (int i = 0; i < numInputs; ++i)
     {
         toShaderStr <<
             "    case " << i << ":\n"
-            "      result = texture3D(in_volume[" << i << "], uvw);\n"
+            "      result = textureGrad(in_volume[" << i << "], uvw, diffx, diffy);\n"
             "      break;\n";
     }
     toShaderStr <<
@@ -1400,13 +1402,15 @@ namespace vtkvolume
         "{\n"
         "  vec4 result = vec4(0.);\n"
         "\n"
+        "  vec2 diffx = dFdx(uv);\n"
+        "  vec2 diffy = dFdy(uv);\n"
         "  switch (index)\n"
         "  {\n";
     for (int i = 0; i < inputs.size(); ++i)
     {
         ss <<
             "    case " << i << ":\n"
-            "      result = texture2D(in_transfer2D[" << i << "], uv);\n"
+            "      result = textureGrad(in_transfer2D[" << i << "], uv, diffx, diffy);\n"
             "      break;\n";
     }
     ss <<
@@ -2017,8 +2021,8 @@ namespace vtkvolume
                "        {\n"
                "            computeFragColor = true;\n"
                "            regionResultColor = computeLighting(0, regionResultColor, computeGradient(0, g_dataPos));\n"
-               "            g_srcColor.rgb *= g_srcColor.a;\n"
-               "            g_srcColor = regionResultColor + (1. - regionResultColor.a) * g_srcColor;\n"
+               "            regionResultColor.rgb *= regionResultColor.a;\n"
+               "            g_srcColor += (1. - g_srcColor.a) * regionResultColor;\n"
                "        }\n";
         }
 
@@ -2772,7 +2776,7 @@ namespace vtkvolume
                                     const std::map<vtkVolume*, vtkSmartPointer<vtkVolumeTexture>>& masks)
   {
     std::string str = "uniform int in_maskIndex[" + std::to_string(inputs.size()) + "];\n";
-    if (maskInputs.size() > 1)
+    if (maskInputs.size() >= 1)
     {
         str += "uniform sampler3D in_mask[" + std::to_string(maskInputs.size()) + "];\n";
     }
@@ -2783,13 +2787,15 @@ namespace vtkvolume
         "{\n"
         "  vec4 result = vec4(0.);\n"
         "\n"
+        "  vec3 diffx = dFdx(uvw);\n"
+        "  vec3 diffy = dFdy(uvw);\n"
         "  switch (index)\n"
         "  {\n";
     for (int i = 0; i < maskInputs.size(); ++i)
     {
         str +=
             "    case " + std::to_string(i) + ":\n"
-            "      result = texture3D(in_mask[" + std::to_string(i) + "], uvw);\n"
+            "      result = textureGrad(in_mask[" + std::to_string(i) + "], uvw, diffx, diffy);\n"
             "      break;\n";
     }
     str +=
@@ -2854,13 +2860,15 @@ namespace vtkvolume
         "{\n"
         "  vec4 result = vec4(0.);\n"
         "\n"
+        "  vec3 diffx = dFdx(uvw);\n"
+        "  vec3 diffy = dFdy(uvw);\n"
         "  switch (index)\n"
         "  {\n";
     for (int i = 0; i < totalRegionCount; ++i)
     {
         str +=
             "    case " + std::to_string(i) + ":\n"
-            "      result = texture3D(in_regionMask[" + std::to_string(i) + "], uvw);\n"
+            "      result = textureGrad(in_regionMask[" + std::to_string(i) + "], uvw, diffx, diffy);\n"
             "      break;\n";
     }
     str +=
@@ -2876,13 +2884,15 @@ namespace vtkvolume
         "{\n"
         "  vec4 result = vec4(0.);\n"
         "\n"
+        "  vec2 diffx = dFdx(uv);\n"
+        "  vec2 diffy = dFdy(uv);\n"
         "  switch (index)\n"
         "  {\n";
     for (int i = 0; i < totalRegionCount; ++i)
     {
         str +=
             "    case " + std::to_string(i) + ":\n"
-            "      result = texture2D(in_regionTransferFunction[" + std::to_string(i) + "], uv);\n"
+            "      result = textureGrad(in_regionTransferFunction[" + std::to_string(i) + "], uv, diffx, diffy);\n"
             "      break;\n";
     }
     str +=
@@ -2927,8 +2937,7 @@ namespace vtkvolume
                                           int maskType,
                                           int noOfComponents)
   {
-    if (!mask || !maskInput ||
-        maskType != vtkGPUVolumeRayCastMapper::LabelMapMaskType)
+    if (!mask || !maskInput || maskType != vtkGPUVolumeRayCastMapper::LabelMapMaskType)
     {
       return std::string();
     }
