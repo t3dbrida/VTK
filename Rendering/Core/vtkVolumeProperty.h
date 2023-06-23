@@ -61,6 +61,8 @@
 #include "vtkRenderingCoreModule.h" // For export macro
 #include "vtkObject.h"
 
+#include <vtkVector.h>
+
 class vtkColorTransferFunction;
 class vtkContourValues;
 class vtkImageData;
@@ -70,10 +72,11 @@ class vtkTimeStamp;
 class VTKRENDERINGCORE_EXPORT vtkVolumeProperty : public vtkObject
 {
 public:
-  struct Region
+  struct BitRegion
   {
-    vtkImageData* mask,
-                * transferFunction;
+    vtkImageData* mask;
+
+    std::vector<vtkVector4<float>> colors;
   };
 
   struct BoxMask
@@ -544,16 +547,11 @@ public:
   }
   void SetCylinderMask(const struct CylinderMask& cylinderMask);
 
-  void AddRegion(const Region& region) noexcept;
-
-  const std::vector<Region>& GetRegions() const noexcept
+  const struct BitRegion& GetBitRegion() const
   {
-      return this->Regions;
+      return this->BitRegion;
   }
-
-  void SetRegion(const std::size_t regionIndex, const Region& region) noexcept;
-
-  void RemoveRegion(const std::size_t regionIndex) noexcept;
+  void SetBitRegion(const struct BitRegion& bitRegion) noexcept;
 
 protected:
   vtkVolumeProperty();
@@ -620,7 +618,7 @@ protected:
 
   struct CylinderMask CylinderMask;
 
-  std::vector<Region> Regions;
+  struct BitRegion BitRegion;
 
 private:
   vtkVolumeProperty(const vtkVolumeProperty&) = delete;

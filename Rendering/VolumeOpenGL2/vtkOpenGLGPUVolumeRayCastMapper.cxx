@@ -255,7 +255,6 @@ public:
 
   bool LoadMasks(vtkRenderer* ren);
   bool LoadRegions(vtkRenderer* ren);
-  void LoadRegionTransferFunctions(vtkRenderer* ren);
 
   // Update the depth sampler with the current state of the z-buffer. The
   // sampler is used for z-buffer compositing with opaque geometry during
@@ -482,27 +481,22 @@ public:
   vtkSmartPointer<vtkPolyData> BBoxPolyData;
   std::map<vtkVolume*, vtkSmartPointer<vtkVolumeTexture>> CurrentMasks;
 
-  template <typename T>
-  struct ImageTexture final
+  struct RegionMaskTexture final
   {
-      vtkImageData* image;
+      vtkWeakPointer<vtkImageData> image;
 
-      vtkSmartPointer<T> texture;
+      vtkSmartPointer<vtkOpenGLBufferObject> buffer;
 
-      vtkTimeStamp timeStamp;
+      vtkSmartPointer<vtkTextureObject> texture;
+
+      uint64_t timestamp;
   };
 
-  using RegionMaskTexture = ImageTexture<vtkVolumeTexture>;
-
-  std::map<int, std::vector<RegionMaskTexture>> RegionMaskTextures;
-
-  using RegionTransferFunctionTexture = ImageTexture<vtkOpenGLTransferFunction2D>;
-
-  std::map<int, std::vector<RegionTransferFunctionTexture>> RegionTransferFunctionTextures;
+  std::map<int, RegionMaskTexture> RegionMaskTextures;
 
   vtkTimeStamp InitializationTime;
   vtkRenderWindow* LastRenderWindow;
-  std::map<vtkVolume*, vtkTimeStamp> MaskUpdateTime;
+  std::map<vtkVolume*, uint64_t> MaskUpdateTime;
   vtkTimeStamp ReleaseResourcesTime;
   vtkTimeStamp DepthPassTime;
   vtkTimeStamp DepthPassSetupTime;
@@ -747,7 +741,7 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadMasks(vtkRenderer* ren)
                                                           isCellData,
                                                           VTK_NEAREST_INTERPOLATION);
     
-      this->MaskUpdateTime[volumePtr].Modified();
+      this->MaskUpdateTime[volumePtr] = maskInput->GetMTime();
     }
     else if (!maskInput)
     {
@@ -787,158 +781,60 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadRegions(vtkRenderer* ren)
 
   for (auto in : this->Parent->AssembledInputs)
   {
-      const std::vector<vtkVolumeProperty::Region>& regions = in.second.Volume->GetProperty()->GetRegions();
-      auto it = this->RegionMaskTextures.find(in.first);
-      if (it != this->RegionMaskTextures.end())
+    const struct vtkVolumeProperty::BitRegion& bitRegion = in.second.Volume->GetProperty()->GetBitRegion();
+    vtkImageData* const bitRegionMask = bitRegion.mask;
+    auto it = this->RegionMaskTextures.find(in.first);
+    if (it != this->RegionMaskTextures.end())
+    {
+      RegionMaskTexture& regionTexture = it->second;
+      if (bitRegionMask != regionTexture.image)
       {
-          std::vector<RegionMaskTexture>& regionTextures = it->second;
-          for (auto rit = regionTextures.begin(), rend = regionTextures.end(); rit != rend;)
-          {
-              bool found = false; 
-              for (const vtkVolumeProperty::Region& region : regions)
-              {
-                  if (region.mask == rit->image)
-                  {
-                      found = true;
-                      break;
-                  }
-              }
-
-              if (!found)
-              {
-                  rit->texture->ReleaseGraphicsResources(ren->GetRenderWindow());
-                  rit = regionTextures.erase(rit);
-                  rend = regionTextures.end();
-              }
-              else
-              {
-                  ++rit;
-              }
-          }
-
-          if (regionTextures.empty())
-          {
-              it = this->RegionMaskTextures.erase(it);
-          }
+        regionTexture.texture->ReleaseGraphicsResources(ren->GetRenderWindow());
+        this->RegionMaskTextures.erase(it);
+        it = this->RegionMaskTextures.end();
       }
+    }
       
-      if (regions.size() && (it == this->RegionMaskTextures.end() || it->first != in.first))
+    if (bitRegionMask)
+    {
+      if (it == this->RegionMaskTextures.end())
       {
-          it = this->RegionMaskTextures.insert({in.first, {}}).first;
+        it = this->RegionMaskTextures.insert({in.first, {nullptr, nullptr, nullptr, 0}}).first;
       }
 
-      for (const vtkVolumeProperty::Region& region : regions)
+      vtkOpenGLRenderWindow* const context = static_cast<vtkOpenGLRenderWindow*>(ren->GetRenderWindow());
+      RegionMaskTexture& regionTexture = it->second;
+      bool update = bitRegionMask != regionTexture.image || regionTexture.texture->GetContext() != context;
+      if (update)
       {
-          std::vector<RegionMaskTexture>& regionTextures = it->second;
-          vtkImageData* const regionMask = region.mask;
-          auto rit = regionTextures.begin();
-          while (rit != regionTextures.end())
-          {
-              if (rit->image == regionMask)
-              {
-                  break;
-              }
-              ++rit;
-          }
-          bool update = false;
-          if (update = rit == regionTextures.end())
-          {
-              rit = regionTextures.insert(regionTextures.end(), {regionMask, vtkSmartPointer<vtkVolumeTexture>::New(), {}});
-              const auto part = this->Partitions;
-              rit->texture->SetPartitions(part[0], part[1], part[2]);
-          }
-          else
-          {
-              update = rit->timeStamp < regionMask->GetMTime();
-          }
-          if (update)
-          {
-              int isCellData;
-              vtkDataArray* arr = this->Parent->GetScalars(regionMask, this->Parent->ScalarMode, this->Parent->ArrayAccessMode, this->Parent->ArrayId, this->Parent->ArrayName, isCellData);
-              result |= rit->texture->LoadVolume(ren, regionMask, arr, isCellData, VTK_NEAREST_INTERPOLATION);
-              rit->timeStamp.Modified();
-          }
+        regionTexture = {bitRegionMask, vtkSmartPointer<vtkOpenGLBufferObject>::New(), vtkSmartPointer<vtkTextureObject>::New(), 0};
       }
+      else
+      {
+        update = regionTexture.timestamp < bitRegionMask->GetMTime();
+      }
+
+      if (update && context)
+      {
+        int isCellData;
+        vtkDataArray* arr = this->Parent->GetScalars(bitRegionMask, this->Parent->ScalarMode, this->Parent->ArrayAccessMode, this->Parent->ArrayId, this->Parent->ArrayName, isCellData);
+
+        int bitRegionMaskDims[3];
+        bitRegionMask->GetDimensions(bitRegionMaskDims);
+        const int voxelCount = bitRegionMaskDims[0] * bitRegionMaskDims[1] * bitRegionMaskDims[2],
+                  compCount = bitRegionMask->GetNumberOfScalarComponents();
+        regionTexture.buffer->Upload(static_cast<std::uint32_t*>(arr->GetVoidPointer(0)), compCount * voxelCount, vtkOpenGLBufferObject::ObjectType::TextureBuffer);
+        vtkTextureObject* const to = regionTexture.texture;
+        to->SetContext(context);
+        to->CreateTextureBuffer(voxelCount, compCount, VTK_UNSIGNED_INT, regionTexture.buffer, true);
+
+        result |= true;
+        regionTexture.timestamp = bitRegionMask->GetMTime();
+      }
+    }
   }
-
-  this->LoadRegionTransferFunctions(ren);
 
   return result;
-}
-
-void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadRegionTransferFunctions(vtkRenderer* ren)
-{
-  for (auto in : this->Parent->AssembledInputs)
-  {
-      const std::vector<vtkVolumeProperty::Region>& regions = in.second.Volume->GetProperty()->GetRegions();
-      auto it = this->RegionTransferFunctionTextures.find(in.first);
-      if (it != this->RegionTransferFunctionTextures.end())
-      {
-          std::vector<RegionTransferFunctionTexture>& regionTransferFunctionTextures = it->second;
-          for (auto rtftIt = regionTransferFunctionTextures.begin(), rend = regionTransferFunctionTextures.end(); rtftIt != rend;)
-          {
-              bool found = false; 
-              for (const vtkVolumeProperty::Region& region : regions)
-              {
-                  if (region.transferFunction == rtftIt->image)
-                  {
-                      found = true;
-                      break;
-                  }
-              }
-
-              if (!found)
-              {
-                  rtftIt->texture->ReleaseGraphicsResources(ren->GetRenderWindow());
-                  rtftIt = regionTransferFunctionTextures.erase(rtftIt);
-                  rend = regionTransferFunctionTextures.end();
-              }
-              else
-              {
-                  ++rtftIt;
-              }
-          }
-
-          if (regionTransferFunctionTextures.empty())
-          {
-              it = this->RegionTransferFunctionTextures.erase(it);
-          }
-      }
-      
-      if (regions.size() && (it == this->RegionTransferFunctionTextures.end() || it->first != in.first))
-      {
-          it = this->RegionTransferFunctionTextures.insert({in.first, {}}).first;
-      }
-
-      for (const vtkVolumeProperty::Region& region : regions)
-      {
-          std::vector<RegionTransferFunctionTexture>& regionTransferFunctionTextures = it->second;
-          vtkImageData* const regionTransferFunction = region.transferFunction;
-          auto rtftIt = regionTransferFunctionTextures.begin();
-          while (rtftIt != regionTransferFunctionTextures.end())
-          {
-              if (rtftIt->image == regionTransferFunction)
-              {
-                  break;
-              }
-              ++rtftIt;
-          }
-          bool update = false;
-          if (update = rtftIt == regionTransferFunctionTextures.end())
-          {
-              rtftIt = regionTransferFunctionTextures.insert(regionTransferFunctionTextures.end(), {regionTransferFunction, vtkSmartPointer<vtkOpenGLTransferFunction2D>::New(), {}});
-          }
-          else
-          {
-              update = rtftIt->timeStamp < regionTransferFunction->GetMTime();
-          }
-          if (update)
-          {
-              rtftIt->texture->Update(regionTransferFunction, vtkTextureObject::Nearest, static_cast<vtkOpenGLRenderWindow*>(ren->GetRenderWindow()));
-              rtftIt->timeStamp.Modified();
-          }
-      }
-  }
 }
 
 //----------------------------------------------------------------------------
@@ -2654,22 +2550,11 @@ void vtkOpenGLGPUVolumeRayCastMapper::ReleaseGraphicsResources(
   {
     currentMask.second->ReleaseGraphicsResources(window);
   }
-  for (auto & rmt : this->Impl->RegionMaskTextures)
+  for (auto& rmt : this->Impl->RegionMaskTextures)
   {
-      for (auto& rm : rmt.second)
-      {
-          rm.texture->ReleaseGraphicsResources(window);
-      }
-  }
-  for (auto& rtft : this->Impl->RegionTransferFunctionTextures)
-  {
-      for (auto& rtf : rtft.second)
-      {
-          rtf.texture->ReleaseGraphicsResources(window);
-      }
+      rmt.second.texture->ReleaseGraphicsResources(window);
   }
   this->Impl->CurrentMasks.clear();
-  this->Impl->RegionTransferFunctionTextures.clear();
   this->Impl->MaskUpdateTime.clear();
   this->Impl->RegionMaskTextures.clear();
 
@@ -4309,46 +4194,42 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetMaskShaderParameters(
 
 void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetRegionShaderParameters(vtkShaderProgram* prog)
 {
-  std::size_t ri = 0,
-              rtf = 0;
+  std::size_t regionIndex = 0,
+              regionOffset = 0;
   for (const auto& in : this->Parent->AssembledInputs)
   {
     const int vi = in.first;
-    prog->SetUniformi(("in_regionOffset[" + std::to_string(vi) + "]").c_str(), ri);
-    const std::vector<vtkVolumeProperty::Region>& regions = in.second.Volume->GetProperty()->GetRegions();
-    const std::string regionUniformName = "in_regionMask";
-    const std::string regionColorUniformName = "in_regionTransferFunction";
-    for (const vtkVolumeProperty::Region& region : regions)
+    const std::string viStr = std::to_string(vi);
+    prog->SetUniformi(("in_regionOffset[" + viStr + "]").c_str(), regionOffset);
+    const int* const dims = this->Parent->TransformedInputs.at(vi)->GetDimensions();
+    glUniform3i(prog->FindUniform(("in_volumeDims[" + viStr + "]").c_str()), dims[0], dims[1], dims[2]);
+    const struct vtkVolumeProperty::BitRegion& region = in.second.Volume->GetProperty()->GetBitRegion();
+    if (region.mask)
     {
+      prog->SetUniformi(("in_regionIndex[" + viStr + "]").c_str(), regionIndex);
+
       auto it = this->RegionMaskTextures.find(vi);
       if (it != this->RegionMaskTextures.end())
       {
-        const std::vector<RegionMaskTexture>& rmts = it->second;
-        auto rmt = std::find_if(rmts.begin(), rmts.end(), [regionMask = region.mask] (const RegionMaskTexture& rmt) { return rmt.image == regionMask; });
-        if (rmt != rmts.end())
+        vtkTextureObject* const to = it->second.texture;
+        to->Activate();
+        const std::string iStr = std::to_string(regionIndex);
+        prog->SetUniformi(("in_regionMask[" + iStr + ']').c_str(), to->GetTextureUnit());
+        ++regionIndex;
+
+        for (std::size_t i = 0; i < region.colors.size(); ++i)
         {
-            vtkTextureObject* const to = rmt->texture->GetCurrentBlock()->TextureObject;
-            to->Activate();
-            const std::string iStr = std::to_string(ri++);
-            prog->SetUniformi((regionUniformName + '[' + iStr + ']').c_str(), to->GetTextureUnit());
-        }
-      }
-      auto itTf = this->RegionTransferFunctionTextures.find(vi);
-      if (itTf != this->RegionTransferFunctionTextures.end())
-      {
-        const std::vector<RegionTransferFunctionTexture>& rmtfts = itTf->second;
-        auto rmtft = std::find_if(rmtfts.begin(), rmtfts.end(), [regionTransferFunction = region.transferFunction] (const RegionTransferFunctionTexture& rmtft) { return rmtft.image == regionTransferFunction; });
-        if (rmtft != rmtfts.end())
-        {
-            vtkOpenGLTransferFunction2D* const rmtftTexture = rmtft->texture;
-            rmtftTexture->Activate();
-            const std::string iStr = std::to_string(rtf++);
-            prog->SetUniformi((regionColorUniformName + '[' + iStr + ']').c_str(), rmtftTexture->GetTextureUnit());
+          prog->SetUniform4f(("in_regionColor[" + std::to_string(regionOffset) + "]").c_str(), region.colors[i].GetData());
+          ++regionOffset;
         }
       }
     }
+    else
+    {
+      prog->SetUniformi(("in_regionIndex[" + viStr + "]").c_str(), -1);
+    }
   }
-  prog->SetUniformi(("in_regionOffset[" + std::to_string(this->Parent->AssembledInputs.size()) + "]").c_str(), ri);
+  prog->SetUniformi(("in_regionOffset[" + std::to_string(this->Parent->AssembledInputs.size()) + "]").c_str(), regionOffset);
 }
 
 //----------------------------------------------------------------------------
@@ -4459,12 +4340,9 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::FinishRendering(
     currentMask.second->GetCurrentBlock()->TextureObject->Deactivate();
   }
 
-  for (const auto& rmts : this->RegionMaskTextures)
+  for (const auto& rmt : this->RegionMaskTextures)
   {
-      for (const RegionMaskTexture& rmt : rmts.second)
-      {
-          rmt.texture->GetCurrentBlock()->TextureObject->Deactivate();
-      }
+    rmt.second.texture->Deactivate();
   }
 
   //if(numComp == 1 &&
@@ -4553,16 +4431,13 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderSingleInput(vtkRenderer
     currentMask = this->CurrentMasks.begin()->second;
     currentMask->SortBlocksBackToFront(ren, vol->GetMatrix());
   }
-  if (this->RegionMaskTextures.find(0) != this->RegionMaskTextures.end())
-  {
-    for (const auto& rmts : this->RegionMaskTextures)
-    {
-      for (const RegionMaskTexture& rmt : rmts.second)
-      {
-        rmt.texture->SortBlocksBackToFront(ren, vol->GetMatrix());
-      }
-    }
-  }
+  //if (this->RegionMaskTextures.find(0) != this->RegionMaskTextures.end())
+  //{
+  //  for (const auto& rmt : this->RegionMaskTextures)
+  //  {
+  //    rmt.second.texture->SortBlocksBackToFront(ren, vol->GetMatrix());
+  //  }
+  //}
 
   const int independent = vol->GetProperty()->GetIndependentComponents();
   const int numComp = volumeTex->GetLoadedScalars()->GetNumberOfComponents();

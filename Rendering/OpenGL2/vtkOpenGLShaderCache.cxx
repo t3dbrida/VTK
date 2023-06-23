@@ -137,7 +137,7 @@ unsigned int vtkOpenGLShaderCache::ReplaceShaderValues(
     glGetIntegerv(GL_MINOR_VERSION, & this->OpenGLMinorVersion);
   }
 
-  std::string version = "#version 150\n";
+  std::string version = "#version 330\n";
   if (this->OpenGLMajorVersion == 3 && this->OpenGLMinorVersion == 1)
   {
     version = "#version 140\n";
@@ -175,7 +175,7 @@ unsigned int vtkOpenGLShaderCache::ReplaceShaderValues(
     "#define highp\n"
     "#define mediump\n"
     "#define lowp\n"
-    "#if __VERSION__ == 150\n"
+    "#if __VERSION__ == 330\n"
     "#define texelFetchBuffer texelFetch\n"
     "#define texture1D texture\n"
     "#define texture2D texture\n"

@@ -1563,7 +1563,7 @@ namespace vtkvolume
             "    intervals[i].tEnter = FLOAT_MAX;\n"
             "    intervals[i].tExit = -FLOAT_MAX;\n"
             "    intervals[i].valid = false;\n"
-            "    if (in_volumeVisibility[i] == true || in_regionOffset[i + 1] - in_regionOffset[i] > 0)\n"
+            "    if (in_volumeVisibility[i] == true || in_regionIndex[i] >= 0)\n"
             "    {\n"
             "      mat4 globalToLocalDatasetTransform = in_inverseVolumeMatrix[i + 1] * in_volumeMatrix[0];\n"
             "      vec3 localEye = (globalToLocalDatasetTransform * g_eyePosObj).xyz;\n"
@@ -1735,10 +1735,6 @@ namespace vtkvolume
       "    }\n"
       "\n"
       "    g_dataPos = frontSamplePoint.dataPos;\n"
-      "    if (frontSamplePoint.volumeIndex < 0 || any(greaterThan(g_dataPos, in_texMax[0])) || any(lessThan(g_dataPos, in_texMin[0])))\n"
-      "    {\n"
-      "      continue;\n"
-      "    }\n"
       "\n"
       "    vec3 texPos,\n"
       "         p;\n"
@@ -1756,7 +1752,7 @@ namespace vtkvolume
         int visibleCount = 0;
         for (auto& item : inputs)
         {
-            if (item.second.Volume->GetVisibility() || item.second.Volume->GetProperty()->GetRegions().size() > 0)
+            if (item.second.Volume->GetVisibility() || item.second.Volume->GetProperty()->GetBitRegion().mask)
             {
                 ++visibleCount;
             }
@@ -1830,14 +1826,21 @@ namespace vtkvolume
               "        scalar = in_volume_scale[i] * scalar + in_volume_bias[i];\n"
               "\n"
               "        vec4 regionResultColor = vec4(0.);\n"
-              "        for (int regionIndex = 0; regionIndex < in_regionOffset[idx] - in_regionOffset[i]; ++regionIndex)\n"
+              "        if (in_regionIndex[i] >= 0)\n"
               "        {\n"
-              "          vec4 regionMaskValue = sampleRegionMask(in_regionOffset[i] + regionIndex, texPos);\n"
-              "          vec4 regionColor = sampleRegionTransferFunction(in_regionOffset[i] + regionIndex, vec2(regionMaskValue.r, 0.));\n"
-              "          if (regionColor.a > 0.)\n"
+              "          uvec4 regionMaskValue = sampleRegionMask(in_regionIndex[i], texPos);\n"
+              "          int regionCount = in_regionOffset[idx] - in_regionOffset[i];\n"
+              "          for (int regionIndex = 0; regionIndex < regionCount; ++regionIndex)\n"
               "          {\n"
-              "            regionColor.rgb *= regionColor.a;\n"
-              "            regionResultColor += (1. - regionResultColor.a) * regionColor;\n"
+              "            if ((regionMaskValue[regionIndex / 32] & uint(1 << (regionIndex % 32))) != uint(0))\n"
+              "            {\n"
+              "              vec4 regionColor = getRegionColor(in_regionOffset[i] + regionIndex);\n"
+              "              if (regionColor.a > 0.)\n"
+              "              {\n"
+              "                regionColor.rgb *= regionColor.a;\n"
+              "                regionResultColor += (1. - regionResultColor.a) * regionColor;\n"
+              "              }\n"
+              "            }\n"
               "          }\n"
               "        }\n"
               "\n"
@@ -1985,22 +1988,31 @@ namespace vtkvolume
       }
       else
       {
-        const std::size_t regionCount = vol->GetProperty()->GetRegions().size();
-        if (regionCount)
+        const struct vtkVolumeProperty::BitRegion bitRegion = vol->GetProperty()->GetBitRegion();
+        if (bitRegion.mask)
         {
             shaderStr +=
                 "\n"
-                "      vec4 regionResultColor = vec4(0.);\n"
-                "      for (int regionIndex = 0; regionIndex < " + std::to_string(regionCount) + "; ++regionIndex)\n"
+                "      vec4 regionResultColor = vec4(0.);\n";
+            if (bitRegion.mask)
+            {
+                shaderStr +=
+                "      uvec4 regionMaskValue = sampleRegionMask(in_regionIndex[0], g_dataPos);\n"
+                "      int regionCount = in_regionOffset[1] - in_regionOffset[0];\n"
+                "      for (int regionIndex = 0; regionIndex < regionCount; ++regionIndex)\n"
                 "      {\n"
-                "        vec4 regionMaskValue = sampleRegionMask(regionIndex, g_dataPos);\n"
-                "        vec4 regionColor = texture(in_regionTransferFunction[regionIndex], vec2(regionMaskValue.r, 0.));\n"
-                "        if (regionColor.a > 0.)\n"
+                "        if ((regionMaskValue[regionIndex / 32] & uint(1 << (regionIndex % 32))) != uint(0))\n"
                 "        {\n"
-                "          regionColor.rgb *= regionColor.a;\n"
-                "          regionResultColor += (1. - regionResultColor.a) * regionColor;\n"
+                "          vec4 regionColor = getRegionColor(in_regionOffset[0] + regionIndex);\n"
+                "          if (regionColor.a > 0.)\n"
+                "          {\n"
+                "            regionColor.rgb *= regionColor.a;\n"
+                "            regionResultColor += (1. - regionResultColor.a) * regionColor;\n"
+                "          }\n"
                 "        }\n"
-                "      }\n";
+                "      }\n"
+                "\n";
+            }
         }
         shaderStr += "\
            \n      g_srcColor = vec4(0.0);\
@@ -2013,7 +2025,7 @@ namespace vtkvolume
            \n          g_srcColor = computeColor(0, scalar, g_srcColor.a);\
            \n        }\
            \n      }";
-        if (regionCount)
+        if (bitRegion.mask)
         {
            shaderStr +=
                "\n"
@@ -2840,36 +2852,41 @@ namespace vtkvolume
                                     vtkVolume* vtkNotUsed(vol),
                                     vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs)
   {
-    std::size_t totalRegionCount = 0;
+    std::size_t inputsWithBitRegionCount = 0,
+                totalRegionCount = 0;
     for (const auto& input : inputs)
     {
-       totalRegionCount += input.second.Volume->GetProperty()->GetRegions().size();
+       inputsWithBitRegionCount += static_cast<bool>(input.second.Volume->GetProperty()->GetBitRegion().mask);
+       totalRegionCount += input.second.Volume->GetProperty()->GetBitRegion().colors.size();
     }
-    const std::string totalRegionCountStr = std::to_string(totalRegionCount);
 
-    std::string str = "uniform int in_regionOffset[" + std::to_string(inputs.size() + 1) + "];\n";
-    if (totalRegionCount > 0)
+    const std::string inputsCountStr = std::to_string(inputs.size());
+    std::string str = "uniform int in_regionIndex[" + inputsCountStr + "];\n" +
+                      "uniform ivec3 in_volumeDims[" + inputsCountStr + "];\n" +
+                      "uniform int in_regionOffset[" + std::to_string(inputs.size() + 1) + "];\n";
+    if (inputsWithBitRegionCount)
     {
-        str += "uniform sampler3D in_regionMask[" + totalRegionCountStr + "];\n" +
-               "uniform sampler2D in_regionTransferFunction[" + totalRegionCountStr + "];\n";
+        str += "uniform usamplerBuffer in_regionMask[" + std::to_string(inputsWithBitRegionCount) + "];\n";
     }
 
     str +=
         "\n"
-        "vec4 sampleRegionMask(int index, vec3 uvw)\n"
+        "uvec4 sampleRegionMask(int index, vec3 uvw)\n"
         "{\n"
-        "  vec4 result = vec4(0.);\n"
+        "  uvec4 result = uvec4(0.);\n"
         "\n"
-        "  vec3 diffx = dFdx(uvw);\n"
-        "  vec3 diffy = dFdy(uvw);\n"
+        "  int texelIndex = int(int(uvw.x * in_volumeDims[index].x) + int(uvw.y * in_volumeDims[index].y) * in_volumeDims[index].x + int(uvw.z * in_volumeDims[index].z) * in_volumeDims[index].x * in_volumeDims[index].y);\n"
         "  switch (index)\n"
         "  {\n";
-    for (int i = 0; i < totalRegionCount; ++i)
+    for (std::size_t i = 0; i < inputsWithBitRegionCount; ++i)
     {
+        const std::string iStr = std::to_string(i);
         str +=
-            "    case " + std::to_string(i) + ":\n"
-            "      result = textureGrad(in_regionMask[" + std::to_string(i) + "], uvw, diffx, diffy);\n"
-            "      break;\n";
+            "    case " + iStr + ":\n"
+            "    {\n"
+            "      result = texelFetch(in_regionMask[" + iStr + "], texelIndex);\n"
+            "      break;\n"
+            "    }\n";
     }
     str +=
         "    default: break;\n"
@@ -2878,27 +2895,21 @@ namespace vtkvolume
         "  return result;\n"
         "}\n";
 
-    str +=
-        "\n"
-        "vec4 sampleRegionTransferFunction(int index, vec2 uv)\n"
-        "{\n"
-        "  vec4 result = vec4(0.);\n"
-        "\n"
-        "  vec2 diffx = dFdx(uv);\n"
-        "  vec2 diffy = dFdy(uv);\n"
-        "  switch (index)\n"
-        "  {\n";
-    for (int i = 0; i < totalRegionCount; ++i)
+    if (totalRegionCount > 0)
     {
-        str +=
-            "    case " + std::to_string(i) + ":\n"
-            "      result = textureGrad(in_regionTransferFunction[" + std::to_string(i) + "], uv, diffx, diffy);\n"
-            "      break;\n";
+        str += "\n"
+            "uniform vec4 in_regionColor[" + std::to_string(totalRegionCount) + "];\n";
     }
     str +=
-        "    default: break;\n"
-        "  }\n"
         "\n"
+        "vec4 getRegionColor(int index)\n"
+        "{\n"
+        "  vec4 result = vec4(0.);\n";
+    if (totalRegionCount > 0)
+    {
+        str += "  result = in_regionColor[index];\n";
+    }
+    str +=
         "  return result;\n"
         "}\n";
 

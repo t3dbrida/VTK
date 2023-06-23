@@ -220,7 +220,8 @@ public:
    * very large for passing data into the fragment shader
    */
   bool CreateTextureBuffer(unsigned int numValues, int numComps,
-                           int dataType, vtkOpenGLBufferObject *bo);
+                           int dataType, vtkOpenGLBufferObject *bo,
+                           bool shaderSupportsTextureInt = false);
 
   /**
    * Create a cube texture from 6 buffers from client memory.

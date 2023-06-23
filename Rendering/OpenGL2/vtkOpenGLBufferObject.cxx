@@ -148,6 +148,7 @@ bool vtkOpenGLBufferObject::UploadInternal(
   glBindBuffer(this->Internal->Type, this->Internal->Handle);
   glBufferData(this->Internal->Type, size, static_cast<const GLvoid *>(buffer),
                GL_STATIC_DRAW);
+  glBindBuffer(this->Internal->Type, 0);
   this->Dirty = false;
   return true;
 }

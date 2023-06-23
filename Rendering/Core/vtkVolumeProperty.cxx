@@ -82,6 +82,8 @@ vtkVolumeProperty::vtkVolumeProperty()
   this->CylinderMask.axis[1] = 0.;
   this->CylinderMask.axis[2] = 0.;
   this->CylinderMask.radius = 0.;
+
+  this->BitRegion.mask = nullptr;
 }
 
 // Destruct a vtkVolumeProperty
@@ -120,12 +122,9 @@ vtkVolumeProperty::~vtkVolumeProperty()
     }
   }
 
-  for (const Region& region : this->Regions)
+  if (vtkImageData* const regionMask = this->BitRegion.mask)
   {
-    if (vtkImageData* const regionMask = region.mask)
-    {
-      regionMask->UnRegister(this);
-    }
+    regionMask->UnRegister(this);
   }
 }
 
@@ -186,15 +185,12 @@ void vtkVolumeProperty::DeepCopy(vtkVolumeProperty *p)
 
   this->CylinderMask = p->CylinderMask;
 
-  for (const Region& region : p->Regions)
+  if (vtkImageData* const regionMask = this->BitRegion.mask)
   {
-    if (vtkImageData* const regionMask = region.mask)
-    {
-      regionMask->Register(this);
-    }
+    regionMask->Register(this);
   }
 
-  this->Regions = p->Regions;
+  this->BitRegion = p->BitRegion;
 
   this->Modified();
 }
@@ -767,65 +763,17 @@ void vtkVolumeProperty::SetCylinderMask(const struct CylinderMask& cylinderMask)
   this->Modified();
 }
 
-void vtkVolumeProperty::AddRegion(const Region& region) noexcept
+void vtkVolumeProperty::SetBitRegion(const struct BitRegion& bitRegion) noexcept
 {
-  this->Regions.push_back(region);
-  if (vtkImageData* const regionMask = region.mask)
-  {
-    regionMask->Register(this);
-  }
-  if (vtkImageData* const regionMaskTransferFunction = region.transferFunction)
-  {
-    regionMaskTransferFunction->Register(this);
-  }
-  this->Modified();
-}
-
-void vtkVolumeProperty::SetRegion(const std::size_t regionIndex, const Region& region) noexcept
-{
-  const Region& oldRegion = this->Regions[regionIndex];
-  vtkImageData* const regionMask = region.mask,
-              * const oldRegionMask = oldRegion.mask;
-  if (regionMask != oldRegionMask)
-  {
-    if (regionMask)
-    {
-        regionMask->Register(this);
-    }
-    if (oldRegionMask)
-    {
-        oldRegionMask->UnRegister(this);
-    }
-  }
-  vtkImageData* const regionMaskTransferFunction = region.transferFunction,
-              * const oldRegionMaskTransferFunction = oldRegion.transferFunction;
-  if (regionMaskTransferFunction != oldRegionMaskTransferFunction)
-  {
-    if (regionMaskTransferFunction)
-    {
-        regionMaskTransferFunction->Register(this);
-    }
-    if (oldRegionMaskTransferFunction)
-    {
-        oldRegionMaskTransferFunction->UnRegister(this);
-    }
-  }
-  this->Regions[regionIndex] = region;
-  this->Modified();
-}
-
-void vtkVolumeProperty::RemoveRegion(const std::size_t regionIndex) noexcept
-{
-  auto it = this->Regions.begin() + regionIndex;
-  if (vtkImageData* const regionMask = it->mask)
+  if (vtkImageData* const regionMask = this->BitRegion.mask)
   {
     regionMask->UnRegister(this);
   }
-  if (vtkImageData* const regionMaskTransferFunction = it->transferFunction)
+  this->BitRegion = bitRegion;
+  if (vtkImageData* const regionMask = this->BitRegion.mask)
   {
-    regionMaskTransferFunction->UnRegister(this);
+    regionMask->Register(this);
   }
-  this->Regions.erase(it);
   this->Modified();
 }
 

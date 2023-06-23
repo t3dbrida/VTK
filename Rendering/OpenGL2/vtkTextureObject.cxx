@@ -1066,14 +1066,14 @@ bool vtkTextureObject::Create1DFromRaw(unsigned int width, int numComps,
 // Create a texture buffer basically a 1D texture that can be
 // very large for passing data into the fragment shader
 bool vtkTextureObject::CreateTextureBuffer(unsigned int numValues, int numComps,
-                         int dataType, vtkOpenGLBufferObject *bo)
+                         int dataType, vtkOpenGLBufferObject *bo, bool shaderSupportsTextureInt)
 {
   assert(this->Context);
 
   // Now, determine texture parameters using the arguments.
   this->GetDataType(dataType);
-  this->GetInternalFormat(dataType, numComps, false);
-  this->GetFormat(dataType, numComps, false);
+  this->GetInternalFormat(dataType, numComps, shaderSupportsTextureInt);
+  this->GetFormat(dataType, numComps, shaderSupportsTextureInt);
 
   if (!this->InternalFormat || !this->Format || !this->Type)
   {
