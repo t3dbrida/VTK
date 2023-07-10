@@ -53,6 +53,11 @@ bool g_skip;
 float g_currentT;
 float g_terminatePointMax;
 
+float lmap(float x, float minA, float maxA, float minB, float maxB)
+{
+    return (minA == maxA) ? minB : (x - minA) * ((maxB - minB) / (maxA - minA)) + minB;
+}
+
 //VTK::CustomUniforms::Dec
 
 //VTK::Output::Dec

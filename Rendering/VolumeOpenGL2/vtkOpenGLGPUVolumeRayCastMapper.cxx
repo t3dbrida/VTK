@@ -125,7 +125,6 @@ public:
     this->CubeIndicesId = 0;
     this->DepthTextureObject = nullptr;
     this->SharedDepthTextureObject = false;
-    this->TextureWidth = 1024;
     this->ActualSampleDistance = 1.0;
     //this->CurrentMask = nullptr;
     this->TextureSize[0] = this->TextureSize[1] = this->TextureSize[2] = -1;
@@ -452,8 +451,6 @@ public:
   vtkTextureObject* DepthTextureObject;
   bool SharedDepthTextureObject;
 
-  int TextureWidth;
-
   float ActualSampleDistance;
 
   int LastProjectionParallel;
@@ -541,7 +538,266 @@ public:
   std::vector<float> VolMatVec, InvMatVec, TexMatVec, InvTexMatVec,
     TexEyeMatVec, CellToPointVec, TexMinVec, TexMaxVec, ScaleVec,
     BiasVec, StepVec, SpacingVec, RangeVec, SamplingVec;
+
+  struct TransferFunction2DSpace final
+  {
+    struct Region final
+    {
+      int VolumeIndex;
+
+      vtkVector2i Size;
+
+      vtkImageData* Image;
+
+      vtkTimeStamp Timestamp;
+    };
+
+    bool UpdateRegion(vtkImageData* const image, const int volumeIndex, const bool force = false) noexcept;
+
+    std::pair<vtkVector2i, Region*> GetRegion(const int volumeIndex) noexcept;
+
+    bool RemoveRegion(const int volumeIndex) noexcept;
+
+    vtkSmartPointer<vtkTextureObject> Texture;
+
+    std::map<vtkVector2i, Region> Regions;
+  };
+
+  struct TransferFunction2DRegionQuery
+  {
+      std::size_t textureIndex;
+
+      TransferFunction2DSpace* space = nullptr;
+
+      vtkVector2i pos;
+
+      TransferFunction2DSpace::Region* region = nullptr;
+  };
+
+  struct TransferFunction2DSpaces final
+  {
+    void UpdateRegion(vtkRenderer* const renderer, vtkImageData* const image, const int volumeIndex) noexcept;
+
+    bool RemoveRegion(vtkWindow* const window, const int volumeIndex) noexcept;
+
+    TransferFunction2DRegionQuery QueryRegion(const int volumeIndex) noexcept;
+
+    std::vector<TransferFunction2DSpace> Spaces;
+  };
+
+  TransferFunction2DSpaces TransferFunction2DSpaces;
 };
+
+bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpace::UpdateRegion(vtkImageData* const image, const int volumeIndex, const bool force) noexcept
+{
+  int newDims[3];
+  image->GetDimensions(newDims);
+
+  // first try to update existing region
+  for (auto& regionPair : this->Regions)
+  {
+    const vtkVector2i& pos = regionPair.first;
+    Region& region = regionPair.second;
+    if (region.VolumeIndex == volumeIndex)
+    {
+      vtkImageData* const regionImage = region.Image;
+      int currentDims[3];
+      regionImage->GetDimensions(currentDims);
+
+      if (currentDims[0] == newDims[0] && currentDims[1] == newDims[1])
+      {
+        bool update = region.Timestamp < image->GetMTime() || force;
+        
+        if (update)
+        {
+            vtkVector2i& regionSize = region.Size;
+            regionSize.SetX(newDims[0]);
+            regionSize.SetY(newDims[1]);
+
+            glBindTexture(GL_TEXTURE_2D, this->Texture->GetHandle());
+            glTexSubImage2D(GL_TEXTURE_2D, 0, pos.GetX(), pos.GetY(), regionSize.GetX(), regionSize.GetY(), GL_RGBA, GL_FLOAT, image->GetScalarPointer());
+            glBindTexture(GL_TEXTURE_2D, 0);
+            region.Timestamp.Modified();
+        }
+        return true;
+      }
+      else
+      {
+        // recreate different dimensions -- not doing this right not because it won't happen to us
+      }
+    }
+  }
+
+  // make a new region
+  // find empty space in the texture
+  const int w = this->Texture->GetWidth(),
+            h = this->Texture->GetHeight();
+  for (int y = 0; y < h; y += 256)
+  {
+    for (int x = 0; x < w; x += 512)
+    {
+      const vtkVector2i pos{x, y};
+      if (this->Regions.find(pos) == this->Regions.end())
+      {
+        auto region = this->Regions.emplace(pos, Region{volumeIndex, {newDims[0], newDims[1]}, image});
+        glBindTexture(GL_TEXTURE_2D, this->Texture->GetHandle());
+        glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, newDims[0], newDims[1], GL_RGBA, GL_FLOAT, image->GetScalarPointer());
+        glBindTexture(GL_TEXTURE_2D, 0);
+        region.first->second.Timestamp.Modified();
+        return true;
+      }
+    }
+  }
+
+  // couldn't find empty space, may need to recreate the entire texture then call again
+  return false;
+}
+
+std::pair<vtkVector2i, vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpace::Region*> vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpace::GetRegion(const int volumeIndex) noexcept
+{
+    std::pair<vtkVector2i, Region*> regionPair = {{}, nullptr};
+
+    for (auto& rp : this->Regions)
+    {
+        Region& r = rp.second;
+        if (r.VolumeIndex == volumeIndex)
+        {
+            regionPair = {rp.first, &r};
+            break;
+        }
+    }
+
+    return regionPair;
+}
+
+bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpace::RemoveRegion(const int volumeIndex) noexcept
+{
+  for (auto rIt = this->Regions.begin(); rIt != this->Regions.end(); ++rIt)
+  {
+    if (rIt->second.VolumeIndex == volumeIndex)
+    {  
+      this->Regions.erase(rIt);
+      return true;
+    }
+  }
+
+  return false;
+}
+
+void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::UpdateRegion(vtkRenderer* const renderer, vtkImageData* const image, const int volumeIndex) noexcept
+{
+  for (TransferFunction2DSpace& s : this->Spaces)
+  {
+    if (s.UpdateRegion(image, volumeIndex))
+    {
+      return;
+    }
+  }
+
+  TransferFunction2DSpace* space = nullptr;
+  bool resizedTexture = false;
+  const int maximumTextureSize = vtkTextureObject::GetMaximumTextureSize(static_cast<vtkOpenGLRenderWindow*>(renderer->GetRenderWindow()));
+  for (TransferFunction2DSpace& s : this->Spaces)
+  {
+    vtkTextureObject* const texture = s.Texture;
+    const int w = texture->GetWidth(),
+              h = texture->GetHeight(),
+              newW = w + 512,
+              newH = h + 256;
+    if (newW <= maximumTextureSize)
+    {
+      resizedTexture = true;
+      texture->Allocate2D(newW, h, 4, VTK_FLOAT);
+    }
+    else if (newH <= maximumTextureSize)
+    {
+      resizedTexture = true;
+      texture->Allocate2D(w, newH, 4, VTK_FLOAT);
+    }
+    else
+    {
+      continue;
+    }
+
+    if (resizedTexture)
+    {
+      space = &s;
+      // recreate the original texture (reupload former regions)
+      for (const auto& r : s.Regions)
+      {
+        space->UpdateRegion(r.second.Image, r.second.VolumeIndex, true);
+      }
+      break;
+    }
+  }
+
+  // no texture was resized, create a completely new one
+  if (!resizedTexture)
+  {
+    const vtkSmartPointer<vtkTextureObject> texture = vtkSmartPointer<vtkTextureObject>::New();
+    texture->SetContext(static_cast<vtkOpenGLRenderWindow*>(renderer->GetRenderWindow()));
+    texture->Allocate2D(512, 256, 4, VTK_FLOAT);
+    texture->SetMinificationFilter(vtkTextureObject::Linear);
+    texture->SetMagnificationFilter(vtkTextureObject::Linear);
+    texture->SetWrapS(vtkTextureObject::ClampToEdge);
+    texture->SetWrapT(vtkTextureObject::ClampToEdge);
+    this->Spaces.emplace_back();
+    space = &this->Spaces.back();
+    space->Texture = texture;
+  }
+
+  space->UpdateRegion(image, volumeIndex);
+}
+
+bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::RemoveRegion(vtkWindow* const win, const int volumeIndex) noexcept
+{
+  for (auto it = this->Spaces.begin(); it != this->Spaces.end(); ++it)
+  {
+    if (it->RemoveRegion(volumeIndex))
+    {
+      for (TransferFunction2DSpace& s : this->Spaces)
+      {
+        for (auto& r : s.Regions)
+        {
+          if (r.second.VolumeIndex > volumeIndex)
+          {
+            --r.second.VolumeIndex;
+          }
+        }
+      }
+      if (it->Regions.empty())
+      {
+        it->Texture->ReleaseGraphicsResources(win);
+        this->Spaces.erase(it);
+      }
+      return true;
+    }
+  }
+
+  return false;
+}
+
+vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DRegionQuery vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::QueryRegion(const int volumeIndex) noexcept
+{
+    TransferFunction2DRegionQuery query;
+
+    std::size_t i = 0;
+    for (TransferFunction2DSpace& space : this->Spaces)
+    {
+        auto region = space.GetRegion(volumeIndex);
+        if (region.second)
+        {
+            query.textureIndex = i;
+            query.space = &space;
+            query.pos = region.first;
+            query.region = region.second;
+            break;
+        }
+        ++i;
+    }
+
+    return query;
+}
 
 //----------------------------------------------------------------------------
 template<typename T>
@@ -686,24 +942,34 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RefreshMaskTransfer(
 }
 
 //----------------------------------------------------------------------------
-void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateTransferFunctions(
-  vtkRenderer* ren)
+void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateTransferFunctions(vtkRenderer* ren)
 {
-  int uniformIndex = 0;
-  for (const auto& port : this->Parent->Ports)
+  if (this->Parent->GetInputCount() > 0)
   {
-    auto& input = this->Parent->AssembledInputs[port];
-    input.ColorRangeType = this->Parent->GetColorRangeType();
-    input.ScalarOpacityRangeType = this->Parent->GetScalarOpacityRangeType();
-    input.GradientOpacityRangeType = this->Parent->GetGradientOpacityRangeType();
-    input.RefreshTransferFunction(ren, uniformIndex, this->Parent->BlendMode, this->ActualSampleDistance);
+    //int uniformIndex = 0;
+    for (const int port : this->Parent->Ports)
+    {
+      auto& input = this->Parent->AssembledInputs[port];
+      input.ColorRangeType = this->Parent->GetColorRangeType();
+      input.ScalarOpacityRangeType = this->Parent->GetScalarOpacityRangeType();
+      input.GradientOpacityRangeType = this->Parent->GetGradientOpacityRangeType();
+      //input.RefreshTransferFunction(ren, uniformIndex, this->Parent->BlendMode, this->ActualSampleDistance);
+      this->TransferFunction2DSpaces.UpdateRegion(ren, input.Volume->GetProperty()->GetTransferFunction2D(), port);
 
-    uniformIndex++;
+      //uniformIndex++;
+    }
+
+    if (!this->MultiVolume)
+    {
+      this->RefreshMaskTransfer(ren, this->Parent->AssembledInputs[0]);
+    }
   }
-
-  if (!this->MultiVolume)
+  else
   {
-    this->RefreshMaskTransfer(ren, this->Parent->AssembledInputs[0]);
+    for (const TransferFunction2DSpace& space : this->TransferFunction2DSpaces.Spaces)
+    {
+      space.Texture->ReleaseGraphicsResources(ren->GetRenderWindow());
+    }
   }
 }
 
@@ -2881,7 +3147,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::ReplaceShaderCompute(
 
     vtkShaderProgram::Substitute(fragmentShader,
       "//VTK::Transfer2D::Dec",
-      vtkvolume::Transfer2DDeclaration(this->AssembledInputs));
+      vtkvolume::Transfer2DDeclaration(this->AssembledInputs, this->Impl->TransferFunction2DSpaces.Spaces.size()));
 
     vtkShaderProgram::Substitute(fragmentShader,
       "//VTK::ComputeOpacity::Dec",
@@ -2929,7 +3195,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::ReplaceShaderCompute(
         vtkShaderProgram::Substitute(fragmentShader,
           "//VTK::ComputeColor::Dec",
           vtkvolume::ComputeColor2DDeclaration(ren, this, vol, numComps,
-            independentComponents, this->AssembledInputs[0].TransferFunctions2DMap));
+            independentComponents));
 
         vtkShaderProgram::Substitute(fragmentShader,
           "//VTK::GradientCache::Dec",
@@ -2943,7 +3209,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::ReplaceShaderCompute(
 
         vtkShaderProgram::Substitute(fragmentShader,
             "//VTK::Transfer2D::Dec",
-            vtkvolume::Transfer2DDeclaration(this->AssembledInputs));
+            vtkvolume::Transfer2DDeclaration(this->AssembledInputs, this->Impl->TransferFunction2DSpaces.Spaces.size()));
       break;
     }
   }
@@ -3470,6 +3736,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::ClearRemovedInputs(
     {
         input.RGBTables->ReleaseGraphicsResources(win);
     }
+    this->TransferFunction2DSpaces.RemoveRegion(win, port);
     this->Parent->AssembledInputs.erase(it);
     orderChanged = true;
   }
@@ -3991,7 +4258,27 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
     };
     vtkInternal::CopyVector<float, 2>(reinterpret_cast<float*>(range), this->RangeVec.data(), index * 2);
 
-    volumeInput.ActivateTransferFunction(prog, this->Parent->BlendMode);
+    //volumeInput.ActivateTransferFunction(prog, this->Parent->BlendMode);
+
+    const TransferFunction2DRegionQuery regionQuery = this->TransferFunction2DSpaces.QueryRegion(input.first);
+    if (regionQuery.space)
+    {
+        const int w = regionQuery.space->Texture->GetWidth(),
+                  h = regionQuery.space->Texture->GetHeight();
+
+        const vtkVector2i& pos = regionQuery.pos,
+                         & size = regionQuery.region->Size;
+        float v[4]
+        {
+            static_cast<float>(pos.GetX()) / w,
+            static_cast<float>(pos.GetY()) / h,
+            static_cast<float>(size.GetX()) / w,
+            static_cast<float>(size.GetY()) / h
+        };
+        const std::string indexStr = std::to_string(input.first);
+        prog->SetUniform4f(("in_transfer2DRegion[" + indexStr + ']').c_str(), v);
+        prog->SetUniformi(("in_transfer2DIndex[" + indexStr + ']').c_str(), regionQuery.textureIndex);
+    }
 
     vtkVolumeProperty* const property = volumeInput.Volume->GetProperty();
     const struct vtkVolumeProperty::BoxMask& boxMask = property->GetBoxMask();
@@ -4030,6 +4317,16 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
 
     ++index;
   }
+
+  {
+      std::size_t index = 0;
+      for (const TransferFunction2DSpace& space : this->TransferFunction2DSpaces.Spaces)
+      {
+          space.Texture->Activate();
+          prog->SetUniformi(("in_transfer2D[" + std::to_string(index++) + ']').c_str(), space.Texture->GetTextureUnit());
+      }
+  }
+
   prog->SetUniform3fv("in_boundsMin", numInputs, reinterpret_cast<const float(*)[3]>(boundsMin.data()));
   prog->SetUniform3fv("in_boundsMax", numInputs, reinterpret_cast<const float(*)[3]>(boundsMax.data()));
   prog->SetUniform1fv("in_sampling", numInputs, this->SamplingVec.data());

@@ -35,8 +35,7 @@ void vtkVolumeInputHelper::RefreshTransferFunction(vtkRenderer* ren, const int u
 
 void vtkVolumeInputHelper::InitializeTransferFunction(vtkRenderer* ren, const int index)
 {
-  const int transferMode =
-    this->Volume->GetProperty()->GetTransferFunctionMode();
+  const int transferMode = this->Volume->GetProperty()->GetTransferFunctionMode();
   switch(transferMode)
   {
     case vtkVolumeProperty::TF_2D:
@@ -337,11 +336,11 @@ void vtkVolumeInputHelper::DeactivateTransferFunction(const int blendMode)
             }
           }
           break;
-        case vtkVolumeProperty::TF_2D:
-          for (int i = 0; i < numActiveLuts; ++i)
-          {
-            this->TransferFunctions2D->GetTable(i)->Deactivate();
-          }
+        //case vtkVolumeProperty::TF_2D:
+        //  for (int i = 0; i < numActiveLuts; ++i)
+        //  {
+        //    this->TransferFunctions2D->GetTable(i)->Deactivate();
+        //  }
           break;
       }
   }

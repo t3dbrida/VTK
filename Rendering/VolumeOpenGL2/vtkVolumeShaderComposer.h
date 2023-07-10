@@ -1132,7 +1132,7 @@ namespace vtkvolume
           ss << "\
           \nvec4 computeColor(int index, vec4 scalar, float opacity)\
           \n{\
-          \n  return computeLighting(index, vec4(texture2D(in_transfer2D[index], vec2(scalar.w, 0.)).xyz, opacity), computeGradient(index, g_dataPos));\
+          \n  return computeLighting(index, vec4(texture2D(in_transfer2D[0], vec2(scalar.w, 0.)).xyz, opacity), computeGradient(index, g_dataPos));\
           \n}";
         return ss.str();
       }
@@ -1333,8 +1333,7 @@ namespace vtkvolume
                                       vtkVolumeMapper* vtkNotUsed(mapper),
                                       vtkVolume* vtkNotUsed(vol),
                                       int noOfComponents,
-                                      int independentComponents,
-                                      std::map<int, std::string> colorTableMap)
+                                      int independentComponents)
   {
       //if (noOfComponents == 1)
       {
@@ -1342,7 +1341,7 @@ namespace vtkvolume
         return
           "vec4 computeColor(int index, vec4 scalar, float opacity)\n"
           "{\n"
-          "  vec4 color = texture2D(in_transfer2D[0], vec2(scalar.w, g_gradients[0].w));\n"
+          "  vec4 color = sampleTransfer2D(0, vec2(scalar.r, g_gradients[0].w));\n"
           "  return computeLighting(0, color, g_gradients[0]);\n"
           "}\n";
       }
@@ -1392,21 +1391,28 @@ namespace vtkvolume
       //}
   }
 
-  std::string Transfer2DDeclaration(vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs)
+  std::string Transfer2DDeclaration(vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs, const int tf2DCount)
   {
     std::ostringstream ss;
-    ss << "uniform sampler2D in_transfer2D[" << inputs.size() << "];\n";
+    ss << "uniform vec4 in_transfer2DRegion[" << inputs.size() << "];\n";
+    ss << "uniform int in_transfer2DIndex[" << inputs.size() << "];\n";
+    ss << "uniform sampler2D in_transfer2D[" << tf2DCount << "];\n";
     ss <<
         "\n"
         "vec4 sampleTransfer2D(int index, vec2 uv)\n"
         "{\n"
         "  vec4 result = vec4(0.);\n"
         "\n"
+        "  vec4 region = in_transfer2DRegion[index];\n"
+        "  uv = vec2(region.x + uv.x * region.z,\n"
+        "            region.y + uv.y * region.w);\n"
         "  vec2 diffx = dFdx(uv);\n"
         "  vec2 diffy = dFdy(uv);\n"
-        "  switch (index)\n"
+        "\n"
+        "  int samplerIndex = in_transfer2DIndex[index];\n"
+        "  switch (samplerIndex)\n"
         "  {\n";
-    for (int i = 0; i < inputs.size(); ++i)
+    for (int i = 0; i < tf2DCount; ++i)
     {
         ss <<
             "    case " << i << ":\n"
@@ -1482,8 +1488,7 @@ namespace vtkvolume
       toString <<
         "float computeOpacity(int index, vec4 scalar)\n"
         "{\n"
-        "  return texture2D(" + opacityTableMap[0] + ",\n"
-        "    vec2(scalar.a, g_gradients[0].w)).a;\n"
+        "  return sampleTransfer2D(index, vec2(scalar.a, g_gradients[0].w)).a;\n"
         "}\n";
     }
     return toString.str();
