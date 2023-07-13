@@ -105,6 +105,13 @@
 #include <sstream>
 #include <string>
 
+namespace tf2d
+{
+
+constexpr int TEXTURE_WIDTH = 512,
+              TEXTURE_HEIGHT = 256;
+
+}
 
 vtkStandardNewMacro(vtkOpenGLGPUVolumeRayCastMapper);
 
@@ -614,8 +621,21 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpace::Upda
             regionSize.SetX(newDims[0]);
             regionSize.SetY(newDims[1]);
 
+            void* data = image->GetScalarPointer();
+            vtkSmartPointer<vtkImageData> resizedImage;
+            if (newDims[0] != tf2d::TEXTURE_WIDTH || newDims[1] != tf2d::TEXTURE_HEIGHT)
+            {
+              vtkNew<vtkImageResize> resizeFilter;
+              resizeFilter->SetInputData(image);
+              resizeFilter->SetResizeMethodToOutputDimensions();
+              resizeFilter->SetOutputDimensions(tf2d::TEXTURE_WIDTH, tf2d::TEXTURE_HEIGHT, 1);
+              resizeFilter->Update();
+              resizedImage = resizeFilter->GetOutput();
+              data = resizedImage->GetScalarPointer();
+            }
+
             glBindTexture(GL_TEXTURE_2D, this->Texture->GetHandle());
-            glTexSubImage2D(GL_TEXTURE_2D, 0, pos.GetX(), pos.GetY(), regionSize.GetX(), regionSize.GetY(), GL_RGBA, GL_FLOAT, image->GetScalarPointer());
+            glTexSubImage2D(GL_TEXTURE_2D, 0, pos.GetX(), pos.GetY(), tf2d::TEXTURE_WIDTH, tf2d::TEXTURE_HEIGHT, GL_RGBA, GL_FLOAT, data);
             glBindTexture(GL_TEXTURE_2D, 0);
             region.Timestamp.Modified();
         }
@@ -632,17 +652,31 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpace::Upda
   // find empty space in the texture
   const int w = this->Texture->GetWidth(),
             h = this->Texture->GetHeight();
-  for (int y = 0; y < h; y += 256)
+  for (int y = 0; y < h; y += tf2d::TEXTURE_HEIGHT)
   {
-    for (int x = 0; x < w; x += 512)
+    for (int x = 0; x < w; x += tf2d::TEXTURE_WIDTH)
     {
       const vtkVector2i pos{x, y};
-      if (this->Regions.find(pos) == this->Regions.end())
+      if (this->Regions.find(pos) == this->Regions.end() && x + tf2d::TEXTURE_WIDTH - 1 < w && y + tf2d::TEXTURE_HEIGHT - 1 < h)
       {
-        auto region = this->Regions.emplace(pos, Region{volumeIndex, {newDims[0], newDims[1]}, image});
+        void* data = image->GetScalarPointer();
+        vtkSmartPointer<vtkImageData> resizedImage;
+        if (newDims[0] != tf2d::TEXTURE_WIDTH || newDims[1] != tf2d::TEXTURE_HEIGHT)
+        {
+          vtkNew<vtkImageResize> resizeFilter;
+          resizeFilter->SetInputData(image);
+          resizeFilter->SetResizeMethodToOutputDimensions();
+          resizeFilter->SetOutputDimensions(tf2d::TEXTURE_WIDTH, tf2d::TEXTURE_HEIGHT, 1);
+          resizeFilter->Update();
+          resizedImage = resizeFilter->GetOutput();
+          data = resizedImage->GetScalarPointer();
+        }
+
         glBindTexture(GL_TEXTURE_2D, this->Texture->GetHandle());
-        glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, newDims[0], newDims[1], GL_RGBA, GL_FLOAT, image->GetScalarPointer());
+        glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, tf2d::TEXTURE_WIDTH, tf2d::TEXTURE_HEIGHT, GL_RGBA, GL_FLOAT, data);
         glBindTexture(GL_TEXTURE_2D, 0);
+
+        auto region = this->Regions.emplace(pos, Region{volumeIndex, {newDims[0], newDims[1]}, image});
         region.first->second.Timestamp.Modified();
         return true;
       }
@@ -702,8 +736,8 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::Upd
     vtkTextureObject* const texture = s.Texture;
     const int w = texture->GetWidth(),
               h = texture->GetHeight(),
-              newW = w + 512,
-              newH = h + 256;
+              newW = w + tf2d::TEXTURE_WIDTH,
+              newH = h + tf2d::TEXTURE_HEIGHT;
     if (newW <= maximumTextureSize)
     {
       resizedTexture = true;
@@ -736,7 +770,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::Upd
   {
     const vtkSmartPointer<vtkTextureObject> texture = vtkSmartPointer<vtkTextureObject>::New();
     texture->SetContext(static_cast<vtkOpenGLRenderWindow*>(renderer->GetRenderWindow()));
-    texture->Allocate2D(512, 256, 4, VTK_FLOAT);
+    texture->Allocate2D(tf2d::TEXTURE_WIDTH, tf2d::TEXTURE_HEIGHT, 4, VTK_FLOAT);
     texture->SetMinificationFilter(vtkTextureObject::Linear);
     texture->SetMagnificationFilter(vtkTextureObject::Linear);
     texture->SetWrapS(vtkTextureObject::ClampToEdge);
