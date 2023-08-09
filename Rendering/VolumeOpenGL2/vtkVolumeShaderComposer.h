@@ -1396,32 +1396,40 @@ namespace vtkvolume
     std::ostringstream ss;
     ss << "uniform vec4 in_transfer2DRegion[" << inputs.size() << "];\n";
     ss << "uniform int in_transfer2DIndex[" << inputs.size() << "];\n";
-    ss << "uniform sampler2D in_transfer2D[" << tf2DCount << "];\n";
+    if (tf2DCount)
+    {
+        ss << "uniform sampler2D in_transfer2D[" << tf2DCount << "];\n";
+    }
     ss <<
         "\n"
         "vec4 sampleTransfer2D(int index, vec2 uv)\n"
         "{\n"
-        "  vec4 result = vec4(0.);\n"
-        "\n"
-        "  vec4 region = in_transfer2DRegion[index];\n"
-        "  uv = vec2(region.x + uv.x * region.z,\n"
-        "            region.y + uv.y * region.w);\n"
-        "  vec2 diffx = dFdx(uv);\n"
-        "  vec2 diffy = dFdy(uv);\n"
-        "\n"
-        "  int samplerIndex = in_transfer2DIndex[index];\n"
-        "  switch (samplerIndex)\n"
-        "  {\n";
-    for (int i = 0; i < tf2DCount; ++i)
+        "  vec4 result = vec4(0.);\n";
+    if (tf2DCount)
     {
         ss <<
-            "    case " << i << ":\n"
-            "      result = textureGrad(in_transfer2D[" << i << "], uv, diffx, diffy);\n"
-            "      break;\n";
+            "\n"
+            "  vec4 region = in_transfer2DRegion[index];\n"
+            "  uv = vec2(region.x + uv.x * region.z,\n"
+            "            region.y + uv.y * region.w);\n"
+            "  vec2 diffx = dFdx(uv);\n"
+            "  vec2 diffy = dFdy(uv);\n"
+            "\n"
+            "  int samplerIndex = in_transfer2DIndex[index];\n"
+            "  switch (samplerIndex)\n"
+            "  {\n";
+        for (int i = 0; i < tf2DCount; ++i)
+        {
+            ss <<
+                "    case " << i << ":\n"
+                "      result = textureGrad(in_transfer2D[" << i << "], uv, diffx, diffy);\n"
+                "      break;\n";
+        }
+        ss <<
+            "  }\n"
+            "\n";
     }
     ss <<
-        "  }\n"
-        "\n"
         "  return result;\n"
         "}\n";
     //int i = 0;

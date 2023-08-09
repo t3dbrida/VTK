@@ -980,7 +980,6 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateTransferFunctions(vtkRe
 {
   if (this->Parent->GetInputCount() > 0)
   {
-    //int uniformIndex = 0;
     for (const int port : this->Parent->Ports)
     {
       auto& input = this->Parent->AssembledInputs[port];
@@ -988,9 +987,11 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateTransferFunctions(vtkRe
       input.ScalarOpacityRangeType = this->Parent->GetScalarOpacityRangeType();
       input.GradientOpacityRangeType = this->Parent->GetGradientOpacityRangeType();
       //input.RefreshTransferFunction(ren, uniformIndex, this->Parent->BlendMode, this->ActualSampleDistance);
-      this->TransferFunction2DSpaces.UpdateRegion(ren, input.Volume->GetProperty()->GetTransferFunction2D(), port);
-
-      //uniformIndex++;
+      vtkImageData* const tf2d = input.Volume->GetProperty()->GetTransferFunction2D();
+      if (tf2d)
+      {
+          this->TransferFunction2DSpaces.UpdateRegion(ren, tf2d, port);
+      }
     }
 
     if (!this->MultiVolume)
@@ -4292,26 +4293,27 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
     };
     vtkInternal::CopyVector<float, 2>(reinterpret_cast<float*>(range), this->RangeVec.data(), index * 2);
 
-    //volumeInput.ActivateTransferFunction(prog, this->Parent->BlendMode);
-
-    const TransferFunction2DRegionQuery regionQuery = this->TransferFunction2DSpaces.QueryRegion(input.first);
-    if (regionQuery.space)
+    if (volume->GetProperty()->GetTransferFunction2D())
     {
-        const int w = regionQuery.space->Texture->GetWidth(),
-                  h = regionQuery.space->Texture->GetHeight();
-
-        const vtkVector2i& pos = regionQuery.pos,
-                         & size = regionQuery.region->Size;
-        float v[4]
+        const TransferFunction2DRegionQuery regionQuery = this->TransferFunction2DSpaces.QueryRegion(input.first);
+        if (regionQuery.space)
         {
-            static_cast<float>(pos.GetX()) / w,
-            static_cast<float>(pos.GetY()) / h,
-            static_cast<float>(size.GetX()) / w,
-            static_cast<float>(size.GetY()) / h
-        };
-        const std::string indexStr = std::to_string(input.first);
-        prog->SetUniform4f(("in_transfer2DRegion[" + indexStr + ']').c_str(), v);
-        prog->SetUniformi(("in_transfer2DIndex[" + indexStr + ']').c_str(), regionQuery.textureIndex);
+            const int w = regionQuery.space->Texture->GetWidth(),
+                      h = regionQuery.space->Texture->GetHeight();
+
+            const vtkVector2i& pos = regionQuery.pos,
+                             & size = regionQuery.region->Size;
+            float v[4]
+            {
+                static_cast<float>(pos.GetX()) / w,
+                static_cast<float>(pos.GetY()) / h,
+                static_cast<float>(size.GetX()) / w,
+                static_cast<float>(size.GetY()) / h
+            };
+            const std::string indexStr = std::to_string(input.first);
+            prog->SetUniform4f(("in_transfer2DRegion[" + indexStr + ']').c_str(), v);
+            prog->SetUniformi(("in_transfer2DIndex[" + indexStr + ']').c_str(), regionQuery.textureIndex);
+        }
     }
 
     vtkVolumeProperty* const property = volumeInput.Volume->GetProperty();
