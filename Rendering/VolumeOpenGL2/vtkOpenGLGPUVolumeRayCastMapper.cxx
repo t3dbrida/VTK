@@ -652,9 +652,9 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpace::Upda
   // find empty space in the texture
   const int w = this->Texture->GetWidth(),
             h = this->Texture->GetHeight();
-  for (int y = 0; y < h; y += tf2d::TEXTURE_HEIGHT)
+  for (int y = 0; y < h; y += tf2d::TEXTURE_HEIGHT + 1)
   {
-    for (int x = 0; x < w; x += tf2d::TEXTURE_WIDTH)
+    for (int x = 0; x < w; x += tf2d::TEXTURE_WIDTH + 1)
     {
       const vtkVector2i pos{x, y};
       if (this->Regions.find(pos) == this->Regions.end() && x + tf2d::TEXTURE_WIDTH - 1 < w && y + tf2d::TEXTURE_HEIGHT - 1 < h)
@@ -736,8 +736,8 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::Upd
     vtkTextureObject* const texture = s.Texture;
     const int w = texture->GetWidth(),
               h = texture->GetHeight(),
-              newW = w + tf2d::TEXTURE_WIDTH,
-              newH = h + tf2d::TEXTURE_HEIGHT;
+              newW = w + tf2d::TEXTURE_WIDTH + 1,
+              newH = h + tf2d::TEXTURE_HEIGHT + 1;
     if (newW <= maximumTextureSize)
     {
       resizedTexture = true;
