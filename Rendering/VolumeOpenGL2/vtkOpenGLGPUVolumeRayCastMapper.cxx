@@ -583,9 +583,11 @@ public:
 
   struct TransferFunction2DSpaces final
   {
-    void UpdateRegion(vtkRenderer* const renderer, vtkImageData* const image, const int volumeIndex) noexcept;
+    void CheckContext(vtkOpenGLRenderWindow& window) noexcept;
 
-    bool RemoveRegion(vtkWindow* const window, const int volumeIndex) noexcept;
+    void UpdateRegion(vtkOpenGLRenderWindow& window, vtkImageData* const image, const int volumeIndex) noexcept;
+
+    bool RemoveRegion(vtkWindow& window, const int volumeIndex) noexcept;
 
     TransferFunction2DRegionQuery QueryRegion(const int volumeIndex) noexcept;
 
@@ -718,7 +720,32 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpace::Remo
   return false;
 }
 
-void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::UpdateRegion(vtkRenderer* const renderer, vtkImageData* const image, const int volumeIndex) noexcept
+void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::CheckContext(vtkOpenGLRenderWindow& window) noexcept
+{
+  for (TransferFunction2DSpace& s : this->Spaces)
+  {
+    if (s.Texture->GetContext() != &window)
+    {
+      vtkTextureObject& texture = *s.Texture;
+      int w = texture.GetWidth(),
+          h = texture.GetHeight();
+      texture.Deactivate();
+      texture.ReleaseGraphicsResources(&window);
+      texture.SetContext(&window);
+      texture.Allocate2D(w, h, 4, VTK_FLOAT);
+      texture.SetMinificationFilter(vtkTextureObject::Linear);
+      texture.SetMagnificationFilter(vtkTextureObject::Linear);
+      texture.SetWrapS(vtkTextureObject::ClampToEdge);
+      texture.SetWrapT(vtkTextureObject::ClampToEdge);
+      for (const auto& r : s.Regions)
+      {
+        s.UpdateRegion(r.second.Image, r.second.VolumeIndex, true);
+      }
+    }
+  }
+}
+
+void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::UpdateRegion(vtkOpenGLRenderWindow& window, vtkImageData* const image, const int volumeIndex) noexcept
 {
   for (TransferFunction2DSpace& s : this->Spaces)
   {
@@ -730,7 +757,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::Upd
 
   TransferFunction2DSpace* space = nullptr;
   bool resizedTexture = false;
-  const int maximumTextureSize = vtkTextureObject::GetMaximumTextureSize(static_cast<vtkOpenGLRenderWindow*>(renderer->GetRenderWindow()));
+  const int maximumTextureSize = vtkTextureObject::GetMaximumTextureSize(&window);
   for (TransferFunction2DSpace& s : this->Spaces)
   {
     vtkTextureObject* const texture = s.Texture;
@@ -769,7 +796,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::Upd
   if (!resizedTexture)
   {
     const vtkSmartPointer<vtkTextureObject> texture = vtkSmartPointer<vtkTextureObject>::New();
-    texture->SetContext(static_cast<vtkOpenGLRenderWindow*>(renderer->GetRenderWindow()));
+    texture->SetContext(&window);
     texture->Allocate2D(tf2d::TEXTURE_WIDTH, tf2d::TEXTURE_HEIGHT, 4, VTK_FLOAT);
     texture->SetMinificationFilter(vtkTextureObject::Linear);
     texture->SetMagnificationFilter(vtkTextureObject::Linear);
@@ -783,7 +810,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::Upd
   space->UpdateRegion(image, volumeIndex);
 }
 
-bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::RemoveRegion(vtkWindow* const win, const int volumeIndex) noexcept
+bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::RemoveRegion(vtkWindow& window, const int volumeIndex) noexcept
 {
   for (auto it = this->Spaces.begin(); it != this->Spaces.end(); ++it)
   {
@@ -801,7 +828,7 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::Rem
       }
       if (it->Regions.empty())
       {
-        it->Texture->ReleaseGraphicsResources(win);
+        it->Texture->ReleaseGraphicsResources(&window);
         this->Spaces.erase(it);
       }
       return true;
@@ -980,6 +1007,9 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateTransferFunctions(vtkRe
 {
   if (this->Parent->GetInputCount() > 0)
   {
+    vtkOpenGLRenderWindow& wnd =  *vtkOpenGLRenderWindow::SafeDownCast(ren->GetRenderWindow());
+    this->TransferFunction2DSpaces.CheckContext(wnd);
+
     for (const int port : this->Parent->Ports)
     {
       auto& input = this->Parent->AssembledInputs[port];
@@ -990,7 +1020,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateTransferFunctions(vtkRe
       vtkImageData* const tf2d = input.Volume->GetProperty()->GetTransferFunction2D();
       if (tf2d)
       {
-          this->TransferFunction2DSpaces.UpdateRegion(ren, tf2d, port);
+          this->TransferFunction2DSpaces.UpdateRegion(wnd, tf2d, port);
       }
     }
 
@@ -3771,7 +3801,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::ClearRemovedInputs(
     {
         input.RGBTables->ReleaseGraphicsResources(win);
     }
-    this->TransferFunction2DSpaces.RemoveRegion(win, port);
+    this->TransferFunction2DSpaces.RemoveRegion(*win, port);
     this->Parent->AssembledInputs.erase(it);
     orderChanged = true;
   }
