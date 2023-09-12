@@ -759,7 +759,7 @@ unsigned int vtkTextureObject::GetDefaultFormat(int vtktype, int numComps,
   }
 
 #if GL_ES_VERSION_3_0 != 1
-  if(this->SupportsTextureInteger && shaderSupportsTextureInt
+  if(/*this->SupportsTextureInteger && */shaderSupportsTextureInt
      && (vtktype==VTK_SIGNED_CHAR||vtktype==VTK_UNSIGNED_CHAR||
          vtktype==VTK_SHORT||vtktype==VTK_UNSIGNED_SHORT||vtktype==VTK_INT||
        vtktype==VTK_UNSIGNED_INT))
@@ -1357,15 +1357,16 @@ vtkPixelBufferObject* vtkTextureObject::Download()
 //----------------------------------------------------------------------------
 bool vtkTextureObject::Create3DFromRaw(unsigned int width, unsigned int height,
                                        unsigned int depth, int numComps,
-                                       int dataType, void *data)
+                                       int dataType, void *data,
+                                       bool shaderSupportsTextureInt)
 {
   assert(this->Context);
   vtkOpenGLClearErrorMacro();
 
   // Now, determine texture parameters using the arguments.
   this->GetDataType(dataType);
-  this->GetInternalFormat(dataType, numComps, false);
-  this->GetFormat(dataType, numComps, false);
+  this->GetInternalFormat(dataType, numComps, shaderSupportsTextureInt);
+  this->GetFormat(dataType, numComps, shaderSupportsTextureInt);
 
   if (!this->InternalFormat || !this->Format || !this->Type)
   {

@@ -489,8 +489,6 @@ public:
   {
       vtkWeakPointer<vtkImageData> image;
 
-      vtkSmartPointer<vtkOpenGLBufferObject> buffer;
-
       vtkSmartPointer<vtkTextureObject> texture;
 
       uint64_t timestamp;
@@ -1130,7 +1128,7 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadRegions(vtkRenderer* ren)
     {
       if (it == this->RegionMaskTextures.end())
       {
-        it = this->RegionMaskTextures.insert({in.first, {nullptr, nullptr, nullptr, 0}}).first;
+        it = this->RegionMaskTextures.insert({in.first, {nullptr, nullptr, 0}}).first;
       }
 
       vtkOpenGLRenderWindow* const context = static_cast<vtkOpenGLRenderWindow*>(ren->GetRenderWindow());
@@ -1138,7 +1136,7 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadRegions(vtkRenderer* ren)
       bool update = bitRegionMask != regionTexture.image || regionTexture.texture->GetContext() != context;
       if (update)
       {
-        regionTexture = {bitRegionMask, vtkSmartPointer<vtkOpenGLBufferObject>::New(), vtkSmartPointer<vtkTextureObject>::New(), 0};
+        regionTexture = {bitRegionMask, vtkSmartPointer<vtkTextureObject>::New(), 0};
       }
       else
       {
@@ -1152,12 +1150,18 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadRegions(vtkRenderer* ren)
 
         int bitRegionMaskDims[3];
         bitRegionMask->GetDimensions(bitRegionMaskDims);
-        const int voxelCount = bitRegionMaskDims[0] * bitRegionMaskDims[1] * bitRegionMaskDims[2],
-                  compCount = bitRegionMask->GetNumberOfScalarComponents();
-        regionTexture.buffer->Upload(static_cast<std::uint32_t*>(arr->GetVoidPointer(0)), compCount * voxelCount, vtkOpenGLBufferObject::ObjectType::TextureBuffer);
         vtkTextureObject* const to = regionTexture.texture;
         to->SetContext(context);
-        to->CreateTextureBuffer(voxelCount, compCount, VTK_UNSIGNED_INT, regionTexture.buffer, true);
+        to->SetMinificationFilter(vtkTextureObject::Nearest);
+        to->SetMagnificationFilter(vtkTextureObject::Nearest);
+
+        to->Create3DFromRaw(bitRegionMaskDims[0],
+                            bitRegionMaskDims[1],
+                            bitRegionMaskDims[2],
+                            bitRegionMask->GetNumberOfScalarComponents(),
+                            VTK_UNSIGNED_INT,
+                            static_cast<std::uint32_t*>(arr->GetVoidPointer(0)),
+                            true);
 
         result |= true;
         regionTexture.timestamp = bitRegionMask->GetMTime();

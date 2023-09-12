@@ -2879,7 +2879,7 @@ namespace vtkvolume
                       "uniform int in_regionOffset[" + std::to_string(inputs.size() + 1) + "];\n";
     if (inputsWithBitRegionCount)
     {
-        str += "uniform usamplerBuffer in_regionMask[" + std::to_string(inputsWithBitRegionCount) + "];\n";
+        str += "uniform usampler3D in_regionMask[" + std::to_string(inputsWithBitRegionCount) + "];\n";
     }
 
     str +=
@@ -2888,7 +2888,6 @@ namespace vtkvolume
         "{\n"
         "  uvec4 result = uvec4(0.);\n"
         "\n"
-        "  int texelIndex = int(int(uvw.x * in_volumeDims[index].x) + int(uvw.y * in_volumeDims[index].y) * in_volumeDims[index].x + int(uvw.z * in_volumeDims[index].z) * in_volumeDims[index].x * in_volumeDims[index].y);\n"
         "  switch (index)\n"
         "  {\n";
     for (std::size_t i = 0; i < inputsWithBitRegionCount; ++i)
@@ -2897,7 +2896,7 @@ namespace vtkvolume
         str +=
             "    case " + iStr + ":\n"
             "    {\n"
-            "      result = texelFetch(in_regionMask[" + iStr + "], texelIndex);\n"
+            "      result = texture(in_regionMask[" + iStr + "], uvw);\n"
             "      break;\n"
             "    }\n";
     }

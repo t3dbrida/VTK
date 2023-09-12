@@ -105,7 +105,7 @@ vtkGPUVolumeRayCastMapper::vtkGPUVolumeRayCastMapper()
 
   this->ReportProgress = true;
 
-  this->SetNumberOfInputPorts(10);
+  this->SetNumberOfInputPorts(30);
 }
 
 // ----------------------------------------------------------------------------

@@ -71,6 +71,7 @@ void vtkOpenGLRenderUtilities::RenderTriangles(
 
   vtkNew<vtkOpenGLBufferObject> vbo;
   vbo->Upload(verts, numVerts*3, vtkOpenGLBufferObject::ArrayBuffer);
+  vbo->Bind();
   vao->Bind();
   if (!vao->AddAttributeArray(program, vbo, "vertexMC", 0,
       sizeof(float)*3, VTK_FLOAT, 3, false))
@@ -82,6 +83,7 @@ void vtkOpenGLRenderUtilities::RenderTriangles(
   if (tcoords)
   {
     tvbo->Upload(tcoords, numVerts*2, vtkOpenGLBufferObject::ArrayBuffer);
+    tvbo->Bind();
     if (!vao->AddAttributeArray(program, tvbo, "tcoordMC", 0,
         sizeof(float)*2, VTK_FLOAT, 2, false))
     {
@@ -92,6 +94,7 @@ void vtkOpenGLRenderUtilities::RenderTriangles(
   vtkNew<vtkOpenGLBufferObject> ibo;
   vao->Bind();
   ibo->Upload(iboData, numIndices, vtkOpenGLBufferObject::ElementArrayBuffer);
+  ibo->Bind();
   glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, nullptr);
   ibo->Release();
   ibo->ReleaseGraphicsResources();

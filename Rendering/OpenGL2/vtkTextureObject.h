@@ -281,7 +281,8 @@ public:
    */
   bool Create3DFromRaw(unsigned int width, unsigned int height,
                        unsigned int depth, int numComps,
-                       int dataType, void *data);
+                       int dataType, void *data,
+                       bool shaderSupportsTextureInt = false);
 
   /**
    * Create a 3D texture using the GL_PROXY_TEXTURE_3D target.  This serves
