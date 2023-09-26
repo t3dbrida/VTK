@@ -3783,9 +3783,11 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::ClearRemovedInputs(
   vtkWindow* win)
 {
   bool orderChanged = false;
-  for (const int& port : this->Parent->RemovedPorts)
+
+  std::vector<int> removedPorts = this->Parent->RemovedPorts;
+  for (int i = 0; i < removedPorts.size(); ++i)
   {
-    auto it = this->Parent->AssembledInputs.find(port);
+    auto it = this->Parent->AssembledInputs.find(this->Parent->RemovedPorts[i]);
     if (it == this->Parent->AssembledInputs.cend())
     {
       continue;
@@ -3805,7 +3807,14 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::ClearRemovedInputs(
     {
         input.RGBTables->ReleaseGraphicsResources(win);
     }
-    this->TransferFunction2DSpaces.RemoveRegion(*win, port);
+    this->TransferFunction2DSpaces.RemoveRegion(*win, removedPorts[i]);
+    for (int& r : removedPorts)
+    {
+        if (r > removedPorts[i])
+        {
+            --r;
+        }
+    }
     this->Parent->AssembledInputs.erase(it);
     orderChanged = true;
   }
@@ -4568,8 +4577,6 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetRegionShaderParameters(vtk
     const int vi = in.first;
     const std::string viStr = std::to_string(vi);
     prog->SetUniformi(("in_regionOffset[" + viStr + "]").c_str(), regionOffset);
-    const int* const dims = this->Parent->TransformedInputs.at(vi)->GetDimensions();
-    glUniform3i(prog->FindUniform(("in_volumeDims[" + viStr + "]").c_str()), dims[0], dims[1], dims[2]);
     const struct vtkVolumeProperty::BitRegion& region = in.second.Volume->GetProperty()->GetBitRegion();
     if (region.mask)
     {

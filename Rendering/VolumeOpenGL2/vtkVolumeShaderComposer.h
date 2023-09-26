@@ -2875,7 +2875,6 @@ namespace vtkvolume
 
     const std::string inputsCountStr = std::to_string(inputs.size());
     std::string str = "uniform int in_regionIndex[" + inputsCountStr + "];\n" +
-                      "uniform ivec3 in_volumeDims[" + inputsCountStr + "];\n" +
                       "uniform int in_regionOffset[" + std::to_string(inputs.size() + 1) + "];\n";
     if (inputsWithBitRegionCount)
     {
@@ -2886,7 +2885,7 @@ namespace vtkvolume
         "\n"
         "uvec4 sampleRegionMask(int index, vec3 uvw)\n"
         "{\n"
-        "  uvec4 result = uvec4(0.);\n"
+        "  uvec4 result = uvec4(0);\n"
         "\n"
         "  switch (index)\n"
         "  {\n";
