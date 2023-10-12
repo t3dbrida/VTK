@@ -60,6 +60,7 @@
 #include "vtkNew.h" // Needed for vtkNew
 #include "vtkRenderingCoreModule.h" // For export macro
 #include "vtkObject.h"
+#include "vtkSmartPointer.h"
 
 #include <vtkVector.h>
 
@@ -74,7 +75,7 @@ class VTKRENDERINGCORE_EXPORT vtkVolumeProperty : public vtkObject
 public:
   struct BitRegion
   {
-    vtkImageData* mask;
+    vtkSmartPointer<vtkImageData> mask;
 
     std::vector<vtkVector4<float>> colors;
   };

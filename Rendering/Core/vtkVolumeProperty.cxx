@@ -121,11 +121,6 @@ vtkVolumeProperty::~vtkVolumeProperty()
       this->DefaultGradientOpacity[i]->UnRegister(this);
     }
   }
-
-  if (vtkImageData* const regionMask = this->BitRegion.mask)
-  {
-    regionMask->UnRegister(this);
-  }
 }
 
 void vtkVolumeProperty::DeepCopy(vtkVolumeProperty *p)
@@ -184,11 +179,6 @@ void vtkVolumeProperty::DeepCopy(vtkVolumeProperty *p)
   this->BoxMask = p->GetBoxMask();
 
   this->CylinderMask = p->CylinderMask;
-
-  if (vtkImageData* const regionMask = this->BitRegion.mask)
-  {
-    regionMask->Register(this);
-  }
 
   this->BitRegion = p->BitRegion;
 
@@ -765,15 +755,7 @@ void vtkVolumeProperty::SetCylinderMask(const struct CylinderMask& cylinderMask)
 
 void vtkVolumeProperty::SetBitRegion(const struct BitRegion& bitRegion) noexcept
 {
-  if (vtkImageData* const regionMask = this->BitRegion.mask)
-  {
-    regionMask->UnRegister(this);
-  }
   this->BitRegion = bitRegion;
-  if (vtkImageData* const regionMask = this->BitRegion.mask)
-  {
-    regionMask->Register(this);
-  }
   this->Modified();
 }
 

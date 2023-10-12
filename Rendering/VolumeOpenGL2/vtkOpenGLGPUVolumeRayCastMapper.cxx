@@ -730,7 +730,8 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::Che
       texture.Deactivate();
       texture.ReleaseGraphicsResources(&window);
       texture.SetContext(&window);
-      texture.Allocate2D(w, h, 4, VTK_FLOAT);
+      std::vector<float> zeros(4 * w * h, 0);
+      texture.Create2DFromRaw(w, h, 4, VTK_FLOAT, zeros.data());
       texture.SetMinificationFilter(vtkTextureObject::Linear);
       texture.SetMagnificationFilter(vtkTextureObject::Linear);
       texture.SetWrapS(vtkTextureObject::ClampToEdge);
@@ -766,12 +767,14 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::Upd
     if (newW <= maximumTextureSize)
     {
       resizedTexture = true;
-      texture->Allocate2D(newW, h, 4, VTK_FLOAT);
+      std::vector<float> zeros(4 * newW * h, 0);
+      texture->Create2DFromRaw(newW, h, 4, VTK_FLOAT, zeros.data());
     }
     else if (newH <= maximumTextureSize)
     {
       resizedTexture = true;
-      texture->Allocate2D(w, newH, 4, VTK_FLOAT);
+      std::vector<float> zeros(4 * w * newH, 0);
+      texture->Create2DFromRaw(w, newH, 4, VTK_FLOAT, zeros.data());
     }
     else
     {
@@ -4346,12 +4349,14 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
 
             const vtkVector2i& pos = regionQuery.pos,
                              & size = regionQuery.region->Size;
+
+            const constexpr float sizeEps = 0.02f; // necessary to avoid some artifacts, empirically derived
             float v[4]
             {
                 static_cast<float>(pos.GetX()) / w,
                 static_cast<float>(pos.GetY()) / h,
-                static_cast<float>(size.GetX()) / w,
-                static_cast<float>(size.GetY()) / h
+                static_cast<float>(size.GetX()) / w - sizeEps,
+                static_cast<float>(size.GetY()) / h - sizeEps
             };
             const std::string indexStr = std::to_string(input.first);
             prog->SetUniform4f(("in_transfer2DRegion[" + indexStr + ']').c_str(), v);
