@@ -3941,12 +3941,11 @@ void vtkOpenGLGPUVolumeRayCastMapper::GPURender(vtkRenderer* ren,
       this->Impl->BBoxPolyData = nullptr;
   }
 
-  // 2021: this no longer applies due to the existance of regions
-  //if (!this->Impl->MultiVolume && multiVol && !multiVol->GetVolume(0)->GetVisibility())
-  //{
-  //    // there is a single volume in the multi-volume but it is not visible, do not render it
-  //    return;
-  //}
+  if (!this->Impl->MultiVolume && multiVol && !multiVol->GetVolume(0)->GetVisibility() && multiVol->GetVolume(0)->GetProperty()->GetBitRegion().colors.empty())
+  {
+      // there is a single volume in the multi-volume but it is not visible, do not render it
+      return;
+  }
 
   vtkOpenGLCamera* cam = vtkOpenGLCamera::SafeDownCast(ren->GetActiveCamera());
 
@@ -4514,7 +4513,9 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetCameraShaderParameters(
       "in_projectionDirection", 1, &fvalue3);
   }
 
-  vtkInternal::ToFloat(cam->GetPosition(), fvalue3, 3);
+  double camPos[3];
+  cam->GetPosition(camPos);
+  vtkInternal::ToFloat(camPos, fvalue3, 3);
   prog->SetUniform3fv("in_cameraPos", 1, &fvalue3);
 
   // TODO Take consideration of reduction factor

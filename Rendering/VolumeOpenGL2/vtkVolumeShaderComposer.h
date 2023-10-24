@@ -644,8 +644,14 @@ namespace vtkvolume
                                  vtkVolumeMapper* vtkNotUsed(mapper),
                                  vtkVolume* vtkNotUsed(vol))
   {
-    return std::string("\
-      \n    g_skip = false;"
+    return std::string(
+      "    g_skip = false;\n"
+      "\n"
+      "    if (any(greaterThan(g_dataPos, in_texMax[0])) || any(lessThan(g_dataPos, in_texMin[0])))\n"
+      "    {\n"
+      "      break;\n"
+      "    }\n"
+      "\n"
     );
   }
 
@@ -1922,7 +1928,9 @@ namespace vtkvolume
   {
     auto glMapper = vtkOpenGLGPUVolumeRayCastMapper::SafeDownCast(mapper);
     std::string shaderStr;
-    shaderStr += "    bool noMask = true;\n"
+    shaderStr += 
+                 "\n"
+                 "    bool noMask = true;\n"
                  "    bool maskedByBox = false;\n"
                  "    vec3 p = vec3(in_textureDatasetMatrix[0] * vec4(g_dataPos, 1.));\n"
                  "    if (in_boxMaskAxisX[0] != vec3(0.) && in_boxMaskAxisY[0] != vec3(0.) && in_boxMaskAxisZ[0] != vec3(0.))\n"
@@ -1934,8 +1942,8 @@ namespace vtkvolume
                  "      maskedByBox = projX >= 0. && projX <= 1. &&\n"
                  "                    projY >= 0. && projY <= 1. &&\n"
                  "                    projZ >= 0. && projZ <= 1.;\n"
-                 "    }\n";
-    shaderStr += "    float cylinderMaskRadius = in_cylinderMask[6];\n"     
+                 "    }\n"
+                 "    float cylinderMaskRadius = in_cylinderMask[6];\n"     
                  "    bool maskedByCylinder = false;\n"         
                  "    if (cylinderMaskRadius > 0.)\n"
                  "    {\n"
@@ -2001,7 +2009,7 @@ namespace vtkvolume
       }
       else
       {
-        const struct vtkVolumeProperty::BitRegion bitRegion = vol->GetProperty()->GetBitRegion();
+        const struct vtkVolumeProperty::BitRegion& bitRegion = vol->GetProperty()->GetBitRegion();
         if (bitRegion.mask)
         {
             shaderStr +=
@@ -2384,7 +2392,7 @@ namespace vtkvolume
       ;
     }
     str += "\
-      \n  g_terminatePointMax = length(g_terminatePos.xyz - g_dataPos.xyz) / g_minDirStepLength;\
+      \n  g_terminatePointMax = min(1000., length(g_terminatePos.xyz - g_dataPos.xyz) / g_minDirStepLength);\
       \n  g_currentT = 0.0;"
     ;
 
@@ -2398,15 +2406,6 @@ namespace vtkvolume
                                         vtkVolume* vtkNotUsed(vol))
   {
     std::string str;
-    if (static_cast<vtkOpenGLGPUVolumeRayCastMapper*>(mapper)->GetInputCount() == 1)
-    {
-      str += "\
-        \n    if (any(greaterThan(g_dataPos, in_texMax[0])) || any(lessThan(g_dataPos, in_texMin[0])))\
-        \n    {\
-        \n      break;\
-        \n    }"
-      ;
-    }
     str += "\
       \n\
       \n    // Early ray termination\
