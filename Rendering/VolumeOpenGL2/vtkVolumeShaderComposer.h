@@ -93,8 +93,7 @@ namespace vtkvolume
     return std::string(
       "  //Transform vertex (data coordinates) to clip coordinates\n"
       "  // p_clip = T_ProjViewModel * T_dataToWorld * p_data\n"
-      "  vec4 pos = in_projectionMatrix * in_modelViewMatrix * in_volumeMatrix[0] *\n"
-      "    vec4(in_vertexPos.xyz, 1.0);\n"
+      "  vec4 pos = in_projectionMatrix * in_modelViewMatrix * in_volumeMatrix * vec4(in_vertexPos.xyz, 1.0);\n"
       "  gl_Position = pos;\n");
   }
 
@@ -106,14 +105,14 @@ namespace vtkvolume
     return std::string(
       "  // Transform vertex (data coordinates) to texture coordinates.\n"
       "  // p_texture = T_dataToTex * p_data\n"
-      "  vec3 uvx = sign(in_cellSpacing[0]) * (in_inverseTextureDatasetMatrix[0] * vec4(in_vertexPos, 1.0)).xyz;\n"
+      "  vec3 uvx = /*sign(in_cellSpacing) **/ (in_inverseTextureDatasetMatrix * vec4(in_vertexPos, 1.0)).xyz;\n"
       "\n"
       "  // For point dataset, we offset the texture coordinate\n"
       "  // to account for OpenGL treating voxel at the center of the cell.\n"
       "  // Transform cell tex-coordinates to point tex-coordinates (cellToPoint\n"
       "  // is an identity matrix in the case of cell data).\n"
-      "  ip_textureCoords = (in_cellToPoint[0] * vec4(uvx, 1.0)).xyz;\n"
-      "  ip_inverseTextureDataAdjusted = in_cellToPoint[0] * in_inverseTextureDatasetMatrix[0];\n");
+      "  ip_textureCoords = (in_cellToPoint * vec4(uvx, 1.0)).xyz;\n"
+      "  ip_inverseTextureDataAdjusted = in_cellToPoint * in_inverseTextureDatasetMatrix;\n");
   }
 
   //--------------------------------------------------------------------------
@@ -127,15 +126,15 @@ namespace vtkvolume
 
     std::ostringstream ss;
     ss <<
-      "uniform vec3 in_cellSpacing["<< numInputs <<"];\n"
+      //"uniform vec3 in_cellSpacing["<< numInputs <<"];\n"
       "uniform mat4 in_modelViewMatrix;\n"
       "uniform mat4 in_projectionMatrix;\n";
 
     const int numTransf = multipleInputs ? numInputs + 1 : 1;
     ss <<
-      "uniform mat4 in_volumeMatrix[" << numTransf << "];\n"
-      "uniform mat4 in_inverseTextureDatasetMatrix[" << numTransf << "];\n"
-      "uniform mat4 in_cellToPoint[" << numTransf << "];\n"
+      "uniform mat4 in_volumeMatrix;\n"
+      "uniform mat4 in_inverseTextureDatasetMatrix;\n"
+      "uniform mat4 in_cellToPoint;\n"
       "\n"
       "//This variable could be 'invariant varying' but it is declared\n"
       "//as 'varying' to avoid compiler compatibility issues.\n"
@@ -157,8 +156,8 @@ namespace vtkvolume
 
     std::ostringstream toShaderStr;
     toShaderStr << "uniform sampler3D in_volume[" << numInputs << "];\n"
-                   "uniform vec3 in_boundsMin[" << numInputs << "];\n"
-                   "uniform vec3 in_boundsMax[" << numInputs << "];\n"
+                   //"uniform vec3 in_boundsMin[" << numInputs << "];\n"
+                   //"uniform vec3 in_boundsMax[" << numInputs << "];\n"
                    "\n";
 
     toShaderStr << "struct Intersection\n"
@@ -328,18 +327,18 @@ namespace vtkvolume
         "  return result;\n"
         "}\n";
 
-    toShaderStr << "uniform vec3 in_boxMaskOrigin[" << numInputs << "];\n";
-    toShaderStr << "uniform vec3 in_boxMaskAxisX[" << numInputs << "];\n";
-    toShaderStr << "uniform vec3 in_boxMaskAxisY[" << numInputs << "];\n";
-    toShaderStr << "uniform vec3 in_boxMaskAxisZ[" << numInputs << "];\n";
-    toShaderStr << "uniform float in_cylinderMask[" << (7 * numInputs) << "];\n";
+    //toShaderStr << "uniform vec3 in_boxMaskOrigin[" << numInputs << "];\n";
+    //toShaderStr << "uniform vec3 in_boxMaskAxisX[" << numInputs << "];\n";
+    //toShaderStr << "uniform vec3 in_boxMaskAxisY[" << numInputs << "];\n";
+    //toShaderStr << "uniform vec3 in_boxMaskAxisZ[" << numInputs << "];\n";
+    //toShaderStr << "uniform float in_cylinderMask[" << (7 * numInputs) << "];\n";
+
+    //toShaderStr <<
+    //  "uniform vec4 in_volume_scale[" << numInputs << "];\n"
+    //  "uniform vec4 in_volume_bias[" << numInputs << "];\n";
 
     toShaderStr <<
-      "uniform vec4 in_volume_scale[" << numInputs << "];\n"
-      "uniform vec4 in_volume_bias[" << numInputs << "];\n";
-
-    toShaderStr <<
-      "uniform int in_noOfComponents[" << numInputs << "];\n"
+      //"uniform int in_noOfComponents[" << numInputs << "];\n"
       "uniform int in_independentComponents;\n"
       "\n"
       "uniform sampler2D in_noiseSampler;\n"
@@ -350,20 +349,20 @@ namespace vtkvolume
       "// Camera position\n"
       "uniform vec3 in_cameraPos;\n";
 
-    toShaderStr << "uniform float in_gradMagMax[" << numInputs << "];\n";
+    //toShaderStr << "uniform float in_gradMagMax[" << numInputs << "];\n";
 
     // For multiple inputs (numInputs > 1), an additional transformation is
     // needed for the bounding-box.
     const int numTransf = (numInputs > 1) ? numInputs + 1 : 1;
     toShaderStr <<
-      "uniform mat4 in_volumeMatrix[" << numTransf << "];\n"
-      "uniform mat4 in_inverseVolumeMatrix[" << numTransf << "];\n"
-      "uniform mat4 in_textureDatasetMatrix[" << numTransf << "];\n"
-      "uniform mat4 in_inverseTextureDatasetMatrix[" << numTransf << "];\n"
-      "uniform mat4 in_textureToEye[" << numTransf << "];\n"
-      "uniform vec3 in_texMin[" << numTransf << "];\n"
-      "uniform vec3 in_texMax[" << numTransf <<"];\n"
-      "uniform mat4 in_cellToPoint[" << numTransf <<"];\n";
+      "uniform mat4 in_volumeMatrix;\n"
+      "uniform mat4 in_inverseVolumeMatrix;\n"
+      "uniform mat4 in_textureDatasetMatrix;\n"
+      "uniform mat4 in_inverseTextureDatasetMatrix;\n"
+      "uniform mat4 in_textureToEye;\n"
+      "uniform vec3 in_texMin;\n"
+      "uniform vec3 in_texMax;\n"
+      "uniform mat4 in_cellToPoint;\n";
 
     toShaderStr <<
       "// view and model matrices\n"
@@ -374,15 +373,16 @@ namespace vtkvolume
       "flat in mat4 ip_inverseTextureDataAdjusted;\n"
       "\n"
       "// Ray step size\n"
-      "uniform vec3 in_cellStep[" << numInputs << "];\n";
+      //"uniform vec3 in_cellStep[" << numInputs << "];\n"
+    ;
 
     toShaderStr <<
-      "uniform vec2 in_scalarsRange[" << numInputs << "];\n"
-      "uniform vec3 in_cellSpacing[" << numInputs << "];\n"
+      //"uniform vec2 in_scalarsRange[" << numInputs << "];\n"
+      //"uniform vec3 in_cellSpacing[" << numInputs << "];\n"
       "\n"
       "// Sample distance\n"
       "uniform float in_sampleDistance;\n"
-      "uniform float in_sampling[" << numInputs << "];\n"
+      //"uniform float in_sampling[" << numInputs << "];\n"
       "uniform float in_downsampleCompensation;\n"
       "\n"
       "// Scales\n"
@@ -407,8 +407,8 @@ namespace vtkvolume
       "uniform vec2 in_averageIPRange;\n";
 
     // volume visibility handling
-    toShaderStr <<
-      "uniform bool in_volumeVisibility[" << numInputs << "];\n";
+    //toShaderStr <<
+    //  "uniform bool in_volumeVisibility[" << numInputs << "];\n";
 
     const bool hasGradientOpacity = HasGradientOpacity(inputs);
     if (lightingComplexity > 0 || hasGradientOpacity)
@@ -512,14 +512,14 @@ namespace vtkvolume
         \n  //\
         \n  vec2 fragTexCoord2 = (gl_FragCoord.xy - in_windowLowerLeftCorner) *\
         \n                        in_inverseWindowSize;\
-        \n  vec4 depthValue = texture2D(in_depthPassSampler, fragTexCoord2);\
+        \n  vec4 depthValue = texture(in_depthPassSampler, fragTexCoord2);\
         \n  vec4 dataPos = WindowToNDC(gl_FragCoord.x, gl_FragCoord.y, depthValue.x);\
         \n\
         \n  // From normalized device coordinates to eye coordinates.\
         \n  // in_projectionMatrix is inversed because of way VT\
         \n  // From eye coordinates to texture coordinates\
-        \n  dataPos = in_inverseTextureDatasetMatrix[0] *\
-        \n            in_inverseVolumeMatrix[0] *\
+        \n  dataPos = in_inverseTextureDatasetMatrix *\
+        \n            in_inverseVolumeMatrix *\
         \n            in_inverseModelViewMatrix *\
         \n            in_inverseProjectionMatrix *\
         \n            dataPos;\
@@ -538,7 +538,7 @@ namespace vtkvolume
     shaderStr += "\
       \n\
       \n  // Eye position in dataset space\
-      \n  g_eyePosObj = in_inverseVolumeMatrix[0] * vec4(in_cameraPos, 1.0);\
+      \n  g_eyePosObj = in_inverseVolumeMatrix * vec4(in_cameraPos, 1.0);\
       \n\
       \n  // Getting the ray marching direction (in dataset space);\
       \n  g_rayDir = normalize(ip_vertexPos.xyz - g_eyePosObj.xyz);\
@@ -554,7 +554,7 @@ namespace vtkvolume
           \n\
           \n  for (int i = 0; i < " + std::to_string(inputCount) + "; ++i)\
           \n  {\
-          \n    g_dirSteps[i] = in_sampling[i] * (ip_inverseTextureDataAdjusted * vec4(g_rayDir, 0.0)).xyz;\
+          \n    g_dirSteps[i] = volumeParameters.data[i].sampling * (ip_inverseTextureDataAdjusted * vec4(g_rayDir, 0.0)).xyz;\
           \n  }"
         ;
     }
@@ -571,7 +571,7 @@ namespace vtkvolume
       \n\
       \n  if (in_useJittering)\
       \n  {\
-      \n    float jitterValue = texture2D(in_noiseSampler, gl_FragCoord.xy / textureSize(in_noiseSampler, 0)).x;\
+      \n    float jitterValue = texture(in_noiseSampler, gl_FragCoord.xy / textureSize(in_noiseSampler, 0)).x;\
       \n    g_rayJitter[0] = g_dirStep * jitterValue;"
     ;
     if (inputCount > 1)
@@ -629,7 +629,7 @@ namespace vtkvolume
     {
         shaderStr += std::string("\
           \n  // Light position in dataset space\
-          \n  g_lightPosObj = (in_inverseVolumeMatrix[0] * vec4(in_cameraPos, 1.0));\
+          \n  g_lightPosObj = (in_inverseVolumeMatrix * vec4(in_cameraPos, 1.0));\
           \n  g_ldir = normalize(g_lightPosObj.xyz - ip_vertexPos);\
           \n  g_vdir = normalize(g_eyePosObj.xyz - ip_vertexPos);\
           \n  g_h = normalize(g_ldir + g_vdir);"
@@ -647,7 +647,7 @@ namespace vtkvolume
     return std::string(
       "    g_skip = false;\n"
       "\n"
-      "    if (any(greaterThan(g_dataPos, in_texMax[0])) || any(lessThan(g_dataPos, in_texMin[0])))\n"
+      "    if (any(greaterThan(g_dataPos, in_texMax)) || any(lessThan(g_dataPos, in_texMin)))\n"
       "    {\n"
       "      break;\n"
       "    }\n"
@@ -681,7 +681,7 @@ namespace vtkvolume
       shaderStr += std::string("\
         \nfloat computeGradientOpacity(vec4 grad)\
         \n{\
-        \n  return texture2D("+gradientTableMap[0]+", vec2(grad.w, 0.0)).r;\
+        \n  return texture("+gradientTableMap[0]+", vec2(grad.w, 0.0)).r;\
         \n}"
       );
     }
@@ -701,7 +701,7 @@ namespace vtkvolume
 
         shaderStr += std::string("\
           \n  {\
-          \n    return texture2D("+ gradientTableMap[i] + ", vec2(grad.w, 0.0)).r;\
+          \n    return texture("+ gradientTableMap[i] + ", vec2(grad.w, 0.0)).r;\
           \n  }"
         );
       }
@@ -728,9 +728,9 @@ namespace vtkvolume
         "  // Approximate Nabla(F) derivatives with central differences.\n"
         "  vec3 g1; // F_front\n"
         "  vec3 g2; // F_back\n"
-        "  vec3 xvec = vec3(in_cellStep[index].x, 0.0, 0.0);\n"
-        "  vec3 yvec = vec3(0.0, in_cellStep[index].y, 0.0);\n"
-        "  vec3 zvec = vec3(0.0, 0.0, in_cellStep[index].z);\n"
+        "  vec3 xvec = vec3(volumeParameters.data[index].cellStep.x, 0.0, 0.0);\n"
+        "  vec3 yvec = vec3(0.0, volumeParameters.data[index].cellStep.y, 0.0);\n"
+        "  vec3 zvec = vec3(0.0, 0.0, volumeParameters.data[index].cellStep.z);\n"
         "  vec3 texPosPvec[3];\n"
         "  texPosPvec[0] = texPos + xvec;\n"
         "  texPosPvec[1] = texPos + yvec;\n"
@@ -739,14 +739,14 @@ namespace vtkvolume
         "  texPosNvec[0] = texPos - xvec;\n"
         "  texPosNvec[1] = texPos - yvec;\n"
         "  texPosNvec[2] = texPos - zvec;\n"
-        "  if (in_noOfComponents[index] == 3)\n"
+        "  if (volumeParameters.data[index].noOfComponents == 3)\n"
         "  {\n"
-        "    g1.x = (texPosPvec[0].x < in_cellStep[index].x || texPosPvec[0].x > 1. - in_cellStep[index].x || sampleVolume(index, texPosPvec[0]).rgb == vec3(0.)) ? 1. : 0.;\n"
-        "    g1.y = (texPosPvec[1].y < in_cellStep[index].y || texPosPvec[1].y > 1. - in_cellStep[index].y || sampleVolume(index, texPosPvec[1]).rgb == vec3(0.)) ? 1. : 0.;\n"
-        "    g1.z = (texPosPvec[2].z < in_cellStep[index].z || texPosPvec[2].z > 1. - in_cellStep[index].z || sampleVolume(index, texPosPvec[2]).rgb == vec3(0.)) ? 1. : 0.;\n"
-        "    g2.x = (texPosNvec[0].x < in_cellStep[index].x || texPosNvec[0].x > 1. - in_cellStep[index].x || sampleVolume(index, texPosNvec[0]).rgb == vec3(0.)) ? 1. : 0.;\n"
-        "    g2.y = (texPosNvec[1].y < in_cellStep[index].y || texPosNvec[1].y > 1. - in_cellStep[index].y || sampleVolume(index, texPosNvec[1]).rgb == vec3(0.)) ? 1. : 0.;\n"
-        "    g2.z = (texPosNvec[2].z < in_cellStep[index].z || texPosNvec[2].z > 1. - in_cellStep[index].z || sampleVolume(index, texPosNvec[2]).rgb == vec3(0.)) ? 1. : 0.;\n"
+        "    g1.x = (texPosPvec[0].x < volumeParameters.data[index].cellStep.x || texPosPvec[0].x > 1. - volumeParameters.data[index].cellStep.x || sampleVolume(index, texPosPvec[0]).rgb == vec3(0.)) ? 1. : 0.;\n"
+        "    g1.y = (texPosPvec[1].y < volumeParameters.data[index].cellStep.y || texPosPvec[1].y > 1. - volumeParameters.data[index].cellStep.y || sampleVolume(index, texPosPvec[1]).rgb == vec3(0.)) ? 1. : 0.;\n"
+        "    g1.z = (texPosPvec[2].z < volumeParameters.data[index].cellStep.z || texPosPvec[2].z > 1. - volumeParameters.data[index].cellStep.z || sampleVolume(index, texPosPvec[2]).rgb == vec3(0.)) ? 1. : 0.;\n"
+        "    g2.x = (texPosNvec[0].x < volumeParameters.data[index].cellStep.x || texPosNvec[0].x > 1. - volumeParameters.data[index].cellStep.x || sampleVolume(index, texPosNvec[0]).rgb == vec3(0.)) ? 1. : 0.;\n"
+        "    g2.y = (texPosNvec[1].y < volumeParameters.data[index].cellStep.y || texPosNvec[1].y > 1. - volumeParameters.data[index].cellStep.y || sampleVolume(index, texPosNvec[1]).rgb == vec3(0.)) ? 1. : 0.;\n"
+        "    g2.z = (texPosNvec[2].z < volumeParameters.data[index].cellStep.z || texPosNvec[2].z > 1. - volumeParameters.data[index].cellStep.z || sampleVolume(index, texPosNvec[2]).rgb == vec3(0.)) ? 1. : 0.;\n"
         "  }\n"
         "  else\n"
         "  {\n"
@@ -758,8 +758,8 @@ namespace vtkvolume
         "      g2.z = sampleVolume(index, texPosNvec[2])[0];\n"
         "\n"
         "      // Apply scale and bias to the fetched values.\n"
-        "      g1 = g1 * in_volume_scale[index][0] + in_volume_bias[index][0];\n"
-        "      g2 = g2 * in_volume_scale[index][0] + in_volume_bias[index][0];\n"
+        "      g1 = g1 * volumeParameters.data[index].volumeScale[0] + volumeParameters.data[index].volumeBias[0];\n"
+        "      g2 = g2 * volumeParameters.data[index].volumeScale[0] + volumeParameters.data[index].volumeBias[0];\n"
         "\n"
         "  }\n";
       if (UseClippedVoxelIntensity(inputs) && mapper->GetClippingPlanes())
@@ -803,23 +803,22 @@ namespace vtkvolume
           "\n");
       }
       shaderStr += "\n"
-      "  if (in_noOfComponents[index] == 3)\n"
+      "  if (volumeParameters.data[index].noOfComponents == 3)\n"
       "  {\n"
       "    g2 = g1 - g2;\n"
       "    return vec4(g2, g2 == vec3(0.) ? 0. : 1.);\n"
       "  }\n"
       "  else\n"
       "  {\n"
-      "      float range = in_scalarsRange[index][1] - in_scalarsRange[index][0];\n"
-      "      g1 = in_scalarsRange[index][0] + range * g1;\n"
-      "      g2 = in_scalarsRange[index][0] + range * g2;\n"
+      "      float range = volumeParameters.data[index].scalarsRange[1] - volumeParameters.data[index].scalarsRange[0];\n"
+      "      g1 = volumeParameters.data[index].scalarsRange[0] + range * g1;\n"
+      "      g2 = volumeParameters.data[index].scalarsRange[0] + range * g2;\n"
       "    \n"
       "      // Central differences: (F_front - F_back) / 2h\n"
       "      g2 = g1 - g2;\n"
       "    \n"
-      "      float avgSpacing = (in_cellSpacing[index].x +\n"
-      "       in_cellSpacing[index].y + in_cellSpacing[index].z) / 3.0;\n"
-      "      vec3 aspect = in_cellSpacing[index] * 2.0 / avgSpacing;\n"
+      "      float avgSpacing = (volumeParameters.data[index].cellSpacing.x + volumeParameters.data[index].cellSpacing.y + volumeParameters.data[index].cellSpacing.z) / 3.0;\n"
+      "      vec3 aspect = volumeParameters.data[index].cellSpacing * 2.0 / avgSpacing;\n"
       "      g2 /= aspect;\n"
       "      float grad_mag = length(g2);\n"
       "    \n"
@@ -827,7 +826,7 @@ namespace vtkvolume
       "      g2 = grad_mag > 0.0 ? normalize(g2) : vec3(0.0);\n"
       "    \n"
       "      range = range != 0 ? range : 1.0;\n"
-      "      grad_mag = grad_mag / in_gradMagMax[index];\n"
+      "      grad_mag = grad_mag / volumeParameters.data[index].gradMagMax;\n"
       "      grad_mag = clamp(grad_mag, 0.0, 1.0);\n"
       "    \n"
       "      return vec4(g2.xyz, grad_mag);\n"
@@ -911,8 +910,8 @@ namespace vtkvolume
         else if (lightingComplexity == 2)
         {
           shaderStr +=
-            "\n  g_fragWorldPos = in_modelViewMatrix * in_volumeMatrix[0] *"
-            "\n                   in_textureDatasetMatrix[0] * vec4(-g_dataPos, 1.0);"
+            "\n  g_fragWorldPos = in_modelViewMatrix * in_volumeMatrix *"
+            "\n                   in_textureDatasetMatrix * vec4(-g_dataPos, 1.0);"
             "\n  if (g_fragWorldPos.w != 0.0)"
             "\n  {"
             "\n    g_fragWorldPos /= g_fragWorldPos.w;"
@@ -925,7 +924,7 @@ namespace vtkvolume
             "\n  float normalLength = length(normal);"
             "\n  if (normalLength > 0.0)"
             "\n  {"
-            "\n    normal = normalize((in_textureToEye[0] * vec4(normal, 0.0)).xyz);"
+            "\n    normal = normalize((in_textureToEye * vec4(normal, 0.0)).xyz);"
             "\n  }"
             "\n  else"
             "\n  {"
@@ -964,8 +963,8 @@ namespace vtkvolume
         else if (lightingComplexity == 3)
         {
           shaderStr +=
-            "\n  g_fragWorldPos = in_modelViewMatrix * in_volumeMatrix[0] *"
-            "\n                      in_textureDatasetMatrix[0] * vec4(g_dataPos, 1.0);"
+            "\n  g_fragWorldPos = in_modelViewMatrix * in_volumeMatrix *"
+            "\n                      in_textureDatasetMatrix * vec4(g_dataPos, 1.0);"
             "\n  if (g_fragWorldPos.w != 0.0)"
             "\n  {"
             "\n    g_fragWorldPos /= g_fragWorldPos.w;"
@@ -975,7 +974,7 @@ namespace vtkvolume
             "\n  vec3 diffuse = vec3(0,0,0);"
             "\n  vec3 specular = vec3(0,0,0);"
             "\n  vec3 vertLightDirection;"
-            "\n  vec3 normal = normalize((in_textureToEye[0] * vec4(gradient.xyz, 0.0)).xyz);"
+            "\n  vec3 normal = normalize((in_textureToEye * vec4(gradient.xyz, 0.0)).xyz);"
             "\n  vec3 lightDir;"
             "\n  for (int lightNum = 0; lightNum < in_numberOfLights; lightNum++)"
             "\n  {"
@@ -1138,7 +1137,7 @@ namespace vtkvolume
           ss << "\
           \nvec4 computeColor(int index, vec4 scalar, float opacity)\
           \n{\
-          \n  return computeLighting(index, vec4(texture2D(in_transfer2D[0], vec2(scalar.w, 0.)).xyz, opacity), computeGradient(index, g_dataPos));\
+          \n  return computeLighting(index, vec4(texture(in_transfer2D[0], vec2(scalar.w, 0.)).xyz, opacity), computeGradient(index, g_dataPos));\
           \n}";
         return ss.str();
       }
@@ -1158,7 +1157,7 @@ namespace vtkvolume
       //
       //    shaderStr += std::string("\
       //      \n    {\
-      //      \n    return computeLighting(vec4(texture2D(\
+      //      \n    return computeLighting(vec4(texture(\
       //      \n      " + colorTableMap[i]);
       //    shaderStr += std::string(", vec2(\
       //      \n      scalar[" + toString.str() + "], 0.)).xyz,\
@@ -1178,7 +1177,7 @@ namespace vtkvolume
       //  shaderStr += std::string("\
       //    \nvec4 computeColor(vec4 scalar, float opacity)\
       //    \n  {\
-      //    \n  return computeLighting(vec4(texture2D(" + colorTableMap[0] + ",\
+      //    \n  return computeLighting(vec4(texture(" + colorTableMap[0] + ",\
       //    \n                                        vec2(scalar.x, 0.0)).xyz,\
       //    \n                              opacity), 0);\
       //    \n  }");
@@ -1213,27 +1212,26 @@ namespace vtkvolume
   }
 
   //--------------------------------------------------------------------------
-  std::string ComputeOpacityMultiDeclaration(
-    vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs)
+  std::string ComputeOpacityMultiDeclaration(vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs)
   {
     std::ostringstream ss;
     //ss << "uniform sampler2D " << ArrayBaseName(map[0]) << "[" << numComp << "];\n"
     //      "\nfloat computeOpacity(int index, vec4 scalar)\n"
     //      "{\n"
-    //      "  return texture2D(" << ArrayBaseName(map[0]) << "[0], vec2(scalar.w, 0)).r;\n"
+    //      "  return texture(" << ArrayBaseName(map[0]) << "[0], vec2(scalar.w, 0)).r;\n"
     //      "}\n"
     //      "\n";
     ss <<
         "\n"
         "float computeOpacity(int index, vec4 scalar)\n"
         "{\n"
-        "  if (in_noOfComponents[index] == 3)\n"
+        "  if (volumeParameters.data[index].noOfComponents == 3)\n"
         "  {\n"
         "    return scalar.rgb == vec3(0.) ? 0. : 1.;\n"
         "  }\n"
         "  else\n"
         "  {\n"
-        "    return 0. /*texture2D(wut[0], vec2(scalar.w, 0)).r*/;\n"
+        "    return 0. /*texture(wut[0], vec2(scalar.w, 0)).r*/;\n"
         "  }\n"
         "}\n"
         "\n";
@@ -1266,7 +1264,7 @@ namespace vtkvolume
     ss<<
       "float computeGradientOpacity(const in float scalar, const in sampler2D opacityTF)\n"
       "{\n"
-      "  return texture2D(opacityTF, vec2(scalar, 0)).r;\n"
+      "  return texture(opacityTF, vec2(scalar, 0)).r;\n"
       "}\n";
     return ss.str();
   }
@@ -1294,7 +1292,7 @@ namespace vtkvolume
     //
     //    shaderStr += std::string("\
     //      \n  {\
-    //      \n    return texture2D(" + opacityTableMap[i]);
+    //      \n    return texture(" + opacityTableMap[i]);
     //
     //    shaderStr += std::string(",vec2(scalar[" + toString.str() + "], 0)).r;\
     //      \n  }");
@@ -1308,7 +1306,7 @@ namespace vtkvolume
     //  shaderStr += std::string("\
     //    \nfloat computeOpacity(vec4 scalar)\
     //    \n{\
-    //    \n  return texture2D(" + opacityTableMap[0] + ", vec2(scalar.y, 0)).r;\
+    //    \n  return texture(" + opacityTableMap[0] + ", vec2(scalar.y, 0)).r;\
     //    \n}");
     //  return shaderStr;
     //}
@@ -1320,7 +1318,7 @@ namespace vtkvolume
       std::string shaderStr = ss.str();
       shaderStr +=  "\nfloat computeOpacity(int index, vec4 scalar)\
                      \n{\
-                     \n  return texture2D(" + opacityTableMap[0] + ", vec2(scalar.w, 0)).r;\
+                     \n  return texture(" + opacityTableMap[0] + ", vec2(scalar.w, 0)).r;\
                      \n}";
       return shaderStr;
     }
@@ -1367,7 +1365,7 @@ namespace vtkvolume
       //    shaderStr += std::string(
       //        "  if (component == " + num + ")\n"
       //        "  {\n"
-      //        "    vec4 color = texture2D(" + colorTableMap[i] + ",\n"
+      //        "    vec4 color = texture(" + colorTableMap[i] + ",\n"
       //        "      vec2(scalar[" + num + "], g_gradients_0[" + num + "].w));\n"
       //        "    return computeLighting(color, " + num + ", g_dataPos, in_volume[0], 0);\n"
       //        "  }\n");
@@ -1382,7 +1380,7 @@ namespace vtkvolume
       //  return std::string(
       //    "vec4 computeColor(vec4 scalar, float opacity)\n"
       //    "{\n"
-      //    "  vec4 color = texture2D(" + colorTableMap[0]  + ",\n"
+      //    "  vec4 color = texture(" + colorTableMap[0]  + ",\n"
       //    "                         vec2(scalar.x, g_gradients_0[0].w));\n"
       //    "  return computeLighting(color, 0, g_dataPos, in_volume[0], 0);\n"
       //    "}\n");
@@ -1400,8 +1398,6 @@ namespace vtkvolume
   std::string Transfer2DDeclaration(vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs, const int tf2DCount)
   {
     std::ostringstream ss;
-    ss << "uniform vec4 in_transfer2DRegion[" << inputs.size() << "];\n";
-    ss << "uniform int in_transfer2DIndex[" << inputs.size() << "];\n";
     if (tf2DCount)
     {
         ss << "uniform sampler2D in_transfer2D[" << tf2DCount << "];\n";
@@ -1415,13 +1411,13 @@ namespace vtkvolume
     {
         ss <<
             "\n"
-            "  vec4 region = in_transfer2DRegion[index];\n"
+            "  vec4 region = volumeParameters.data[index].transfer2dRegion;\n"
             "  uv = vec2(region.x + uv.x * region.z,\n"
             "            region.y + uv.y * region.w);\n"
             "  vec2 diffx = dFdx(uv);\n"
             "  vec2 diffy = dFdy(uv);\n"
             "\n"
-            "  int samplerIndex = in_transfer2DIndex[index];\n"
+            "  int samplerIndex = volumeParameters.data[index].transfer2dIndex;\n"
             "  switch (samplerIndex)\n"
             "  {\n";
         for (int i = 0; i < tf2DCount; ++i)
@@ -1479,7 +1475,7 @@ namespace vtkvolume
     //      toString <<
     //      "  if (component == " << i << ")\n"
     //      "  {\n"
-    //      "    return texture2D(" << opacityTableMap[i] << ",\n"
+    //      "    return texture(" << opacityTableMap[i] << ",\n"
     //      "      vec2(scalar[" << i << "], g_gradients_0[" << i << "].w)).a;\n"
     //      "  }\n";
     //  }
@@ -1492,7 +1488,7 @@ namespace vtkvolume
     //  toString <<
     //    "float computeOpacity(vec4 scalar)\n"
     //    "{\n"
-    //    "  return texture2D(" + opacityTableMap[0] + ",\n"
+    //    "  return texture(" + opacityTableMap[0] + ",\n"
     //    "    vec2(scalar.y, g_gradients_0[0].w)).a;\n"
     //    "}\n";
     //}
@@ -1582,16 +1578,16 @@ namespace vtkvolume
             "    intervals[i].tEnter = FLOAT_MAX;\n"
             "    intervals[i].tExit = -FLOAT_MAX;\n"
             "    intervals[i].valid = false;\n"
-            "    if (in_volumeVisibility[i] == true || in_regionIndex[i] >= 0)\n"
+            "    if (volumeParameters.data[i].volumeVisibility == true || volumeParameters.data[i].regionIndex >= 0)\n"
             "    {\n"
-            "      mat4 globalToLocalDatasetTransform = in_inverseVolumeMatrix[i + 1] * in_volumeMatrix[0];\n"
+            "      mat4 globalToLocalDatasetTransform = volumeParameters.data[i].inverseVolumeMatrix * in_volumeMatrix;\n"
             "      vec3 localEye = (globalToLocalDatasetTransform * g_eyePosObj).xyz;\n"
             "      vec3 localDir = normalize((globalToLocalDatasetTransform * vec4(g_rayDir, 0.)).xyz);\n"
-            "      vec2 interval = intersectRayBox(localEye, localDir, in_boundsMin[i], in_boundsMax[i]);\n"
+            "      vec2 interval = intersectRayBox(localEye, localDir, volumeParameters.data[i].boundsMin, volumeParameters.data[i].boundsMax);\n"
             "      intervals[i].valid = interval.x < interval.y && interval.x < FLOAT_MAX && interval.y > 0.;\n"
             "      if (intervals[i].valid == true)\n"
             "      {\n"
-            "        mat4 localToGlobalDatasetTransform = in_inverseVolumeMatrix[0] * in_volumeMatrix[i + 1];\n"
+            "        mat4 localToGlobalDatasetTransform = in_inverseVolumeMatrix * volumeParameters.data[i].volumeMatrix;\n"
             "        vec3 posEnter = (localToGlobalDatasetTransform * vec4(localEye + interval.x * localDir, 1.)).xyz;\n"
             "        vec3 posExit = (localToGlobalDatasetTransform * vec4(localEye + interval.y * localDir, 1.)).xyz;\n"
             "        intervals[i].tEnter = dot(posEnter - g_eyePosObj.xyz, g_rayDir) / g_rayDirDot;\n"
@@ -1616,7 +1612,7 @@ namespace vtkvolume
             "    if (intersections[i].volumeIndex >= 0)\n"
             "    {\n"
             "      SamplePoint samplePoint;\n"
-            "      samplePoint.dataPos = (in_inverseTextureDatasetMatrix[0] * vec4(g_eyePosObj.xyz + intersections[i].t * g_rayDir, 1.)).xyz + g_rayJitter[intersections[i].volumeIndex + 1];\n"
+            "      samplePoint.dataPos = (in_inverseTextureDatasetMatrix * vec4(g_eyePosObj.xyz + intersections[i].t * g_rayDir, 1.)).xyz + g_rayJitter[intersections[i].volumeIndex + 1];\n"
             "      samplePoint.t = intersections[i].t;\n"
             "      samplePoint.volumeIndex = intersections[i].volumeIndex;\n"
             "      samplePointSet.samplePoints[samplePointSet.size++] = samplePoint;\n"
@@ -1789,43 +1785,42 @@ namespace vtkvolume
               // T = T_dataToTex1 * T_worldToData * T_bboxTexToWorld;
               "    {\n"
               "      int i = frontSamplePoint.volumeIndex;\n"
-              "      int idx = i + 1;\n" // when first item in an array is the global dataset (the multi-volume pseudo-object related data like in_volumeMatrix[0])
               "      g_skip = false;\n"
-              "      texPos = (in_cellToPoint[idx] * in_inverseTextureDatasetMatrix[idx] * in_inverseVolumeMatrix[idx] *\n"
-              "                in_volumeMatrix[0] * in_textureDatasetMatrix[0] * vec4(g_dataPos.xyz, 1.0)).xyz;\n"
+              "      texPos = (volumeParameters.data[i].cellToPoint * volumeParameters.data[i].inverseTextureDatasetMatrix * volumeParameters.data[i].inverseVolumeMatrix *\n"
+              "                in_volumeMatrix * in_textureDatasetMatrix * vec4(g_dataPos.xyz, 1.0)).xyz;\n"
               "\n"
               "      noMask = true;\n"
               "      maskedByRegion = false;\n"
               "\n"
-              "      if (in_maskIndex[i] != -1)\n"
+              "      if (volumeParameters.data[i].maskIndex != -1)\n"
               "      {\n"
               "        noMask = false;\n"
-              "        if (sampleMask(in_maskIndex[i], texPos).r > 0)\n"
+              "        if (sampleMask(volumeParameters.data[i].maskIndex, texPos).r > 0)\n"
               "        {\n"
               "          maskedByRegion = true;\n"
               "        }\n"
               "      }\n"
               "\n"
               "      maskedByBox = false;\n"
-              "      p = vec3(in_inverseVolumeMatrix[idx] * in_volumeMatrix[0] * in_textureDatasetMatrix[0] * vec4(g_dataPos.xyz, 1.)); \n"
-              "      if (in_boxMaskAxisX[i] != vec3(0.) && in_boxMaskAxisY[i] != vec3(0.) && in_boxMaskAxisZ[i] != vec3(0.))\n"
+              "      p = vec3(volumeParameters.data[i].inverseVolumeMatrix * in_volumeMatrix * in_textureDatasetMatrix * vec4(g_dataPos.xyz, 1.)); \n"
+              "      if (volumeParameters.data[i].boxMaskAxisX != vec3(0.) && volumeParameters.data[i].boxMaskAxisY != vec3(0.) && volumeParameters.data[i].boxMaskAxisZ != vec3(0.))\n"
               "      {\n"
               "        noMask = false;\n"
-              "        float projX = dot(p - in_boxMaskOrigin[i], in_boxMaskAxisX[i]) / dot(in_boxMaskAxisX[i], in_boxMaskAxisX[i]);\n"
-              "        float projY = dot(p - in_boxMaskOrigin[i], in_boxMaskAxisY[i]) / dot(in_boxMaskAxisY[i], in_boxMaskAxisY[i]);\n"
-              "        float projZ = dot(p - in_boxMaskOrigin[i], in_boxMaskAxisZ[i]) / dot(in_boxMaskAxisZ[i], in_boxMaskAxisZ[i]);\n"
+              "        float projX = dot(p - volumeParameters.data[i].boxMaskOrigin, volumeParameters.data[i].boxMaskAxisX) / dot(volumeParameters.data[i].boxMaskAxisX, volumeParameters.data[i].boxMaskAxisX);\n"
+              "        float projY = dot(p - volumeParameters.data[i].boxMaskOrigin, volumeParameters.data[i].boxMaskAxisY) / dot(volumeParameters.data[i].boxMaskAxisY, volumeParameters.data[i].boxMaskAxisY);\n"
+              "        float projZ = dot(p - volumeParameters.data[i].boxMaskOrigin, volumeParameters.data[i].boxMaskAxisZ) / dot(volumeParameters.data[i].boxMaskAxisZ, volumeParameters.data[i].boxMaskAxisZ);\n"
               "        maskedByBox = projX >= 0. && projX <= 1. &&\n"
               "                      projY >= 0. && projY <= 1. &&\n"
               "                      projZ >= 0. && projZ <= 1.;\n"
               "      }\n"
               "      {\n"
-              "        float cylinderMaskRadius = in_cylinderMask[7 * i + 6];\n"
+              "        float cylinderMaskRadius = volumeParameters.data[i].cylinderMaskRadius;\n"
               "        maskedByCylinder = false;\n"         
               "        if (cylinderMaskRadius > 0.)\n"
               "        {\n"
               "          noMask = false;\n"
-              "          vec3 cylinderMaskCenter = vec3(in_cylinderMask[7 * i + 0], in_cylinderMask[7 * i + 1], in_cylinderMask[7 * i + 2]);\n"
-              "          vec3 cylinderMaskAxis = vec3(in_cylinderMask[7 * i + 3], in_cylinderMask[7 * i + 4], in_cylinderMask[7 * i + 5]);\n"
+              "          vec3 cylinderMaskCenter = volumeParameters.data[i].cylinderMaskCenter;\n"
+              "          vec3 cylinderMaskAxis = volumeParameters.data[i].cylinderMaskAxis;\n"
               "          vec3 cylinderMaskLineOrigin = cylinderMaskCenter + cylinderMaskAxis;\n"
               "          vec3 cylinderMaskLineDir = 2. * -cylinderMaskAxis;\n"
               "          float cylinderMaskLineT = dot(p - cylinderMaskLineOrigin, cylinderMaskLineDir) / dot(cylinderMaskLineDir, cylinderMaskLineDir);\n"
@@ -1837,18 +1832,18 @@ namespace vtkvolume
               "          }\n"
               "        }\n"
               "      }\n"
-              "      if (g_skip == false && all(lessThanEqual(texPos, in_texMax[idx])) && all(greaterThanEqual(texPos, in_texMin[idx])) &&\n"
+              "      if (g_skip == false && all(lessThanEqual(texPos, volumeParameters.data[i].texMax)) && all(greaterThanEqual(texPos, volumeParameters.data[i].texMin)) &&\n"
               "          (noMask || (maskedByBox || maskedByCylinder || maskedByRegion)))\n"
               "      {\n"
               "        bool computeFragColor = false;\n"
               "        vec4 scalar = sampleVolume(i, texPos);\n"
-              "        scalar = in_volume_scale[i] * scalar + in_volume_bias[i];\n"
+              "        scalar = volumeParameters.data[i].volumeScale * scalar + volumeParameters.data[i].volumeBias;\n"
               "\n"
               "        vec4 regionResultColor = vec4(0.);\n"
-              "        if (in_regionIndex[i] >= 0)\n"
+              "        if (volumeParameters.data[i].regionIndex >= 0)\n"
               "        {\n"
-              "          uvec4 regionMaskValue = sampleRegionMask(in_regionIndex[i], texPos);\n"
-              "          int regionCount = in_regionOffset[idx] - in_regionOffset[i];\n"
+              "          uvec4 regionMaskValue = sampleRegionMask(volumeParameters.data[i].regionIndex, texPos);\n"
+              "          int regionCount = in_regionOffset[i + 1] - in_regionOffset[i];\n"
               "          for (int regionIndex = 0; regionIndex < regionCount; ++regionIndex)\n"
               "          {\n"
               "            if ((regionMaskValue[regionIndex / 32] & uint(1 << (regionIndex % 32))) != uint(0))\n"
@@ -1864,12 +1859,12 @@ namespace vtkvolume
               "        }\n"
               "\n"
               "        g_srcColor = vec4(0.);\n"
-              "        if (in_volumeVisibility[i] == true)\n"
+              "        if (volumeParameters.data[i].volumeVisibility == true)\n"
               "        {\n"
               "          vec4 color = vec4(0.);\n"
               "          vec4 grad = vec4(0.);\n"
               "\n"
-              "          if (in_noOfComponents[i] == 1)\n"
+              "          if (volumeParameters.data[i].noOfComponents == 1)\n"
               "          {\n"
               "            scalar = vec4(scalar.r);\n"
               "            g_gradients[i] = computeGradient(i, texPos);\n"
@@ -1904,6 +1899,7 @@ namespace vtkvolume
               "          for (int ds = 0; ds < " + std::to_string(visibleCount) + "; ++ds)\n"
               "          {\n"
               "            g_fragColor += (1. - g_fragColor.a) * g_srcColor;\n"
+              "            g_fragColor.a = 1.;\n" // TODO REMOVE THIS BITCH HERE
               "          }\n"
               "        }\n"
               "      }\n"
@@ -1932,24 +1928,24 @@ namespace vtkvolume
                  "\n"
                  "    bool noMask = true;\n"
                  "    bool maskedByBox = false;\n"
-                 "    vec3 p = vec3(in_textureDatasetMatrix[0] * vec4(g_dataPos, 1.));\n"
-                 "    if (in_boxMaskAxisX[0] != vec3(0.) && in_boxMaskAxisY[0] != vec3(0.) && in_boxMaskAxisZ[0] != vec3(0.))\n"
+                 "    vec3 p = vec3(in_textureDatasetMatrix * vec4(g_dataPos, 1.));\n"
+                 "    if (volumeParameters.data[0].boxMaskAxisX != vec3(0.) && volumeParameters.data[0].boxMaskAxisY != vec3(0.) && volumeParameters.data[0].boxMaskAxisZ != vec3(0.))\n"
                  "    {\n"
                  "      noMask = false;\n"
-                 "      float projX = dot(p - in_boxMaskOrigin[0], in_boxMaskAxisX[0]) / dot(in_boxMaskAxisX[0], in_boxMaskAxisX[0]);\n"
-                 "      float projY = dot(p - in_boxMaskOrigin[0], in_boxMaskAxisY[0]) / dot(in_boxMaskAxisY[0], in_boxMaskAxisY[0]);\n"
-                 "      float projZ = dot(p - in_boxMaskOrigin[0], in_boxMaskAxisZ[0]) / dot(in_boxMaskAxisZ[0], in_boxMaskAxisZ[0]);\n"
+                 "      float projX = dot(p - volumeParameters.data[0].boxMaskOrigin, volumeParameters.data[0].boxMaskAxisX) / dot(volumeParameters.data[0].boxMaskAxisX, volumeParameters.data[0].boxMaskAxisX);\n"
+                 "      float projY = dot(p - volumeParameters.data[0].boxMaskOrigin, volumeParameters.data[0].boxMaskAxisY) / dot(volumeParameters.data[0].boxMaskAxisY, volumeParameters.data[0].boxMaskAxisY);\n"
+                 "      float projZ = dot(p - volumeParameters.data[0].boxMaskOrigin, volumeParameters.data[0].boxMaskAxisZ) / dot(volumeParameters.data[0].boxMaskAxisZ, volumeParameters.data[0].boxMaskAxisZ);\n"
                  "      maskedByBox = projX >= 0. && projX <= 1. &&\n"
                  "                    projY >= 0. && projY <= 1. &&\n"
                  "                    projZ >= 0. && projZ <= 1.;\n"
                  "    }\n"
-                 "    float cylinderMaskRadius = in_cylinderMask[6];\n"     
+                 "    float cylinderMaskRadius = volumeParameters.data[0].cylinderMaskRadius;\n"     
                  "    bool maskedByCylinder = false;\n"         
                  "    if (cylinderMaskRadius > 0.)\n"
                  "    {\n"
                  "      noMask = false;\n"
-                 "      vec3 cylinderMaskCenter = vec3(in_cylinderMask[0], in_cylinderMask[1], in_cylinderMask[2]);\n"
-                 "      vec3 cylinderMaskAxis = vec3(in_cylinderMask[3], in_cylinderMask[4], in_cylinderMask[5]);\n"
+                 "      vec3 cylinderMaskCenter = volumeParameters.data[0].cylinderMaskCenter;\n"
+                 "      vec3 cylinderMaskAxis = volumeParameters.data[0].cylinderMaskAxis;\n"
                  "      vec3 cylinderMaskLineOrigin = cylinderMaskCenter + cylinderMaskAxis;\n"
                  "      vec3 cylinderMaskLineDir = 2. * -cylinderMaskAxis;\n"
                  "      float cylinderMaskLineT = dot(p - cylinderMaskLineOrigin, cylinderMaskLineDir) / dot(cylinderMaskLineDir, cylinderMaskLineDir);\n"
@@ -1964,7 +1960,7 @@ namespace vtkvolume
     {
         shaderStr += "    bool maskedByRegion = false;\n"
                      "    noMask = false;\n"
-                     "    if (texture3D(in_mask[0], g_dataPos).r > 0.)\n"
+                     "    if (texture(in_mask[0], g_dataPos).r > 0.)\n"
                      "    {\n"
                      "      maskedByRegion = true;\n"
                      "    }\n";
@@ -1972,7 +1968,7 @@ namespace vtkvolume
     shaderStr +=
       "\n    if (g_skip == false && (noMask || (maskedByBox || maskedByCylinder" + std::string(maskInput ? " || maskedByRegion" : "") + ")))"
       "\n    {"
-      "\n      vec4 scalar = texture3D(in_volume[0], g_dataPos);"
+      "\n      vec4 scalar = texture(in_volume[0], g_dataPos);"
       "\n      bool computeFragColor = false;"
     ;
 
@@ -1980,7 +1976,7 @@ namespace vtkvolume
     if (noOfComponents == 1)
     {
       shaderStr += std::string("\
-        \n      scalar.r = scalar.r * in_volume_scale[0].r + in_volume_bias[0].r;\
+        \n      scalar.r = scalar.r * volumeParameters.data[0].volumeScale.r + volumeParameters.data[0].volumeBias.r;\
         \n      scalar = vec4(scalar.r);"
       );
     }
@@ -1988,7 +1984,7 @@ namespace vtkvolume
     {
       // handle bias and scale
       shaderStr += std::string("\
-        \n      scalar = scalar * in_volume_scale[0] + in_volume_bias[0];"
+        \n      scalar = scalar * volumeParameters.data[0].volumeScale + volumeParameters.data[0].volumeBias;"
       );
     }
 
@@ -2018,9 +2014,9 @@ namespace vtkvolume
             if (bitRegion.mask)
             {
                 shaderStr +=
-                "      if (in_regionIndex[0] >= 0)\n"
+                "      if (volumeParameters.data[0].regionIndex >= 0)\n"
                 "      {\n"
-                "        uvec4 regionMaskValue = sampleRegionMask(in_regionIndex[0], g_dataPos);\n"
+                "        uvec4 regionMaskValue = sampleRegionMask(volumeParameters.data[0].regionIndex, g_dataPos);\n"
                 "        int regionCount = in_regionOffset[1] - in_regionOffset[0];\n"
                 "        for (int regionIndex = 0; regionIndex < regionCount; ++regionIndex)\n"
                 "        {\n"
@@ -2040,7 +2036,7 @@ namespace vtkvolume
         }
         shaderStr += "\
            \n      g_srcColor = vec4(0.0);\
-           \n      if (in_volumeVisibility[0] == true)\
+           \n      if (volumeParameters.data[0].volumeVisibility == true)\
            \n      {\
            \n        g_srcColor.a = computeOpacity(0, scalar);\
            \n        if (g_srcColor.a > 0.0)\
@@ -2338,7 +2334,7 @@ namespace vtkvolume
       \n#ifdef GL_ES\
       \n  vec4 l_depthValue = vec4(1.0,1.0,1.0,1.0);\
       \n#else\
-      \n  vec4 l_depthValue = texture2D(in_depthSampler, fragTexCoord);\
+      \n  vec4 l_depthValue = texture(in_depthSampler, fragTexCoord);\
       \n#endif\
       \n  // Depth test\
       \n  if(gl_FragCoord.z >= l_depthValue.x)\
@@ -2361,7 +2357,7 @@ namespace vtkvolume
       \n  // in_projectionMatrix is inversed because of way VT\
       \n  // From eye coordinates to texture coordinates\
       \n  terminatePosTmp = ip_inverseTextureDataAdjusted *\
-      \n                    in_inverseVolumeMatrix[0] *\
+      \n                    in_inverseVolumeMatrix *\
       \n                    in_inverseModelViewMatrix *\
       \n                    in_inverseProjectionMatrix *\
       \n                    terminatePosTmp;\
@@ -2432,7 +2428,7 @@ namespace vtkvolume
     {
       str += "\n"
         "    vec3 nextDataPos = g_dataPos + g_dirSteps[frontSamplePoint.volumeIndex];\n"
-        "    float tNext = dot((in_textureDatasetMatrix[0] * vec4(nextDataPos, 1.) - g_eyePosObj).xyz, g_rayDir) / g_rayDirDot;\n"
+        "    float tNext = dot((in_textureDatasetMatrix * vec4(nextDataPos, 1.) - g_eyePosObj).xyz, g_rayDir) / g_rayDirDot;\n"
         "    if (tNext < intervals[frontSamplePoint.volumeIndex].tExit + FLOAT_EPS)\n"
         "    {\n"
         "      SamplePoint newSamplePoint;\n"
@@ -2526,7 +2522,7 @@ namespace vtkvolume
 
     return std::string("\
       \n  // Convert cropping region to texture space\
-      \n  mat4  datasetToTextureMat = in_inverseTextureDatasetMatrix[0];\
+      \n  mat4  datasetToTextureMat = in_inverseTextureDatasetMatrix;\
       \n\
       \n  vec4 tempCrop = vec4(in_croppingPlanes[0], 0.0, 0.0, 1.0);\
       \n  tempCrop = datasetToTextureMat * tempCrop;\
@@ -2713,8 +2709,8 @@ namespace vtkvolume
       \n    }\
       \n  }\
       \n\
-      \n  if (any(greaterThan(startPosTex, in_texMax[0])) ||\
-      \n      any(lessThan(startPosTex, in_texMin[0])))\
+      \n  if (any(greaterThan(startPosTex, in_texMax)) ||\
+      \n      any(lessThan(startPosTex, in_texMin)))\
       \n  {\
       \n    return false;\
       \n  }\
@@ -2738,7 +2734,7 @@ namespace vtkvolume
     if (!ren->GetActiveCamera()->GetParallelProjection())
     {
       shaderStr = std::string("\
-        \n  vec4 tempClip = in_volumeMatrix[0] * vec4(g_rayDir, 0.0);\
+        \n  vec4 tempClip = in_volumeMatrix * vec4(g_rayDir, 0.0);\
         \n  if (tempClip.w != 0.0)\
         \n  {\
         \n    tempClip = tempClip/tempClip.w;\
@@ -2754,8 +2750,8 @@ namespace vtkvolume
 
     shaderStr += std::string("\
       \n  clip_numPlanes = int(in_clippingPlanes[0]);\
-      \n  clip_texToObjMat = in_volumeMatrix[0] * in_textureDatasetMatrix[0];\
-      \n  clip_objToTexMat = in_inverseTextureDatasetMatrix[0] * in_inverseVolumeMatrix[0];");
+      \n  clip_texToObjMat = in_volumeMatrix * in_textureDatasetMatrix;\
+      \n  clip_objToTexMat = in_inverseTextureDatasetMatrix * in_inverseVolumeMatrix;");
 
     return shaderStr;
   }
@@ -2802,7 +2798,8 @@ namespace vtkvolume
                                     const std::map<vtkVolume*, vtkImageData*>& maskInputs,
                                     const std::map<vtkVolume*, vtkSmartPointer<vtkVolumeTexture>>& masks)
   {
-    std::string str = "uniform int in_maskIndex[" + std::to_string(inputs.size()) + "];\n";
+    //std::string str = "uniform int in_maskIndex[" + std::to_string(inputs.size()) + "];\n";
+    std::string str;
     if (maskInputs.size() >= 1)
     {
         str += "uniform sampler3D in_mask[" + std::to_string(maskInputs.size()) + "];\n";
@@ -2850,7 +2847,7 @@ namespace vtkvolume
     //else if (mapper->GetInputCount() == 1)
     //{
     //  return std::string("\
-    //    \n    vec4 maskValue = texture3D(in_mask[0], g_dataPos);\
+    //    \n    vec4 maskValue = texture(in_mask[0], g_dataPos);\
     //    \n    if(maskValue.r <= 0)\
     //    \n    {\
     //    \n      g_skip = true;\
@@ -2876,8 +2873,7 @@ namespace vtkvolume
     }
 
     const std::string inputsCountStr = std::to_string(inputs.size());
-    std::string str = "uniform int in_regionIndex[" + inputsCountStr + "];\n" +
-                      "uniform int in_regionOffset[" + std::to_string(inputs.size() + 1) + "];\n";
+    std::string str = "uniform int in_regionOffset[" + std::to_string(inputs.size() + 1) + "];\n";
     if (inputsWithBitRegionCount)
     {
         str += "uniform usampler3D in_regionMask[" + std::to_string(inputsWithBitRegionCount) + "];\n";
@@ -2968,7 +2964,7 @@ namespace vtkvolume
     else
     {
       std::string shaderStr = std::string("\
-        \nvec4 scalar = texture3D(in_volume[0], g_dataPos);");
+        \nvec4 scalar = texture(in_volume[0], g_dataPos);");
 
       // simulate old intensity textures
       if (noOfComponents == 1)
@@ -2995,7 +2991,7 @@ namespace vtkvolume
         \n  {\
         \n  float opacity = computeOpacity(scalar);\
         \n  // Get the mask value at this same location\
-        \n  vec4 maskValue = texture3D(in_mask, g_dataPos);\
+        \n  vec4 maskValue = texture(in_mask, g_dataPos);\
         \n  if(maskValue.r == 0.0)\
         \n    {\
         \n    g_srcColor = computeColor(scalar, opacity);\
@@ -3004,12 +3000,12 @@ namespace vtkvolume
         \n    {\
         \n    if (maskValue.r == 1.0/255.0)\
         \n      {\
-        \n      g_srcColor = texture2D(in_mask1, vec2(scalar.w,0.0));\
+        \n      g_srcColor = texture(in_mask1, vec2(scalar.w,0.0));\
         \n      }\
         \n    else\
         \n      {\
         \n      // maskValue.r == 2.0/255.0\
-        \n      g_srcColor = texture2D(in_mask2, vec2(scalar.w,0.0));\
+        \n      g_srcColor = texture(in_mask2, vec2(scalar.w,0.0));\
         \n      }\
         \n    g_srcColor.a = 1.0;\
         \n    if(in_maskBlendFactor < 1.0)\
@@ -3078,7 +3074,7 @@ namespace vtkvolume
     \n  else\
     \n    {\
     \n    vec4 depthValue = in_projectionMatrix * in_modelViewMatrix *\
-    \n                      in_volumeMatrix[0] * in_textureDatasetMatrix[0] *\
+    \n                      in_volumeMatrix * in_textureDatasetMatrix *\
     \n                      vec4(l_opaqueFragPos, 1.0);\
     \n    depthValue /= depthValue.w;\
     \n    gl_FragData[1] = vec4(vec3(0.5 * (gl_DepthRange.far -\
@@ -3119,7 +3115,7 @@ namespace vtkvolume
   {
   return std::string("\
     \n  vec4 depthValue = in_projectionMatrix * in_modelViewMatrix *\
-    \n                  in_volumeMatrix[0] * in_textureDatasetMatrix[0] *\
+    \n                  in_volumeMatrix * in_textureDatasetMatrix *\
     \n                  vec4(l_isoPos, 1.0);\
     \n  gl_FragData[0] = vec4(l_isoPos, 1.0);\
     \n  gl_FragData[1] = vec4(vec3((depthValue.z/depthValue.w) * 0.5 + 0.5),\
@@ -3158,7 +3154,7 @@ namespace vtkvolume
     for (size_t i = 0; i < usedNames; i++)
     {
       std::stringstream ss;  ss << i;
-      shader += " gl_FragData[" + ss.str() + "] = texture2D("+ varNames[i] +
+      shader += " gl_FragData[" + ss.str() + "] = texture("+ varNames[i] +
         ", texCoord);\n";
     }
     shader += " return;\n";

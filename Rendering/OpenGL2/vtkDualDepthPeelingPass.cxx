@@ -410,7 +410,7 @@ bool vtkDualDepthPeelingPass::PreReplaceVolumetricShaderValues(
 {
   const std::string rayInit =
     "  // Transform zStart and zEnd to texture_coordinates\n"
-    "  mat4 NDCToTextureCoords = ip_inverseTextureDataAdjusted * in_inverseVolumeMatrix[0] *\n"
+    "  mat4 NDCToTextureCoords = ip_inverseTextureDataAdjusted * in_inverseVolumeMatrix *\n"
     "    in_inverseModelViewMatrix * in_inverseProjectionMatrix;\n"
     "  \n"
     "  // Start point\n"
@@ -437,8 +437,8 @@ bool vtkDualDepthPeelingPass::PreReplaceVolumetricShaderValues(
     "  vec3 rayOrigin = ip_textureCoords;\n"
     "  g_dataPos = startPoint.xyz + g_rayJitter[0];\n"
     "\n"
-    "  bool isInsideBBox = !(any(greaterThan(g_dataPos, in_texMax[0])) ||\n"
-    "                        any(lessThan(g_dataPos, in_texMin[0])));\n"
+    "  bool isInsideBBox = !(any(greaterThan(g_dataPos, in_texMax)) ||\n"
+    "                        any(lessThan(g_dataPos, in_texMin)));\n"
     "  if (!isInsideBBox)\n"
     "  {\n"
     "    vec3 distStartTexCoord = rayOrigin - g_dataPos;\n"
