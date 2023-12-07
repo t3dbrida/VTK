@@ -55,52 +55,34 @@ float g_terminatePointMax;
 
 struct VolumeParameters
 {
-  vec3 boundsMin,
+  vec4 boundsMin,
        boundsMax,
        boxMaskOrigin,
        boxMaskAxisX,
        boxMaskAxisY,
        boxMaskAxisZ,
        cylinderMaskCenter,
-       cylinderMaskAxis;
-
-  float cylinderMaskRadius;
-
-  vec4 volumeScale,
+       cylinderMaskAxis_cylinderMaskRadius,
+       volumeScale,
        volumeBias;
 
-  int noOfComponents;
-
-  float gradMagMax;
+  ivec4 noOfComponents_maskIndex_regionIndex_transfer2dIndex;
 
   mat4 volumeMatrix,
        inverseVolumeMatrix,
        textureDatasetMatrix,
        inverseTextureDatasetMatrix,
-       textureToEye;
+       textureToEye,
+       cellToPoint;
 
-  vec3 texMin,
-	   texMax;
+  vec4 texMin,
+	   texMax,
+       cellStep,
+       cellSpacing,
+       transfer2dRegion,
+       scalarsRange_gradMagMax_sampling;
 
-  mat4 cellToPoint;
-
-  vec3 cellStep;
-
-  vec2 scalarsRange;
-
-  vec3 cellSpacing;
-
-  float sampling;
-
-  int maskIndex;
-
-  int regionIndex;
-
-  vec4 transfer2dRegion;
-
-  int transfer2dIndex;
-
-  bool volumeVisibility;
+  bvec4 volumeVisibility;
 };
 
 layout (std430, binding = 0) buffer VP

@@ -657,62 +657,33 @@ public:
   #pragma pack(push, 1) // prevents compiler from aligning the way it wants, forces our padding 
   struct VolumeParameters final
   {
-      float boundsMin[3],
-            _pad0,
-            boundsMax[3],
-            _pad1,
-            boxMaskOrigin[3],
-            _pad2,
-            boxMaskAxisX[3],
-            _pad3,
-            boxMaskAxisY[3],
-            _pad4,
-            boxMaskAxisZ[3],
-            _pad5,
-            cylinderMaskCenter[3],
-            _pad6,
-            cylinderMaskAxis[3],
-            cylinderMaskRadius,
+      float boundsMin[4],
+            boundsMax[4],
+            boxMaskOrigin[4],
+            boxMaskAxisX[4],
+            boxMaskAxisY[4],
+            boxMaskAxisZ[4],
+            cylinderMaskCenter[4],
+            cylinderMaskAxis_cylinderMaskRadius[4],
             volumeScale[4],
             volumeBias[4];
 
-      int noOfComponents;
+      int noOfComponents_maskIndex_regionIndex_transfer2dIndex[4];
 
-      float gradMagMax,
-            _pad9[2],
-
-            volumeMatrix[16],
+      float volumeMatrix[16],
             inverseVolumeMatrix[16],
             textureDatasetMatrix[16],
             inverseTextureDatasetMatrix[16],
             textureToEye[16],
-
-            texMin[3],
-            _pad10,
-            texMax[3],
-            _pad11,
-
             cellToPoint[16],
+            texMin[4],
+            texMax[4],
+            cellStep[4],
+            cellSpacing[4],
+            transfer2dRegion[4],
+            scalarsRange_gradMagMax_sampling[4];
 
-            cellStep[3],
-            _pad12,
-
-            scalarsRange[2],
-            _pad13[2],
-
-            cellSpacing[3],
-            sampling;
-
-      int maskIndex,
-          regionIndex;
-
-      float _pad15[2],
-            transfer2dRegion[4];
-
-      int transfer2dIndex,
-          volumeVisibility;
-
-      float _pad16[2];
+      int volumeVisibility[4]; // only first comp. is used, the rest is padding
   };
   #pragma pack(pop, 1) 
 
@@ -2184,7 +2155,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateSamplingDistance(vtkRen
             minWorldSpacing = worldSpacing;
         }
     }
-    this->VolumeParameters[index].sampling = static_cast<float>(minWorldSpacing);
+    this->VolumeParameters[index].scalarsRange_gradMagMax_sampling[3] = static_cast<float>(minWorldSpacing);
   }
 
   if (!this->Parent->AutoAdjustSampleDistances)
@@ -2215,7 +2186,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateSamplingDistance(vtkRen
     }
     for (struct vtkInternal::VolumeParameters& vp : this->VolumeParameters)
     {
-      vp.sampling *= static_cast<GLfloat>(factor);
+      vp.scalarsRange_gradMagMax_sampling[3] *= static_cast<GLfloat>(factor);
     }
   }
   else
@@ -2226,7 +2197,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateSamplingDistance(vtkRen
       this->ActualSampleDistance /= static_cast<GLfloat>(this->Parent->ReductionFactor);
       for (struct vtkInternal::VolumeParameters& vp : this->VolumeParameters)
       {
-        vp.sampling /= static_cast<GLfloat>(this->Parent->ReductionFactor);
+        vp.scalarsRange_gradMagMax_sampling[3] /= static_cast<GLfloat>(this->Parent->ReductionFactor);
       }
     }
   }
@@ -4509,7 +4480,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
         volTex->ScalarRange[0][0],
         volTex->ScalarRange[0][1]
     };
-    vtkInternal::CopyVector<float, 2>(reinterpret_cast<float*>(range), this->VolumeParameters[index].scalarsRange, 0);
+    vtkInternal::CopyVector<float, 2>(reinterpret_cast<float*>(range), this->VolumeParameters[index].scalarsRange_gradMagMax_sampling, 0);
 
     if (volume->GetProperty()->GetTransferFunction2D())
     {
@@ -4534,7 +4505,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
             //prog->SetUniform4f(("in_transfer2DRegion[" + indexStr + ']').c_str(), v);
             //prog->SetUniformi(("in_transfer2DIndex[" + indexStr + ']').c_str(), regionQuery.textureIndex);
             vtkInternal::CopyVector<float, 4>(v, this->VolumeParameters[index].transfer2dRegion, 0);
-            this->VolumeParameters[index].transfer2dIndex = regionQuery.textureIndex;
+            this->VolumeParameters[index].noOfComponents_maskIndex_regionIndex_transfer2dIndex[3] = regionQuery.textureIndex;
         }
     }
 
@@ -4565,14 +4536,14 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
     this->VolumeParameters[index].cylinderMaskCenter[0]  = cylinderMaskCenter[0];
     this->VolumeParameters[index].cylinderMaskCenter[1] = cylinderMaskCenter[1];
     this->VolumeParameters[index].cylinderMaskCenter[2] = cylinderMaskCenter[2];
-    this->VolumeParameters[index].cylinderMaskAxis[0] = cylinderMaskAxis[0];
-    this->VolumeParameters[index].cylinderMaskAxis[1] = cylinderMaskAxis[1];
-    this->VolumeParameters[index].cylinderMaskAxis[2] = cylinderMaskAxis[2];
-    this->VolumeParameters[index].cylinderMaskRadius = cylindeMaskRadius;
+    this->VolumeParameters[index].cylinderMaskAxis_cylinderMaskRadius[0] = cylinderMaskAxis[0];
+    this->VolumeParameters[index].cylinderMaskAxis_cylinderMaskRadius[1] = cylinderMaskAxis[1];
+    this->VolumeParameters[index].cylinderMaskAxis_cylinderMaskRadius[2] = cylinderMaskAxis[2];
+    this->VolumeParameters[index].cylinderMaskAxis_cylinderMaskRadius[3] = cylindeMaskRadius;
 
-    this->VolumeParameters[index].volumeVisibility = volume->GetVisibility();
+    this->VolumeParameters[index].volumeVisibility[0] = volume->GetVisibility();
 
-    this->VolumeParameters[index].gradMagMax = this->Parent->GradMagMaxs[index];
+    this->VolumeParameters[index].scalarsRange_gradMagMax_sampling[2] = this->Parent->GradMagMaxs[index];
 
     ++index;
   }
@@ -4632,7 +4603,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetMapperShaderParameters(
   for (auto& in : this->Parent->AssembledInputs)
   {
       const int noOfComponents = in.second.Texture->GetLoadedScalars()->GetNumberOfComponents();
-      this->VolumeParameters[ind].noOfComponents = noOfComponents;
+      this->VolumeParameters[ind].noOfComponents_maskIndex_regionIndex_transfer2dIndex[0] = noOfComponents;
       ++ind;
       //prog->SetUniformi(("in_noOfComponents[" + std::to_string(ind++) + "]").c_str(), noOfComponents);
   }
@@ -4721,13 +4692,13 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetMaskShaderParameters(
           auto maskTex = it->second->GetCurrentBlock()->TextureObject;
           maskTex->Activate();
           prog->SetUniformi((std::string("in_mask[") + std::to_string(maskI) + "]").c_str(), maskTex->GetTextureUnit());
-          this->VolumeParameters[i].maskIndex = maskI;
+          this->VolumeParameters[i].noOfComponents_maskIndex_regionIndex_transfer2dIndex[1] = maskI;
 
           ++maskI;
       }
       else
       {
-          this->VolumeParameters[i].maskIndex = -1;
+          this->VolumeParameters[i].noOfComponents_maskIndex_regionIndex_transfer2dIndex[1] = -1;
       }
       ++i;
   }
@@ -4760,7 +4731,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetRegionShaderParameters(vtk
     const struct vtkVolumeProperty::BitRegion& region = in.second.Volume->GetProperty()->GetBitRegion();
     if (region.mask)
     {
-      this->VolumeParameters[vi].regionIndex = regionIndex;
+      this->VolumeParameters[vi].noOfComponents_maskIndex_regionIndex_transfer2dIndex[2] = regionIndex;
       //prog->SetUniformi(("in_regionIndex[" + viStr + "]").c_str(), regionIndex);
 
       auto it = this->RegionMaskTextures.find(vi);
@@ -4781,7 +4752,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetRegionShaderParameters(vtk
     }
     else
     {
-      this->VolumeParameters[vi].regionIndex = -1;
+      this->VolumeParameters[vi].noOfComponents_maskIndex_regionIndex_transfer2dIndex[2] = -1;
       //prog->SetUniformi(("in_regionIndex[" + viStr + "]").c_str(), -1);
     }
   }
