@@ -608,36 +608,47 @@ public:
   {
   public:
       ShaderStorageBufferObject() noexcept :
-          id{0},
-          currentSize{0}
+          m_id{0},
+          m_currentSize{0},
+          m_renderWindow{nullptr}
       {
       }
 
       ~ShaderStorageBufferObject()
       {
-          if (id)
+          if (m_id)
           {
-              glDeleteBuffers(1, &id);
+              glDeleteBuffers(1, &m_id);
           }
       }
 
-      void Update(const std::size_t size, const void* const ptr) noexcept
+      void Update(vtkRenderer* const renderer, const std::size_t size, const void* const ptr) noexcept
       {
-          if (currentSize != size)
+          vtkOpenGLRenderWindow* const renderWindow = static_cast<vtkOpenGLRenderWindow*>(renderer->GetRenderWindow());
+          if (m_currentSize != size || m_renderWindow != renderWindow)
           {
-              if (id != 0)
+              if (m_id != 0)
               {
-                  glDeleteBuffers(1, &id);
-                  id = 0;
+                  m_renderWindow->MakeCurrent();
+                  glDeleteBuffers(1, &m_id);
+                  m_id = 0;
+                  m_currentSize = 0;
+                  m_renderWindow = nullptr;
               }
-              glGenBuffers(1, &id);
-              BufferBinder binder{GL_SHADER_STORAGE_BUFFER, id};
-              glBufferData(GL_SHADER_STORAGE_BUFFER, size, ptr, GL_STATIC_DRAW);
-              currentSize = size;
+              if (size != 0)
+              {
+                  renderWindow->MakeCurrent();
+                  glGenBuffers(1, &m_id);
+                  BufferBinder binder{GL_SHADER_STORAGE_BUFFER, m_id};
+                  glBufferData(GL_SHADER_STORAGE_BUFFER, size, ptr, GL_STATIC_DRAW);
+                  m_currentSize = size;
+                  m_renderWindow = renderWindow;
+              }
           }
-          else if (id != 0)
+          else if (m_id != 0)
           {
-              BufferBinder binder{GL_SHADER_STORAGE_BUFFER, id};
+              static_cast<vtkOpenGLRenderWindow*>(renderWindow)->MakeCurrent();
+              BufferBinder binder{GL_SHADER_STORAGE_BUFFER, m_id};
               glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, size, ptr);
           }
           else
@@ -646,12 +657,14 @@ public:
           }
       };
 
-      GLuint getId() const noexcept { return id; }
+      GLuint getId() const noexcept { return m_id; }
 
   private:
-      GLuint id;
+      GLuint m_id;
 
-      std::size_t currentSize;
+      std::size_t m_currentSize;
+
+      vtkOpenGLRenderWindow* m_renderWindow;
   };
 
   #pragma pack(push, 1) // prevents compiler from aligning the way it wants, forces our padding 
@@ -4934,7 +4947,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderMultipleInputs(vtkRende
   this->SetLightingShaderParameters(ren, prog, this->MultiVolume, numSamplers);
   this->SetCameraShaderParameters(prog, ren, cam);
   this->SetAdvancedShaderParameters(ren, prog, vol, nullptr, numComp);
-  this->ParameterBuffer.Update(sizeof(struct VolumeParameters) * this->Parent->GetInputCount(), this->VolumeParameters.data());
+  this->ParameterBuffer.Update(ren, sizeof(struct VolumeParameters) * this->Parent->GetInputCount(), this->VolumeParameters.data());
   this->RenderVolumeGeometry(ren, prog, this->MultiVolume, bounds);
   this->FinishRendering(numComp);
 }
@@ -4984,7 +4997,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderSingleInput(vtkRenderer
     this->SetLightingShaderParameters(ren, prog, vol, numSamplers);
     this->SetCameraShaderParameters(prog, ren, cam);
     this->SetAdvancedShaderParameters(ren, prog, vol, block, numComp);
-    this->ParameterBuffer.Update(sizeof(struct VolumeParameters) * this->Parent->GetInputCount(), this->VolumeParameters.data());
+    this->ParameterBuffer.Update(ren, sizeof(struct VolumeParameters) * this->Parent->GetInputCount(), this->VolumeParameters.data());
 
     this->RenderVolumeGeometry(ren, prog, vol, block->LoadedBounds);
 
