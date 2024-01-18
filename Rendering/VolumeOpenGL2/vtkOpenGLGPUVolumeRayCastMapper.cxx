@@ -1272,7 +1272,7 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadRegions(vtkRenderer* ren)
                             bitRegionMaskDims[1],
                             bitRegionMaskDims[2],
                             bitRegionMask->GetNumberOfScalarComponents(),
-                            VTK_UNSIGNED_INT,
+                            bitRegionMask->GetScalarType(),
                             static_cast<std::uint32_t*>(arr->GetVoidPointer(0)),
                             true);
 
