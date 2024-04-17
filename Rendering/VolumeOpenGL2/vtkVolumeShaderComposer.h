@@ -1578,7 +1578,7 @@ namespace vtkvolume
             "    intervals[i].tEnter = FLOAT_MAX;\n"
             "    intervals[i].tExit = -FLOAT_MAX;\n"
             "    intervals[i].valid = false;\n"
-            "    if (volumeParameters.data[i].volumeVisibility.x == true || volumeParameters.data[i].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)\n"
+            "    if (volumeParameters.data[i].volumeVisibility.x == 1 || volumeParameters.data[i].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)\n"
             "    {\n"
             "      mat4 globalToLocalDatasetTransform = volumeParameters.data[i].inverseVolumeMatrix * in_volumeMatrix;\n"
             "      vec3 localEye = (globalToLocalDatasetTransform * g_eyePosObj).xyz;\n"
@@ -1860,7 +1860,7 @@ namespace vtkvolume
               "        }\n"
               "\n"
               "        g_srcColor = vec4(0.);\n"
-              "        if (volumeParameters.data[i].volumeVisibility.x == true)\n"
+              "        if (volumeParameters.data[i].volumeVisibility.x == 1)\n"
               "        {\n"
               "          vec4 color = vec4(0.);\n"
               "          vec4 grad = vec4(0.);\n"
@@ -2037,7 +2037,7 @@ namespace vtkvolume
         }
         shaderStr += "\
            \n      g_srcColor = vec4(0.0);\
-           \n      if (volumeParameters.data[0].volumeVisibility.x == true)\
+           \n      if (volumeParameters.data[0].volumeVisibility.x == 1)\
            \n      {\
            \n        g_srcColor.a = computeOpacity(0, scalar);\
            \n        if (g_srcColor.a > 0.0)\
@@ -2389,7 +2389,7 @@ namespace vtkvolume
       ;
     }
     str += "\
-      \n  g_terminatePointMax = min(1000., length(g_terminatePos.xyz - g_dataPos.xyz) / g_minDirStepLength);\
+      \n  g_terminatePointMax = min(2000., length(g_terminatePos.xyz - g_dataPos.xyz) / g_minDirStepLength);\
       \n  g_currentT = 0.0;"
     ;
 

@@ -4506,17 +4506,17 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
             const vtkVector2i& pos = regionQuery.pos,
                              & size = regionQuery.region->Size;
 
-            const constexpr float sizeEps = 0.02f; // necessary to avoid some artifacts, empirically derived
+            // necessary to avoid some artifacts, empirically derived
+            const float offsetX = 3.f * (1.f / w),
+                        offsetY = 3.f * (1.f / h);
             float v[4]
             {
-                static_cast<float>(pos.GetX()) / w,
-                static_cast<float>(pos.GetY()) / h,
-                static_cast<float>(size.GetX()) / w - sizeEps,
-                static_cast<float>(size.GetY()) / h - sizeEps
+                static_cast<float>(pos.GetX()) / w + offsetX,
+                static_cast<float>(pos.GetY()) / h + offsetY,
+                static_cast<float>(size.GetX()) / w - offsetX,
+                static_cast<float>(size.GetY()) / h - offsetY
             };
             const std::string indexStr = std::to_string(input.first);
-            //prog->SetUniform4f(("in_transfer2DRegion[" + indexStr + ']').c_str(), v);
-            //prog->SetUniformi(("in_transfer2DIndex[" + indexStr + ']').c_str(), regionQuery.textureIndex);
             vtkInternal::CopyVector<float, 4>(v, this->VolumeParameters[index].transfer2dRegion, 0);
             this->VolumeParameters[index].noOfComponents_maskIndex_regionIndex_transfer2dIndex[3] = regionQuery.textureIndex;
         }
@@ -4535,7 +4535,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
     const double* const boxMaskAxisY = boxMask.axisY;
     this->VolumeParameters[index].boxMaskAxisY[0] = boxMaskAxisY[0];
     this->VolumeParameters[index].boxMaskAxisY[1] = boxMaskAxisY[1];
-    this->VolumeParameters[index].boxMaskAxisZ[2] = boxMaskAxisY[2];
+    this->VolumeParameters[index].boxMaskAxisY[2] = boxMaskAxisY[2];
     const double* const boxMaskAxisZ = boxMask.axisZ;
     this->VolumeParameters[index].boxMaskAxisZ[0] = boxMaskAxisZ[0];
     this->VolumeParameters[index].boxMaskAxisZ[1] = boxMaskAxisZ[1];

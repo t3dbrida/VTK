@@ -180,7 +180,7 @@ void vtkOpenGLPolyDataMapper2D::BuildShaders(
         "uniform samplerBuffer textureC;");
     vtkShaderProgram::Substitute(FSSource,
         "//VTK::Color::Impl",
-        "gl_FragData[0] = texelFetchBuffer(textureC, gl_PrimitiveID + PrimitiveIDOffset);");
+        "gl_FragData[0] = texelFetch(textureC, gl_PrimitiveID + PrimitiveIDOffset);");
   }
   else
   {

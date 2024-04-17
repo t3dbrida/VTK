@@ -1003,7 +1003,7 @@ bool vtkValuePass::UpdateShaders(std::string & VSSource, std::string & FSSource)
   {
     fragImpl = std::string
       (
-       "  gl_FragData[0] = texelFetchBuffer(textureF, gl_PrimitiveID +\n"
+       "  gl_FragData[0] = texelFetch(textureF, gl_PrimitiveID +\n"
        "    PrimitiveIDOffset);\n"
        "  // Return right away since vtkValuePass::FLOATING_POINT mode is attached\n"
        "  return;"

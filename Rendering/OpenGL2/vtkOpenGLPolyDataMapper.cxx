@@ -677,7 +677,7 @@ void vtkOpenGLPolyDataMapper::ReplaceShaderColor(
   else if (this->HaveCellScalars && !this->DrawingEdgesOrVertices && !pointPicking)
   {
     colorImpl +=
-      "  vec4 texColor = texelFetchBuffer(textureC, gl_PrimitiveID + PrimitiveIDOffset);\n"
+      "  vec4 texColor = texelFetch(textureC, gl_PrimitiveID + PrimitiveIDOffset);\n"
       "  vec3 ambientColor = ambientIntensity * texColor.rgb;\n"
       "  vec3 diffuseColor = diffuseIntensity * texColor.rgb;\n"
       "  float opacity = opacityUniform * texColor.a;";
@@ -1463,7 +1463,7 @@ void vtkOpenGLPolyDataMapper::ReplaceShaderNormal(
         vtkShaderProgram::Substitute(FSSource,
           "//VTK::Normal::Impl",
           "vec3 normalVCVSOutput = \n"
-          "    texelFetchBuffer(textureN, gl_PrimitiveID + PrimitiveIDOffset).xyz;\n"
+          "    texelFetch(textureN, gl_PrimitiveID + PrimitiveIDOffset).xyz;\n"
           "normalVCVSOutput = normalize(normalMatrix * normalVCVSOutput);\n"
           "  if (gl_FrontFacing == false) { normalVCVSOutput = -normalVCVSOutput; }\n"
           );
@@ -1473,7 +1473,7 @@ void vtkOpenGLPolyDataMapper::ReplaceShaderNormal(
         vtkShaderProgram::Substitute(FSSource,
             "//VTK::Normal::Impl",
             "vec3 normalVCVSOutput = \n"
-            "    texelFetchBuffer(textureN, gl_PrimitiveID + PrimitiveIDOffset).xyz;\n"
+            "    texelFetch(textureN, gl_PrimitiveID + PrimitiveIDOffset).xyz;\n"
             "normalVCVSOutput = normalVCVSOutput * 255.0/127.0 - 1.0;\n"
             "normalVCVSOutput = normalize(normalMatrix * normalVCVSOutput);\n"
             "  if (gl_FrontFacing == false) { normalVCVSOutput = -normalVCVSOutput; }\n"
