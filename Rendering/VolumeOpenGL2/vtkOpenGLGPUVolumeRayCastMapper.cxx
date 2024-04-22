@@ -587,6 +587,8 @@ public:
 
     bool RemoveRegion(vtkWindow& window, const int volumeIndex) noexcept;
 
+    void DecrementVolumeIndices(const int volumeIndexThreshold) noexcept;
+
     TransferFunction2DRegionQuery QueryRegion(const int volumeIndex) noexcept;
 
     std::vector<TransferFunction2DSpace> Spaces;
@@ -927,16 +929,6 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::Rem
   {
     if (it->RemoveRegion(volumeIndex))
     {
-      for (TransferFunction2DSpace& s : this->Spaces)
-      {
-        for (auto& r : s.Regions)
-        {
-          if (r.second.VolumeIndex > volumeIndex)
-          {
-            --r.second.VolumeIndex;
-          }
-        }
-      }
       if (it->Regions.empty())
       {
         it->Texture->ReleaseGraphicsResources(&window);
@@ -947,6 +939,20 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::Rem
   }
 
   return false;
+}
+
+void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::DecrementVolumeIndices(const int volumeIndexThreshold) noexcept
+{
+  for (TransferFunction2DSpace& s : this->Spaces)
+  {
+    for (auto& r : s.Regions)
+    {
+      if (r.second.VolumeIndex > volumeIndexThreshold)
+      {
+        --r.second.VolumeIndex;
+      }
+    }
+  }
 }
 
 vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DRegionQuery vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::QueryRegion(const int volumeIndex) noexcept
@@ -3924,6 +3930,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::ClearRemovedInputs(
         input.RGBTables->ReleaseGraphicsResources(win);
     }
     this->TransferFunction2DSpaces.RemoveRegion(*win, removedPorts[i]);
+    this->TransferFunction2DSpaces.DecrementVolumeIndices(removedPorts[i]);
     for (int& r : removedPorts)
     {
         if (r > removedPorts[i])
