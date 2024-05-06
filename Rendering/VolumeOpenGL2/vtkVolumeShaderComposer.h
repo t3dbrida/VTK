@@ -152,7 +152,8 @@ namespace vtkvolume
                                       int noOfComponents,
                                       int independentComponents)
   {
-    const int numInputs = static_cast<int>(inputs.size());
+    const int numInputs = static_cast<int>(inputs.size()),
+              numInputs2x = 2 * numInputs; // for regions
 
     std::ostringstream toShaderStr;
     toShaderStr << "uniform sampler3D in_volume[" << numInputs << "];\n"
@@ -176,18 +177,25 @@ namespace vtkvolume
                    "  bool valid;\n"
                    "};\n"
                    "\n";
+    toShaderStr << "#define TYPE_VOLUME 0\n"
+                   "#define TYPE_REGION 1\n"
+                   "\n";
     toShaderStr << "struct SamplePoint\n"
                    "{\n"
                    "  vec3 dataPos;\n"
                    "\n"
                    "  float t;\n"
                    "\n"
+                   "  vec3 tMax;\n"
+                   "\n"
                    "  int volumeIndex;\n"
+                   "\n"
+                   "  int type;\n"
                    "};\n"
                    "\n";
     toShaderStr << "struct SamplePointSet\n"
                    "{\n"
-                   "  SamplePoint samplePoints[" << numInputs << "];\n"
+                   "  SamplePoint samplePoints[" << numInputs2x << "];\n"
                    "\n"
                    "  int size; // actual size\n"
                    "};\n"
@@ -196,7 +204,7 @@ namespace vtkvolume
                    "{\n"
                    "  bool inserted = false;\n"
                    "\n"
-                   "  if (samplePointSet.size < " << numInputs << ")\n"
+                   "  if (samplePointSet.size < " << numInputs2x << ")\n"
                    "  {\n"
                    "    int pos = samplePointSet.size;\n"
                    "    for (int i = 0; i < samplePointSet.size; ++i)\n"
@@ -214,7 +222,7 @@ namespace vtkvolume
                    "    samplePointSet.samplePoints[pos] = samplePoint;\n"
                    "\n"
                    "    ++samplePointSet.size;\n"
-                   "    for (int i = samplePointSet.size; i < " << numInputs << "; ++i)\n"
+                   "    for (int i = samplePointSet.size; i < " << numInputs2x << "; ++i)\n"
                    "    {\n"
                    "      samplePointSet.samplePoints[i].volumeIndex = -1;\n"
                    "      samplePointSet.samplePoints[i].t = FLOAT_MAX;\n"
@@ -240,7 +248,7 @@ namespace vtkvolume
                    "    {\n"
                    "      samplePointSet.samplePoints[i] = samplePointSet.samplePoints[i + 1];\n"
                    "    }\n"
-                   "    for (int i = samplePointSet.size; i < " << numInputs << "; ++i)\n"
+                   "    for (int i = samplePointSet.size; i < " << numInputs2x << "; ++i)\n"
                    "    {\n"
                    "      samplePointSet.samplePoints[i].volumeIndex = -1;\n"
                    "      samplePointSet.samplePoints[i].t = FLOAT_MAX;\n"
@@ -644,7 +652,8 @@ namespace vtkvolume
                                  vtkVolumeMapper* vtkNotUsed(mapper),
                                  vtkVolume* vtkNotUsed(vol))
   {
-    return std::string(
+    return "\n";
+    /*return std::string(
       "    g_skip = false;\n"
       "\n"
       "    if (any(greaterThan(g_dataPos, in_texMax)) || any(lessThan(g_dataPos, in_texMin)))\n"
@@ -652,7 +661,7 @@ namespace vtkvolume
       "      break;\n"
       "    }\n"
       "\n"
-    );
+    );*/
   }
 
   //--------------------------------------------------------------------------
@@ -1615,11 +1624,70 @@ namespace vtkvolume
             "      samplePoint.dataPos = (in_inverseTextureDatasetMatrix * vec4(g_eyePosObj.xyz + intersections[i].t * g_rayDir, 1.)).xyz + g_rayJitter[intersections[i].volumeIndex + 1];\n"
             "      samplePoint.t = intersections[i].t;\n"
             "      samplePoint.volumeIndex = intersections[i].volumeIndex;\n"
+            "      samplePoint.type = TYPE_VOLUME;\n"
             "      samplePointSet.samplePoints[samplePointSet.size++] = samplePoint;\n"
             "    }\n"
             "  }\n"
             "\n"
             "  SamplePoint frontSamplePoint;\n"
+          ;
+    }
+    else
+    {
+        str += "\n"
+            "  Interval intervals[" + numInputsStr + "];\n"
+            "  for (int i = 0; i < " + numInputsStr + "; ++i)\n"
+            "  {\n"
+            "    intervals[i].tEnter = FLOAT_MAX;\n"
+            "    intervals[i].tExit = -FLOAT_MAX;\n"
+            "    intervals[i].valid = false;\n"
+            "    if (volumeParameters.data[i].volumeVisibility.x == 1 || volumeParameters.data[i].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)\n"
+            "    {\n"
+            "      vec2 interval = intersectRayBox(g_eyePosObj.xyz, g_rayDir, volumeParameters.data[i].boundsMin.xyz, volumeParameters.data[i].boundsMax.xyz);\n"
+            "      intervals[i].valid = interval.x < interval.y && interval.x < FLOAT_MAX && interval.y > 0.;\n"
+            "      if (intervals[i].valid == true)\n"
+            "      {\n"
+            "        vec3 posEnter = g_eyePosObj.xyz + interval.x * g_rayDir;\n"
+            "        vec3 posExit = g_eyePosObj.xyz + interval.y * g_rayDir;\n"
+            "        intervals[i].tEnter = dot(posEnter - g_eyePosObj.xyz, g_rayDir) / g_rayDirDot;\n"
+            "        intervals[i].tExit = dot(posExit - g_eyePosObj.xyz, g_rayDir) / g_rayDirDot;\n"
+            "      }\n"
+            "    }\n"
+            "  }\n"
+            "\n"
+            "  Intersection intersections[" + numInputsStr + "] = sortIntersections(intervals);\n"
+            "\n"
+            "  SamplePointSet samplePointSet;\n"
+            "  for (int i = 0; i < " + numInputsStr + "; ++i)\n"
+            "  {\n"
+            "    samplePointSet.samplePoints[i].dataPos = vec3(FLOAT_MAX, FLOAT_MAX, FLOAT_MAX);\n"
+            "    samplePointSet.samplePoints[i].t = FLOAT_MAX;\n"
+            "    samplePointSet.samplePoints[i].volumeIndex = -1;\n"
+            "  }\n"
+            "\n"
+            "  samplePointSet.size = 0;\n"
+            "  for (int i = 0; i < " + numInputsStr + "; ++i)\n"
+            "  {\n"
+            "    if (intersections[i].volumeIndex >= 0)\n"
+            "    {\n"
+            "      SamplePoint samplePoint;\n"
+            "      samplePoint.dataPos = (in_inverseTextureDatasetMatrix * vec4(g_eyePosObj.xyz + intersections[i].t * g_rayDir, 1.)).xyz + g_rayJitter[0];\n"
+            "      samplePoint.t = intersections[i].t;\n"
+            "      samplePoint.volumeIndex = intersections[i].volumeIndex;\n"
+            "      samplePoint.type = TYPE_VOLUME;\n"
+            "      samplePointSet.samplePoints[samplePointSet.size++] = samplePoint;\n"
+            "      samplePoint.type = TYPE_REGION;\n"
+            "      samplePointSet.samplePoints[samplePointSet.size++] = samplePoint;\n"
+            "    }\n"
+            "  }\n"
+            "\n"
+            "  SamplePoint frontSamplePoint;\n"
+          ;
+        str +=
+            "  vec3 step = sign(g_rayDir.xyz);\n"
+            "  vec3 nextVoxelBoundary = currentVoxel + step * in_volumeParameters.data[0].cellSpacing.xyz;\n"
+            "  vec3 tMax = (nextVoxelBoundary - g_eyePosObj.xyz) / g_rayDir.xyz;\n"
+            "  vec3 tDelta = in_volumeParameters.data[0].cellSpacing.xyz / g_rayDir.xyz * step;\n"
           ;
     }
 
@@ -1924,7 +1992,40 @@ namespace vtkvolume
   {
     auto glMapper = vtkOpenGLGPUVolumeRayCastMapper::SafeDownCast(mapper);
     std::string shaderStr;
-    shaderStr += 
+    shaderStr +=
+        "\n"
+        "    if (popSamplePoint(samplePointSet, frontSamplePoint) == false)\n"
+        "    {\n"
+        "      break;\n"
+        "    }\n"
+        "\n"
+        "    g_skip = false;\n"
+        "    g_dataPos = frontSamplePoint.dataPos;\n";
+    if (independentComponents)
+    {
+      if (noOfComponents == 1)
+      {
+        shaderStr += "    g_gradients[0] = computeGradient(0, g_dataPos);\n";
+      }
+      else
+      {
+        // Multiple components
+        shaderStr += "    for (int comp = 0; comp < in_noOfComponents[0]; comp++)\n"
+          "    {\n"
+          "      g_gradients[0] = computeGradient(g_dataPos, comp, in_volume[0], 0);\n"
+          "    }\n";
+      }
+    }
+    else
+    {
+      shaderStr += "    g_gradients[0] = computeGradient(0, g_dataPos);\n";
+    }
+    shaderStr +=
+                 "\n"
+                 "    if (any(greaterThan(g_dataPos, vec3(1.))) || any(lessThan(g_dataPos, vec3(0.))))\n"
+                 "    {\n"
+                 "      break;\n"
+                 "    }\n"
                  "\n"
                  "    bool noMask = true;\n"
                  "    bool maskedByBox = false;\n"
@@ -1965,26 +2066,28 @@ namespace vtkvolume
                      "      maskedByRegion = true;\n"
                      "    }\n";
     }
-    shaderStr +=
-      "\n    if (g_skip == false && (noMask || (maskedByBox || maskedByCylinder" + std::string(maskInput ? " || maskedByRegion" : "") + ")))"
-      "\n    {"
-      "\n      vec4 scalar = texture(in_volume[0], g_dataPos);"
-      "\n      bool computeFragColor = false;"
-    ;
 
-    // simulate old intensity textures
+    shaderStr +=
+        "\n    if (g_skip == false && (noMask || (maskedByBox || maskedByCylinder" + std::string(maskInput ? " || maskedByRegion" : "") + ")))"
+        "\n    {";
+    shaderStr += "\n"
+        "      g_srcColor = vec4(0.);\n"
+        "      bool computeFragColor = false;\n"
+        "      if (frontSamplePoint.type == TYPE_VOLUME)\n"
+        "      {\n"
+        "        vec4 scalar = texture(in_volume[0], g_dataPos);\n"
+    ;
     if (noOfComponents == 1)
     {
       shaderStr += std::string("\
-        \n      scalar.r = scalar.r * volumeParameters.data[0].volumeScale.r + volumeParameters.data[0].volumeBias.r;\
-        \n      scalar = vec4(scalar.r);"
+        \n        scalar.r = scalar.r * volumeParameters.data[0].volumeScale.r + volumeParameters.data[0].volumeBias.r;\
+        \n        scalar = vec4(scalar.r);"
       );
     }
     else
     {
-      // handle bias and scale
       shaderStr += std::string("\
-        \n      scalar = scalar * volumeParameters.data[0].volumeScale + volumeParameters.data[0].volumeBias;"
+        \n        scalar = scalar * volumeParameters.data[0].volumeScale + volumeParameters.data[0].volumeBias;"
       );
     }
 
@@ -1993,96 +2096,96 @@ namespace vtkvolume
       if (noOfComponents == 3)
       {
         shaderStr += "\
-          \n      g_srcColor = vec4(0.);\
-          \n      g_srcColor.a = computeOpacity(0, scalar);\
-          \n      if (g_srcColor.a > 0.)\
-          \n      {\
-          \n        computeFragColor = true;\
-          \n        g_srcColor = computeColor(0, scalar, g_srcColor.a);\
-          \n        g_srcColor.rgb *= g_srcColor.a;\
-          \n        g_fragColor += (1. - g_fragColor.a) * g_srcColor;\
-          \n      }";
+          \n        g_srcColor.a = computeOpacity(0, scalar);\
+          \n        if (g_srcColor.a > 0.)\
+          \n        {\
+          \n          computeFragColor = true;\
+          \n          g_srcColor = computeColor(0, scalar, g_srcColor.a);\
+          \n          g_srcColor.rgb *= g_srcColor.a;\
+          \n          g_fragColor += (1. - g_fragColor.a) * g_srcColor;\
+          \n        }";
       }
       else
       {
+        shaderStr += "\
+           \n        g_srcColor = vec4(0.0);\
+           \n        if (volumeParameters.data[0].volumeVisibility.x == 1)\
+           \n        {\
+           \n          g_srcColor.a = computeOpacity(0, scalar);\
+           \n          if (g_srcColor.a > 0.0)\
+           \n          {\
+           \n            computeFragColor = true;\
+           \n            g_srcColor = computeColor(0, scalar, g_srcColor.a);\
+           \n          }\
+           \n        }\
+           \n      }"; // if TYPE_VOLUME
         const struct vtkVolumeProperty::BitRegion& bitRegion = vol->GetProperty()->GetBitRegion();
         if (bitRegion.mask)
         {
             shaderStr +=
                 "\n"
-                "      vec4 regionResultColor = vec4(0.);\n";
+                "      else // if (frontSamplePoint.type == TYPE_REGION)\n"
+                "      {\n"
+                "        g_srcColor = vec4(0.);\n";
             if (bitRegion.mask)
             {
                 shaderStr +=
-                "      if (volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)\n"
-                "      {\n"
-                "        uvec4 regionMaskValue = sampleRegionMask(volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z, g_dataPos);\n"
-                "        int regionCount = in_regionOffset[1] - in_regionOffset[0];\n"
-                "        int digits = regionCount <= 8 ? 8 : (regionCount <= 16 ? 16 : 32);\n"
-                "        for (int regionIndex = 0; regionIndex < regionCount; ++regionIndex)\n"
+                "        if (volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)\n"
                 "        {\n"
-                "          if ((regionMaskValue[regionIndex / digits] & uint(1 << (regionIndex % digits))) != uint(0))\n"
+                "          uvec4 regionMaskValue = sampleRegionMask(volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z, g_dataPos);\n"
+                "          int regionCount = in_regionOffset[1] - in_regionOffset[0];\n"
+                "          int digits = regionCount <= 8 ? 8 : (regionCount <= 16 ? 16 : 32);\n"
+                "          for (int regionIndex = 0; regionIndex < regionCount; ++regionIndex)\n"
                 "          {\n"
-                "            vec4 regionColor = getRegionColor(in_regionOffset[0] + regionIndex);\n"
-                "            if (regionColor.a > 0.)\n"
+                "            if ((regionMaskValue[regionIndex / digits] & uint(1 << (regionIndex % digits))) != uint(0))\n"
                 "            {\n"
-                "              regionColor.rgb *= regionColor.a;\n"
-                "              regionResultColor += (1. - regionResultColor.a) * regionColor;\n"
+                "              vec4 regionColor = getRegionColor(in_regionOffset[0] + regionIndex);\n"
+                "              if (regionColor.a > 0.)\n"
+                "              {\n"
+                "                regionColor.rgb *= regionColor.a;\n"
+                "                g_srcColor += (1. - g_srcColor.a) * regionColor;\n"
+                "              }\n"
                 "            }\n"
                 "          }\n"
                 "        }\n"
-                "      }\n"
                 "\n";
             }
-        }
-        shaderStr += "\
-           \n      g_srcColor = vec4(0.0);\
-           \n      if (volumeParameters.data[0].volumeVisibility.x == 1)\
-           \n      {\
-           \n        g_srcColor.a = computeOpacity(0, scalar);\
-           \n        if (g_srcColor.a > 0.0)\
-           \n        {\
-           \n          computeFragColor = true;\
-           \n          g_srcColor = computeColor(0, scalar, g_srcColor.a);\
-           \n        }\
-           \n      }";
-        if (bitRegion.mask)
-        {
-           shaderStr +=
-               "\n"
-               "        if (regionResultColor.a > 0.)\n"
-               "        {\n"
-               "            computeFragColor = true;\n"
-               "            regionResultColor = computeLighting(0, regionResultColor, computeGradient(0, g_dataPos));\n"
-               "            regionResultColor.rgb *= regionResultColor.a;\n"
-               "            g_srcColor += (1. - g_srcColor.a) * regionResultColor;\n"
-               "        }\n";
+            shaderStr +=
+            "\n"
+            "        if (g_srcColor.a > 0.)\n"
+            "        {\n"
+            "            computeFragColor = true;\n"
+            "            g_srcColor = computeLighting(0, g_srcColor, computeGradient(0, g_dataPos));\n"
+            "            g_srcColor.rgb *= g_srcColor.a;\n"
+            "            g_srcColor += (1. - g_srcColor.a) * g_srcColor;\n"
+            "        }\n"
+            "      }\n"; // if (type == TYPE_REGION)
         }
 
         shaderStr += std::string("\
-          \n        // Opacity calculation using compositing:\
-          \n        // Here we use front to back compositing scheme whereby\
-          \n        // the current sample value is multiplied to the\
-          \n        // currently accumulated alpha and then this product\
-          \n        // is subtracted from the sample value to get the\
-          \n        // alpha from the previous steps. Next, this alpha is\
-          \n        // multiplied with the current sample colour\
-          \n        // and accumulated to the composited colour. The alpha\
-          \n        // value from the previous steps is then accumulated\
-          \n        // to the composited colour alpha.\
-          \n        if (computeFragColor)\
-          \n        {\
-          \n          g_srcColor.a *= in_downsampleCompensation / 2;\
-          \n          g_srcColor.rgb *= g_srcColor.a;\
-          \n          // we're doing it twice to compesate for downsampling\
-          \n          g_fragColor += (1.0f - g_fragColor.a) * g_srcColor;\
-          \n          g_fragColor += (1.0f - g_fragColor.a) * g_srcColor;\
-          \n        }"
+          \n      // Opacity calculation using compositing:\
+          \n      // Here we use front to back compositing scheme whereby\
+          \n      // the current sample value is multiplied to the\
+          \n      // currently accumulated alpha and then this product\
+          \n      // is subtracted from the sample value to get the\
+          \n      // alpha from the previous steps. Next, this alpha is\
+          \n      // multiplied with the current sample colour\
+          \n      // and accumulated to the composited colour. The alpha\
+          \n      // value from the previous steps is then accumulated\
+          \n      // to the composited colour alpha.\
+          \n      if (computeFragColor)\
+          \n      {\
+          \n        g_srcColor.a *= in_downsampleCompensation / 2;\
+          \n        g_srcColor.rgb *= g_srcColor.a;\
+          \n        // we're doing it twice to compesate for downsampling\
+          \n        g_fragColor += (1. - g_fragColor.a) * g_srcColor;\
+          \n        g_fragColor += (1. - g_fragColor.a) * g_srcColor;\
+          \n      }"
         );
       }
     }
 
-    shaderStr += "\n      }";
+    shaderStr += "\n    }";
     return shaderStr;
   }
 
@@ -2436,6 +2539,7 @@ namespace vtkvolume
         "      newSamplePoint.dataPos = nextDataPos;\n"
         "      newSamplePoint.t = tNext;\n"
         "      newSamplePoint.volumeIndex = frontSamplePoint.volumeIndex;\n"
+        "      newSamplePoint.type = frontSamplePoint.type;\n"
         "      if (insertSamplePoint(samplePointSet, newSamplePoint) == false)\n"
         "      {\n"
         "        g_exit = true; // something bad happened, let's better finish\n"
@@ -2445,7 +2549,58 @@ namespace vtkvolume
     }
     else
     {
-        str += "g_dataPos += g_dirStep;\n";
+        str += "\n"
+        "    vec3 nextDataPos;\n"
+        "    float tNext = FLOAT_MAX;\n"
+        "    if (frontSamplePoint.type == TYPE_VOLUME)\n"
+        "    {\n"
+        "      nextDataPos = g_dataPos + g_dirStep;\n"
+        "      tNext = dot((in_textureDatasetMatrix * vec4(nextDataPos, 1.) - g_eyePosObj).xyz, g_rayDir) / g_rayDirDot;\n"
+        "    }\n"
+        "    else // if (frontSamplePoint.type == TYPE_REGION)\n"
+        "    {\n"
+        "      if (tMaxX < tMaxY)\n"
+        "      {\n"
+        "        if (tMaxX < tMaxZ)\n"
+        "        {\n"
+        "          current_voxel[0] += stepX;\n"
+        "          tMaxX += tDeltaX;\n"
+        "        }\n"
+        "        else\n"
+        "        {\n"
+        "          current_voxel[2] += stepZ;\n"
+        "          tMaxZ += tDeltaZ;\n"
+        "        }\n"
+        "      }\n"
+        "      else\n"
+        "      {\n"
+        "        if (tMaxY < tMaxZ)\n"
+        "        {\n"
+        "          current_voxel[1] += stepY;\n"
+        "          tMaxY += tDeltaY;\n"
+        "        }\n"
+        "        else\n"
+        "        {\n"
+        "          current_voxel[2] += stepZ;\n"
+        "          tMaxZ += tDeltaZ;\n"
+        "        }\n"
+        "      }\n"
+        "      tNext = ;\n"
+        "      nextDataPos = ;\n"
+        "    }\n"
+        "    if (tNext < intervals[frontSamplePoint.volumeIndex].tExit + FLOAT_EPS)\n"
+        "    {\n"
+        "      SamplePoint newSamplePoint;\n"
+        "      newSamplePoint.dataPos = nextDataPos;\n"
+        "      newSamplePoint.t = tNext;\n"
+        "      newSamplePoint.volumeIndex = frontSamplePoint.volumeIndex;\n"
+        "      newSamplePoint.type = frontSamplePoint.type;\n"
+        "      if (insertSamplePoint(samplePointSet, newSamplePoint) == false)\n"
+        "      {\n"
+        "        g_exit = true; // something bad happened, let's better finish\n"
+        "      }\n"
+        "    }\n"
+      ;
     }
     return str;
    }      

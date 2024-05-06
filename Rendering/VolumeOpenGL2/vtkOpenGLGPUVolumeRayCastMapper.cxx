@@ -3393,10 +3393,10 @@ void vtkOpenGLGPUVolumeRayCastMapper::ReplaceShaderCompute(
           vtkvolume::GradientCacheDec(ren, vol, this->AssembledInputs,
             independentComponents));
 
-        vtkShaderProgram::Substitute(fragmentShader,
-          "//VTK::PreComputeGradients::Impl",
-          vtkvolume::PreComputeGradientsImpl(ren, vol, numComps,
-            independentComponents));
+        //vtkShaderProgram::Substitute(fragmentShader,
+        //  "//VTK::PreComputeGradients::Impl",
+        //  vtkvolume::PreComputeGradientsImpl(ren, vol, numComps,
+        //    independentComponents));
 
         vtkShaderProgram::Substitute(fragmentShader,
             "//VTK::Transfer2D::Dec",
