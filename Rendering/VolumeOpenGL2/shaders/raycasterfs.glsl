@@ -42,6 +42,7 @@ vec4 g_fragColor = vec4(0.0);
 ///
 //////////////////////////////////////////////////////////////////////////////
 vec3 g_rayDir;
+vec3 g_rayDirSign;
 float g_rayDirDot;
 vec3 g_dataPos;
 vec3 g_terminatePos;

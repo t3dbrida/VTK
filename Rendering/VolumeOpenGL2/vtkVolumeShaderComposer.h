@@ -188,6 +188,8 @@ namespace vtkvolume
                    "\n"
                    "  vec3 tMax;\n"
                    "\n"
+                   "  vec3 normal;\n"
+                   "\n"
                    "  int volumeIndex;\n"
                    "\n"
                    "  int type;\n"
@@ -411,6 +413,7 @@ namespace vtkvolume
       "// Others\n"
       "uniform bool in_useJittering;\n"
       "vec3 g_rayJitter[" << (numInputs + 1) << "];\n"
+      "vec3 g_tDelta[" << numInputs << "];\n"
       "\n"
       "uniform vec2 in_averageIPRange;\n";
 
@@ -550,6 +553,7 @@ namespace vtkvolume
       \n\
       \n  // Getting the ray marching direction (in dataset space);\
       \n  g_rayDir = normalize(ip_vertexPos.xyz - g_eyePosObj.xyz);\
+      \n  g_rayDirSign = sign(g_rayDir);\
       \n  g_rayDirDot = dot(g_rayDir, g_rayDir);\
       \n\
       \n  // Multiply the raymarching direction with the step size to get the\
@@ -563,8 +567,21 @@ namespace vtkvolume
           \n  for (int i = 0; i < " + std::to_string(inputCount) + "; ++i)\
           \n  {\
           \n    g_dirSteps[i] = volumeParameters.data[i].scalarsRange_gradMagMax_sampling.w * (ip_inverseTextureDataAdjusted * vec4(g_rayDir, 0.0)).xyz;\
+          \n    vec3 cs = volumeParameters.data[i].cellSpacing.xyz;\
+          \n    g_tDelta[i] = vec3(g_rayDir.x != 0. ? (g_rayDirSign.x * cs.x / g_rayDir.x) : FLOAT_MAX,\
+          \n                       g_rayDir.y != 0. ? (g_rayDirSign.y * cs.y / g_rayDir.y) : FLOAT_MAX,\
+          \n                       g_rayDir.z != 0. ? (g_rayDirSign.z * cs.z / g_rayDir.z) : FLOAT_MAX);\
           \n  }"
         ;
+    }
+    else
+    {
+        shaderStr += "\
+          \n    vec3 cs = volumeParameters.data[0].cellSpacing.xyz;\
+          \n    g_tDelta[0] = vec3(g_rayDir.x != 0. ? (g_rayDirSign.x * cs.x / g_rayDir.x) : FLOAT_MAX,\
+          \n                       g_rayDir.y != 0. ? (g_rayDirSign.y * cs.y / g_rayDir.y) : FLOAT_MAX,\
+          \n                       g_rayDir.z != 0. ? (g_rayDirSign.z * cs.z / g_rayDir.z) : FLOAT_MAX);\
+        ";
     }
     shaderStr += "\
       \n\
@@ -1570,7 +1587,7 @@ namespace vtkvolume
   //--------------------------------------------------------------------------
   std::string ShadingInit(vtkRenderer* vtkNotUsed(ren),
                           vtkVolumeMapper* mapper,
-                          vtkVolume* vtkNotUsed(vol))
+                          vtkVolume* vol)
   {
     auto gpuMapper = vtkGPUVolumeRayCastMapper::SafeDownCast(mapper);
     const int numInputs = gpuMapper->GetInputCount();
@@ -1605,6 +1622,7 @@ namespace vtkvolume
             "    }\n"
             "  }\n"
             "\n"
+            "  // intersections are now in a shared global space, so they can be sorted\n"
             "  Intersection intersections[" + numInputsStr + "] = sortIntersections(intervals);\n"
             "\n"
             "  SamplePointSet samplePointSet;\n"
@@ -1655,10 +1673,11 @@ namespace vtkvolume
             "    }\n"
             "  }\n"
             "\n"
+            "  // intersections are now in a shared global space, so they can be sorted\n"
             "  Intersection intersections[" + numInputsStr + "] = sortIntersections(intervals);\n"
             "\n"
             "  SamplePointSet samplePointSet;\n"
-            "  for (int i = 0; i < " + numInputsStr + "; ++i)\n"
+            "  for (int i = 0; i < " + numInputs2xStr + "; ++i)\n"
             "  {\n"
             "    samplePointSet.samplePoints[i].dataPos = vec3(FLOAT_MAX, FLOAT_MAX, FLOAT_MAX);\n"
             "    samplePointSet.samplePoints[i].t = FLOAT_MAX;\n"
@@ -1670,24 +1689,56 @@ namespace vtkvolume
             "  {\n"
             "    if (intersections[i].volumeIndex >= 0)\n"
             "    {\n"
+            "      vec3 hitPoint = g_eyePosObj.xyz + intersections[i].t * g_rayDir;\n"
+            "      vec3 dataPos;\n"
+            "\n"
+            "      int vi = intersections[i].volumeIndex;\n"
             "      SamplePoint samplePoint;\n"
-            "      samplePoint.dataPos = (in_inverseTextureDatasetMatrix * vec4(g_eyePosObj.xyz + intersections[i].t * g_rayDir, 1.)).xyz + g_rayJitter[0];\n"
             "      samplePoint.t = intersections[i].t;\n"
-            "      samplePoint.volumeIndex = intersections[i].volumeIndex;\n"
-            "      samplePoint.type = TYPE_VOLUME;\n"
-            "      samplePointSet.samplePoints[samplePointSet.size++] = samplePoint;\n"
-            "      samplePoint.type = TYPE_REGION;\n"
-            "      samplePointSet.samplePoints[samplePointSet.size++] = samplePoint;\n"
+            "      samplePoint.volumeIndex = vi;\n"
+            "\n";
+
+            const struct vtkVolumeProperty::BitRegion& bitRegion = vol->GetProperty()->GetBitRegion();
+            if (bitRegion.mask)
+            {
+                str +=
+                    "      if (volumeParameters.data[i].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)\n"
+                    "      {\n"
+                    "        vec3 inc = volumeParameters.data[vi].cellStep.xyz;\n"
+                    "        vec3 cs = volumeParameters.data[vi].cellSpacing.xyz;\n"
+                    "        vec3 hitPointInt = cs * floor(hitPoint / cs);\n"
+                    "        vec3 nextEdge = hitPointInt;\n"
+                    "        nextEdge.x += g_rayDirSign.x >= 0. ? cs.x : 0.;\n"
+                    "        nextEdge.y += g_rayDirSign.y >= 0. ? cs.y : 0.;\n"
+                    "        nextEdge.z += g_rayDirSign.z >= 0. ? cs.z : 0.;\n"
+                    "        dataPos = (in_inverseTextureDatasetMatrix * vec4(hitPointInt, 1.)).xyz;\n" // TODO these texture matrices might differ for regions
+                    "        samplePoint.dataPos = dataPos;\n"
+                    "\n"
+                    "        samplePoint.type = TYPE_REGION;\n"
+                    "        vec3 tMax = vec3(g_rayDir.x != 0. ? (g_rayDirSign.x * (nextEdge.x - g_eyePosObj.x)) * g_tDelta[0].x : FLOAT_MAX,\n"
+                    "                         g_rayDir.y != 0. ? (g_rayDirSign.y * (nextEdge.y - g_eyePosObj.y)) * g_tDelta[0].y : FLOAT_MAX,\n"
+                    "                         g_rayDir.z != 0. ? (g_rayDirSign.z * (nextEdge.z - g_eyePosObj.z)) * g_tDelta[0].z : FLOAT_MAX);\n"
+                    "        samplePoint.tMax = tMax;\n"
+                    "        samplePoint.normal = g_rayDirSign * vec3(lessThanEqual(tMax, vec3(min(tMax.x, min(tMax.y, tMax.z)))));\n"
+                    "        samplePointSet.samplePoints[samplePointSet.size++] = samplePoint;\n"
+                    "      }\n"
+                    "\n"
+                  ;
+            }
+            str +=
+                "      if (volumeParameters.data[i].volumeVisibility.x == 1)\n"
+                "      {\n"
+                "        dataPos = (in_inverseTextureDatasetMatrix * vec4(hitPoint, 1.)).xyz;\n"
+                "        samplePoint.dataPos = dataPos + g_dirStep;\n"
+                "        samplePoint.type = TYPE_VOLUME;\n"
+                "        samplePointSet.samplePoints[samplePointSet.size++] = samplePoint;\n"
+                "      }\n"
+              ;
+            str +=
             "    }\n"
             "  }\n"
             "\n"
             "  SamplePoint frontSamplePoint;\n"
-          ;
-        str +=
-            "  vec3 step = sign(g_rayDir.xyz);\n"
-            "  vec3 nextVoxelBoundary = currentVoxel + step * in_volumeParameters.data[0].cellSpacing.xyz;\n"
-            "  vec3 tMax = (nextVoxelBoundary - g_eyePosObj.xyz) / g_rayDir.xyz;\n"
-            "  vec3 tDelta = in_volumeParameters.data[0].cellSpacing.xyz / g_rayDir.xyz * step;\n"
           ;
     }
 
@@ -2022,10 +2073,10 @@ namespace vtkvolume
     }
     shaderStr +=
                  "\n"
-                 "    if (any(greaterThan(g_dataPos, vec3(1.))) || any(lessThan(g_dataPos, vec3(0.))))\n"
-                 "    {\n"
-                 "      break;\n"
-                 "    }\n"
+                 "    //if (any(greaterThan(g_dataPos, vec3(1.))) || any(lessThan(g_dataPos, vec3(0.))))\n"
+                 "    //{\n"
+                 "    //  break;\n"
+                 "    //}\n"
                  "\n"
                  "    bool noMask = true;\n"
                  "    bool maskedByBox = false;\n"
@@ -2118,6 +2169,24 @@ namespace vtkvolume
            \n            g_srcColor = computeColor(0, scalar, g_srcColor.a);\
            \n          }\
            \n        }\
+           \n        // Opacity calculation using compositing:\
+           \n        // Here we use front to back compositing scheme whereby\
+           \n        // the current sample value is multiplied to the\
+           \n        // currently accumulated alpha and then this product\
+           \n        // is subtracted from the sample value to get the\
+           \n        // alpha from the previous steps. Next, this alpha is\
+           \n        // multiplied with the current sample colour\
+           \n        // and accumulated to the composited colour. The alpha\
+           \n        // value from the previous steps is then accumulated\
+           \n        // to the composited colour alpha.\
+           \n        if (computeFragColor)\
+           \n        {\
+           \n          g_srcColor.a *= in_downsampleCompensation / 2;\
+           \n          g_srcColor.rgb *= g_srcColor.a;\
+           \n          // we're doing it twice to compesate for downsampling\
+           \n          g_fragColor += (1. - g_fragColor.a) * g_srcColor;\
+           \n          g_fragColor += (1. - g_fragColor.a) * g_srcColor;\
+           \n        }\
            \n      }"; // if TYPE_VOLUME
         const struct vtkVolumeProperty::BitRegion& bitRegion = vol->GetProperty()->GetBitRegion();
         if (bitRegion.mask)
@@ -2155,33 +2224,19 @@ namespace vtkvolume
             "        if (g_srcColor.a > 0.)\n"
             "        {\n"
             "            computeFragColor = true;\n"
-            "            g_srcColor = computeLighting(0, g_srcColor, computeGradient(0, g_dataPos));\n"
+            "\n"
+            "            vec3 tMax = frontSamplePoint.tMax;\n"
+            "            g_srcColor = computeLighting(0, g_srcColor, vec4(frontSamplePoint.normal, 1.));\n"
             "            g_srcColor.rgb *= g_srcColor.a;\n"
             "            g_srcColor += (1. - g_srcColor.a) * g_srcColor;\n"
             "        }\n"
+            "        if (computeFragColor)\n"
+            "        {\n"
+            "          g_srcColor.rgb *= g_srcColor.a;\n"
+            "          g_fragColor += (1. - g_fragColor.a) * g_srcColor;\n"
+            "        }\n"
             "      }\n"; // if (type == TYPE_REGION)
         }
-
-        shaderStr += std::string("\
-          \n      // Opacity calculation using compositing:\
-          \n      // Here we use front to back compositing scheme whereby\
-          \n      // the current sample value is multiplied to the\
-          \n      // currently accumulated alpha and then this product\
-          \n      // is subtracted from the sample value to get the\
-          \n      // alpha from the previous steps. Next, this alpha is\
-          \n      // multiplied with the current sample colour\
-          \n      // and accumulated to the composited colour. The alpha\
-          \n      // value from the previous steps is then accumulated\
-          \n      // to the composited colour alpha.\
-          \n      if (computeFragColor)\
-          \n      {\
-          \n        g_srcColor.a *= in_downsampleCompensation / 2;\
-          \n        g_srcColor.rgb *= g_srcColor.a;\
-          \n        // we're doing it twice to compesate for downsampling\
-          \n        g_fragColor += (1. - g_fragColor.a) * g_srcColor;\
-          \n        g_fragColor += (1. - g_fragColor.a) * g_srcColor;\
-          \n      }"
-        );
       }
     }
 
@@ -2550,49 +2605,49 @@ namespace vtkvolume
     else
     {
         str += "\n"
-        "    vec3 nextDataPos;\n"
+        "    vec3 nextDataPos = g_dataPos;\n"
+        "    vec3 tMax;\n"
+        "    vec3 normal = vec3(0.);\n"
         "    float tNext = FLOAT_MAX;\n"
         "    if (frontSamplePoint.type == TYPE_VOLUME)\n"
         "    {\n"
-        "      nextDataPos = g_dataPos + g_dirStep;\n"
+        "      nextDataPos += g_dirStep;\n"
         "      tNext = dot((in_textureDatasetMatrix * vec4(nextDataPos, 1.) - g_eyePosObj).xyz, g_rayDir) / g_rayDirDot;\n"
         "    }\n"
         "    else // if (frontSamplePoint.type == TYPE_REGION)\n"
         "    {\n"
-        "      if (tMaxX < tMaxY)\n"
+        "      int vi = frontSamplePoint.volumeIndex;\n"
+        "      tMax = frontSamplePoint.tMax;\n"
+        "      vec3 cellSteps = volumeParameters.data[vi].cellStep.xyz;\n"
+        "      if (tMax.x < tMax.y && tMax.x < tMax.z)\n"
         "      {\n"
-        "        if (tMaxX < tMaxZ)\n"
-        "        {\n"
-        "          current_voxel[0] += stepX;\n"
-        "          tMaxX += tDeltaX;\n"
-        "        }\n"
-        "        else\n"
-        "        {\n"
-        "          current_voxel[2] += stepZ;\n"
-        "          tMaxZ += tDeltaZ;\n"
-        "        }\n"
+        "        nextDataPos.x += g_rayDirSign.x * cellSteps.x;\n"
+        "        tNext = tMax.x;\n"
+        "        tMax.x += g_tDelta[vi].x;\n"
+        "        normal.x = g_rayDirSign.x;\n"
+        "      }\n"
+        "      else if (tMax.y < tMax.x && tMax.y < tMax.z)\n"
+        "      {\n"
+        "        nextDataPos.y += g_rayDirSign.y * cellSteps.y;\n"
+        "        tNext = tMax.y;\n"
+        "        tMax.y += g_tDelta[vi].y;\n"
+        "        normal.y = g_rayDirSign.y;\n"
         "      }\n"
         "      else\n"
         "      {\n"
-        "        if (tMaxY < tMaxZ)\n"
-        "        {\n"
-        "          current_voxel[1] += stepY;\n"
-        "          tMaxY += tDeltaY;\n"
-        "        }\n"
-        "        else\n"
-        "        {\n"
-        "          current_voxel[2] += stepZ;\n"
-        "          tMaxZ += tDeltaZ;\n"
-        "        }\n"
+        "        nextDataPos.z += g_rayDirSign.z * cellSteps.z;\n"
+        "        tNext = tMax.z;\n"
+        "        tMax.z += g_tDelta[vi].z;\n"
+        "        normal.z = g_rayDirSign.z;\n"
         "      }\n"
-        "      tNext = ;\n"
-        "      nextDataPos = ;\n"
         "    }\n"
         "    if (tNext < intervals[frontSamplePoint.volumeIndex].tExit + FLOAT_EPS)\n"
         "    {\n"
         "      SamplePoint newSamplePoint;\n"
         "      newSamplePoint.dataPos = nextDataPos;\n"
         "      newSamplePoint.t = tNext;\n"
+        "      newSamplePoint.tMax = tMax;\n"
+        "      newSamplePoint.normal = normal;\n"
         "      newSamplePoint.volumeIndex = frontSamplePoint.volumeIndex;\n"
         "      newSamplePoint.type = frontSamplePoint.type;\n"
         "      if (insertSamplePoint(samplePointSet, newSamplePoint) == false)\n"

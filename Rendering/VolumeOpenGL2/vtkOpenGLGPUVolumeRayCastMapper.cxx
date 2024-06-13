@@ -698,7 +698,7 @@ public:
             transfer2dRegion[4],
             scalarsRange_gradMagMax_sampling[4];
 
-      int volumeVisibility[4]; // only first comp. is used, the rest is padding
+      unsigned int volumeVisibility[4]; // only first comp. is used, the rest is padding
   };
   #pragma pack(pop, 1) 
 
@@ -1273,6 +1273,9 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadRegions(vtkRenderer* ren)
         to->SetContext(context);
         to->SetMinificationFilter(vtkTextureObject::Nearest);
         to->SetMagnificationFilter(vtkTextureObject::Nearest);
+        to->SetWrapS(vtkTextureObject::ClampToEdge);
+        to->SetWrapT(vtkTextureObject::ClampToEdge);
+        to->SetWrapR(vtkTextureObject::ClampToEdge);
 
         to->Create3DFromRaw(bitRegionMaskDims[0],
                             bitRegionMaskDims[1],
