@@ -36,11 +36,9 @@ vtkVolumeTexture::vtkVolumeTexture()
   this->Scale[3] = 1.0f; this->Bias[3] = 0.0f;
 
   this->CellToPointMatrix->Identity();
-  this->AdjustedTexMin[0] = this->AdjustedTexMin[1] =
-    this->AdjustedTexMin[2] = 0.0f;
+  this->AdjustedTexMin[0] = this->AdjustedTexMin[1] = this->AdjustedTexMin[2] = 0.0f;
   this->AdjustedTexMin[3] = 1.0f;
-  this->AdjustedTexMax[0] = this->AdjustedTexMax[1] =
-    this->AdjustedTexMax[2] = 1.0f;
+  this->AdjustedTexMax[0] = this->AdjustedTexMax[1] = this->AdjustedTexMax[2] = 1.0f;
   this->AdjustedTexMax[3] = 1.0f;
 }
 
@@ -774,70 +772,41 @@ void vtkVolumeTexture::ComputeBounds(VolumeBlock* block)
   input->GetSpacing(spacing); ///TODO could be causing inf issue on streaming
   input->GetExtent(block->Extents);
 
-  double origin[3];
-  input->GetOrigin(origin);
-
-  int swapBounds[3];
-  swapBounds[0] = (spacing[0] < 0);
-  swapBounds[1] = (spacing[1] < 0);
-  swapBounds[2] = (spacing[2] < 0);
-
   // Loaded data represents points
   if (!this->IsCellData)
   {
-    // If spacing is negative, we may have to rethink the equation
-    // between real point and texture coordinate...
-    block->LoadedBounds[0] = origin[0] +
-      static_cast<double>(block->Extents[0 + swapBounds[0]]) *
-      spacing[0];
-    block->LoadedBounds[2] = origin[1] +
-      static_cast<double>(block->Extents[2 + swapBounds[1]]) *
-      spacing[1];
-    block->LoadedBounds[4] = origin[2] +
-      static_cast<double>(block->Extents[4 + swapBounds[2]]) *
-      spacing[2];
-    block->LoadedBounds[1] = origin[0] +
-      static_cast<double>(block->Extents[1 - swapBounds[0]]) *
-      spacing[0];
-    block->LoadedBounds[3] = origin[1] +
-      static_cast<double>(block->Extents[3 - swapBounds[1]]) *
-      spacing[1];
-    block->LoadedBounds[5] = origin[2] +
-      static_cast<double>(block->Extents[5 - swapBounds[2]]) *
-      spacing[2];
+    block->LoadedBounds[0] = -.5 * spacing[0] + static_cast<double>(block->Extents[0]) * spacing[0];
+    block->LoadedBounds[2] = -.5 * spacing[1] + static_cast<double>(block->Extents[2]) * spacing[1];
+    block->LoadedBounds[4] = -.5 * spacing[2] + static_cast<double>(block->Extents[4]) * spacing[2];
+    block->LoadedBounds[1] = .5 * spacing[0] + static_cast<double>(block->Extents[1]) * spacing[0];
+    block->LoadedBounds[3] = .5 * spacing[1] + static_cast<double>(block->Extents[3]) * spacing[1];
+    block->LoadedBounds[5] = .5 * spacing[2] + static_cast<double>(block->Extents[5]) * spacing[2];
   }
-  // Loaded extents represent cells
-  else
-  {
-    int i = 0;
-    while (i < 3)
-    {
-      block->LoadedBounds[2 * i + swapBounds[i]] = origin[i] +
-        (static_cast<double>(block->Extents[2 * i])) *
-        spacing[i];
+  //// Loaded extents represent cells
+  //else
+  //{
+  //  int i = 0;
+  //  while (i < 3)
+  //  {
+  //    block->LoadedBounds[2 * i] = origin[i] + (static_cast<double>(block->Extents[2 * i])) * spacing[i];
 
-      block->LoadedBounds[2 * i + 1 - swapBounds[i]] = origin[i] +
-        (static_cast<double>(block->Extents[2 * i + 1]) + 1.0) *
-        spacing[i];
+  //    block->LoadedBounds[2 * i + 1] = origin[i] + (static_cast<double>(block->Extents[2 * i + 1]) + 1.0) * spacing[i];
 
-      i++;
-    }
-  }
+  //    i++;
+  //  }
+  //}
 
   // Update sampling distance
-  block->DatasetStepSize[0] = 1.0 / (block->LoadedBounds[1] - block->LoadedBounds[0]);
-  block->DatasetStepSize[1] = 1.0 / (block->LoadedBounds[3] - block->LoadedBounds[2]);
-  block->DatasetStepSize[2] = 1.0 / (block->LoadedBounds[5] - block->LoadedBounds[4]);
+  block->DatasetStepSize[0] = 1.0 / (spacing[0] * (block->Extents[1] - block->Extents[0]));
+  block->DatasetStepSize[1] = 1.0 / (spacing[1] * (block->Extents[3] - block->Extents[2]));
+  block->DatasetStepSize[2] = 1.0 / (spacing[2] * (block->Extents[5] - block->Extents[4]));
 
   // Cell step/scale are adjusted per block.
   // Step should be dependent on the bounds and not on the texture size
   // since we can have a non-uniform voxel size / spacing / aspect ratio.
-  block->CellStep[0] =
-    (1.f / static_cast<float>(block->Extents[1] - block->Extents[0]));
-  block->CellStep[1] =
-    (1.f / static_cast<float>(block->Extents[3] - block->Extents[2]));
-  block->CellStep[2] =
-    (1.f / static_cast<float>(block->Extents[5] - block->Extents[4]));
+  block->CellStep[0] = (1.f / static_cast<float>(block->Extents[1] - block->Extents[0]));
+  block->CellStep[1] = (1.f / static_cast<float>(block->Extents[3] - block->Extents[2]));
+  block->CellStep[2] = (1.f / static_cast<float>(block->Extents[5] - block->Extents[4]));
 
   auto bounds = block->LoadedBounds;
   block->CellScale[0] = (bounds[1] - bounds[0]) * 0.5;

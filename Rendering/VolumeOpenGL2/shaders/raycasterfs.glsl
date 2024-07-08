@@ -49,10 +49,9 @@ vec3 g_terminatePos;
 vec3 g_dirStep;
 vec4 g_srcColor;
 vec4 g_eyePosObj;
+vec3 g_eyePosTex;
 bool g_exit;
 bool g_skip;
-float g_currentT;
-float g_terminatePointMax;
 
 struct VolumeParameters
 {
