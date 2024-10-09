@@ -89,7 +89,9 @@ public:
    */
   double *GetBounds() VTK_SIZEHINT(6) override;
   void GetBounds(double bounds[6])
-    { this->vtkProp3D::GetBounds(bounds); }
+  {
+      this->vtkProp3D::GetBounds(bounds);
+  }
   double GetMinXBound();
   double GetMaxXBound();
   double GetMinYBound();

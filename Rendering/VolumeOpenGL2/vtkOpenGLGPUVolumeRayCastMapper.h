@@ -201,6 +201,9 @@ public:
   vtkGetMacro(MaxCellSpacingDivisor, double);
   vtkSetMacro(MaxCellSpacingDivisor, double);
 
+  vtkGetMacro(OutlineRegionVoxels, bool);
+  vtkSetMacro(OutlineRegionVoxels, bool);
+
 
   vtkGetMacro(DownsampleCompensation, float);
   vtkSetMacro(DownsampleCompensation, float);
@@ -361,6 +364,8 @@ protected:
 
   std::vector<float> GradMagMaxs;
 
+  bool OutlineRegionVoxels;
+
 public:
   using VolumeInput = vtkVolumeInputHelper;
   using VolumeInputMap = std::map<int, vtkVolumeInputHelper>;
@@ -375,6 +380,9 @@ private:
   vtkOpenGLGPUVolumeRayCastMapper(
     const vtkOpenGLGPUVolumeRayCastMapper&) = delete;
   void operator=(const vtkOpenGLGPUVolumeRayCastMapper&) = delete;
+
+  public:
+      double AttenuationDistanceOffset = 0.;
 };
 
 #endif // vtkOpenGLGPUVolumeRayCastMapper_h

@@ -1484,6 +1484,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetLightingShaderParameters(
   prog->SetUniform1fv("in_shininess", specularPower.size(), specularPower.data());
   prog->SetUniform2fv("in_shadingGradientScales", shadingGradientScales.size() / 2, (const float(*)[2]) (shadingGradientScales.data()));
   prog->SetUniform1fv("in_opacities", opacity.size(), opacity.data());
+  prog->SetUniformi("in_outlineRegionVoxels", this->Parent->OutlineRegionVoxels);
 
   // Set advanced lighting features
   //if (vol && !vol->GetProperty()->GetShade())
@@ -1531,7 +1532,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetLightingShaderParameters(
       double lightDir[3];
       vtkMath::Subtract(lfp, lp, lightDir);
       vtkMath::Normalize(lightDir);
-      double* tDir = viewTF->TransformNormal(lightDir);
+      double* tDir = lightDir;// viewTF->TransformNormal(lightDir);
       lightDirection[numberOfLights][0] = tDir[0];
       lightDirection[numberOfLights][1] = tDir[1];
       lightDirection[numberOfLights][2] = tDir[2];
@@ -1544,12 +1545,6 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetLightingShaderParameters(
   prog->SetUniform3fv("in_lightSpecularColor", numberOfLights, lightSpecularColor);
   prog->SetUniform3fv("in_lightDirection", numberOfLights, lightDirection);
   prog->SetUniformi("in_numberOfLights", numberOfLights);
-
-  // we are done unless we have positional lights
-  if (this->LightComplexity < 3)
-  {
-    return;
-  }
 
   // if positional lights pass down more parameters
   float lightAttenuation[6][3];
@@ -1570,7 +1565,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetLightingShaderParameters(
       lightExponent[numberOfLights] = light->GetExponent();
       lightConeAngle[numberOfLights] = light->GetConeAngle();
       double* lp = light->GetTransformedPosition();
-      double* tlp = viewTF->TransformPoint(lp);
+      double* tlp = lp;// viewTF->TransformPoint(lp);
       lightPosition[numberOfLights][0] = tlp[0];
       lightPosition[numberOfLights][1] = tlp[1];
       lightPosition[numberOfLights][2] = tlp[2];
@@ -1579,6 +1574,13 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetLightingShaderParameters(
     }
   }
   prog->SetUniform3fv("in_lightAttenuation", numberOfLights, lightAttenuation);
+  prog->SetUniformf("in_attDistOffset", this->Parent->AttenuationDistanceOffset);
+
+  // we are done unless we have positional lights
+  if (this->LightComplexity < 3)
+  {
+    return;
+  }
   prog->SetUniform1iv("in_lightPositional", numberOfLights, lightPositional);
   prog->SetUniform3fv("in_lightPosition", numberOfLights, lightPosition);
   prog->SetUniform1fv("in_lightExponent", numberOfLights, lightExponent);
@@ -2893,6 +2895,7 @@ vtkOpenGLGPUVolumeRayCastMapper::vtkOpenGLGPUVolumeRayCastMapper()
   this->VertexShaderCode = nullptr;
   this->FragmentShaderCode = nullptr;
   this->MaxCellSpacingDivisor = 8.;
+  this->OutlineRegionVoxels = false;
 
   this->ResourceCallback =
     new vtkOpenGLResourceFreeCallback<vtkOpenGLGPUVolumeRayCastMapper>(
@@ -3630,6 +3633,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::ReplaceShaderValues(
   {
     vtkLightCollection* lc = ren->GetLights();
     vtkLight* light;
+    this->Impl->LightComplexity = 0;
     this->Impl->NumberOfLights = 0;
 
     // Compute light complexity.

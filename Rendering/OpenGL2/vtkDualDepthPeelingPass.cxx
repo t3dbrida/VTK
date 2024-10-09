@@ -476,8 +476,7 @@ bool vtkDualDepthPeelingPass::PreReplaceVolumetricShaderValues(
     "  }\n"
     "\n"
     "  // Compute the number of steps and reinitialize the step counter.\n"
-    "  g_terminatePointMax = length(rgrif) / g_minDirStepLength;\n"
-    "  g_currentT = 0.0;\n"
+    "  g_terminatePosEyeLength = length(g_terminatePos - g_eyePosTex);\n"
     "  g_fragColor = vec4(0.0);\n"
     "\n";
 
