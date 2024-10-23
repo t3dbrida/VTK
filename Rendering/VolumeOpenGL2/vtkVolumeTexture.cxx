@@ -797,9 +797,9 @@ void vtkVolumeTexture::ComputeBounds(VolumeBlock* block)
   //}
 
   // Update sampling distance
-  block->DatasetStepSize[0] = 1.0 / (spacing[0] * (block->Extents[1] - block->Extents[0]));
-  block->DatasetStepSize[1] = 1.0 / (spacing[1] * (block->Extents[3] - block->Extents[2]));
-  block->DatasetStepSize[2] = 1.0 / (spacing[2] * (block->Extents[5] - block->Extents[4]));
+  block->DatasetStepSize[0] = 1.0 / (block->LoadedBounds[1] - block->LoadedBounds[0]);
+  block->DatasetStepSize[1] = 1.0 / (block->LoadedBounds[3] - block->LoadedBounds[2]);
+  block->DatasetStepSize[2] = 1.0 / (block->LoadedBounds[5] - block->LoadedBounds[4]);
 
   // Cell step/scale are adjusted per block.
   // Step should be dependent on the bounds and not on the texture size

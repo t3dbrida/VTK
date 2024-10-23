@@ -1673,13 +1673,22 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderVolumeGeometry(
 {
   if (this->IsGeometryUpdateRequired(ren, vol, loadedBounds))
   {
+    double enlargedBounds[6];
+    std::memcpy(enlargedBounds, loadedBounds, 6 * sizeof(double));
+    //enlargedBounds[0] -= .5;
+    //enlargedBounds[1] += .5;
+    //enlargedBounds[2] -= .5;
+    //enlargedBounds[3] += .5;
+    //enlargedBounds[4] -= .5;
+    //enlargedBounds[5] += .5;
+
     vtkNew<vtkTessellatedBoxSource> boxSource;
-    boxSource->SetBounds(loadedBounds);
+    boxSource->SetBounds(enlargedBounds);
     boxSource->QuadsOn();
     boxSource->SetLevel(0);
 
     vtkNew<vtkDensifyPolyData> densityPolyData;
-    if (this->IsCameraInside(ren, vol, loadedBounds))
+    if (this->IsCameraInside(ren, vol, enlargedBounds))
     {
       // Normals should be transformed using the transpose of inverse
       // InverseVolumeMat
@@ -4470,12 +4479,12 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
     double* const cellSpacing = imgData->GetSpacing();
     float min[3]{bounds[0], bounds[2], bounds[4]};
     float max[3]{bounds[1], bounds[3], bounds[5]};
-    //for (int i = 0; i < 3; ++i)
-    //{
-    //    const double halfCellSpacingI = .5 * cellSpacing[i];
-    //    min[i] += halfCellSpacingI;
-    //    max[i] -= halfCellSpacingI;
-    //}
+    for (int i = 0; i < 3; ++i)
+    {
+        const double halfCellSpacingI = .5 * cellSpacing[i];
+        min[i] -= halfCellSpacingI;
+        max[i] += halfCellSpacingI;
+    }
     vtkInternal::CopyVector<float, 3>(min, this->VolumeParameters[index].boundsMin, 0);
     vtkInternal::CopyVector<float, 3>(max, this->VolumeParameters[index].boundsMax, 0);
 

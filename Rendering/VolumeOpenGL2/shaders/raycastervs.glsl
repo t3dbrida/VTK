@@ -33,6 +33,44 @@
 
 //VTK::Shading::Dec
 
+struct VolumeParameters
+{
+  vec4 boundsMin,
+       boundsMax,
+       boxMaskOrigin,
+       boxMaskAxisX,
+       boxMaskAxisY,
+       boxMaskAxisZ,
+       cylinderMaskCenter,
+       cylinderMaskAxis_cylinderMaskRadius,
+       volumeScale,
+       volumeBias;
+
+  ivec4 noOfComponents_maskIndex_regionIndex_transfer2dIndex;
+
+  mat4 volumeMatrix,
+       inverseVolumeMatrix,
+       textureDatasetMatrix,
+       inverseTextureDatasetMatrix,
+       textureToEye,
+       cellToPoint;
+
+  vec4 texMin,
+	   texMax,
+       cellStep,
+       cellSpacing,
+       transfer2dRegion,
+       scalarsRange_gradMagMax_sampling;
+
+  uvec4 volumeVisibility;
+};
+
+layout (std430, binding = 0) buffer VP
+{
+    VolumeParameters data[];
+} volumeParameters;
+
+
 //////////////////////////////////////////////////////////////////////////////
 ///
 /// Inputs
