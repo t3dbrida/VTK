@@ -1673,22 +1673,13 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderVolumeGeometry(
 {
   if (this->IsGeometryUpdateRequired(ren, vol, loadedBounds))
   {
-    double enlargedBounds[6];
-    std::memcpy(enlargedBounds, loadedBounds, 6 * sizeof(double));
-    //enlargedBounds[0] -= .5;
-    //enlargedBounds[1] += .5;
-    //enlargedBounds[2] -= .5;
-    //enlargedBounds[3] += .5;
-    //enlargedBounds[4] -= .5;
-    //enlargedBounds[5] += .5;
-
     vtkNew<vtkTessellatedBoxSource> boxSource;
-    boxSource->SetBounds(enlargedBounds);
+    boxSource->SetBounds(loadedBounds);
     boxSource->QuadsOn();
     boxSource->SetLevel(0);
 
     vtkNew<vtkDensifyPolyData> densityPolyData;
-    if (this->IsCameraInside(ren, vol, enlargedBounds))
+    if (this->IsCameraInside(ren, vol, loadedBounds))
     {
       // Normals should be transformed using the transpose of inverse
       // InverseVolumeMat
