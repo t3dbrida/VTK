@@ -101,6 +101,10 @@ public:
    */
   vtkMTimeType GetMTime() override;
 
+  vtkActor* GetConeActor() {
+      return this->ConeActor;
+  }
+
 protected:
   vtkLightActor();
   ~vtkLightActor() override;

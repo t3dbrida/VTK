@@ -250,7 +250,7 @@ void vtkLightActor::UpdateViewProps()
     vtkProperty *p=this->ConeActor->GetProperty();
     p->SetLighting(false);
     p->SetColor(this->Light->GetDiffuseColor());
-    p->SetRepresentationToWireframe();
+    //p->SetRepresentationToWireframe();
 
     if(this->CameraLight==nullptr)
     {
