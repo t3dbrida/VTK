@@ -4053,9 +4053,7 @@ vec4 computeLighting(int index, vec4 color, vec4 gradient)
 uniform float in_scale;
 uniform float in_bias;
 
-/**
- * Transform window coordinate to NDC.
- */
+//  Transform window coordinate to NDC.
 vec4 WindowToNDC(const float xCoord, const float yCoord, const float zCoord)
 {
   vec4 NDCCoord = vec4(0.0, 0.0, 0.0, 1.0);
@@ -4093,12 +4091,10 @@ vec2 intersectRayBox(vec3 rayOrigin, vec3 rayDir, vec3 aabbMin, vec3 aabbMax)
         return tMax >= tMin ? vec2(tMin, tMax) : vec2(FLOAT_MAX, -FLOAT_MAX);
 }
 
-/**
- * Global initialization. This method should only be called once per shader
- * invocation regardless of whether castRay() is called several times (e.g.
- * vtkDualDepthPeelingPass). Any castRay() specific initialization should be
- * placed within that function.
- */
+// Global initialization. This method should only be called once per shader
+// invocation regardless of whether castRay() is called several times (e.g.
+// vtkDualDepthPeelingPass). Any castRay() specific initialization should be
+// placed within that function.
 void initializeRayCast()
 {
   /// Initialize g_fragColor (output) to 0

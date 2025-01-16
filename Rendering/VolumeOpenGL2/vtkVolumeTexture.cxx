@@ -833,9 +833,9 @@ void vtkVolumeTexture::UpdateTextureToDataMatrix(VolumeBlock* block)
 
   // Translation vec
   auto bounds = block->LoadedBounds;
-  //matrix->SetElement(0, 3, bounds[0]);
-  //matrix->SetElement(1, 3, bounds[2]);
-  //matrix->SetElement(2, 3, bounds[4]);
+  matrix->SetElement(0, 3, bounds[0]);
+  matrix->SetElement(1, 3, bounds[2]);
+  matrix->SetElement(2, 3, bounds[4]);
 
   auto matrixInv = block->TextureToDatasetInv.GetPointer();
   matrixInv->DeepCopy(matrix);
