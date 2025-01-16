@@ -804,9 +804,9 @@ void vtkVolumeTexture::ComputeBounds(VolumeBlock* block)
   // Cell step/scale are adjusted per block.
   // Step should be dependent on the bounds and not on the texture size
   // since we can have a non-uniform voxel size / spacing / aspect ratio.
-  block->CellStep[0] = (1.f / static_cast<float>(block->Extents[1] - block->Extents[0]));
-  block->CellStep[1] = (1.f / static_cast<float>(block->Extents[3] - block->Extents[2]));
-  block->CellStep[2] = (1.f / static_cast<float>(block->Extents[5] - block->Extents[4]));
+  block->CellStep[0] = (1.f / static_cast<float>(block->LoadedBounds[1] - block->LoadedBounds[0]));
+  block->CellStep[1] = (1.f / static_cast<float>(block->LoadedBounds[3] - block->LoadedBounds[2]));
+  block->CellStep[2] = (1.f / static_cast<float>(block->LoadedBounds[5] - block->LoadedBounds[4]));
 
   auto bounds = block->LoadedBounds;
   block->CellScale[0] = (bounds[1] - bounds[0]) * 0.5;
@@ -833,9 +833,9 @@ void vtkVolumeTexture::UpdateTextureToDataMatrix(VolumeBlock* block)
 
   // Translation vec
   auto bounds = block->LoadedBounds;
-  matrix->SetElement(0, 3, bounds[0]);
-  matrix->SetElement(1, 3, bounds[2]);
-  matrix->SetElement(2, 3, bounds[4]);
+  //matrix->SetElement(0, 3, bounds[0]);
+  //matrix->SetElement(1, 3, bounds[2]);
+  //matrix->SetElement(2, 3, bounds[4]);
 
   auto matrixInv = block->TextureToDatasetInv.GetPointer();
   matrixInv->DeepCopy(matrix);
