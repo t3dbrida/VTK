@@ -513,6 +513,11 @@ public:
   vtkShaderProgram* ShaderProgram;
   vtkOpenGLShaderCache* ShaderCache;
 
+  vtkSmartPointer<vtkOpenGLFramebufferObject> RegionDepthFBO;
+  vtkSmartPointer<vtkTextureObject> RegionDepthBufferTextureObject;
+  vtkSmartPointer<vtkTextureObject> RegionDepthTextureObject;
+  vtkSmartPointer<vtkShaderProgram> RegionDepthShaderProgram;
+
   vtkOpenGLFramebufferObject* FBO;
   vtkTextureObject* RTTDepthBufferTextureObject;
   vtkTextureObject* RTTDepthTextureObject;
@@ -1291,6 +1296,581 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadRegions(vtkRenderer* ren)
     }
   }
 
+  if (result)
+  {
+      if (!this->RegionDepthFBO)
+      {
+          this->RegionDepthFBO = vtkSmartPointer<vtkOpenGLFramebufferObject>::New();
+      }
+      this->RegionDepthFBO->SetContext(vtkOpenGLRenderWindow::SafeDownCast(ren->GetRenderWindow()));
+
+      this->RegionDepthFBO->SaveCurrentBindingsAndBuffers();
+      this->RegionDepthFBO->Bind(GL_FRAMEBUFFER);
+      vtkOpenGLStaticCheckErrorMacro("error: binding fbo");
+      this->RegionDepthFBO->InitializeViewport(this->WindowSize[0], this->WindowSize[1]);
+      vtkOpenGLStaticCheckErrorMacro("error: init viewport");
+
+      if (!this->RegionDepthTextureObject)
+      {
+        this->RegionDepthTextureObject = vtkSmartPointer<vtkTextureObject>::New();
+
+        this->RegionDepthTextureObject->SetContext(vtkOpenGLRenderWindow::SafeDownCast(ren->GetRenderWindow()));
+        this->RegionDepthTextureObject->Create2D(this->WindowSize[0], this->WindowSize[1], 1, VTK_FLOAT, false);
+        vtkOpenGLStaticCheckErrorMacro("error: create texture");
+        this->RegionDepthTextureObject->Activate();
+        this->RegionDepthTextureObject->SetWrapS(vtkTextureObject::ClampToEdge);
+        this->RegionDepthTextureObject->SetWrapT(vtkTextureObject::ClampToEdge);
+        this->RegionDepthTextureObject->SetMinificationFilter(vtkTextureObject::Nearest);
+        this->RegionDepthTextureObject->SetMagnificationFilter(vtkTextureObject::Nearest);
+        this->RegionDepthTextureObject->SetAutoParameters(0);
+        vtkOpenGLStaticCheckErrorMacro("error: after setup texture");
+      }
+
+      if (!this->RegionDepthBufferTextureObject)
+      {
+        this->RegionDepthBufferTextureObject = vtkSmartPointer<vtkTextureObject>::New();
+        this->RegionDepthBufferTextureObject->SetContext(vtkOpenGLRenderWindow::SafeDownCast(ren->GetRenderWindow()));
+        this->RegionDepthBufferTextureObject->AllocateDepth(this->WindowSize[0], this->WindowSize[1], vtkTextureObject::Native);
+        this->RegionDepthBufferTextureObject->Activate();
+        this->RegionDepthBufferTextureObject->SetMinificationFilter(vtkTextureObject::Nearest);
+        this->RegionDepthBufferTextureObject->SetMagnificationFilter(vtkTextureObject::Nearest);
+        this->RegionDepthBufferTextureObject->SetAutoParameters(0);
+      }
+      this->RegionDepthBufferTextureObject->Bind();
+      this->RegionDepthFBO->AddDepthAttachment(GL_FRAMEBUFFER, this->RegionDepthBufferTextureObject);
+      this->RegionDepthTextureObject->Bind();
+      this->RegionDepthFBO->AddColorAttachment(GL_FRAMEBUFFER, 0U, this->RegionDepthTextureObject);
+      this->RegionDepthFBO->ActivateDrawBuffers(1);
+
+      vtkOpenGLStaticCheckErrorMacro("error: attach depth texture");
+
+      this->RegionDepthFBO->CheckFrameBufferStatus(GL_FRAMEBUFFER);
+      vtkOpenGLStaticCheckErrorMacro("error: check FBO status");
+      this->RegionDepthFBO->UnBind();
+
+      //this->RegionDepthFBO->GetContext()->GetState()->vtkglClearColor(1.0, 1.0, 1.0, 0.0);
+      //this->RegionDepthFBO->GetContext()->GetState()->vtkglClear(GL_COLOR_BUFFER_BIT);
+
+      if (!this->RegionDepthShaderProgram)
+      {
+          vtkShader* regionDepthGeometryShader = vtkShader::New();
+          regionDepthGeometryShader->SetSource("");
+          vtkShader* regionDepthVertexShader = vtkShader::New();
+          regionDepthVertexShader->SetSource(
+R"(
+#version 430
+#ifndef GL_ES
+#define highp
+#define mediump
+#define lowp
+#endif // GL_ES
+#define attribute in
+#define varying out
+
+#extension GL_ARB_gpu_shader5 : enable
+
+uniform mat4 in_modelViewMatrix;
+uniform mat4 in_projectionMatrix;
+uniform mat4 in_volumeMatrix;
+uniform mat4 in_inverseTextureDatasetMatrix;
+uniform mat4 in_cellToPoint;
+
+flat out mat4 ip_inverseTextureDataAdjusted;
+
+in vec3 in_vertexPos;
+
+out vec3 ip_textureCoords;
+out vec3 ip_vertexPos;
+
+void main()
+{
+  vec4 pos = in_projectionMatrix * in_modelViewMatrix * in_volumeMatrix * vec4(in_vertexPos.xyz, 1.0);
+  gl_Position = pos;
+
+  vec3 uvx = /*sign(in_cellSpacing) **/ (in_inverseTextureDatasetMatrix * vec4(in_vertexPos, 1.0)).xyz;
+
+  ip_textureCoords = (/*in_cellToPoint * */vec4(uvx, 1.0)).xyz;
+  ip_inverseTextureDataAdjusted = /*in_cellToPoint * */in_inverseTextureDatasetMatrix;
+  ip_vertexPos = in_vertexPos;
+}
+)"
+          );
+          vtkShader* regionDepthFragmentShader = vtkShader::New();
+          regionDepthFragmentShader->SetSource(
+R"(
+#version 430
+#ifdef GL_ES
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+precision highp sampler2D;
+precision highp sampler3D;
+#else
+precision mediump float;
+precision mediump sampler2D;
+precision mediump sampler3D;
+#endif
+#define texelFetchBuffer texelFetch
+#define texture1D texture
+#define texture2D texture
+#define texture3D texture
+#else // GL_ES
+#define highp
+#define mediump
+#define lowp
+#if __VERSION__ == 330
+#define texelFetchBuffer texelFetch
+#define texture1D texture
+#define texture2D texture
+#define texture3D texture
+#endif
+#endif // GL_ES
+#define varying in
+
+#define FLOAT_MAX 1e20
+#define FLOAT_EPS 1e-7
+
+in vec3 ip_textureCoords;
+in vec3 ip_vertexPos;
+
+vec3 g_rayDir;
+vec3 g_rayDirSign;
+float g_rayDirDot;
+vec3 g_dataPos;
+vec3 g_terminatePos;
+vec4 g_srcColor;
+vec4 g_eyePosObj;
+vec3 g_eyePosTex;
+bool g_exit;
+bool g_skip;
+
+struct VolumeParameters
+{
+  vec4 boundsMin,
+       boundsMax,
+       boxMaskOrigin,
+       boxMaskAxisX,
+       boxMaskAxisY,
+       boxMaskAxisZ,
+       cylinderMaskCenter,
+       cylinderMaskAxis_cylinderMaskRadius,
+       volumeScale,
+       volumeBias;
+
+  ivec4 noOfComponents_maskIndex_regionIndex_transfer2dIndex;
+
+  mat4 volumeMatrix,
+       inverseVolumeMatrix,
+       textureDatasetMatrix,
+       inverseTextureDatasetMatrix,
+       textureToEye,
+       cellToPoint;
+
+  vec4 texMin,
+	   texMax,
+       cellStep,
+       cellSpacing,
+       transfer2dRegion,
+       scalarsRange_gradMagMax_sampling;
+
+  uvec4 volumeVisibility;
+};
+
+layout (std430, binding = 0) buffer VP
+{
+    VolumeParameters data[];
+} volumeParameters;
+
+out float out_fragDepth;
+float g_fragDepth;
+
+float g_terminatePosEyeLength;
+float g_terminatePosLength;
+
+#ifndef GL_ES
+uniform sampler2D in_depthSampler;
+#endif
+
+// Camera position
+uniform vec3 in_cameraPos;
+uniform mat4 in_volumeMatrix;
+uniform mat4 in_inverseVolumeMatrix;
+uniform mat4 in_textureDatasetMatrix;
+uniform mat4 in_inverseTextureDatasetMatrix;
+// view and model matrices
+uniform mat4 in_projectionMatrix;
+uniform mat4 in_inverseProjectionMatrix;
+uniform mat4 in_modelViewMatrix;
+uniform mat4 in_inverseModelViewMatrix;
+flat in mat4 ip_inverseTextureDataAdjusted;
+
+// Scales
+uniform vec2 in_windowLowerLeftCorner;
+uniform vec2 in_inverseOriginalWindowSize;
+uniform vec2 in_inverseWindowSize;
+
+// Others
+vec3 g_tDelta[1];
+
+const float g_opacityThreshold = 1.0 - 1.0 / 255.0;
+
+vec4 sampleMask(int index, vec3 uvw)
+{
+  vec4 result = vec4(0.);
+
+  vec3 diffx = dFdx(uvw);
+  vec3 diffy = dFdy(uvw);
+  switch (index)
+  {
+    default: break;
+  }
+
+  return result;
+}
+
+uniform int in_regionOffset[2];
+uniform usampler3D in_regionMask[1];
+
+uvec4 sampleRegionMask(int index, vec3 uvw)
+{
+  uvec4 result = uvec4(0);
+
+  switch (index)
+  {
+    case 0:
+    {
+      result = texture(in_regionMask[0], uvw);
+      break;
+    }
+    default: break;
+  }
+
+  return result;
+}
+
+uniform vec4 in_regionColor[1];
+
+vec4 getRegionColor(int index)
+{
+  vec4 result = vec4(0.);
+  result = in_regionColor[index];
+  return result;
+}
+
+uniform sampler2D in_transfer2D[1];
+
+vec4 sampleTransfer2D(int index, vec2 uv)
+{
+  vec4 result = vec4(0.);
+
+  vec4 region = volumeParameters.data[index].transfer2dRegion;
+  uv = vec2(region.x + uv.x * region.z,
+            region.y + uv.y * region.w);
+  vec2 diffx = dFdx(uv);
+  vec2 diffy = dFdy(uv);
+
+  int samplerIndex = volumeParameters.data[index].noOfComponents_maskIndex_regionIndex_transfer2dIndex.w;
+  switch (samplerIndex)
+  {
+    case 0:
+      result = textureGrad(in_transfer2D[0], uv, diffx, diffy);
+      break;
+  }
+
+  return result;
+}
+
+/**
+ * Transform window coordinate to NDC.
+ */
+vec4 WindowToNDC(const float xCoord, const float yCoord, const float zCoord)
+{
+  vec4 NDCCoord = vec4(0.0, 0.0, 0.0, 1.0);
+
+  NDCCoord.x = (xCoord - in_windowLowerLeftCorner.x) * 2.0 * in_inverseWindowSize.x - 1.0;
+  NDCCoord.y = (yCoord - in_windowLowerLeftCorner.y) * 2.0 * in_inverseWindowSize.y - 1.0;
+  NDCCoord.z = (2.0 * zCoord - (gl_DepthRange.near + gl_DepthRange.far)) / gl_DepthRange.diff;
+
+  return NDCCoord;
+}
+
+/**
+ * Transform NDC coordinate to window coordinates.
+ */
+vec4 NDCToWindow(const float xNDC, const float yNDC, const float zNDC)
+{
+  vec4 WinCoord = vec4(0.0, 0.0, 0.0, 1.0);
+
+  WinCoord.x = (xNDC + 1.f) / (2.f * in_inverseWindowSize.x) + in_windowLowerLeftCorner.x;
+  WinCoord.y = (yNDC + 1.f) / (2.f * in_inverseWindowSize.y) + in_windowLowerLeftCorner.y;
+  WinCoord.z = (zNDC * gl_DepthRange.diff + (gl_DepthRange.near + gl_DepthRange.far)) / 2.f;
+
+  return WinCoord;
+}
+
+vec2 intersectRayBox(vec3 rayOrigin, vec3 rayDir, vec3 aabbMin, vec3 aabbMax)
+{
+        float tMin = -FLOAT_MAX;
+        float tMax = FLOAT_MAX;
+
+		vec3 inverseRayDirection = vec3(1.) / rayDir;
+        for (int i = 0; i < 3; ++i)
+        {
+            float t0, t1;
+            if (inverseRayDirection[i] >= 0.)
+            {
+                t0 = (aabbMin[i] - rayOrigin[i]) * inverseRayDirection[i];
+                t1 = (aabbMax[i] - rayOrigin[i]) * inverseRayDirection[i];
+            }
+            else {
+                t1 = (aabbMin[i] - rayOrigin[i]) * inverseRayDirection[i];
+                t0 = (aabbMax[i] - rayOrigin[i]) * inverseRayDirection[i];
+            }
+
+            tMin = t0 > tMin ? t0 : tMin;
+            tMax = t1 < tMax ? t1 : tMax;
+        }
+
+        return tMax >= tMin ? vec2(tMin, tMax) : vec2(FLOAT_MAX, -FLOAT_MAX);
+}
+
+void initializeRayCast()
+{
+  g_exit = false;
+      
+  g_eyePosObj = in_inverseVolumeMatrix * vec4(in_cameraPos, 1.0);      
+  g_eyePosTex = (in_inverseTextureDatasetMatrix * vec4(g_eyePosObj.xyz, 1.)).xyz;      
+      
+  g_rayDir = normalize(ip_vertexPos.xyz - g_eyePosObj.xyz);      
+  g_rayDirSign = sign(g_rayDir);      
+  g_rayDirDot = dot(g_rayDir, g_rayDir);      
+      
+  vec3 cs = volumeParameters.data[0].cellSpacing.xyz;          
+  g_tDelta[0] = vec3(g_rayDir.x != 0. ? (g_rayDirSign.x * cs.x / g_rayDir.x) : FLOAT_MAX,          
+                     g_rayDir.y != 0. ? (g_rayDirSign.y * cs.y / g_rayDir.y) : FLOAT_MAX,          
+                     g_rayDir.z != 0. ? (g_rayDirSign.z * cs.z / g_rayDir.z) : FLOAT_MAX);              
+      
+  vec2 fragTexCoord = (gl_FragCoord.xy - in_windowLowerLeftCorner) * in_inverseWindowSize;      
+      
+  // Flag to deternmine if voxel should be considered for the rendering      
+  g_skip = false;          
+      
+#ifdef GL_ES      
+  vec4 l_depthValue = vec4(1.0,1.0,1.0,1.0);      
+#else      
+  vec4 l_depthValue = texture(in_depthSampler, fragTexCoord);      
+#endif      
+  // Depth test      
+  if(gl_FragCoord.z >= l_depthValue.x)      
+  {      
+    discard;      
+  }      
+      
+  // color buffer or max scalar buffer have a reduced size.      
+  fragTexCoord = (gl_FragCoord.xy - in_windowLowerLeftCorner) * in_inverseOriginalWindowSize;      
+      
+  // Compute max number of iterations it will take before we hit      
+  // the termination point      
+      
+  // Abscissa of the point on the depth buffer along the ray.      
+  // point in texture coordinates      
+  vec4 terminatePosTmp = WindowToNDC(gl_FragCoord.x, gl_FragCoord.y, l_depthValue.x);      
+      
+  // From normalized device coordinates to eye coordinates.      
+  // in_projectionMatrix is inversed because of way VT      
+  // From eye coordinates to texture coordinates      
+  terminatePosTmp = in_inverseVolumeMatrix *      
+                    in_inverseModelViewMatrix *      
+                    in_inverseProjectionMatrix *      
+                    terminatePosTmp;      
+  g_terminatePos = terminatePosTmp.xyz / terminatePosTmp.w;      
+  g_terminatePosLength = length(g_terminatePos - g_eyePosObj.xyz);      
+  terminatePosTmp = ip_inverseTextureDataAdjusted * terminatePosTmp;      
+  g_terminatePos = terminatePosTmp.xyz / terminatePosTmp.w;      
+  g_terminatePosEyeLength = length(g_terminatePos - g_eyePosTex.xyz);      
+}
+
+void castRay(const float zStart, const float zEnd)
+{
+  g_fragDepth = 0.;
+
+  float tExit = -FLOAT_MAX;
+  for (int i = 0; i < 1; ++i)
+  {
+    bool valid = false;
+    if (volumeParameters.data[i].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)
+    {
+      vec3 bboxMin = volumeParameters.data[0].boundsMin.xyz;
+      vec3 bboxMax = volumeParameters.data[0].boundsMax.xyz;
+      vec2 interval = intersectRayBox(g_eyePosObj.xyz, g_rayDir, bboxMin, bboxMax);
+      valid = interval.x < interval.y && interval.x < FLOAT_MAX && interval.y > 0.;
+      if (valid == true)
+      {
+        tExit = interval.y;
+      }
+    }
+  }
+
+  vec3 segDataPos;
+  float segT = FLOAT_MAX;
+  vec3 segTMax, segNormal;
+  int stepCounter = 0; // indicates validity of marched through volumes, if 0 then the loop exits
+
+  if (volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)
+  {
+    vec3 cs = volumeParameters.data[0].cellSpacing.xyz;
+    // grid corner is computed with respect to the fact that the volume bounding box is enlarged by half a voxel in all directions, beginning in negative numbers
+    vec3 gridCorner = cs * floor((g_eyePosObj.xyz + .5 * cs) / cs) - .5 * cs; // we move the enlarged volume by half voxel to properly work with rounding (necessary when working with half voxel offset), then restore the original grid corner position
+    vec3 nextGridLine = gridCorner + vec3(greaterThanEqual(g_rayDirSign, vec3(0.))) * cs;
+
+    segDataPos = (in_inverseTextureDatasetMatrix * vec4(gridCorner + .5 * cs, 1.)).xyz;
+    segTMax = vec3(g_rayDir.x != 0. ? (g_rayDirSign.x * ((nextGridLine.x - g_eyePosObj.x) / cs.x) * g_tDelta[0].x) : FLOAT_MAX,
+                   g_rayDir.y != 0. ? (g_rayDirSign.y * ((nextGridLine.y - g_eyePosObj.y) / cs.y) * g_tDelta[0].y) : FLOAT_MAX,
+                   g_rayDir.z != 0. ? (g_rayDirSign.z * ((nextGridLine.z - g_eyePosObj.z) / cs.z) * g_tDelta[0].z) : FLOAT_MAX);
+    segT = min(segTMax.x, min(segTMax.y, segTMax.z));
+    segNormal = -g_rayDirSign * vec3(lessThanEqual(segTMax, vec3(segT)));
+    ++stepCounter;
+  }
+
+  while (!g_exit)
+  {
+    if (stepCounter == 0) break;
+    g_skip = false;
+    g_dataPos = segDataPos;
+    --stepCounter;
+    if (g_terminatePosLength < length((g_eyePosObj.xyz + segT * g_rayDir.xyz) - g_eyePosObj.xyz))
+    {
+      continue;
+    }
+
+    bool noMask = true;
+    bool maskedByBox = false;
+    vec3 p = vec3(in_textureDatasetMatrix * vec4(g_dataPos, 1.));
+    if (volumeParameters.data[0].boxMaskAxisX.xyz != vec3(0.) && volumeParameters.data[0].boxMaskAxisY.xyz != vec3(0.) && volumeParameters.data[0].boxMaskAxisZ.xyz != vec3(0.))
+    {
+      noMask = false;
+      float projX = dot(p - volumeParameters.data[0].boxMaskOrigin.xyz, volumeParameters.data[0].boxMaskAxisX.xyz) / dot(volumeParameters.data[0].boxMaskAxisX.xyz, volumeParameters.data[0].boxMaskAxisX.xyz);
+      float projY = dot(p - volumeParameters.data[0].boxMaskOrigin.xyz, volumeParameters.data[0].boxMaskAxisY.xyz) / dot(volumeParameters.data[0].boxMaskAxisY.xyz, volumeParameters.data[0].boxMaskAxisY.xyz);
+      float projZ = dot(p - volumeParameters.data[0].boxMaskOrigin.xyz, volumeParameters.data[0].boxMaskAxisZ.xyz) / dot(volumeParameters.data[0].boxMaskAxisZ.xyz, volumeParameters.data[0].boxMaskAxisZ.xyz);
+      maskedByBox = projX >= 0. && projX <= 1. &&
+                    projY >= 0. && projY <= 1. &&
+                    projZ >= 0. && projZ <= 1.;
+    }
+    float cylinderMaskRadius = volumeParameters.data[0].cylinderMaskAxis_cylinderMaskRadius.w;
+    bool maskedByCylinder = false;
+    if (cylinderMaskRadius > 0.)
+    {
+      noMask = false;
+      vec3 cylinderMaskCenter = volumeParameters.data[0].cylinderMaskCenter.xyz;
+      vec3 cylinderMaskAxis = volumeParameters.data[0].cylinderMaskAxis_cylinderMaskRadius.xyz;
+      vec3 cylinderMaskLineOrigin = cylinderMaskCenter + cylinderMaskAxis;
+      vec3 cylinderMaskLineDir = 2. * -cylinderMaskAxis;
+      float cylinderMaskLineT = dot(p - cylinderMaskLineOrigin, cylinderMaskLineDir) / dot(cylinderMaskLineDir, cylinderMaskLineDir);
+      maskedByCylinder = (cylinderMaskLineT >= 0.) && (cylinderMaskLineT <= 1.);
+      if (maskedByCylinder == true)
+      {
+        vec3 projectedPoint = cylinderMaskLineOrigin + cylinderMaskLineT * cylinderMaskLineDir;
+        if (length(p - projectedPoint) > cylinderMaskRadius) { maskedByCylinder = false; }
+      }
+    }
+    bool maskedByClippingPlanes = true;
+
+    if (g_skip == false && (noMask || (maskedByBox || maskedByClippingPlanes || maskedByCylinder)))
+    {
+      if (g_dataPos.x >= 0. && g_dataPos.x <= 1. &&
+          g_dataPos.y >= 0. && g_dataPos.y <= 1. &&
+          g_dataPos.z >= 0. && g_dataPos.z <= 1.)
+      {
+        if (volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)
+        {
+          uvec4 regionMaskValue = sampleRegionMask(volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z, g_dataPos);
+          int regionCount = in_regionOffset[1] - in_regionOffset[0];
+          int digits = regionCount <= 8 ? 8 : (regionCount <= 16 ? 16 : 32);
+          for (int regionIndex = 0; regionIndex < regionCount; ++regionIndex)
+          {
+            if ((regionMaskValue[regionIndex / digits] & uint(1 << (regionIndex % digits))) != uint(0))
+            {
+              g_fragDepth = length(p - g_eyePosObj.xyz);
+            }
+          }
+        }
+      }
+    }
+    
+    float tNext = FLOAT_MAX;
+    // if (frontSamplePoint.type == TYPE_REGION)
+    {
+      vec3 cellSteps = volumeParameters.data[0].cellStep.xyz;
+      segNormal = vec3(0.);
+      if (segTMax.x < segTMax.y && segTMax.x < segTMax.z)
+      {
+        segDataPos.x += g_rayDirSign.x * cellSteps.x;
+        tNext = segTMax.x;
+        segTMax.x += g_tDelta[0].x;
+        segNormal.x = -g_rayDirSign.x;
+      }
+      else if (segTMax.y < segTMax.z)
+      {
+        segDataPos.y += g_rayDirSign.y * cellSteps.y;
+        tNext = segTMax.y;
+        segTMax.y += g_tDelta[0].y;
+        segNormal.y = -g_rayDirSign.y;
+      }
+      else
+      {
+        segDataPos.z += g_rayDirSign.z * cellSteps.z;
+        tNext = segTMax.z;
+        segTMax.z += g_tDelta[0].z;
+        segNormal.z = -g_rayDirSign.z;
+      }
+      segT = tNext;
+    }
+    if (tNext < tExit + FLOAT_EPS)
+    {
+      ++stepCounter;
+    }
+  }
+}
+
+void finalizeRayCast()
+{
+    out_fragDepth = g_fragDepth;
+}
+
+void main()
+{
+  initializeRayCast();    
+  castRay(-1.0, -1.0);    
+  finalizeRayCast();
+}
+)"
+          );
+
+          std::map<vtkShader::Type, vtkShader*> shaders;
+          shaders[vtkShader::Type::Vertex] = regionDepthVertexShader;
+          regionDepthVertexShader->SetType(vtkShader::Type::Vertex);
+          shaders[vtkShader::Type::Geometry] = regionDepthGeometryShader;
+          regionDepthGeometryShader->SetType(vtkShader::Type::Geometry);
+          shaders[vtkShader::Type::Fragment] = regionDepthFragmentShader;
+          regionDepthFragmentShader->SetType(vtkShader::Type::Fragment);
+          this->RegionDepthShaderProgram = this->ShaderCache->ReadyShaderProgram(shaders);
+          if (!this->RegionDepthShaderProgram || !this->RegionDepthShaderProgram->GetCompiled())
+          {
+            vtkErrorWithObjectMacro(this->Parent, "Shader failed to compile");
+          }
+
+          regionDepthVertexShader->Delete();
+          regionDepthGeometryShader->Delete();
+          regionDepthFragmentShader->Delete();
+      }
+  }
+  else
+  {
+      //this->RegionDepthFBO = nullptr;
+      //this->RegionDepthBufferTextureObject = nullptr;
+      //this->RegionDepthTextureObject = nullptr;
+      //this->RegionDepthShaderProgram = nullptr;
+  }
+
   return result;
 }
 
@@ -1840,11 +2420,13 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderVolumeGeometry(
   else
   {
     glBindVertexArray(this->CubeVAOId);
+    vtkOpenGLStaticCheckErrorMacro("binding VAO error");
   }
 
   const GLuint parameterBufferId = this->ParameterBuffer.getId();
   BufferBinder binder{GL_SHADER_STORAGE_BUFFER, parameterBufferId};
   glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, parameterBufferId);
+  vtkOpenGLStaticCheckErrorMacro("binding buffer error");
 
   glDrawElements(GL_TRIANGLES,
     this->BBoxPolyData->GetNumberOfCells() * 3,
@@ -2344,10 +2926,8 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::BeginImageSample(
     this->ImageSampleFBO->ActivateDrawBuffers(
       static_cast<unsigned int>(this->NumImageSampleDrawBuffers));
 
-    this->ImageSampleFBO->GetContext()->GetState()
-      ->vtkglClearColor(0.0, 0.0, 0.0, 0.0);
-    this->ImageSampleFBO->GetContext()->GetState()
-      ->vtkglClear(GL_COLOR_BUFFER_BIT);
+    this->ImageSampleFBO->GetContext()->GetState()->vtkglClearColor(0.0, 0.0, 0.0, 0.0);
+    this->ImageSampleFBO->GetContext()->GetState()->vtkglClear(GL_COLOR_BUFFER_BIT);
   }
 }
 
@@ -3478,9 +4058,9 @@ void vtkOpenGLGPUVolumeRayCastMapper::ReplaceShaderClipping(
     "//VTK::Clipping::Init",
     vtkvolume::ClippingInit(ren, this, vol));
 
-  vtkShaderProgram::Substitute(fragmentShader,
-    "//VTK::Clipping::Impl",
-    vtkvolume::ClippingImplementation(ren, this, vol));
+  //vtkShaderProgram::Substitute(fragmentShader,
+  //  "//VTK::Clipping::Impl",
+  //  vtkvolume::ClippingImplementation(ren, this, vol));
 
   vtkShaderProgram::Substitute(fragmentShader,
     "//VTK::Clipping::Exit",
@@ -3782,560 +4362,6 @@ void vtkOpenGLGPUVolumeRayCastMapper::BuildShader(vtkRenderer* ren)
       shaders[i->first.ShaderType]->SetSource(ssrc);
     }
   }
-
-  /*
-  std::string str;
-  str =
-R"(
-#version 430
-#ifdef GL_ES
-#ifdef GL_FRAGMENT_PRECISION_HIGH
-precision highp float;
-precision highp sampler2D;
-precision highp sampler3D;
-#else
-precision mediump float;
-precision mediump sampler2D;
-precision mediump sampler3D;
-#endif
-#define texelFetchBuffer texelFetch
-#define texture1D texture
-#define texture2D texture
-#define texture3D texture
-#else // GL_ES
-#define highp
-#define mediump
-#define lowp
-#if __VERSION__ == 330
-#define texelFetchBuffer texelFetch
-#define texture1D texture
-#define texture2D texture
-#define texture3D texture
-#endif
-#endif // GL_ES
-#define varying in
-
-#define FLOAT_MAX 1e20
-#define FLOAT_EPS 1e-7
-
-in vec3 ip_textureCoords;
-in vec3 ip_vertexPos;
-
-vec4 g_fragColor = vec4(0.0);
-
-vec3 g_rayDir;
-vec3 g_rayDirSign;
-float g_rayDirDot;
-vec3 g_dataPos;
-vec3 g_terminatePos;
-vec3 g_dirStep;
-vec4 g_srcColor;
-vec4 g_eyePosObj;
-vec3 g_eyePosTex;
-bool g_exit;
-bool g_skip;
-
-struct VolumeParameters
-{
-  vec4 boundsMin,
-       boundsMax,
-       boxMaskOrigin,
-       boxMaskAxisX,
-       boxMaskAxisY,
-       boxMaskAxisZ,
-       cylinderMaskCenter,
-       cylinderMaskAxis_cylinderMaskRadius,
-       volumeScale,
-       volumeBias;
-
-  ivec4 noOfComponents_maskIndex_regionIndex_transfer2dIndex;
-
-  mat4 volumeMatrix,
-       inverseVolumeMatrix,
-       textureDatasetMatrix,
-       inverseTextureDatasetMatrix,
-       textureToEye,
-       cellToPoint;
-
-  vec4 texMin,
-	   texMax,
-       cellStep,
-       cellSpacing,
-       transfer2dRegion,
-       scalarsRange_gradMagMax_sampling;
-
-  uvec4 volumeVisibility;
-};
-
-layout (std430, binding = 0) buffer VP
-{
-    VolumeParameters data[];
-} volumeParameters;
-
-out vec4 fragOutput0;
-
-uniform sampler3D in_volume[1];
-
-struct Interval
-{
-  float tEnter;
-
-  float tExit;
-
-  bool valid;
-};
-
-vec3 g_dirSteps[1];
-float g_terminatePosEyeLength;
-
-uniform int in_independentComponents;
-uniform bool in_outlineRegionVoxels;
-
-uniform sampler2D in_noiseSampler;
-#ifndef GL_ES
-uniform sampler2D in_depthSampler;
-#endif
-
-// Camera position
-uniform vec3 in_cameraPos;
-uniform mat4 in_volumeMatrix;
-uniform mat4 in_inverseVolumeMatrix;
-uniform mat4 in_textureDatasetMatrix;
-uniform mat4 in_inverseTextureDatasetMatrix;
-uniform mat4 in_textureToEye;
-uniform vec3 in_texMin;
-uniform vec3 in_texMax;
-uniform mat4 in_cellToPoint;
-// view and model matrices
-uniform mat4 in_projectionMatrix;
-uniform mat4 in_inverseProjectionMatrix;
-uniform mat4 in_modelViewMatrix;
-uniform mat4 in_inverseModelViewMatrix;
-flat in mat4 ip_inverseTextureDataAdjusted;
-
-
-// Sample distance
-uniform float in_sampleDistance;
-uniform float in_downsampleCompensation;
-
-// Scales
-uniform vec2 in_windowLowerLeftCorner;
-uniform vec2 in_inverseOriginalWindowSize;
-uniform vec2 in_inverseWindowSize;
-uniform vec3 in_textureExtentsMax;
-uniform vec3 in_textureExtentsMin;
-
-// Material and lighting
-uniform float in_opacities[1];
-uniform vec3 in_diffuse[1];
-uniform vec3 in_ambient[1];
-uniform vec3 in_specular[1];
-uniform float in_shininess[1];
-uniform vec2 in_shadingGradientScales[1];
-
-// Others
-uniform bool in_useJittering;
-vec3 g_rayJitter[2];
-vec3 g_tDelta[1];
-
-uniform vec2 in_averageIPRange;
-uniform bool in_twoSidedLighting;
-uniform vec3 in_lightAttenuation[6];
-uniform float in_attDistOffset;
-uniform vec3 in_lightAmbientColor[1];
-uniform vec3 in_lightDiffuseColor[1];
-uniform vec3 in_lightSpecularColor[1];
-vec4 g_lightPosObj;
-vec3 g_ldir;
-vec3 g_vdir;
-vec3 g_h;
-
-const float g_opacityThreshold = 1.0 - 1.0 / 255.0;
-
-vec4 sampleMask(int index, vec3 uvw)
-{
-  vec4 result = vec4(0.);
-
-  vec3 diffx = dFdx(uvw);
-  vec3 diffy = dFdy(uvw);
-  switch (index)
-  {
-    default: break;
-  }
-
-  return result;
-}
-
-uniform int in_regionOffset[2];
-uniform usampler3D in_regionMask[1];
-
-uvec4 sampleRegionMask(int index, vec3 uvw)
-{
-  uvec4 result = uvec4(0);
-
-  switch (index)
-  {
-    case 0:
-    {
-      result = texture(in_regionMask[0], uvw);
-      break;
-    }
-    default: break;
-  }
-
-  return result;
-}
-
-uniform vec4 in_regionColor[1];
-
-vec4 getRegionColor(int index)
-{
-  vec4 result = vec4(0.);
-  result = in_regionColor[index];
-  return result;
-}
-
-//VTK::CompositeMask::Dec
-
-vec4 g_gradients[1];
-
-uniform sampler2D in_transfer2D[1];
-)";
-
-str += R"(
-vec4 computeLighting(int index, vec4 color, vec4 gradient)
-{
-  vec4 finalColor = vec4(0.0);
-  vec3 diffuse = vec3(0.0);
-  vec3 specular = vec3(0.0);
-  vec3 normal = gradient.xyz;
-  float normalLength = length(normal);
-  if (normalLength > 0.0)
-  {
-    normal = normalize(normal);
-  }
-  else
-  {
-    normal = vec3(0.0, 0.0, 0.0);
-  }
-  float nDotL = dot(normal, g_ldir);
-  float nDotH = dot(normal, g_h);
-  if (nDotL < 0.0 && in_twoSidedLighting)
-  {
-    nDotL = -nDotL;
-  }
-  if (nDotH < 0.0 && in_twoSidedLighting)
-  {
-    nDotH = -nDotH;
-  }
-  if (nDotL > 0.0)
-  {
-    diffuse = nDotL * in_diffuse[index] * in_lightDiffuseColor[0] * color.rgb;
-  }
-  if (nDotH > 0.0)
-  {
-    specular = pow(nDotH, in_shininess[index]) * in_specular[index] * in_lightSpecularColor[0];
-  }
-  vec3 p = (in_textureDatasetMatrix * vec4(g_dataPos, 1.0)).xyz;
-  float dist = length(p - g_eyePosObj.xyz) - in_attDistOffset;
-  float attenuation = 1. / (in_lightAttenuation[0].x + in_lightAttenuation[0].y * dist + in_lightAttenuation[0].z * dist * dist);
-  // For the headlight, ignore the light's ambient color
-  // for now as it is causing the old mapper tests to fail
-  //finalColor.xyz = in_ambient[index] * color.rgb + diffuse + specular;
-  float shadingFactor = smoothstep(in_shadingGradientScales[index].s, in_shadingGradientScales[index].t, gradient.w);
-  finalColor.xyz = mix(color.rgb, in_ambient[index] * color.rgb, shadingFactor); // apply color for sf=0, ambient for sf=1
-  finalColor.xyz += attenuation * shadingFactor * (diffuse + specular);
-        
-  finalColor.a = in_opacities[index] * color.a;        
-  return finalColor;        
-}        
-
-uniform float in_scale;
-uniform float in_bias;
-
-//  Transform window coordinate to NDC.
-vec4 WindowToNDC(const float xCoord, const float yCoord, const float zCoord)
-{
-  vec4 NDCCoord = vec4(0.0, 0.0, 0.0, 1.0);
-
-  NDCCoord.x = (xCoord - in_windowLowerLeftCorner.x) * 2.0 * in_inverseWindowSize.x - 1.0;
-  NDCCoord.y = (yCoord - in_windowLowerLeftCorner.y) * 2.0 * in_inverseWindowSize.y - 1.0;
-  NDCCoord.z = (2.0 * zCoord - (gl_DepthRange.near + gl_DepthRange.far)) / gl_DepthRange.diff;
-
-  return NDCCoord;
-}
-
-vec2 intersectRayBox(vec3 rayOrigin, vec3 rayDir, vec3 aabbMin, vec3 aabbMax)
-{
-        float tMin = -FLOAT_MAX;
-        float tMax = FLOAT_MAX;
-
-		vec3 inverseRayDirection = vec3(1.) / rayDir;
-        for (int i = 0; i < 3; ++i)
-        {
-            float t0, t1;
-            if (inverseRayDirection[i] >= 0.)
-            {
-                t0 = (aabbMin[i] - rayOrigin[i]) * inverseRayDirection[i];
-                t1 = (aabbMax[i] - rayOrigin[i]) * inverseRayDirection[i];
-            }
-            else {
-                t1 = (aabbMin[i] - rayOrigin[i]) * inverseRayDirection[i];
-                t0 = (aabbMax[i] - rayOrigin[i]) * inverseRayDirection[i];
-            }
-
-            tMin = t0 > tMin ? t0 : tMin;
-            tMax = t1 < tMax ? t1 : tMax;
-        }
-
-        return tMax >= tMin ? vec2(tMin, tMax) : vec2(FLOAT_MAX, -FLOAT_MAX);
-}
-
-// Global initialization. This method should only be called once per shader
-// invocation regardless of whether castRay() is called several times (e.g.
-// vtkDualDepthPeelingPass). Any castRay() specific initialization should be
-// placed within that function.
-void initializeRayCast()
-{
-  /// Initialize g_fragColor (output) to 0
-  g_fragColor = vec4(0.0);
-  g_dirStep = vec3(0.0);
-  g_srcColor = vec4(0.0);
-  g_exit = false;
-          
-  // Get the 3D texture coordinates for lookup into the in_volume dataset        
-  g_dataPos = ip_textureCoords.xyz;      
-      
-  // Eye position in dataset space      
-  g_eyePosObj = in_inverseVolumeMatrix * vec4(in_cameraPos, 1.0);      
-  g_eyePosTex = (in_inverseTextureDatasetMatrix * vec4(g_eyePosObj.xyz, 1.)).xyz;      
-      
-  // Getting the ray marching direction (in dataset space);      
-  g_rayDir = normalize(ip_vertexPos.xyz - g_eyePosObj.xyz);      
-  g_rayDirSign = sign(g_rayDir);      
-  g_rayDirDot = dot(g_rayDir, g_rayDir);      
-      
-  // Multiply the raymarching direction with the step size to get the      
-  // sub-step size we need to take at each raymarching step      
-  g_dirStep = in_sampleDistance * (ip_inverseTextureDataAdjusted * vec4(g_rayDir, 0.0)).xyz;          
-  vec3 cs = volumeParameters.data[0].cellSpacing.xyz;          
-  g_tDelta[0] = vec3(g_rayDir.x != 0. ? (g_rayDirSign.x * cs.x / g_rayDir.x) : FLOAT_MAX,          
-                     g_rayDir.y != 0. ? (g_rayDirSign.y * cs.y / g_rayDir.y) : FLOAT_MAX,          
-                     g_rayDir.z != 0. ? (g_rayDirSign.z * cs.z / g_rayDir.z) : FLOAT_MAX);              
-      
-  // 2D Texture fragment coordinates [0,1] from fragment coordinates.      
-  // The frame buffer texture has the size of the plain buffer but       
-  // we use a fraction of it. The texture coordinate is less than 1 if      
-  // the reduction factor is less than 1.      
-  // Device coordinates are between -1 and 1. We need texture      
-  // coordinates between 0 and 1. The in_depthSampler      
-  // buffer has the original size buffer.      
-  vec2 fragTexCoord = (gl_FragCoord.xy - in_windowLowerLeftCorner) * in_inverseWindowSize;      
-      
-  if (in_useJittering)      
-  {      
-    float jitterValue = texture(in_noiseSampler, gl_FragCoord.xy / textureSize(in_noiseSampler, 0)).x;      
-    g_rayJitter[0] = g_dirStep * jitterValue;      
-  }      
-  else      
-  {      
-    g_rayJitter[0] = g_dirStep;      
-  }
-  g_dataPos += g_rayJitter[0];      
-      
-  // Flag to deternmine if voxel should be considered for the rendering      
-  g_skip = false;          
-  // Light position in dataset space          
-  g_lightPosObj = (in_inverseVolumeMatrix * vec4(in_cameraPos, 1.0));          
-  g_ldir = normalize(g_lightPosObj.xyz - ip_vertexPos);          
-  g_vdir = normalize(g_eyePosObj.xyz - ip_vertexPos);          
-  g_h = normalize(g_ldir + g_vdir);
-        
-  // Flag to indicate if the raymarch loop should terminate       
-  bool stop = false;      
-      
-#ifdef GL_ES      
-  vec4 l_depthValue = vec4(1.0,1.0,1.0,1.0);      
-#else      
-  vec4 l_depthValue = texture(in_depthSampler, fragTexCoord);      
-#endif      
-  // Depth test      
-  if(gl_FragCoord.z >= l_depthValue.x)      
-  {      
-    discard;      
-  }      
-      
-  // color buffer or max scalar buffer have a reduced size.      
-  fragTexCoord = (gl_FragCoord.xy - in_windowLowerLeftCorner) *      
-                 in_inverseOriginalWindowSize;      
-      
-  // Compute max number of iterations it will take before we hit      
-  // the termination point      
-      
-  // Abscissa of the point on the depth buffer along the ray.      
-  // point in texture coordinates      
-  vec4 terminatePosTmp = WindowToNDC(gl_FragCoord.x, gl_FragCoord.y, l_depthValue.x);      
-      
-  // From normalized device coordinates to eye coordinates.      
-  // in_projectionMatrix is inversed because of way VT      
-  // From eye coordinates to texture coordinates      
-  terminatePosTmp = ip_inverseTextureDataAdjusted *      
-                    in_inverseVolumeMatrix *      
-                    in_inverseModelViewMatrix *      
-                    in_inverseProjectionMatrix *      
-                    terminatePosTmp;      
-  g_terminatePos = terminatePosTmp.xyz / terminatePosTmp.w;      
-  g_terminatePosEyeLength = length(g_terminatePos - g_eyePosTex);      
-}
-)";
-
-str += R"(
-vec4 castRay(const float zStart, const float zEnd)
-{
-  Interval interval;
-  interval.tEnter = FLOAT_MAX;
-  interval.tExit = -FLOAT_MAX;
-  interval.valid = false;
-  if (volumeParameters.data[0].volumeVisibility.x == 1 || volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)
-  {
-    vec3 cs = volumeParameters.data[0].cellSpacing.xyz;
-    vec3 bboxMin = volumeParameters.data[0].boundsMin.xyz;
-    vec3 bboxMax = volumeParameters.data[0].boundsMax.xyz;
-    vec2 inter = intersectRayBox(g_eyePosObj.xyz + .5 * cs, g_rayDir, bboxMin + .5 * cs, bboxMax + .5 * cs);
-    interval.valid = inter.x < inter.y && inter.x < FLOAT_MAX && inter.y > 0.;
-    if (interval.valid == false)
-    {
-      return vec4(0.);
-    }
-    interval.tEnter = inter.x;
-    interval.tExit = inter.y;
-  }
-
-  vec3 segDataPos;
-  float segT = FLOAT_MAX;
-  vec3 segTMax, segNormal;
-
-  vec3 cs = volumeParameters.data[0].cellSpacing.xyz;
-  vec3 hitPoint = g_eyePosObj.xyz + .5 * cs;// + interval.tEnter * g_rayDir;
-
-  if (volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)
-  {
-    // grid corner is computed with respect to the fact that the volume bounding box is enlarged by half a voxel in all directions, beginning in negative numbers
-    vec3 gridCorner = cs * floor(hitPoint / cs); // we move the enlarged volume by half voxel to properly work with rounding (necessary when working with half voxel offset), then restore the original grid corner position
-    vec3 nextGridLine = gridCorner + vec3(greaterThanEqual(g_rayDirSign, vec3(0.))) * cs;
-
-    segDataPos = (in_inverseTextureDatasetMatrix * vec4(gridCorner + .5 * cs, 1.)).xyz;
-    segTMax = vec3(g_rayDir.x != 0. ? (abs(nextGridLine.x - hitPoint.x) / abs(g_rayDir.x)) : FLOAT_MAX,
-                   g_rayDir.y != 0. ? (abs(nextGridLine.y - hitPoint.y) / abs(g_rayDir.y)) : FLOAT_MAX,
-                   g_rayDir.z != 0. ? (abs(nextGridLine.z - hitPoint.z) / abs(g_rayDir.z)) : FLOAT_MAX);
-    segT = min(segTMax.x, min(segTMax.y, segTMax.z));
-    segNormal = -g_rayDirSign * vec3(lessThanEqual(segTMax, vec3(segT)));
-  }
-
-  while (!g_exit)
-  {
-    g_dataPos = segDataPos;
-    if (g_terminatePosEyeLength < length(g_dataPos - g_eyePosTex))
-    {
-      continue;
-    }
-
-    if (g_dataPos.x >= 0. && g_dataPos.x <= 1. &&
-        g_dataPos.y >= 0. && g_dataPos.y <= 1. &&
-        g_dataPos.z >= 0. && g_dataPos.z <= 1.)
-    {
-      g_srcColor = vec4(0.);
-      if (volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)
-      {
-        uvec4 regionMaskValue = sampleRegionMask(volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z, g_dataPos);
-        int regionCount = in_regionOffset[1] - in_regionOffset[0];
-        int digits = regionCount <= 8 ? 8 : (regionCount <= 16 ? 16 : 32);
-        for (int regionIndex = 0; regionIndex < regionCount; ++regionIndex)
-        {
-          if ((regionMaskValue[regionIndex / digits] & uint(1 << (regionIndex % digits))) != uint(0))
-          {
-            vec4 regionColor = getRegionColor(in_regionOffset[0] + regionIndex);
-            if (regionColor.a > 0.)
-            {
-              regionColor.rgb *= regionColor.a;
-              g_srcColor += (1. - g_srcColor.a) * regionColor;
-            }
-          }
-        }
-      }
-
-      if (g_srcColor.a > 0.)
-      {
-        g_srcColor = computeLighting(0, g_srcColor, vec4(segNormal, 1.));
-        g_srcColor.rgb *= g_srcColor.a;
-        g_fragColor += (1. - g_fragColor.a) * g_srcColor;
-      }
-    }
-    
-    float tNext = FLOAT_MAX;
-    {
-      vec3 cellSteps = volumeParameters.data[0].cellStep.xyz;
-      segNormal = vec3(0.);
-      if (segTMax.x < segTMax.y && segTMax.x < segTMax.z)
-      {
-        segDataPos.x += g_rayDirSign.x * cellSteps.x;
-        tNext = segTMax.x;
-        segTMax.x += g_tDelta[0].x;
-        segNormal.x = -g_rayDirSign.x;
-      }
-      else if (segTMax.y < segTMax.z)
-      {
-        segDataPos.y += g_rayDirSign.y * cellSteps.y;
-        tNext = segTMax.y;
-        segTMax.y += g_tDelta[0].y;
-        segNormal.y = -g_rayDirSign.y;
-      }
-      else
-      {
-        segDataPos.z += g_rayDirSign.z * cellSteps.z;
-        tNext = segTMax.z;
-        segTMax.z += g_tDelta[0].z;
-        segNormal.z = -g_rayDirSign.z;
-      }
-    }
-    if (tNext >= interval.tExit + FLOAT_EPS)
-    {
-      break;
-    }
-
-    // Early ray termination      
-    // if the currently composited colour alpha is already fully saturated      
-    // we terminated the loop or if we have hit an obstacle in the      
-    // direction of they ray (using depth buffer) we terminate as well.      
-    if (g_fragColor.a > g_opacityThreshold)      
-    {      
-      break;      
-    }      
-
-  }
-
-  return g_fragColor;
-}
-
-void finalizeRayCast()
-{
-  g_fragColor.r = g_fragColor.r * in_scale + in_bias * g_fragColor.a;
-  g_fragColor.g = g_fragColor.g * in_scale + in_bias * g_fragColor.a;
-  g_fragColor.b = g_fragColor.b * in_scale + in_bias * g_fragColor.a;
-  fragOutput0 = g_fragColor;
-}
-
-void main()
-{
-      
-  initializeRayCast();    
-  castRay(-1.0, -1.0);    
-  finalizeRayCast();
-}
-)"
-  ;
-  fragmentShader->SetSource(str.c_str());
-  */
 
   // Now compile the shader
   //--------------------------------------------------------------------------
@@ -5552,6 +5578,50 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderSingleInput(vtkRenderer
   const int numComp = volumeTex->GetLoadedScalars()->GetNumberOfComponents();
   while (block != nullptr)
   {
+    bool hasRegions = vol->GetProperty()->GetBitRegion().mask && this->RegionDepthFBO && this->RegionDepthShaderProgram;
+    if (hasRegions)
+    {
+        const int numSamplers = (independent ? numComp : 1);
+        this->ShaderCache->ReadyShaderProgram(this->RegionDepthShaderProgram);
+        this->SetMapperShaderParameters(this->RegionDepthShaderProgram, ren, independent, numComp);
+
+        vtkMatrix4x4* wcvc, *vcdc, *wcdc;
+        vtkMatrix3x3* norm;
+        cam->GetKeyMatrices(ren, wcvc, norm, vcdc, wcdc);
+        this->SetVolumeShaderParameters(this->RegionDepthShaderProgram, independent, numComp, wcvc);
+        this->SetMaskShaderParameters(this->RegionDepthShaderProgram, numComp);
+        this->SetRegionShaderParameters(this->RegionDepthShaderProgram);
+        this->SetCameraShaderParameters(this->RegionDepthShaderProgram, ren, cam);
+        this->ParameterBuffer.Update(ren, sizeof(struct VolumeParameters) * this->Parent->GetInputCount(), this->VolumeParameters.data());
+
+        this->RegionDepthFBO->SaveCurrentBindingsAndBuffers();
+        this->RegionDepthFBO->Bind(GL_FRAMEBUFFER);
+        this->RegionDepthFBO->ActivateDrawBuffers(1);
+        this->RegionDepthFBO->GetContext()->GetState()->vtkglViewport(this->WindowLowerLeft[0], this->WindowLowerLeft[1], this->WindowSize[0], this->WindowSize[1]);
+        this->RegionDepthFBO->GetContext()->GetState()->vtkglClearColor(0.f, 0.f, 0.f, 0.f);
+        this->RegionDepthFBO->GetContext()->GetState()->vtkglClearDepth(0.);
+        this->RegionDepthFBO->GetContext()->GetState()->vtkglDisable(GL_DEPTH_TEST);
+        this->RenderVolumeGeometry(ren, this->RegionDepthShaderProgram, vol, block->LoadedBounds);
+        this->RegionDepthFBO->GetContext()->GetState()->vtkglEnable(GL_DEPTH_TEST);
+        this->RegionDepthFBO->UnBind();
+        this->RegionDepthFBO->RestorePreviousBindings();
+        this->ShaderCache->ReadyShaderProgram(this->ShaderProgram);
+
+        const int dim = this->WindowSize[0] * this->WindowSize[1];
+        float* regionDepths = new float[dim];
+        this->RegionDepthTextureObject->Download()->Download1D(VTK_FLOAT, regionDepths, dim, 1, 0);
+        float minimumRegionDepth = std::numeric_limits<float>::max();
+        for (int i = 0; i < dim; ++i)
+        {
+            if (regionDepths[i] < minimumRegionDepth)
+            {
+                minimumRegionDepth = regionDepths[i];
+            }
+        }
+
+        this->ShaderProgram->SetUniformf("in_regionDepth", minimumRegionDepth);
+    }
+
     const int numSamplers = (independent ? numComp : 1);
     this->SetMapperShaderParameters(prog, ren, independent, numComp);
 

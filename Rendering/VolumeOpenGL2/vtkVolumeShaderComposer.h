@@ -245,6 +245,7 @@ namespace vtkvolume
     ;
     toShaderStr << "vec3 g_dirSteps[" << numInputs << "];\n";
     toShaderStr << "float g_terminatePosEyeLength;\n";
+    toShaderStr << "float g_terminatePosLength;\n";
 
     toShaderStr << "\n"
                    "Intersection[" << numInputs << "] sortIntersections(Interval intervals[" << numInputs << "])\n"
@@ -888,7 +889,19 @@ namespace vtkvolume
             "\n  }"
             "\n  vec3 p = (in_textureDatasetMatrix * vec4(g_dataPos, 1.0)).xyz;"
             "\n  float dist = length(p - g_eyePosObj.xyz) - in_attDistOffset;"
-            "\n  float attenuation = 1. / (in_lightAttenuation[0].x + in_lightAttenuation[0].y * dist + in_lightAttenuation[0].z * dist * dist);"
+            ;
+          if (inputs.at(0).Volume->GetProperty()->GetBitRegion().mask)
+          {
+              shaderStr +=
+                "\n  float D = 1. / in_regionDepth;"
+                "\n  float attenuation = 1. / (1. + D * dist + D * dist * dist);"
+              ;
+          }
+          else
+          {
+              shaderStr += "\n  float attenuation = 1. / (in_lightAttenuation[0].x + in_lightAttenuation[0].y * dist + in_lightAttenuation[0].z * dist * dist);";
+          }
+          shaderStr +=
             "\n  // For the headlight, ignore the light's ambient color"
             "\n  // for now as it is causing the old mapper tests to fail"
             "\n  //finalColor.xyz = in_ambient[index] * color.rgb + diffuse + specular;"
@@ -1680,7 +1693,15 @@ namespace vtkvolume
             str +=
                 "      if (volumeParameters.data[i].volumeVisibility.x == 1)\n"
                 "      {\n"
-                "        volDataPos = (in_inverseTextureDatasetMatrix * vec4(hitPoint, 1.)).xyz + g_dirStep;\n"
+                "        volDataPos = (in_inverseTextureDatasetMatrix * vec4(hitPoint, 1.)).xyz;\n"
+                "        if (in_useJittering)\n"
+                "        {\n"
+                "          volDataPos += g_rayJitter[0];\n"
+                "        }\n"
+                "        else\n"
+                "        {\n"
+                "          volDataPos += g_dirStep;\n"
+                "        }\n"
                 "        volT = intersections[i].t;\n"
                 "        ++stepCounter;\n"
                 "      }\n"
@@ -2002,7 +2023,7 @@ namespace vtkvolume
         "    g_skip = false;\n"
         "    g_dataPos = doingVol ? volDataPos : segDataPos;\n"
         "    --stepCounter;\n"
-        "    if (g_terminatePosEyeLength < length(g_dataPos - g_eyePosTex))\n"
+        "    if (doingVol == false && g_terminatePosLength < length((g_eyePosObj.xyz + segT * g_rayDir.xyz) - g_eyePosObj.xyz))\n"
 	    "    {\n"
 	    "      continue;\n"
 	    "    }\n";
@@ -2066,9 +2087,31 @@ namespace vtkvolume
                      "      maskedByRegion = true;\n"
                      "    }\n";
     }
+    shaderStr += "    bool maskedByClippingPlanes = true;\n";
+    if (mapper->GetClippingPlanes())
+    {
+        shaderStr +=
+            "    maskedByClippingPlanes = false;\n"
+            "    vec3 pWorld = (in_volumeMatrix * vec4(p, 1.)).xyz\n";
+            "    for (int i = 0; i < clip_numPlanes; i = i + 6)\n"
+            "    {\n"
+            "      noMask = false;\n"
+            "      vec3 planeOrigin = vec3(in_clippingPlanes[i + 1],\n"
+            "                              in_clippingPlanes[i + 2],\n"
+            "                              in_clippingPlanes[i + 3]);\n"
+            "      vec3 planeNormal = normalize(vec3(in_clippingPlanes[i + 4],\n"
+            "                                        in_clippingPlanes[i + 5],\n"
+            "                                        in_clippingPlanes[i + 6]));\n"
+            "      if ((dot(planeNormal, pWorld - planeOrigin) >= 0.) == true)\n"
+            "      {\n"
+            "        maskedByClippingPlanes = true;\n"
+            "      }\n"
+            "    }\n"
+        ;
+    }
 
     shaderStr +=
-        "\n    if (g_skip == false && (noMask || (maskedByBox || maskedByCylinder" + std::string(maskInput ? " || maskedByRegion" : "") + ")))"
+        "\n    if (g_skip == false && (noMask || (maskedByBox || maskedByClippingPlanes || maskedByCylinder" + std::string(maskInput ? " || maskedByRegion" : "") + ")))"
         "\n    {";
     shaderStr += "\n"
         "      g_srcColor = vec4(0.);\n"
@@ -2147,29 +2190,26 @@ namespace vtkvolume
                 "               g_dataPos.z >= 0. && g_dataPos.z <= 1.)\n"
                 "      {\n"
                 "        g_srcColor = vec4(0.);\n";
-            if (bitRegion.mask)
-            {
-                shaderStr +=
-                "        if (volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)\n"
-                "        {\n"
-                "          uvec4 regionMaskValue = sampleRegionMask(volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z, g_dataPos);\n"
-                "          int regionCount = in_regionOffset[1] - in_regionOffset[0];\n"
-                "          int digits = regionCount <= 8 ? 8 : (regionCount <= 16 ? 16 : 32);\n"
-                "          for (int regionIndex = 0; regionIndex < regionCount; ++regionIndex)\n"
-                "          {\n"
-                "            if ((regionMaskValue[regionIndex / digits] & uint(1 << (regionIndex % digits))) != uint(0))\n"
-                "            {\n"
-                "              vec4 regionColor = getRegionColor(in_regionOffset[0] + regionIndex);\n"
-                "              if (regionColor.a > 0.)\n"
-                "              {\n"
-                "                regionColor.rgb *= regionColor.a;\n"
-                "                g_srcColor += (1. - g_srcColor.a) * regionColor;\n"
-                "              }\n"
-                "            }\n"
-                "          }\n"
-                "        }\n"
-                "\n";
-            }
+            shaderStr +=
+            "        if (volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)\n"
+            "        {\n"
+            "          uvec4 regionMaskValue = sampleRegionMask(volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z, g_dataPos);\n"
+            "          int regionCount = in_regionOffset[1] - in_regionOffset[0];\n"
+            "          int digits = regionCount <= 8 ? 8 : (regionCount <= 16 ? 16 : 32);\n"
+            "          for (int regionIndex = 0; regionIndex < regionCount; ++regionIndex)\n"
+            "          {\n"
+            "            if ((regionMaskValue[regionIndex / digits] & uint(1 << (regionIndex % digits))) != uint(0))\n"
+            "            {\n"
+            "              vec4 regionColor = getRegionColor(in_regionOffset[0] + regionIndex);\n"
+            "              if (regionColor.a > 0.)\n"
+            "              {\n"
+            "                regionColor.rgb *= regionColor.a;\n"
+            "                g_srcColor += (1. - g_srcColor.a) * regionColor;\n"
+            "              }\n"
+            "            }\n"
+            "          }\n"
+            "        }\n"
+            "\n";
             shaderStr +=
             "\n"
             "        if (g_srcColor.a > 0.)\n"
@@ -2490,14 +2530,18 @@ namespace vtkvolume
       \n\
       \n  // From normalized device coordinates to eye coordinates.\
       \n  // in_projectionMatrix is inversed because of way VT\
-      \n  // From eye coordinates to texture coordinates\
-      \n  terminatePosTmp = ip_inverseTextureDataAdjusted *\
-      \n                    in_inverseVolumeMatrix *\
+      \n  // From eye coordinates to object coordinates\
+      \n  terminatePosTmp = in_inverseVolumeMatrix *\
       \n                    in_inverseModelViewMatrix *\
       \n                    in_inverseProjectionMatrix *\
       \n                    terminatePosTmp;\
       \n  g_terminatePos = terminatePosTmp.xyz / terminatePosTmp.w;\
-      \n  g_terminatePosEyeLength = length(g_terminatePos - g_eyePosTex);\
+      \n  g_terminatePosLength = length(g_terminatePos - g_eyePosObj.xyz);\
+      \n\
+      \n  // To texture coordinates\
+      \n  terminatePosTmp = ip_inverseTextureDataAdjusted * terminatePosTmp;\
+      \n  g_terminatePos = terminatePosTmp.xyz / terminatePosTmp.w;\
+      \n  g_terminatePosEyeLength = length(g_terminatePos - g_eyePosTex.xyz);\
       \n"
     ;
 
@@ -3018,6 +3062,7 @@ namespace vtkvolume
     std::string str = "uniform int in_regionOffset[" + std::to_string(inputs.size() + 1) + "];\n";
     if (inputsWithBitRegionCount)
     {
+        str += "uniform float in_regionDepth;\n";
         str += "uniform usampler3D in_regionMask[" + std::to_string(inputsWithBitRegionCount) + "];\n";
     }
 
