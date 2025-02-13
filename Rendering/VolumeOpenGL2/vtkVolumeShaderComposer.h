@@ -890,12 +890,19 @@ namespace vtkvolume
             "\n  vec3 p = (in_textureDatasetMatrix * vec4(g_dataPos, 1.0)).xyz;"
             "\n  float dist = length(p - g_eyePosObj.xyz) - in_attDistOffset;"
             ;
-          if (inputs.at(0).Volume->GetProperty()->GetBitRegion().mask)
+          if (inputs.at(0).Volume->GetProperty()->GetBitRegion().mask && inputs.at(0).Volume->GetProperty()->GetBitRegion().colors.size() > 0)
           {
               shaderStr +=
-                "\n  float D = 1. / in_regionDepth;"
-                "\n  float attenuation = 1. / (1. + D * dist + D * dist * dist);"
-              ;
+                  "\n  float attenuation = 0.;"
+                  "\n  if (type == TYPE_REGION)"
+                  "\n  {"
+                  "\n    float D = 1. / in_regionDepth;"
+                  "\n    attenuation = 1. / (1. + D * dist + D * dist * dist);"
+                  "\n  }"
+                  "\n  else"
+                  "\n  {"
+                  "\n    attenuation = 1. / (in_lightAttenuation[0].x + in_lightAttenuation[0].y * dist + in_lightAttenuation[0].z * dist * dist);"
+                  "\n  }";
           }
           else
           {
@@ -3054,7 +3061,7 @@ namespace vtkvolume
                 totalRegionCount = 0;
     for (const auto& input : inputs)
     {
-       inputsWithBitRegionCount += static_cast<bool>(input.second.Volume->GetProperty()->GetBitRegion().mask);
+       inputsWithBitRegionCount += static_cast<bool>(input.second.Volume->GetProperty()->GetBitRegion().mask && input.second.Volume->GetProperty()->GetBitRegion().colors.size() > 0);
        totalRegionCount += input.second.Volume->GetProperty()->GetBitRegion().colors.size();
     }
 
