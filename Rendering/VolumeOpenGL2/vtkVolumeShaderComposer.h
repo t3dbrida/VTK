@@ -387,8 +387,7 @@ namespace vtkvolume
     {
         toShaderStr <<
             "uniform bool in_twoSidedLighting;\n"
-            "uniform vec3 in_lightAttenuation[6];\n"
-            "uniform float in_attDistOffset;\n";
+            "uniform vec3 in_lightAttenuation[6];\n";
     }
 
     if (lightingComplexity == 3)
@@ -888,7 +887,7 @@ namespace vtkvolume
             "\n    specular = pow(nDotH, in_shininess[index]) * in_specular[index] * in_lightSpecularColor[0];"
             "\n  }"
             "\n  vec3 p = (in_textureDatasetMatrix * vec4(g_dataPos, 1.0)).xyz;"
-            "\n  float dist = length(p - g_eyePosObj.xyz) - in_attDistOffset;"
+            "\n  float dist = length(p - g_eyePosObj.xyz);"
             ;
           if (inputs.at(0).Volume->GetProperty()->GetBitRegion().mask && inputs.at(0).Volume->GetProperty()->GetBitRegion().colors.size() > 0)
           {
@@ -896,8 +895,16 @@ namespace vtkvolume
                   "\n  float attenuation = 0.;"
                   "\n  if (type == TYPE_REGION)"
                   "\n  {"
-                  "\n    float D = 1. / in_regionDepth;"
-                  "\n    attenuation = 1. / (1. + D * dist + D * dist * dist);"
+                  "\n    // Kate shading"
+                  "\n    float dLoc = dist - in_regionDepth;"
+                  "\n    float x = 1. / (20. * length(volumeParameters.data[index].cellSpacing.xyz));"
+                  "\n    float val_xD = .7;"
+                  "\n    float val_D = .1;"
+                  "\n    vec3 boundsMax = volumeParameters.data[index].boundsMax.xyz;"
+                  "\n    float D = max(boundsMax.x, max(boundsMax.y, boundsMax.z));"
+                  "\n    float c2 = (1. / val_xD - 1. - x / val_D + x) / (pow((x * D), 2) - x * pow(D, 2));"
+                  "\n    float c1 = (1. / val_D - 1. - c2 * pow(D, 2)) / D;"
+                  "\n    attenuation = 1. / (1. + c1 * dLoc + c2 * pow(dLoc, 2));"
                   "\n  }"
                   "\n  else"
                   "\n  {"
@@ -1683,7 +1690,8 @@ namespace vtkvolume
                     "      {\n"
                     "        vec3 cs = volumeParameters.data[0].cellSpacing.xyz;\n"
                     "        // grid corner is computed with respect to the fact that the volume bounding box is enlarged by half a voxel in all directions, beginning in negative numbers\n"
-                    "        vec3 gridCorner = cs * floor((g_eyePosObj.xyz + .5 * cs) / cs) - .5 * cs; // we move the enlarged volume by half voxel to properly work with rounding (necessary when working with half voxel offset), then restore the original grid corner position\n"
+                    "        vec3 hitPoint = g_eyePosObj.xyz + g_rayDir * intersections[0].t - g_rayDir;\n"
+                    "        vec3 gridCorner = cs * floor((hitPoint + .5 * cs) / cs) - .5 * cs; // we move the enlarged volume by half voxel to properly work with rounding (necessary when working with half voxel offset), then restore the original grid corner position\n"
                     "        vec3 nextGridLine = gridCorner + vec3(greaterThanEqual(g_rayDirSign, vec3(0.))) * cs;\n"
                     "\n"
                     "        segDataPos = (in_inverseTextureDatasetMatrix * vec4(gridCorner + .5 * cs, 1.)).xyz;\n"
@@ -2094,11 +2102,10 @@ namespace vtkvolume
                      "      maskedByRegion = true;\n"
                      "    }\n";
     }
-    shaderStr += "    bool maskedByClippingPlanes = true;\n";
+    shaderStr += "    bool maskedByClippingPlanes = false;\n";
     if (mapper->GetClippingPlanes())
     {
         shaderStr +=
-            "    maskedByClippingPlanes = false;\n"
             "    vec3 pWorld = (in_volumeMatrix * vec4(p, 1.)).xyz\n";
             "    for (int i = 0; i < clip_numPlanes; i = i + 6)\n"
             "    {\n"

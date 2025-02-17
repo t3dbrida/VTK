@@ -444,6 +444,7 @@ void castRay(const float zStart, const float zEnd)
 {
   g_fragDepth = 0.;
 
+  float tEnter = FLOAT_MAX;
   float tExit = -FLOAT_MAX;
   for (int i = 0; i < 1; ++i)
   {
@@ -456,6 +457,7 @@ void castRay(const float zStart, const float zEnd)
       valid = interval.x < interval.y && interval.x < FLOAT_MAX && interval.y > 0.;
       if (valid == true)
       {
+        tEnter = interval.x;
         tExit = interval.y;
       }
     }
@@ -470,7 +472,8 @@ void castRay(const float zStart, const float zEnd)
   {
     vec3 cs = volumeParameters.data[0].cellSpacing.xyz;
     // grid corner is computed with respect to the fact that the volume bounding box is enlarged by half a voxel in all directions, beginning in negative numbers
-    vec3 gridCorner = cs * floor((g_eyePosObj.xyz + .5 * cs) / cs) - .5 * cs; // we move the enlarged volume by half voxel to properly work with rounding (necessary when working with half voxel offset), then restore the original grid corner position
+    vec3 hitPoint = g_eyePosObj.xyz + g_rayDir * tEnter;
+    vec3 gridCorner = cs * floor((hitPoint + .5 * cs) / cs) - .5 * cs; // we move the enlarged volume by half voxel to properly work with rounding (necessary when working with half voxel offset), then restore the original grid corner position
     vec3 nextGridLine = gridCorner + vec3(greaterThanEqual(g_rayDirSign, vec3(0.))) * cs;
 
     segDataPos = (in_inverseTextureDatasetMatrix * vec4(gridCorner + .5 * cs, 1.)).xyz;
@@ -523,9 +526,8 @@ void castRay(const float zStart, const float zEnd)
         if (length(p - projectedPoint) > cylinderMaskRadius) { maskedByCylinder = false; }
       }
     }
-    bool maskedByClippingPlanes = true;
 
-    if (g_skip == false && (noMask || (maskedByBox || maskedByClippingPlanes || maskedByCylinder)))
+    if (g_skip == false && (noMask || (maskedByBox || maskedByCylinder)))
     {
       if (g_dataPos.x >= 0. && g_dataPos.x <= 1. &&
           g_dataPos.y >= 0. && g_dataPos.y <= 1. &&
@@ -541,6 +543,7 @@ void castRay(const float zStart, const float zEnd)
             if ((regionMaskValue[regionIndex / digits] & uint(1 << (regionIndex % digits))) != uint(0))
             {
               g_fragDepth = length(p - g_eyePosObj.xyz);
+              return;
             }
           }
         }
@@ -2142,7 +2145,6 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetLightingShaderParameters(
     }
   }
   prog->SetUniform3fv("in_lightAttenuation", numberOfLights, lightAttenuation);
-  prog->SetUniformf("in_attDistOffset", this->Parent->AttenuationDistanceOffset);
 
   // we are done unless we have positional lights
   if (this->LightComplexity < 3)
@@ -5589,6 +5591,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderSingleInput(vtkRenderer
             this->RegionDepthFBO->Bind(GL_FRAMEBUFFER);
             vtkOpenGLState* const state = this->RegionDepthFBO->GetContext()->GetState();
             state->vtkglViewport(this->WindowLowerLeft[0], this->WindowLowerLeft[1], this->WindowSize[0], this->WindowSize[1]);
+            state->vtkglClear(GL_COLOR_BUFFER_BIT);
             state->vtkglClearColor(0.f, 0.f, 0.f, 0.f);
             state->vtkglClearDepth(0.f);
             state->vtkglDisable(GL_DEPTH_TEST);
@@ -5603,7 +5606,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderSingleInput(vtkRenderer
             this->RegionDepthTextureObject->Download()->Download1D(VTK_FLOAT, regionDepths, dim, 1, 0);
             for (int i = 0; i < dim; ++i)
             {
-                if (regionDepths[i] < minimumRegionDepth && regionDepths[i] != 0.)
+                if (regionDepths[i] < minimumRegionDepth && regionDepths[i] > 1.)
                 {
                     minimumRegionDepth = regionDepths[i];
                 }
