@@ -364,7 +364,11 @@ protected:
 
   std::vector<float> GradMagMaxs;
 
+public:
   bool OutlineRegionVoxels;
+  double X;
+  double Val_D;
+  double Val_xD;
 
 public:
   using VolumeInput = vtkVolumeInputHelper;

@@ -897,9 +897,9 @@ namespace vtkvolume
                   "\n  {"
                   "\n    // Kate shading"
                   "\n    float dLoc = dist - in_regionDepth;"
-                  "\n    float x = 1. / (20. * length(volumeParameters.data[index].cellSpacing.xyz));"
-                  "\n    float val_xD = .7;"
-                  "\n    float val_D = .1;"
+                  "\n    //float x = 1. / 20.;"
+                  "\n    //float val_xD = .7;"
+                  "\n    //float val_D = .1;"
                   "\n    vec3 boundsMax = volumeParameters.data[index].boundsMax.xyz;"
                   "\n    float D = max(boundsMax.x, max(boundsMax.y, boundsMax.z));"
                   "\n    float c2 = (1. / val_xD - 1. - x / val_D + x) / (pow((x * D), 2) - x * pow(D, 2));"
@@ -3077,6 +3077,9 @@ namespace vtkvolume
     if (inputsWithBitRegionCount)
     {
         str += "uniform float in_regionDepth;\n";
+        str += "uniform float val_D;\n";
+        str += "uniform float val_xD;\n";
+        str += "uniform float x;\n";
         str += "uniform usampler3D in_regionMask[" + std::to_string(inputsWithBitRegionCount) + "];\n";
     }
 

@@ -472,7 +472,7 @@ void castRay(const float zStart, const float zEnd)
   {
     vec3 cs = volumeParameters.data[0].cellSpacing.xyz;
     // grid corner is computed with respect to the fact that the volume bounding box is enlarged by half a voxel in all directions, beginning in negative numbers
-    vec3 hitPoint = g_eyePosObj.xyz + g_rayDir * tEnter;
+    vec3 hitPoint = g_eyePosObj.xyz + g_rayDir * tEnter - g_rayDir;
     vec3 gridCorner = cs * floor((hitPoint + .5 * cs) / cs) - .5 * cs; // we move the enlarged volume by half voxel to properly work with rounding (necessary when working with half voxel offset), then restore the original grid corner position
     vec3 nextGridLine = gridCorner + vec3(greaterThanEqual(g_rayDirSign, vec3(0.))) * cs;
 
@@ -3466,13 +3466,11 @@ vtkOpenGLGPUVolumeRayCastMapper::vtkOpenGLGPUVolumeRayCastMapper()
   this->FragmentShaderCode = nullptr;
   this->MaxCellSpacingDivisor = 8.;
   this->OutlineRegionVoxels = false;
+  this->X = 1. / 20.;
+  this->Val_D = .1;
+  this->Val_xD = .7;
 
-  this->ResourceCallback =
-    new vtkOpenGLResourceFreeCallback<vtkOpenGLGPUVolumeRayCastMapper>(
-      this, &vtkOpenGLGPUVolumeRayCastMapper::ReleaseGraphicsResources);
-
-//  this->VolumeTexture = vtkVolumeTexture::New();
-//  this->VolumeTexture->SetMapper(this);
+  this->ResourceCallback = new vtkOpenGLResourceFreeCallback<vtkOpenGLGPUVolumeRayCastMapper>(this, &vtkOpenGLGPUVolumeRayCastMapper::ReleaseGraphicsResources);
 }
 
 //----------------------------------------------------------------------------
@@ -5615,6 +5613,9 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderSingleInput(vtkRenderer
         }
 
         this->ShaderProgram->SetUniformf("in_regionDepth", minimumRegionDepth);
+        this->ShaderProgram->SetUniformf("x", this->Parent->X);
+        this->ShaderProgram->SetUniformf("val_D", this->Parent->Val_D);
+        this->ShaderProgram->SetUniformf("val_xD", this->Parent->Val_xD);
     }
 
     const int numSamplers = (independent ? numComp : 1);
