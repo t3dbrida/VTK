@@ -108,7 +108,7 @@
 namespace
 {
 
-constexpr const char* DEPTH_REGION_VERTEX_SHADER_SOURCE =
+constexpr const char* REGION_DEPTH_VERTEX_SHADER_SOURCE =
 R"(
 #version 430
 #ifndef GL_ES
@@ -147,7 +147,7 @@ void main()
 }
 )";
 
-constexpr const char* DEPTH_REGION_FRAGMENT_SHADER_SOURCE =
+constexpr const char* REGION_DEPTH_FRAGMENT_SHADER_SOURCE =
 R"(
 #version 430
 #ifdef GL_ES
@@ -183,12 +183,13 @@ precision mediump sampler3D;
 in vec3 ip_textureCoords;
 in vec3 ip_vertexPos;
 
+out float out_fragDepth;
+
 vec3 g_rayDir;
 vec3 g_rayDirSign;
 float g_rayDirDot;
 vec3 g_dataPos;
 vec3 g_terminatePos;
-vec4 g_srcColor;
 vec4 g_eyePosObj;
 vec3 g_eyePosTex;
 bool g_exit;
@@ -231,7 +232,6 @@ layout (std430, binding = 0) buffer VP
     VolumeParameters data[];
 } volumeParameters;
 
-out float out_fragDepth;
 float g_fragDepth;
 
 float g_terminatePosEyeLength;
@@ -252,6 +252,8 @@ uniform mat4 in_projectionMatrix;
 uniform mat4 in_inverseProjectionMatrix;
 uniform mat4 in_modelViewMatrix;
 uniform mat4 in_inverseModelViewMatrix;
+uniform vec3 in_texMin;
+uniform vec3 in_texMax;
 flat in mat4 ip_inverseTextureDataAdjusted;
 
 // Scales
@@ -262,7 +264,7 @@ uniform vec2 in_inverseWindowSize;
 // Others
 vec3 g_tDelta[1];
 
-const float g_opacityThreshold = 1.0 - 1.0 / 255.0;
+//VTK::Clipping::Dec
 
 vec4 sampleMask(int index, vec3 uvw)
 {
@@ -298,38 +300,6 @@ uvec4 sampleRegionMask(int index, vec3 uvw)
   return result;
 }
 
-uniform vec4 in_regionColor[1];
-
-vec4 getRegionColor(int index)
-{
-  vec4 result = vec4(0.);
-  result = in_regionColor[index];
-  return result;
-}
-
-uniform sampler2D in_transfer2D[1];
-
-vec4 sampleTransfer2D(int index, vec2 uv)
-{
-  vec4 result = vec4(0.);
-
-  vec4 region = volumeParameters.data[index].transfer2dRegion;
-  uv = vec2(region.x + uv.x * region.z,
-            region.y + uv.y * region.w);
-  vec2 diffx = dFdx(uv);
-  vec2 diffy = dFdy(uv);
-
-  int samplerIndex = volumeParameters.data[index].noOfComponents_maskIndex_regionIndex_transfer2dIndex.w;
-  switch (samplerIndex)
-  {
-    case 0:
-      result = textureGrad(in_transfer2D[0], uv, diffx, diffy);
-      break;
-  }
-
-  return result;
-}
-
 /**
  * Transform window coordinate to NDC.
  */
@@ -356,32 +326,6 @@ vec4 NDCToWindow(const float xNDC, const float yNDC, const float zNDC)
   WinCoord.z = (zNDC * gl_DepthRange.diff + (gl_DepthRange.near + gl_DepthRange.far)) / 2.f;
 
   return WinCoord;
-}
-
-vec2 intersectRayBox(vec3 rayOrigin, vec3 rayDir, vec3 aabbMin, vec3 aabbMax)
-{
-        float tMin = -FLOAT_MAX;
-        float tMax = FLOAT_MAX;
-
-		vec3 inverseRayDirection = vec3(1.) / rayDir;
-        for (int i = 0; i < 3; ++i)
-        {
-            float t0, t1;
-            if (inverseRayDirection[i] >= 0.)
-            {
-                t0 = (aabbMin[i] - rayOrigin[i]) * inverseRayDirection[i];
-                t1 = (aabbMax[i] - rayOrigin[i]) * inverseRayDirection[i];
-            }
-            else {
-                t1 = (aabbMin[i] - rayOrigin[i]) * inverseRayDirection[i];
-                t0 = (aabbMax[i] - rayOrigin[i]) * inverseRayDirection[i];
-            }
-
-            tMin = t0 > tMin ? t0 : tMin;
-            tMax = t1 < tMax ? t1 : tMax;
-        }
-
-        return tMax >= tMin ? vec2(tMin, tMax) : vec2(FLOAT_MAX, -FLOAT_MAX);
 }
 
 void initializeRayCast()
@@ -440,11 +384,38 @@ void initializeRayCast()
   g_terminatePosEyeLength = length(g_terminatePos - g_eyePosTex.xyz);      
 }
 
+vec2 intersectRayBox(vec3 rayOrigin, vec3 rayDir, vec3 aabbMin, vec3 aabbMax)
+{
+        float tMin = -FLOAT_MAX;
+        float tMax = FLOAT_MAX;
+
+		vec3 inverseRayDirection = vec3(1.) / rayDir;
+        for (int i = 0; i < 3; ++i)
+        {
+            float t0, t1;
+            if (inverseRayDirection[i] >= 0.)
+            {
+                t0 = (aabbMin[i] - rayOrigin[i]) * inverseRayDirection[i];
+                t1 = (aabbMax[i] - rayOrigin[i]) * inverseRayDirection[i];
+            }
+            else {
+                t1 = (aabbMin[i] - rayOrigin[i]) * inverseRayDirection[i];
+                t0 = (aabbMax[i] - rayOrigin[i]) * inverseRayDirection[i];
+            }
+
+            tMin = t0 > tMin ? t0 : tMin;
+            tMax = t1 < tMax ? t1 : tMax;
+        }
+
+        return tMax >= tMin ? vec2(tMin, tMax) : vec2(FLOAT_MAX, -FLOAT_MAX);
+}
+
 void castRay(const float zStart, const float zEnd)
 {
   g_fragDepth = 0.;
 
-  float tEnter = FLOAT_MAX;
+  //VTK::Clipping::Init
+
   float tExit = -FLOAT_MAX;
   for (int i = 0; i < 1; ++i)
   {
@@ -457,44 +428,36 @@ void castRay(const float zStart, const float zEnd)
       valid = interval.x < interval.y && interval.x < FLOAT_MAX && interval.y > 0.;
       if (valid == true)
       {
-        tEnter = interval.x;
         tExit = interval.y;
       }
     }
   }
 
-  vec3 segDataPos;
   float segT = FLOAT_MAX;
-  vec3 segTMax, segNormal;
-  int stepCounter = 0; // indicates validity of marched through volumes, if 0 then the loop exits
+  vec3 segTMax;
 
   if (volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)
   {
     vec3 cs = volumeParameters.data[0].cellSpacing.xyz;
     // grid corner is computed with respect to the fact that the volume bounding box is enlarged by half a voxel in all directions, beginning in negative numbers
-    vec3 hitPoint = g_eyePosObj.xyz + g_rayDir * tEnter - g_rayDir;
+    vec3 hitPoint = ip_vertexPos.xyz - g_rayDir;
     vec3 gridCorner = cs * floor((hitPoint + .5 * cs) / cs) - .5 * cs; // we move the enlarged volume by half voxel to properly work with rounding (necessary when working with half voxel offset), then restore the original grid corner position
     vec3 nextGridLine = gridCorner + vec3(greaterThanEqual(g_rayDirSign, vec3(0.))) * cs;
 
-    segDataPos = (in_inverseTextureDatasetMatrix * vec4(gridCorner + .5 * cs, 1.)).xyz;
+    g_dataPos = (in_inverseTextureDatasetMatrix * vec4(gridCorner + .5 * cs, 1.)).xyz;
     segTMax = vec3(g_rayDir.x != 0. ? (g_rayDirSign.x * ((nextGridLine.x - g_eyePosObj.x) / cs.x) * g_tDelta[0].x) : FLOAT_MAX,
                    g_rayDir.y != 0. ? (g_rayDirSign.y * ((nextGridLine.y - g_eyePosObj.y) / cs.y) * g_tDelta[0].y) : FLOAT_MAX,
                    g_rayDir.z != 0. ? (g_rayDirSign.z * ((nextGridLine.z - g_eyePosObj.z) / cs.z) * g_tDelta[0].z) : FLOAT_MAX);
     segT = min(segTMax.x, min(segTMax.y, segTMax.z));
-    segNormal = -g_rayDirSign * vec3(lessThanEqual(segTMax, vec3(segT)));
-    ++stepCounter;
   }
 
   while (!g_exit)
   {
-    if (stepCounter == 0) break;
     g_skip = false;
-    g_dataPos = segDataPos;
-    --stepCounter;
-    if (g_terminatePosLength < length((g_eyePosObj.xyz + segT * g_rayDir.xyz) - g_eyePosObj.xyz))
-    {
-      continue;
-    }
+    //if (g_terminatePosLength >= length((g_eyePosObj.xyz + segT * g_rayDir.xyz) - g_eyePosObj.xyz))
+    //{
+    //  break;
+    //}
 
     bool noMask = true;
     bool maskedByBox = false;
@@ -526,8 +489,10 @@ void castRay(const float zStart, const float zEnd)
         if (length(p - projectedPoint) > cylinderMaskRadius) { maskedByCylinder = false; }
       }
     }
+    bool maskedByClippingPlanes = false;
+    //VTK::Clipping::Impl
 
-    if (g_skip == false && (noMask || (maskedByBox || maskedByCylinder)))
+    if (g_skip == false && (noMask || (maskedByBox || maskedByClippingPlanes || maskedByCylinder)))
     {
       if (g_dataPos.x >= 0. && g_dataPos.x <= 1. &&
           g_dataPos.y >= 0. && g_dataPos.y <= 1. &&
@@ -550,37 +515,28 @@ void castRay(const float zStart, const float zEnd)
       }
     }
     
-    float tNext = FLOAT_MAX;
-    // if (frontSamplePoint.type == TYPE_REGION)
+    vec3 cellSteps = volumeParameters.data[0].cellStep.xyz;
+    if (segTMax.x < segTMax.y && segTMax.x < segTMax.z)
     {
-      vec3 cellSteps = volumeParameters.data[0].cellStep.xyz;
-      segNormal = vec3(0.);
-      if (segTMax.x < segTMax.y && segTMax.x < segTMax.z)
-      {
-        segDataPos.x += g_rayDirSign.x * cellSteps.x;
-        tNext = segTMax.x;
-        segTMax.x += g_tDelta[0].x;
-        segNormal.x = -g_rayDirSign.x;
-      }
-      else if (segTMax.y < segTMax.z)
-      {
-        segDataPos.y += g_rayDirSign.y * cellSteps.y;
-        tNext = segTMax.y;
-        segTMax.y += g_tDelta[0].y;
-        segNormal.y = -g_rayDirSign.y;
-      }
-      else
-      {
-        segDataPos.z += g_rayDirSign.z * cellSteps.z;
-        tNext = segTMax.z;
-        segTMax.z += g_tDelta[0].z;
-        segNormal.z = -g_rayDirSign.z;
-      }
-      segT = tNext;
+      g_dataPos.x += g_rayDirSign.x * cellSteps.x;
+      segT = segTMax.x;
+      segTMax.x += g_tDelta[0].x;
     }
-    if (tNext < tExit + FLOAT_EPS)
+    else if (segTMax.y < segTMax.z)
     {
-      ++stepCounter;
+      g_dataPos.y += g_rayDirSign.y * cellSteps.y;
+      segT = segTMax.y;
+      segTMax.y += g_tDelta[0].y;
+    }
+    else
+    {
+      g_dataPos.z += g_rayDirSign.z * cellSteps.z;
+      segT = segTMax.z;
+      segTMax.z += g_tDelta[0].z;
+    }
+    if (segT >= tExit)
+    {
+      g_exit = true;
     }
   }
 }
@@ -1011,6 +967,7 @@ public:
   vtkSmartPointer<vtkOpenGLFramebufferObject> RegionDepthFBO;
   vtkSmartPointer<vtkTextureObject> RegionDepthTextureObject;
   vtkSmartPointer<vtkShaderProgram> RegionDepthShaderProgram;
+  bool HadClippingPlanes = false;
 
   vtkOpenGLFramebufferObject* FBO;
   vtkTextureObject* RTTDepthBufferTextureObject;
@@ -1803,6 +1760,12 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadRegions(vtkRenderer* ren)
           }
       }
 
+      if (this->RegionDepthShaderProgram && static_cast<bool>(this->Parent->GetClippingPlanes()) != this->HadClippingPlanes)
+      {
+          this->RegionDepthShaderProgram = nullptr;
+      }
+      this->HadClippingPlanes = this->Parent->GetClippingPlanes();
+
       if (!this->RegionDepthTextureObject)
       {
         this->RegionDepthTextureObject = vtkSmartPointer<vtkTextureObject>::New();
@@ -1833,9 +1796,32 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadRegions(vtkRenderer* ren)
           vtkShader* regionDepthGeometryShader = vtkShader::New();
           regionDepthGeometryShader->SetSource("");
           vtkShader* regionDepthVertexShader = vtkShader::New();
-          regionDepthVertexShader->SetSource(DEPTH_REGION_VERTEX_SHADER_SOURCE);
+          regionDepthVertexShader->SetSource(REGION_DEPTH_VERTEX_SHADER_SOURCE);
           vtkShader* regionDepthFragmentShader = vtkShader::New();
-          regionDepthFragmentShader->SetSource(DEPTH_REGION_FRAGMENT_SHADER_SOURCE);
+
+          std::string fragSource = REGION_DEPTH_FRAGMENT_SHADER_SOURCE;
+          if (this->Parent->ClippingPlanes)
+          {
+              vtkShaderProgram::Substitute(fragSource, "//VTK::Clipping::Impl",
+R"(
+    vec3 pWorld = (in_volumeMatrix * vec4(p, 1.)).xyz;
+    for (int i = 0; i < clip_numPlanes; i = i + 6)
+    {
+      noMask = false;
+      vec3 planeOrigin = vec3(in_clippingPlanes[i + 1],
+                              in_clippingPlanes[i + 2],
+                              in_clippingPlanes[i + 3]);
+      vec3 planeNormal = normalize(vec3(in_clippingPlanes[i + 4],
+                                        in_clippingPlanes[i + 5],
+                                        in_clippingPlanes[i + 6]));
+      if ((dot(planeNormal, pWorld - planeOrigin) >= 0.) == true)
+      {
+        maskedByClippingPlanes = true;
+      }
+    }
+)");
+          }
+          regionDepthFragmentShader->SetSource(fragSource);
 
           std::map<vtkShader::Type, vtkShader*> shaders;
           shaders[vtkShader::Type::Vertex] = regionDepthVertexShader;
@@ -1844,6 +1830,12 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadRegions(vtkRenderer* ren)
           regionDepthGeometryShader->SetType(vtkShader::Type::Geometry);
           shaders[vtkShader::Type::Fragment] = regionDepthFragmentShader;
           regionDepthFragmentShader->SetType(vtkShader::Type::Fragment);
+
+          if (this->Parent->GetClippingPlanes())
+          {
+              this->Parent->ReplaceShaderClipping(shaders, ren, nullptr, 1);
+          }
+
           this->RegionDepthShaderProgram = this->ShaderCache->ReadyShaderProgram(shaders);
           if (!this->RegionDepthShaderProgram || !this->RegionDepthShaderProgram->GetCompiled())
           {
@@ -3467,7 +3459,7 @@ vtkOpenGLGPUVolumeRayCastMapper::vtkOpenGLGPUVolumeRayCastMapper()
   this->MaxCellSpacingDivisor = 8.;
   this->OutlineRegionVoxels = false;
   this->X = 1. / 20.;
-  this->Val_D = .1;
+  this->Val_D = .3;
   this->Val_xD = .7;
 
   this->ResourceCallback = new vtkOpenGLResourceFreeCallback<vtkOpenGLGPUVolumeRayCastMapper>(this, &vtkOpenGLGPUVolumeRayCastMapper::ReleaseGraphicsResources);
@@ -5590,7 +5582,8 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderSingleInput(vtkRenderer
             vtkOpenGLState* const state = this->RegionDepthFBO->GetContext()->GetState();
             state->vtkglViewport(this->WindowLowerLeft[0], this->WindowLowerLeft[1], this->WindowSize[0], this->WindowSize[1]);
             state->vtkglClear(GL_COLOR_BUFFER_BIT);
-            state->vtkglClearColor(0.f, 0.f, 0.f, 0.f);
+            float zero{0.f};
+            glClearBufferfv(GL_COLOR, 0, &zero);
             state->vtkglClearDepth(0.f);
             state->vtkglDisable(GL_DEPTH_TEST);
             this->RenderVolumeGeometry(ren, this->RegionDepthShaderProgram, vol, block->LoadedBounds);
@@ -5604,7 +5597,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderSingleInput(vtkRenderer
             this->RegionDepthTextureObject->Download()->Download1D(VTK_FLOAT, regionDepths, dim, 1, 0);
             for (int i = 0; i < dim; ++i)
             {
-                if (regionDepths[i] < minimumRegionDepth && regionDepths[i] > 1.)
+                if (regionDepths[i] < minimumRegionDepth && regionDepths[i] > 0.)
                 {
                     minimumRegionDepth = regionDepths[i];
                 }

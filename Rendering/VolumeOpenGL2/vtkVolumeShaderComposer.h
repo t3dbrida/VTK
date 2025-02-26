@@ -897,13 +897,11 @@ namespace vtkvolume
                   "\n  {"
                   "\n    // Kate shading"
                   "\n    float dLoc = dist - in_regionDepth;"
-                  "\n    //float x = 1. / 20.;"
-                  "\n    //float val_xD = .7;"
-                  "\n    //float val_D = .1;"
                   "\n    vec3 boundsMax = volumeParameters.data[index].boundsMax.xyz;"
                   "\n    float D = max(boundsMax.x, max(boundsMax.y, boundsMax.z));"
                   "\n    float c2 = (1. / val_xD - 1. - x / val_D + x) / (pow((x * D), 2) - x * pow(D, 2));"
                   "\n    float c1 = (1. / val_D - 1. - c2 * pow(D, 2)) / D;"
+                  "\n    c2 = max(0, c2);"
                   "\n    attenuation = 1. / (1. + c1 * dLoc + c2 * pow(dLoc, 2));"
                   "\n  }"
                   "\n  else"
@@ -2106,7 +2104,7 @@ namespace vtkvolume
     if (mapper->GetClippingPlanes())
     {
         shaderStr +=
-            "    vec3 pWorld = (in_volumeMatrix * vec4(p, 1.)).xyz\n";
+            "    vec3 pWorld = (in_volumeMatrix * vec4(p, 1.)).xyz;\n"
             "    for (int i = 0; i < clip_numPlanes; i = i + 6)\n"
             "    {\n"
             "      noMask = false;\n"
@@ -2848,7 +2846,7 @@ namespace vtkvolume
       \n{ \
       \n  vec4 startPosObj = vec4(0.0);\
       \n  {\
-      \n    startPosObj = clip_texToObjMat * vec4(startPosTex - g_rayJitter[0], 1.0);\
+      \n    startPosObj = clip_texToObjMat * vec4(startPosTex - g_rayDir, 1.0);\
       \n    startPosObj = startPosObj / startPosObj.w;\
       \n    startPosObj.w = 1.0;\
       \n  }\
@@ -2895,7 +2893,7 @@ namespace vtkvolume
       \n      vec4 newStartPosTex = clip_objToTexMat * vec4(startPosObj.xyz, 1.0);\
       \n      newStartPosTex /= newStartPosTex.w;\
       \n      startPosTex = newStartPosTex.xyz;\
-      \n      startPosTex += g_rayJitter[0];\
+      \n      startPosTex += g_rayDir;\
       \n    }\
       \n\
       \n    // Move the end position closer to the eye if needed:\
