@@ -84,6 +84,8 @@ vtkVolumeProperty::vtkVolumeProperty()
   this->CylinderMask.radius = 0.;
 
   this->BitRegion.mask = nullptr;
+
+  this->BitRegionLightFocus = .01;
 }
 
 // Destruct a vtkVolumeProperty

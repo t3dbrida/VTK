@@ -201,12 +201,11 @@ public:
   vtkGetMacro(MaxCellSpacingDivisor, double);
   vtkSetMacro(MaxCellSpacingDivisor, double);
 
-  vtkGetMacro(OutlineRegionVoxels, bool);
-  vtkSetMacro(OutlineRegionVoxels, bool);
-
-
   vtkGetMacro(DownsampleCompensation, float);
   vtkSetMacro(DownsampleCompensation, float);
+
+  vtkGetMacro(OutlineRegionVoxels, bool);
+  vtkSetMacro(OutlineRegionVoxels, bool);
 
   const std::vector<float>& GetGradMagMaxs() const noexcept
   {
@@ -356,19 +355,14 @@ protected:
   int    CurrentPass;
   char *VertexShaderCode;
   char *FragmentShaderCode;
-  std::map<const vtkShader::ReplacementSpec, vtkShader::ReplacementValue>
-    UserShaderReplacements;
+  std::map<const vtkShader::ReplacementSpec, vtkShader::ReplacementValue> UserShaderReplacements;
 
   vtkNew<vtkOpenGLUniforms> FragmentCustomUniforms;
   vtkNew<vtkOpenGLUniforms> VertexCustomUniforms;
 
   std::vector<float> GradMagMaxs;
 
-public:
   bool OutlineRegionVoxels;
-  double X;
-  double Val_D;
-  double Val_xD;
 
 public:
   using VolumeInput = vtkVolumeInputHelper;

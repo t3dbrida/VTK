@@ -41,23 +41,18 @@
 #include <vtkFloatArray.h>
 #include <vtkOpenGLFramebufferObject.h>
 #include <vtkImageData.h>
-#include "vtkInformation.h"
 #include <vtkLightCollection.h>
 #include <vtkLight.h>
-#include <vtkLightCollection.h>
 #include <vtkMath.h>
 #include <vtkMatrix4x4.h>
 #include <vtkNew.h>
 #include <vtkObjectFactory.h>
-#include "vtkOpenGLActor.h"
 #include <vtkOpenGLBufferObject.h>
 #include <vtkOpenGLCamera.h>
 #include <vtkOpenGLError.h>
-#include <vtkOpenGLFramebufferObject.h>
 #include <vtkOpenGLRenderPass.h>
 #include <vtkOpenGLRenderUtilities.h>
 #include <vtkOpenGLRenderWindow.h>
-#include "vtkOpenGLResourceFreeCallback.h"
 #include <vtkOpenGLShaderCache.h>
 #include "vtkOpenGLState.h"
 #include <vtkOpenGLVertexArrayObject.h>
@@ -3458,9 +3453,6 @@ vtkOpenGLGPUVolumeRayCastMapper::vtkOpenGLGPUVolumeRayCastMapper()
   this->FragmentShaderCode = nullptr;
   this->MaxCellSpacingDivisor = 8.;
   this->OutlineRegionVoxels = false;
-  this->X = 1. / 20.;
-  this->Val_D = .3;
-  this->Val_xD = .7;
 
   this->ResourceCallback = new vtkOpenGLResourceFreeCallback<vtkOpenGLGPUVolumeRayCastMapper>(this, &vtkOpenGLGPUVolumeRayCastMapper::ReleaseGraphicsResources);
 }
@@ -5606,9 +5598,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderSingleInput(vtkRenderer
         }
 
         this->ShaderProgram->SetUniformf("in_regionDepth", minimumRegionDepth);
-        this->ShaderProgram->SetUniformf("x", this->Parent->X);
-        this->ShaderProgram->SetUniformf("val_D", this->Parent->Val_D);
-        this->ShaderProgram->SetUniformf("val_xD", this->Parent->Val_xD);
+        this->ShaderProgram->SetUniformf("in_regionLightFocus[0]", vol->GetProperty()->GetBitRegionLightFocus());
     }
 
     const int numSamplers = (independent ? numComp : 1);
