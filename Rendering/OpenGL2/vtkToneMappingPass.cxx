@@ -111,7 +111,7 @@ void vtkToneMappingPass::Render(const vtkRenderState* s)
 
     vtkShaderProgram::Substitute(FSSource,
       "//VTK::FSQ::Impl",
-      "vec4 pixel = texture2D(source, texCoord);\n"
+      "vec4 pixel = texture(source, texCoord);\n"
       "  float Y = 0.2126 * pixel.r + 0.7152 * pixel.g + 0.0722 * pixel.b;\n"
       "  //VTK::FSQ::Impl");
 

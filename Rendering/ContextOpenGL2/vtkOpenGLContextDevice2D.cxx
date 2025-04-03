@@ -123,7 +123,7 @@ namespace
     "if ((0x01 << int(mod(ldistance,16.0)) & stipple) == 0) { discard; }\n"
     "#endif\n"
     "#ifdef haveTCoords\n"
-    " gl_FragData[0] = texture2D(texture1, tcoord);\n"
+    " gl_FragData[0] = texture(texture1, tcoord);\n"
     "#else\n"
     " gl_FragData[0] = vertexColor;\n"
     "#endif\n"
@@ -723,7 +723,7 @@ void vtkOpenGLContextDevice2D::ReadySBOProgram()
       "//VTK::Output::Dec\n"
       "uniform vec4 vertexColor;\n"
       "uniform sampler2D texture1;\n"
-      "void main() { gl_FragData[0] = vertexColor*texture2D(texture1, gl_PointCoord); }",
+      "void main() { gl_FragData[0] = vertexColor*texture(texture1, gl_PointCoord); }",
       // geometry shader
       "");
   }
@@ -755,7 +755,7 @@ void vtkOpenGLContextDevice2D::ReadySCBOProgram()
         "//VTK::Output::Dec\n"
         "in vec4 vertexColor;\n"
         "uniform sampler2D texture1;\n"
-        "void main() { gl_FragData[0] = vertexColor*texture2D(texture1, gl_PointCoord); }",
+        "void main() { gl_FragData[0] = vertexColor*texture(texture1, gl_PointCoord); }",
         // geometry shader
         "");
   }

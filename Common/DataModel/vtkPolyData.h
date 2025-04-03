@@ -535,6 +535,8 @@ public:
    */
   vtkMTimeType GetMTime() override;
 
+  void SetPoints(vtkPoints* points) override;
+
 protected:
   vtkPolyData();
   ~vtkPolyData() override;

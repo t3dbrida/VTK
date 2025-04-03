@@ -157,8 +157,8 @@ precision mediump sampler3D;
 #endif
 #define texelFetchBuffer texelFetch
 #define texture1D texture
-#define texture2D texture
-#define texture3D texture
+#define texture texture
+#define texture texture
 #else // GL_ES
 #define highp
 #define mediump
@@ -166,8 +166,8 @@ precision mediump sampler3D;
 #if __VERSION__ == 330
 #define texelFetchBuffer texelFetch
 #define texture1D texture
-#define texture2D texture
-#define texture3D texture
+#define texture texture
+#define texture texture
 #endif
 #endif // GL_ES
 #define varying in
@@ -249,6 +249,7 @@ uniform mat4 in_modelViewMatrix;
 uniform mat4 in_inverseModelViewMatrix;
 uniform vec3 in_texMin;
 uniform vec3 in_texMax;
+uniform float in_sampleDistance;
 flat in mat4 ip_inverseTextureDataAdjusted;
 
 // Scales
@@ -381,28 +382,28 @@ void initializeRayCast()
 
 vec2 intersectRayBox(vec3 rayOrigin, vec3 rayDir, vec3 aabbMin, vec3 aabbMax)
 {
-        float tMin = -FLOAT_MAX;
-        float tMax = FLOAT_MAX;
+    float tMin = -FLOAT_MAX;
+    float tMax = FLOAT_MAX;
 
-		vec3 inverseRayDirection = vec3(1.) / rayDir;
-        for (int i = 0; i < 3; ++i)
+    vec3 inverseRayDirection = vec3(1.) / rayDir;
+    for (int i = 0; i < 3; ++i)
+    {
+        float t0, t1;
+        if (inverseRayDirection[i] >= 0.)
         {
-            float t0, t1;
-            if (inverseRayDirection[i] >= 0.)
-            {
-                t0 = (aabbMin[i] - rayOrigin[i]) * inverseRayDirection[i];
-                t1 = (aabbMax[i] - rayOrigin[i]) * inverseRayDirection[i];
-            }
-            else {
-                t1 = (aabbMin[i] - rayOrigin[i]) * inverseRayDirection[i];
-                t0 = (aabbMax[i] - rayOrigin[i]) * inverseRayDirection[i];
-            }
-
-            tMin = t0 > tMin ? t0 : tMin;
-            tMax = t1 < tMax ? t1 : tMax;
+            t0 = (aabbMin[i] - rayOrigin[i]) * inverseRayDirection[i];
+            t1 = (aabbMax[i] - rayOrigin[i]) * inverseRayDirection[i];
+        }
+        else {
+            t1 = (aabbMin[i] - rayOrigin[i]) * inverseRayDirection[i];
+            t0 = (aabbMax[i] - rayOrigin[i]) * inverseRayDirection[i];
         }
 
-        return tMax >= tMin ? vec2(tMin, tMax) : vec2(FLOAT_MAX, -FLOAT_MAX);
+        tMin = t0 > tMin ? t0 : tMin;
+        tMax = t1 < tMax ? t1 : tMax;
+    }
+
+    return tMax >= tMin ? vec2(tMin, tMax) : vec2(FLOAT_MAX, -FLOAT_MAX);
 }
 
 void castRay(const float zStart, const float zEnd)
@@ -435,7 +436,7 @@ void castRay(const float zStart, const float zEnd)
   {
     vec3 cs = volumeParameters.data[0].cellSpacing.xyz;
     // grid corner is computed with respect to the fact that the volume bounding box is enlarged by half a voxel in all directions, beginning in negative numbers
-    vec3 hitPoint = ip_vertexPos.xyz - g_rayDir;
+    vec3 hitPoint = ip_vertexPos.xyz - in_sampleDistance * g_rayDir;
     vec3 gridCorner = cs * floor((hitPoint + .5 * cs) / cs) - .5 * cs; // we move the enlarged volume by half voxel to properly work with rounding (necessary when working with half voxel offset), then restore the original grid corner position
     vec3 nextGridLine = gridCorner + vec3(greaterThanEqual(g_rayDirSign, vec3(0.))) * cs;
 
@@ -707,6 +708,7 @@ public:
 
   bool LoadMasks(vtkRenderer* ren);
   bool LoadRegions(vtkRenderer* ren);
+  void SetupRegionDepthFramebuffer(vtkRenderer* ren, bool hasRegions);
 
   // Update the depth sampler with the current state of the z-buffer. The
   // sampler is used for z-buffer compositing with opaque geometry during
@@ -1744,6 +1746,17 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadRegions(vtkRenderer* ren)
     }
   }
 
+  if (this->Parent->AssembledInputs.size() == 1)
+  {
+    this->SetupRegionDepthFramebuffer(ren, this->Parent->AssembledInputs.at(0).Volume->GetProperty()->GetBitRegion().mask);
+  }
+
+  return result;
+}
+
+void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetupRegionDepthFramebuffer(vtkRenderer* ren, bool hasRegions)
+{
+  vtkOpenGLRenderWindow* const context = static_cast<vtkOpenGLRenderWindow*>(ren->GetRenderWindow());
   if (hasRegions && context)
   {
       if (this->RegionDepthTextureObject)
@@ -1775,14 +1788,13 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadRegions(vtkRenderer* ren)
       if (!this->RegionDepthFBO)
       {
           this->RegionDepthFBO = vtkSmartPointer<vtkOpenGLFramebufferObject>::New();
-          this->RegionDepthFBO->SetContext(vtkOpenGLRenderWindow::SafeDownCast(ren->GetRenderWindow()));
           this->RegionDepthFBO->SaveCurrentBindingsAndBuffers(GL_FRAMEBUFFER);
+          this->RegionDepthFBO->SetContext(vtkOpenGLRenderWindow::SafeDownCast(ren->GetRenderWindow()));
           this->RegionDepthFBO->Bind(GL_FRAMEBUFFER);
           this->RegionDepthFBO->InitializeViewport(this->WindowSize[0], this->WindowSize[1]);
           this->RegionDepthFBO->AddColorAttachment(GL_FRAMEBUFFER, 0U, this->RegionDepthTextureObject);
           this->RegionDepthFBO->ActivateDrawBuffers(1);
           this->RegionDepthFBO->CheckFrameBufferStatus(GL_FRAMEBUFFER);
-          this->RegionDepthFBO->UnBind();
           this->RegionDepthFBO->RestorePreviousBindingsAndBuffers(GL_FRAMEBUFFER);
       }
 
@@ -1848,8 +1860,6 @@ R"(
       this->RegionDepthTextureObject = nullptr;
       this->RegionDepthShaderProgram = nullptr;
   }
-
-  return result;
 }
 
 //----------------------------------------------------------------------------
@@ -2915,8 +2925,6 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::InitializeImageSampleFBO(
   // Set the FBO viewport size. These are used in the shader to normalize the
   // fragment coordinate, the normalized coordinate is used to fetch the depth
   // buffer.
-  this->WindowSize[0] /= this->Parent->ImageSampleDistance;
-  this->WindowSize[1] /= this->Parent->ImageSampleDistance;
   this->WindowLowerLeft[0] = 0;
   this->WindowLowerLeft[1] = 0;
 
@@ -3114,11 +3122,11 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetupRenderToTexture(
 {
   if (this->Parent->RenderToImage && this->Parent->CurrentPass == RenderPass)
   {
-    if (this->Parent->ImageSampleDistance != 1.f)
-    {
-      this->WindowSize[0] /= this->Parent->ImageSampleDistance;
-      this->WindowSize[1] /= this->Parent->ImageSampleDistance;
-    }
+    //if (this->Parent->ImageSampleDistance != 1.f)
+    //{
+    //  this->WindowSize[0] /= this->Parent->ImageSampleDistance;
+    //  this->WindowSize[1] /= this->Parent->ImageSampleDistance;
+    //}
 
     if ((this->LastRenderToImageWindowSize[0] != this->WindowSize[0]) ||
       (this->LastRenderToImageWindowSize[1] != this->WindowSize[1]))
@@ -3245,11 +3253,11 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::ExitRenderToTexture(
 void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetupDepthPass(
   vtkRenderer* ren)
 {
-  if (this->Parent->ImageSampleDistance != 1.f)
-  {
-    this->WindowSize[0] /= this->Parent->ImageSampleDistance;
-    this->WindowSize[1] /= this->Parent->ImageSampleDistance;
-  }
+  //if (this->Parent->ImageSampleDistance != 1.f)
+  //{
+  //  this->WindowSize[0] /= this->Parent->ImageSampleDistance;
+  //  this->WindowSize[1] /= this->Parent->ImageSampleDistance;
+  //}
 
   if ((this->LastDepthPassWindowSize[0] != this->WindowSize[0]) ||
     (this->LastDepthPassWindowSize[1] != this->WindowSize[1]))
@@ -3453,6 +3461,7 @@ vtkOpenGLGPUVolumeRayCastMapper::vtkOpenGLGPUVolumeRayCastMapper()
   this->FragmentShaderCode = nullptr;
   this->MaxCellSpacingDivisor = 8.;
   this->OutlineRegionVoxels = false;
+  this->SimpleRegionRendering = false;
 
   this->ResourceCallback = new vtkOpenGLResourceFreeCallback<vtkOpenGLGPUVolumeRayCastMapper>(this, &vtkOpenGLGPUVolumeRayCastMapper::ReleaseGraphicsResources);
 }
@@ -4661,6 +4670,17 @@ void vtkOpenGLGPUVolumeRayCastMapper::GPURender(vtkRenderer* ren,
       this->Impl->WindowSize[1] = vp[3];
   }
 
+  if (this->ImageSampleDistance != 1.f)
+  {
+    this->Impl->WindowSize[0] /= this->ImageSampleDistance;
+    this->Impl->WindowSize[1] /= this->ImageSampleDistance;
+  }
+
+  // Get the shader cache. This is important to make sure that shader cache
+  // knows the state of various shader programs in use.
+  this->Impl->ShaderCache = vtkOpenGLRenderWindow::SafeDownCast(
+    ren->GetRenderWindow())->GetShaderCache();
+
   this->Impl->NeedToInitializeResources  =
     (this->Impl->ReleaseResourcesTime.GetMTime() >
     this->Impl->InitializationTime.GetMTime());
@@ -4686,11 +4706,6 @@ void vtkOpenGLGPUVolumeRayCastMapper::GPURender(vtkRenderer* ren,
 
   this->Impl->LoadMasks(ren);
   this->Impl->LoadRegions(ren);
-
-  // Get the shader cache. This is important to make sure that shader cache
-  // knows the state of various shader programs in use.
-  this->Impl->ShaderCache = vtkOpenGLRenderWindow::SafeDownCast(
-    ren->GetRenderWindow())->GetShaderCache();
 
   this->Impl->CheckPickingState(ren);
 
@@ -5550,8 +5565,8 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderSingleInput(vtkRenderer
   const int numComp = volumeTex->GetLoadedScalars()->GetNumberOfComponents();
   while (block != nullptr)
   {
-    bool hasRegions = vol->GetProperty()->GetBitRegion().mask && this->RegionDepthFBO && this->RegionDepthShaderProgram;
-    if (hasRegions)
+    bool hasRegions = vol->GetProperty()->GetBitRegion().mask;
+    if (!this->Parent->SimpleRegionRendering && hasRegions && this->RegionDepthFBO && this->RegionDepthShaderProgram)
     {
         float minimumRegionDepth = std::numeric_limits<float>::max();
         if (vol->GetProperty()->GetBitRegion().colors.size() > 0)
@@ -5580,7 +5595,6 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderSingleInput(vtkRenderer
             state->vtkglDisable(GL_DEPTH_TEST);
             this->RenderVolumeGeometry(ren, this->RegionDepthShaderProgram, vol, block->LoadedBounds);
             state->vtkglEnable(GL_DEPTH_TEST);
-            this->RegionDepthFBO->UnBind();
             this->RegionDepthFBO->RestorePreviousBindingsAndBuffers(GL_FRAMEBUFFER);
             this->ShaderCache->ReadyShaderProgram(this->ShaderProgram);
 
@@ -5599,6 +5613,8 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderSingleInput(vtkRenderer
 
         this->ShaderProgram->SetUniformf("in_regionDepth", minimumRegionDepth);
         this->ShaderProgram->SetUniformf("in_regionLightFocus[0]", vol->GetProperty()->GetBitRegionLightFocus());
+        this->ShaderProgram->SetUniformf("in_regionValD[0]", vol->GetProperty()->GetBitRegionValD());
+        this->ShaderProgram->SetUniformf("in_regionValxD[0]", vol->GetProperty()->GetBitRegionValxD());
     }
 
     const int numSamplers = (independent ? numComp : 1);

@@ -69,7 +69,7 @@ public:
    * //VTK::FSQ::Impl for declaring variables and the shader body,
    * respectively.
    * * The varying texCoord is available to the fragment shader for texture
-   * lookups into full-screen textures, ie. texture2D(textureName, texCoord).
+   * lookups into full-screen textures, ie. texture(textureName, texCoord).
    * * PrepFullScreenVAO initializes a new VAO for drawing a quad.
    * * DrawFullScreenQuad actually draws the quad.
 
@@ -82,7 +82,7 @@ public:
    * vtkShaderProgram::Substitute(fragShader, "//VTK::FSQ::Decl",
    * "uniform sampler2D aTexture;");
    * vtkShaderProgram::Substitute(fragShader, "//VTK::FSQ::Impl",
-   * "gl_FragData[0] = texture2D(aTexture, texCoord);");
+   * "gl_FragData[0] = texture(aTexture, texCoord);");
 
    * // Create shader program:
    * vtkShaderProgram *prog = shaderCache->ReadyShaderProgram(

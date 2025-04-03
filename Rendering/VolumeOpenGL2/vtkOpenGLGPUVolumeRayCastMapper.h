@@ -207,6 +207,9 @@ public:
   vtkGetMacro(OutlineRegionVoxels, bool);
   vtkSetMacro(OutlineRegionVoxels, bool);
 
+  vtkGetMacro(SimpleRegionRendering, bool);
+  vtkSetMacro(SimpleRegionRendering, bool);
+
   const std::vector<float>& GetGradMagMaxs() const noexcept
   {
       return this->GradMagMaxs;
@@ -363,6 +366,8 @@ protected:
   std::vector<float> GradMagMaxs;
 
   bool OutlineRegionVoxels;
+
+  bool SimpleRegionRendering;
 
 public:
   using VolumeInput = vtkVolumeInputHelper;

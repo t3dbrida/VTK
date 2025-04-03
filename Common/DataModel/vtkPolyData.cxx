@@ -2426,3 +2426,9 @@ vtkMTimeType vtkPolyData::GetMTime()
   }
   return time;
 }
+
+void vtkPolyData::SetPoints(vtkPoints* points)
+{
+    this->vtkPointSet::SetPoints(points);
+    this->DeleteCells();
+}

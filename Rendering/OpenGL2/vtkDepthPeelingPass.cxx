@@ -725,9 +725,9 @@ bool vtkDepthPeelingPass::PostReplaceShaderValues(std::string &,
   vtkShaderProgram::Substitute(
         fragmentShader, "//VTK::DepthPeeling::Impl",
         "vec2 dpTexCoord = gl_FragCoord.xy / vpSize;\n"
-        "  float odepth = texture2D(opaqueZTexture, dpTexCoord).r;\n"
+        "  float odepth = texture(opaqueZTexture, dpTexCoord).r;\n"
         "  if (gl_FragDepth >= odepth) { discard; }\n"
-        "  float tdepth = texture2D(translucentZTexture, dpTexCoord).r;\n"
+        "  float tdepth = texture(translucentZTexture, dpTexCoord).r;\n"
         "  if (gl_FragDepth <= tdepth + .0000001) { discard; }\n"
         );
 

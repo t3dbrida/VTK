@@ -242,7 +242,7 @@ void vtkOpenGLPolyDataMapper2D::BuildShaders(
         "in float tcoordVCVSOutput; uniform sampler2D texture1;");
       vtkShaderProgram::Substitute(FSSource,
         "//VTK::TCoord::Impl",
-        "gl_FragData[0] = gl_FragData[0]*texture2D(texture1, vec2(tcoordVCVSOutput,0));");
+        "gl_FragData[0] = gl_FragData[0]*texture(texture1, vec2(tcoordVCVSOutput,0));");
     }
     else
     {
@@ -264,7 +264,7 @@ void vtkOpenGLPolyDataMapper2D::BuildShaders(
         "in vec2 tcoordVCVSOutput; uniform sampler2D texture1;");
       vtkShaderProgram::Substitute(FSSource,
         "//VTK::TCoord::Impl",
-        "gl_FragData[0] = gl_FragData[0]*texture2D(texture1, tcoordVCVSOutput.st);");
+        "gl_FragData[0] = gl_FragData[0]*texture(texture1, tcoordVCVSOutput.st);");
     }
   }
 

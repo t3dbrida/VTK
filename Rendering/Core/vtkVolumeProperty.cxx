@@ -85,7 +85,9 @@ vtkVolumeProperty::vtkVolumeProperty()
 
   this->BitRegion.mask = nullptr;
 
-  this->BitRegionLightFocus = .01;
+  this->BitRegionLightFocus = .05;
+  this->BitRegionValD = .3;
+  this->BitRegionValxD = .7;
 }
 
 // Destruct a vtkVolumeProperty

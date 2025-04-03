@@ -423,7 +423,7 @@ void vtkShadowMapPass::BuildShaderCode()
     "      float ldepth = shadowCoord.z;\n"
     "      if (shadowParallel == 0) { ldepth =  (shadowCoord.w - sNearZ)/(sFarZ - sNearZ); }\n"
     "      float depthCExpActual = exp(- depthC*ldepth);\n"
-    "      float depthCExpBlured = texture2D(shadowMap,projected).r;\n"
+    "      float depthCExpBlured = texture(shadowMap,projected).r;\n"
     "      expFactor = depthCExpBlured * depthCExpActual;\n"
     "      float depth = log(depthCExpBlured)/depthC;\n"
     "      thickness = clamp(ldepth - depth, 0.0, 1.0)*(sFarZ - sNearZ);\n"

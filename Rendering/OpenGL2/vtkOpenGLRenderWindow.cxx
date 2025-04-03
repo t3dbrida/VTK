@@ -2074,7 +2074,7 @@ int vtkOpenGLRenderWindow::SetZbufferData( int x1, int y1,
       "uniform sampler2D source;\n"
       "//VTK::Output::Dec\n"
       "void main(void) {\n"
-      "  gl_FragDepth = texture2D(source,tcoordVC).r; }\n",
+      "  gl_FragDepth = texture(source,tcoordVC).r; }\n",
       "");
   if (!program)
   {

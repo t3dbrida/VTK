@@ -916,10 +916,11 @@ namespace vtkvolume
                   "\n  {"
                   "\n    // Kate shading"
                   "\n    float dLoc = dist - in_regionDepth;"
+                  "\n    vec3 boundsMin = volumeParameters.data[index].boundsMin.xyz;"
                   "\n    vec3 boundsMax = volumeParameters.data[index].boundsMax.xyz;"
-                  "\n    float D = max(boundsMax.x, max(boundsMax.y, boundsMax.z));"
-                  "\n    float val_D = .3;"
-                  "\n    float val_xD = .7;"
+                  "\n    float D = length(boundsMax - boundsMin);"
+                  "\n    float val_D = in_regionValD[0];"
+                  "\n    float val_xD = in_regionValxD[0];"
                   "\n    float c2 = (1. / val_xD - 1. - in_regionLightFocus[0] / val_D + in_regionLightFocus[0]) / (pow((in_regionLightFocus[0] * D), 2) - in_regionLightFocus[0] * pow(D, 2));"
                   "\n    float c1 = (1. / val_D - 1. - c2 * pow(D, 2)) / D;"
                   "\n    c2 = max(0, c2);"
@@ -1710,7 +1711,7 @@ namespace vtkvolume
                     "      {\n"
                     "        vec3 cs = volumeParameters.data[0].cellSpacing.xyz;\n"
                     "        // grid corner is computed with respect to the fact that the volume bounding box is enlarged by half a voxel in all directions, beginning in negative numbers\n"
-                    "        vec3 hitPoint = g_eyePosObj.xyz + g_rayDir * intersections[0].t - g_rayDir;\n"
+                    "        vec3 hitPoint = g_eyePosObj.xyz + g_rayDir * intersections[0].t - in_sampleDistance * g_rayDir; // add an arbitrary offset to start outside the intersection position\n"
                     "        vec3 gridCorner = cs * floor((hitPoint + .5 * cs) / cs) - .5 * cs; // we move the enlarged volume by half voxel to properly work with rounding (necessary when working with half voxel offset), then restore the original grid corner position\n"
                     "        vec3 nextGridLine = gridCorner + vec3(greaterThanEqual(g_rayDirSign, vec3(0.))) * cs;\n"
                     "\n"
@@ -3098,6 +3099,8 @@ namespace vtkvolume
     {
         str += "uniform float in_regionDepth;\n";
         str += "uniform float in_regionLightFocus[" + std::to_string(inputsWithBitRegionCount) + "];\n";
+        str += "uniform float in_regionValD[" + std::to_string(inputsWithBitRegionCount) + "];\n";
+        str += "uniform float in_regionValxD[" + std::to_string(inputsWithBitRegionCount) + "];\n";
         str += "uniform usampler3D in_regionMask[" + std::to_string(inputsWithBitRegionCount) + "];\n";
     }
 

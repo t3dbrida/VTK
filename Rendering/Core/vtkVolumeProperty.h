@@ -554,8 +554,14 @@ public:
   }
   void SetBitRegion(const struct BitRegion& bitRegion) noexcept;
 
-  vtkGetMacro(BitRegionLightFocus, double);
   vtkSetMacro(BitRegionLightFocus, double);
+  vtkGetMacro(BitRegionLightFocus, double);
+
+  vtkSetMacro(BitRegionValD, double);
+  vtkGetMacro(BitRegionValD, double);
+
+  vtkSetMacro(BitRegionValxD, double);
+  vtkGetMacro(BitRegionValxD, double);
 
 protected:
   vtkVolumeProperty();
@@ -624,7 +630,9 @@ protected:
 
   struct BitRegion BitRegion;
 
-  double BitRegionLightFocus;
+  float BitRegionLightFocus;
+  float BitRegionValD;
+  float BitRegionValxD;
 
 private:
   vtkVolumeProperty(const vtkVolumeProperty&) = delete;

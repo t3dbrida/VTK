@@ -218,7 +218,7 @@ void vtkOpenGLRayCastImageDisplayHelper::RenderTextureInternal( vtkVolume *vol,
       "uniform float scale;\n"
       "void main(void)\n"
       "{\n"
-      "  gl_FragData[0] = texture2D(source,tcoordVC)*scale;\n"
+      "  gl_FragData[0] = texture(source,tcoordVC)*scale;\n"
       "}\n";
     std::string GSSource;
 
