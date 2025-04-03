@@ -853,6 +853,7 @@ namespace vtkvolume
                                          int lightingComplexity)
   {
     std::string shaderStr;
+    auto* glMapper = static_cast<vtkOpenGLGPUVolumeRayCastMapper*>(mapper);
     //int i = 0;
     //for (auto& input : inputs)
     {
@@ -908,7 +909,7 @@ namespace vtkvolume
             "\n  vec3 p = (in_textureDatasetMatrix * vec4(g_dataPos, 1.0)).xyz;"
             "\n  float dist = length(p - g_eyePosObj.xyz);"
             ;
-          if (inputs.size() == 1 && inputs.at(0).Volume->GetProperty()->GetBitRegion().mask && inputs.at(0).Volume->GetProperty()->GetBitRegion().colors.size() > 0)
+          if (inputs.size() == 1 && !glMapper->GetSimpleRegionRendering() && inputs.at(0).Volume->GetProperty()->GetBitRegion().mask && inputs.at(0).Volume->GetProperty()->GetBitRegion().colors.size() > 0)
           {
               shaderStr +=
                   "\n  float attenuation = 0.;"
@@ -1600,7 +1601,7 @@ namespace vtkvolume
                           vtkVolumeMapper* mapper,
                           vtkVolume* vol)
   {
-    auto gpuMapper = vtkGPUVolumeRayCastMapper::SafeDownCast(mapper);
+    auto gpuMapper = vtkOpenGLGPUVolumeRayCastMapper::SafeDownCast(mapper);
     const int numInputs = gpuMapper->GetInputCount();
     const std::string numInputsStr = std::to_string(numInputs);
     const std::string numInputs2xStr = std::to_string(2 * numInputs);
@@ -1704,7 +1705,7 @@ namespace vtkvolume
             "\n";
 
             const struct vtkVolumeProperty::BitRegion& bitRegion = vol->GetProperty()->GetBitRegion();
-            if (bitRegion.mask)
+            if (bitRegion.mask && !gpuMapper->GetSimpleRegionRendering())
             {
                 str +=
                     "      if (volumeParameters.data[i].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)\n"
@@ -1727,7 +1728,7 @@ namespace vtkvolume
                   ;
             }
             str +=
-                "      if (volumeParameters.data[i].volumeVisibility.x == 1)\n"
+                "      if (volumeParameters.data[i].volumeVisibility.x == 1 || (" + std::string(gpuMapper->GetSimpleRegionRendering() ? "true" : "false") + " && volumeParameters.data[i].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0))\n"
                 "      {\n"
                 "        volDataPos = (in_inverseTextureDatasetMatrix * vec4(hitPoint, 1.)).xyz;\n"
                 "        if (in_useJittering)\n"
@@ -2185,7 +2186,7 @@ namespace vtkvolume
       }
       else
       {
-        shaderStr += "\
+          shaderStr += "\
            \n        g_srcColor = vec4(0.0);\
            \n        if (volumeParameters.data[0].volumeVisibility.x == 1)\
            \n        {\
@@ -2218,16 +2219,19 @@ namespace vtkvolume
         const struct vtkVolumeProperty::BitRegion& bitRegion = vol->GetProperty()->GetBitRegion();
         if (bitRegion.mask)
         {
-            shaderStr +=
-                "\n"
-                "      else if (g_dataPos.x >= 0. && g_dataPos.x <= 1. &&\n"
-                "               g_dataPos.y >= 0. && g_dataPos.y <= 1. &&\n"
-                "               g_dataPos.z >= 0. && g_dataPos.z <= 1.)\n"
-                "      {\n"
-                "        g_srcColor = vec4(0.);\n";
+            if (!glMapper->GetSimpleRegionRendering())
+            {
+                shaderStr +=
+                    "\n"
+                    "      else if (g_dataPos.x >= 0. && g_dataPos.x <= 1. &&\n"
+                    "               g_dataPos.y >= 0. && g_dataPos.y <= 1. &&\n"
+                    "               g_dataPos.z >= 0. && g_dataPos.z <= 1.)\n"
+                    "      {\n";
+            }
             shaderStr +=
             "        if (volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)\n"
             "        {\n"
+            "          g_srcColor = vec4(0.);\n"
             "          uvec4 regionMaskValue = sampleRegionMask(volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z, g_dataPos);\n"
             "          int regionCount = in_regionOffset[1] - in_regionOffset[0];\n"
             "          int digits = regionCount <= 8 ? 8 : (regionCount <= 16 ? 16 : 32);\n"
@@ -2246,49 +2250,64 @@ namespace vtkvolume
             "        }\n"
             "\n";
             shaderStr +=
+                "\n"
+                "        if (g_srcColor.a > 0.)\n"
+                "        {\n";
+                if (glMapper->GetSimpleRegionRendering())
+                {
+                    shaderStr += "          segNormal = g_gradients[0].xyz;\n";
+                }
+                shaderStr +=
+                "          g_srcColor = computeLighting(0, g_srcColor, vec4(segNormal, 1.), TYPE_REGION);\n"
+                "          g_srcColor.rgb *= g_srcColor.a;\n"
+                "          g_fragColor += (1. - g_fragColor.a) * g_srcColor;\n";
+            if (!glMapper->GetSimpleRegionRendering())
+            {
+                shaderStr +=
+                    "          vec3 cs = volumeParameters.data[0].cellSpacing.xyz;\n"
+                    "          vec3 hp = g_eyePosObj.xyz + segT * g_rayDir;\n"
+                    "          hp = (hp + .5 * cs) / cs;\n"
+                    "          vec3 diffBl = cs * (hp - floor(hp));\n"
+                    "          vec3 diffTr = cs * (hp - ceil(hp));\n"
+                    "          float dist = .02 * length(cs);\n"
+                    "\n"
+                    "          if (in_outlineRegionVoxels)\n"
+                    "          {\n"
+                    "            if (segNormal.x != 0.)\n"
+                    "            {\n"
+                    "              if (g_srcColor.a > 0. && (dot(diffBl.yz, vec2(1., 0.)) < dist || dot(diffBl.yz, vec2(0., 1.)) < dist || dot(diffTr.yz, vec2(-1., 0.)) < dist || dot(diffTr.yz, vec2(0., -1.)) < dist))\n"
+                    "              {\n"
+                    "                g_fragColor.a = 1.;\n"
+                    "                g_fragColor.rgb = vec3(.25);\n"
+                    "              }\n"
+                    "            }\n"
+                    "            else if (segNormal.y != 0.)\n"
+                    "            {\n"
+                    "              if (g_srcColor.a > 0. && (dot(diffBl.xz, vec2(1., 0.)) < dist || dot(diffBl.xz, vec2(0., 1.)) < dist || dot(diffTr.xz, vec2(-1., 0.)) < dist || dot(diffTr.xz, vec2(0., -1.)) < dist))\n"
+                    "              {\n"
+                    "                g_fragColor.a = 1.;\n"
+                    "                g_fragColor.rgb = vec3(.25);\n"
+                    "              }\n"
+                    "            }\n"
+                    "            else\n"
+                    "            {\n"
+                    "              if (g_srcColor.a > 0. && (dot(diffBl.xy, vec2(1., 0.)) < dist || dot(diffBl.xy, vec2(0., 1.)) < dist || dot(diffTr.xy, vec2(-1., 0.)) < dist || dot(diffTr.xy, vec2(0., -1.)) < dist))\n"
+                    "              {\n"
+                    "                g_fragColor.a = 1.;\n"
+                    "                g_fragColor.rgb = vec3(.25);\n"
+                    "              }\n"
+                    "            }\n"
+                    "          }\n";
+            }
+            
+            shaderStr +=
             "\n"
-            "        if (g_srcColor.a > 0.)\n"
-            "        {\n"
-            "          g_srcColor = computeLighting(0, g_srcColor, vec4(segNormal, 1.), TYPE_REGION);\n"
-            "          g_srcColor.rgb *= g_srcColor.a;\n"
-            "          g_fragColor += (1. - g_fragColor.a) * g_srcColor;\n"
-            "          vec3 cs = volumeParameters.data[0].cellSpacing.xyz;\n"
-            "          vec3 hp = g_eyePosObj.xyz + segT * g_rayDir;\n"
-            "          hp = (hp + .5 * cs) / cs;\n"
-            "          vec3 diffBl = cs * (hp - floor(hp));\n"
-            "          vec3 diffTr = cs * (hp - ceil(hp));\n"
-            "          float dist = .02 * length(cs);\n"
-            "\n"
-            "          if (in_outlineRegionVoxels)\n"
-            "          {\n"
-            "            if (segNormal.x != 0.)\n"
-            "            {\n"
-            "              if (g_srcColor.a > 0. && (dot(diffBl.yz, vec2(1., 0.)) < dist || dot(diffBl.yz, vec2(0., 1.)) < dist || dot(diffTr.yz, vec2(-1., 0.)) < dist || dot(diffTr.yz, vec2(0., -1.)) < dist))\n"
-            "              {\n"
-            "                g_fragColor.a = 1.;\n"
-            "                g_fragColor.rgb = vec3(.25);\n"
-            "              }\n"
-            "            }\n"
-            "            else if (segNormal.y != 0.)\n"
-            "            {\n"
-            "              if (g_srcColor.a > 0. && (dot(diffBl.xz, vec2(1., 0.)) < dist || dot(diffBl.xz, vec2(0., 1.)) < dist || dot(diffTr.xz, vec2(-1., 0.)) < dist || dot(diffTr.xz, vec2(0., -1.)) < dist))\n"
-            "              {\n"
-            "                g_fragColor.a = 1.;\n"
-            "                g_fragColor.rgb = vec3(.25);\n"
-            "              }\n"
-            "            }\n"
-            "            else\n"
-            "            {\n"
-            "              if (g_srcColor.a > 0. && (dot(diffBl.xy, vec2(1., 0.)) < dist || dot(diffBl.xy, vec2(0., 1.)) < dist || dot(diffTr.xy, vec2(-1., 0.)) < dist || dot(diffTr.xy, vec2(0., -1.)) < dist))\n"
-            "              {\n"
-            "                g_fragColor.a = 1.;\n"
-            "                g_fragColor.rgb = vec3(.25);\n"
-            "              }\n"
-            "            }\n"
-            "          }\n"
-            "\n"
-            "        }\n"
-            "      }\n"; // if (type == TYPE_REGION)
+            "        }\n"; // fragColor slightly above
+
+            if (!glMapper->GetSimpleRegionRendering())
+            {
+                shaderStr += "      }\n"; // if (type == TYPE_REGION)
+            }
         }
       }
     }
@@ -2609,7 +2628,8 @@ namespace vtkvolume
                           vtkVolume* vtkNotUsed(vol))
   {
     std::string str = "";
-    const int inputCount = static_cast<vtkGPUVolumeRayCastMapper*>(mapper)->GetInputCount();
+    auto* const glMapper = static_cast<vtkOpenGLGPUVolumeRayCastMapper*>(mapper);
+    const int inputCount = glMapper->GetInputCount();
     if (inputCount > 1)
     {
       str += "\n"
@@ -2632,44 +2652,49 @@ namespace vtkvolume
     else
     {
         str += "\n"
-        "    float tNext = FLOAT_MAX;\n"
-        "    if (doingVol)\n"
-        "    {\n"
-        "      volDataPos += g_dirStep;\n"
-        "      volT = tNext = dot((in_textureDatasetMatrix * vec4(volDataPos, 1.) - g_eyePosObj).xyz, g_rayDir) / g_rayDirDot;\n"
-        "    }\n"
-        "    else // if (frontSamplePoint.type == TYPE_REGION)\n"
-        "    {\n"
-        "      vec3 cellSteps = volumeParameters.data[0].cellStep.xyz;\n"
-        "      segNormal = vec3(0.);\n"
-        "      if (segTMax.x < segTMax.y && segTMax.x < segTMax.z)\n"
-        "      {\n"
-        "        segDataPos.x += g_rayDirSign.x * cellSteps.x;\n"
-        "        tNext = segTMax.x;\n"
-        "        segTMax.x += g_tDelta[0].x;\n"
-        "        segNormal.x = -g_rayDirSign.x;\n"
-        "      }\n"
-        "      else if (segTMax.y < segTMax.z)\n"
-        "      {\n"
-        "        segDataPos.y += g_rayDirSign.y * cellSteps.y;\n"
-        "        tNext = segTMax.y;\n"
-        "        segTMax.y += g_tDelta[0].y;\n"
-        "        segNormal.y = -g_rayDirSign.y;\n"
-        "      }\n"
-        "      else\n"
-        "      {\n"
-        "        segDataPos.z += g_rayDirSign.z * cellSteps.z;\n"
-        "        tNext = segTMax.z;\n"
-        "        segTMax.z += g_tDelta[0].z;\n"
-        "        segNormal.z = -g_rayDirSign.z;\n"
-        "      }\n"
-        "      segT = tNext;\n"
-        "    }\n"
-        "    if (tNext < intervals[0].tExit + FLOAT_EPS)\n"
-        "    {\n"
-        "      ++stepCounter;\n"
-        "    }\n"
-        "    doingVol = volT < segT;\n"
+            "    float tNext = FLOAT_MAX;\n"
+            "    if (doingVol)\n"
+            "    {\n"
+            "      volDataPos += g_dirStep;\n"
+            "      volT = tNext = dot((in_textureDatasetMatrix * vec4(volDataPos, 1.) - g_eyePosObj).xyz, g_rayDir) / g_rayDirDot;\n"
+            "    }\n";
+        if (!glMapper->GetSimpleRegionRendering())
+        {
+            str +=
+                "    else // if (frontSamplePoint.type == TYPE_REGION)\n"
+                "    {\n"
+                "      vec3 cellSteps = volumeParameters.data[0].cellStep.xyz;\n"
+                "      segNormal = vec3(0.);\n"
+                "      if (segTMax.x < segTMax.y && segTMax.x < segTMax.z)\n"
+                "      {\n"
+                "        segDataPos.x += g_rayDirSign.x * cellSteps.x;\n"
+                "        tNext = segTMax.x;\n"
+                "        segTMax.x += g_tDelta[0].x;\n"
+                "        segNormal.x = -g_rayDirSign.x;\n"
+                "      }\n"
+                "      else if (segTMax.y < segTMax.z)\n"
+                "      {\n"
+                "        segDataPos.y += g_rayDirSign.y * cellSteps.y;\n"
+                "        tNext = segTMax.y;\n"
+                "        segTMax.y += g_tDelta[0].y;\n"
+                "        segNormal.y = -g_rayDirSign.y;\n"
+                "      }\n"
+                "      else\n"
+                "      {\n"
+                "        segDataPos.z += g_rayDirSign.z * cellSteps.z;\n"
+                "        tNext = segTMax.z;\n"
+                "        segTMax.z += g_tDelta[0].z;\n"
+                "        segNormal.z = -g_rayDirSign.z;\n"
+                "      }\n"
+                "      segT = tNext;\n"
+                "    }\n";
+        }
+        str +=
+          "    if (tNext < intervals[0].tExit + FLOAT_EPS)\n"
+          "    {\n"
+          "      ++stepCounter;\n"
+          "    }\n"
+          "    doingVol = volT < segT;\n";
       ;
     }
     return str;
