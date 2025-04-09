@@ -1692,7 +1692,8 @@ namespace vtkvolume
             "\n"
             "  vec3 volDataPos, segDataPos;\n"
             "  float volT = FLOAT_MAX, segT = FLOAT_MAX;\n"
-            "  vec3 segTMax, segNormal;\n"
+            "  vec3 segTMax;\n"
+            "  vec4 segNormal;\n"
             "  int stepCounter = 0; // indicates validity of marched through volumes, if 0 then the loop exits\n"
             "\n"
             "  for (int i = 0; i < " + numInputsStr + "; ++i)\n"
@@ -1721,7 +1722,7 @@ namespace vtkvolume
                     "                       g_rayDir.y != 0. ? (g_rayDirSign.y * ((nextGridLine.y - g_eyePosObj.y) / cs.y) * g_tDelta[0].y) : FLOAT_MAX,\n"
                     "                       g_rayDir.z != 0. ? (g_rayDirSign.z * ((nextGridLine.z - g_eyePosObj.z) / cs.z) * g_tDelta[0].z) : FLOAT_MAX);\n"
                     "        segT = min(segTMax.x, min(segTMax.y, segTMax.z));\n"
-                    "        segNormal = -g_rayDirSign * vec3(lessThanEqual(segTMax, vec3(segT)));\n"
+                    "        segNormal = vec4(-g_rayDirSign * vec3(lessThanEqual(segTMax, vec3(segT))), 1.);\n"
                     "        ++stepCounter;\n"
                     "      }\n"
                     "\n"
@@ -2152,7 +2153,7 @@ namespace vtkvolume
     shaderStr += "\n"
         "      g_srcColor = vec4(0.);\n"
         "      bool computeFragColor = false;\n"
-        "      if (doingVol) //if (frontSamplePoint.type == TYPE_VOLUME)\n"
+        "      if (doingVol)\n"
         "      {\n"
         "        vec4 scalar = texture(in_volume[0], g_dataPos);\n"
     ;
@@ -2187,7 +2188,6 @@ namespace vtkvolume
       else
       {
           shaderStr += "\
-           \n        g_srcColor = vec4(0.0);\
            \n        if (volumeParameters.data[0].volumeVisibility.x == 1)\
            \n        {\
            \n          g_srcColor.a = computeOpacity(0, scalar);\
@@ -2196,25 +2196,17 @@ namespace vtkvolume
            \n            computeFragColor = true;\
            \n            g_srcColor = computeColor(0, scalar, g_srcColor.a);\
            \n          }\
-           \n        }\
-           \n        // Opacity calculation using compositing:\
-           \n        // Here we use front to back compositing scheme whereby\
-           \n        // the current sample value is multiplied to the\
-           \n        // currently accumulated alpha and then this product\
-           \n        // is subtracted from the sample value to get the\
-           \n        // alpha from the previous steps. Next, this alpha is\
-           \n        // multiplied with the current sample colour\
-           \n        // and accumulated to the composited colour. The alpha\
-           \n        // value from the previous steps is then accumulated\
-           \n        // to the composited colour alpha.\
-           \n        if (computeFragColor)\
-           \n        {\
-           \n          g_srcColor.a *= in_downsampleCompensation / 2;\
-           \n          g_srcColor.rgb *= g_srcColor.a;\
-           \n          // we're doing it twice to compesate for downsampling\
-           \n          g_fragColor += (1. - g_fragColor.a) * g_srcColor;\
-           \n          g_fragColor += (1. - g_fragColor.a) * g_srcColor;\
-           \n        }\
+           \n        }";
+           if (!glMapper->GetSimpleRegionRendering())
+           {
+             shaderStr += "\
+              \n        if (computeFragColor)\
+              \n        {\
+              \n          g_srcColor.rgb *= g_srcColor.a;\
+              \n          g_fragColor += (1. - g_fragColor.a) * g_srcColor;\
+              \n        }";
+           }
+           shaderStr += "\
            \n      }"; // if TYPE_VOLUME
         const struct vtkVolumeProperty::BitRegion& bitRegion = vol->GetProperty()->GetBitRegion();
         if (bitRegion.mask)
@@ -2229,9 +2221,9 @@ namespace vtkvolume
                     "      {\n";
             }
             shaderStr +=
+            "        vec4 regionResultColor = vec4(0.);\n"
             "        if (volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)\n"
             "        {\n"
-            "          g_srcColor = vec4(0.);\n"
             "          uvec4 regionMaskValue = sampleRegionMask(volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z, g_dataPos);\n"
             "          int regionCount = in_regionOffset[1] - in_regionOffset[0];\n"
             "          int digits = regionCount <= 8 ? 8 : (regionCount <= 16 ? 16 : 32);\n"
@@ -2243,7 +2235,7 @@ namespace vtkvolume
             "              if (regionColor.a > 0.)\n"
             "              {\n"
             "                regionColor.rgb *= regionColor.a;\n"
-            "                g_srcColor += (1. - g_srcColor.a) * regionColor;\n"
+            "                regionResultColor += (1. - regionResultColor.a) * regionColor;\n"
             "              }\n"
             "            }\n"
             "          }\n"
@@ -2251,16 +2243,17 @@ namespace vtkvolume
             "\n";
             shaderStr +=
                 "\n"
-                "        if (g_srcColor.a > 0.)\n"
+                "        if (regionResultColor.a > 0.)\n"
                 "        {\n";
-                if (glMapper->GetSimpleRegionRendering())
-                {
-                    shaderStr += "          segNormal = g_gradients[0].xyz;\n";
-                }
-                shaderStr +=
-                "          g_srcColor = computeLighting(0, g_srcColor, vec4(segNormal, 1.), TYPE_REGION);\n"
-                "          g_srcColor.rgb *= g_srcColor.a;\n"
-                "          g_fragColor += (1. - g_fragColor.a) * g_srcColor;\n";
+           if (glMapper->GetSimpleRegionRendering())
+           {
+                shaderStr += "          segNormal = g_gradients[0];\n";
+           }
+           shaderStr +=
+           "          computeFragColor = true;"
+           "          regionResultColor = computeLighting(0, regionResultColor, segNormal, TYPE_REGION);\n"
+           "          regionResultColor.rgb *= regionResultColor.a;\n"
+           "          g_srcColor += (1. - g_srcColor.a) * regionResultColor;\n";
             if (!glMapper->GetSimpleRegionRendering())
             {
                 shaderStr +=
@@ -2275,39 +2268,60 @@ namespace vtkvolume
                     "          {\n"
                     "            if (segNormal.x != 0.)\n"
                     "            {\n"
-                    "              if (g_srcColor.a > 0. && (dot(diffBl.yz, vec2(1., 0.)) < dist || dot(diffBl.yz, vec2(0., 1.)) < dist || dot(diffTr.yz, vec2(-1., 0.)) < dist || dot(diffTr.yz, vec2(0., -1.)) < dist))\n"
+                    "              if (regionResultColor.a > 0. && (dot(diffBl.yz, vec2(1., 0.)) < dist || dot(diffBl.yz, vec2(0., 1.)) < dist || dot(diffTr.yz, vec2(-1., 0.)) < dist || dot(diffTr.yz, vec2(0., -1.)) < dist))\n"
                     "              {\n"
-                    "                g_fragColor.a = 1.;\n"
-                    "                g_fragColor.rgb = vec3(.25);\n"
+                    "                g_srcColor.a = 1.;\n"
+                    "                g_srcColor.rgb = vec3(.25);\n"
                     "              }\n"
                     "            }\n"
                     "            else if (segNormal.y != 0.)\n"
                     "            {\n"
-                    "              if (g_srcColor.a > 0. && (dot(diffBl.xz, vec2(1., 0.)) < dist || dot(diffBl.xz, vec2(0., 1.)) < dist || dot(diffTr.xz, vec2(-1., 0.)) < dist || dot(diffTr.xz, vec2(0., -1.)) < dist))\n"
+                    "              if (regionResultColor.a > 0. && (dot(diffBl.xz, vec2(1., 0.)) < dist || dot(diffBl.xz, vec2(0., 1.)) < dist || dot(diffTr.xz, vec2(-1., 0.)) < dist || dot(diffTr.xz, vec2(0., -1.)) < dist))\n"
                     "              {\n"
-                    "                g_fragColor.a = 1.;\n"
-                    "                g_fragColor.rgb = vec3(.25);\n"
+                    "                g_srcColor.a = 1.;\n"
+                    "                g_srcColor.rgb = vec3(.25);\n"
                     "              }\n"
                     "            }\n"
                     "            else\n"
                     "            {\n"
-                    "              if (g_srcColor.a > 0. && (dot(diffBl.xy, vec2(1., 0.)) < dist || dot(diffBl.xy, vec2(0., 1.)) < dist || dot(diffTr.xy, vec2(-1., 0.)) < dist || dot(diffTr.xy, vec2(0., -1.)) < dist))\n"
+                    "              if (regionResultColor.a > 0. && (dot(diffBl.xy, vec2(1., 0.)) < dist || dot(diffBl.xy, vec2(0., 1.)) < dist || dot(diffTr.xy, vec2(-1., 0.)) < dist || dot(diffTr.xy, vec2(0., -1.)) < dist))\n"
                     "              {\n"
-                    "                g_fragColor.a = 1.;\n"
-                    "                g_fragColor.rgb = vec3(.25);\n"
+                    "                g_srcColor.a = 1.;\n"
+                    "                g_srcColor.rgb = vec3(.25);\n"
                     "              }\n"
                     "            }\n"
                     "          }\n";
+              shaderStr += "\
+               \n        if (computeFragColor)\
+               \n        {\
+               \n          // we're doing it twice to compesate for downsampling\
+               \n          g_fragColor += (1. - g_fragColor.a) * g_srcColor;\
+               \n        }";
             }
-            
+
             shaderStr +=
             "\n"
-            "        }\n"; // fragColor slightly above
+            "        }\n"; // regionResultColor slightly above
+            
 
             if (!glMapper->GetSimpleRegionRendering())
             {
                 shaderStr += "      }\n"; // if (type == TYPE_REGION)
             }
+        }
+
+        // TODO!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! don't do downsample compensation for minecraft regions
+        if (glMapper->GetSimpleRegionRendering())
+        {
+          shaderStr += "\
+           \n        if (computeFragColor)\
+           \n        {\
+           \n          //g_srcColor.a *= in_downsampleCompensation / 2;\
+           \n          g_srcColor.rgb *= g_srcColor.a;\
+           \n          // we're doing it twice to compesate for downsampling\
+           \n          g_fragColor += (1. - g_fragColor.a) * g_srcColor;\
+           \n          //g_fragColor += (1. - g_fragColor.a) * g_srcColor;\
+           \n        }";
         }
       }
     }
@@ -2664,7 +2678,7 @@ namespace vtkvolume
                 "    else // if (frontSamplePoint.type == TYPE_REGION)\n"
                 "    {\n"
                 "      vec3 cellSteps = volumeParameters.data[0].cellStep.xyz;\n"
-                "      segNormal = vec3(0.);\n"
+                "      segNormal = vec4(vec3(0.), 1.);\n"
                 "      if (segTMax.x < segTMax.y && segTMax.x < segTMax.z)\n"
                 "      {\n"
                 "        segDataPos.x += g_rayDirSign.x * cellSteps.x;\n"
