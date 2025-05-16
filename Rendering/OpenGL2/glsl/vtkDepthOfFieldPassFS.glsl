@@ -53,13 +53,13 @@ void main(void)
   // use automatic focalDistance?  when focalDistance = 0
   if (fdist == 0.0)
     {
-    fdist = -farC * nearC / (texture2D(depth,vec2(0.5,0.5)).r * (farC - nearC) - farC);
+    fdist = -farC * nearC / (texture(depth,vec2(0.5,0.5)).r * (farC - nearC) - farC);
     }
 
   float CoCScale = focalDisk*fdist*(farC - nearC)/(farC*nearC);
   float CoCBias = focalDisk*(nearC - fdist)/nearC;
 
-  float cdepth = texture2D(depth,tcoordVC).r;
+  float cdepth = texture(depth,tcoordVC).r;
   float CoC = CoCScale*cdepth + CoCBias;
 
   // loop over pixels
@@ -69,7 +69,7 @@ void main(void)
       {
       vec2 newOffset = pixelToTCoord*(vec2(i-4,j-4)*2.0 + rand2(tcoordVC));
       vec2 newtc = tcoordVC + newOffset;
-      float tdepth = texture2D(depth,newtc).r;
+      float tdepth = texture(depth,newtc).r;
       float tCoC = CoCScale*tdepth + CoCBias;
       // is the sample in range?
       float close = abs(tCoC) - length(newOffset/worldToTCoord);
@@ -80,7 +80,7 @@ void main(void)
         if ((tCoC < 0.0 || (CoC > 0.0 && tCoC < (CoC * 2.0f))))
           {
           float weight = close/abs(tCoC);
-          fcolor = fcolor + weight*texture2D(source,newtc);
+          fcolor = fcolor + weight*texture(source,newtc);
           fsum += weight;
           }
         }
