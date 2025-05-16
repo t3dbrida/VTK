@@ -46,7 +46,7 @@ vec2 rand2(vec2 co)
 void main(void)
 {
   // original pixel
-  vec4 fcolor = texture2D(source,tcoordVC);
+  vec4 fcolor = texture(source,tcoordVC);
   float fsum = 1.0;
 
   float fdist = focalDistance;

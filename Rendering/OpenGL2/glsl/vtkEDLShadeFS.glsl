@@ -165,7 +165,7 @@ void computeNeighbours8(float dist)
   for(c=0; c<8;c++)
     {
     V = tcoordVC.st + di*vec2(SX,SY)*N[c].xy;
-    Zn[c].x = ztransform(texture2D(s2_depth,V).r);
+    Zn[c].x = ztransform(texture(s2_depth,V).r);
     // profondeur du voisin reel dans l'image
 
     // VERSION qui ombre le fond
@@ -215,7 +215,7 @@ void ambientOcclusion()
 void main (void)
 {
   S  = SX;
-  Z  = texture2D(s2_depth, tcoordVC.st).r;
+  Z  = texture(s2_depth, tcoordVC.st).r;
   t  = ztransform(Z);
 
   ambientOcclusion();

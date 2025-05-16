@@ -40,19 +40,19 @@ void main()
 {
   vec2 firstOffset = vec2(texelWidthOffset, texelHeightOffset);
 
-  vec4 fragmentColor = texture2D(source, tcoordVC) * 0.38026;
+  vec4 fragmentColor = texture(source, tcoordVC) * 0.38026;
 
-  fragmentColor += texture2D(source, tcoordVC - firstOffset) * 0.27667;
-  fragmentColor += texture2D(source, tcoordVC + firstOffset) * 0.27667;
+  fragmentColor += texture(source, tcoordVC - firstOffset) * 0.27667;
+  fragmentColor += texture(source, tcoordVC + firstOffset) * 0.27667;
 
-  fragmentColor += texture2D(source, tcoordVC - 2.0*firstOffset) * 0.08074;
-  fragmentColor += texture2D(source, tcoordVC + 2.0*firstOffset) * 0.08074;
+  fragmentColor += texture(source, tcoordVC - 2.0*firstOffset) * 0.08074;
+  fragmentColor += texture(source, tcoordVC + 2.0*firstOffset) * 0.08074;
 
-  fragmentColor += texture2D(source, tcoordVC - 3.0*firstOffset) * -0.02612;
-  fragmentColor += texture2D(source, tcoordVC + 3.0*firstOffset) * -0.02612;
+  fragmentColor += texture(source, tcoordVC - 3.0*firstOffset) * -0.02612;
+  fragmentColor += texture(source, tcoordVC + 3.0*firstOffset) * -0.02612;
 
-  fragmentColor += texture2D(source, tcoordVC - 4.0*firstOffset) * -0.02143;
-  fragmentColor += texture2D(source, tcoordVC + 4.0*firstOffset) * -0.02143;
+  fragmentColor += texture(source, tcoordVC - 4.0*firstOffset) * -0.02143;
+  fragmentColor += texture(source, tcoordVC + 4.0*firstOffset) * -0.02143;
 
   gl_FragData[0] = fragmentColor;
 }

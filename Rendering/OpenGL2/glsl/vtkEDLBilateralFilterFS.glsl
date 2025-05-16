@@ -76,8 +76,8 @@ float   sigmaz = 0.005;
 
 void main (void)
 {
-  C = texture2D(s2_I, tcoordVC.st).rgb;
-  z = texture2D(s2_D, tcoordVC.st).r;
+  C = texture(s2_I, tcoordVC.st).rgb;
+  z = texture(s2_D, tcoordVC.st).r;
 
   float ALL = 0.;       // sum of all weights
   vec3  RES = vec3(0.); // sum of all contributions
@@ -95,8 +95,8 @@ void main (void)
     for(d=-hN;d<hN+1;d++)
     {
     coordi = vec2(float(c)*SX,float(d)*SY);
-    Ci = texture2D(s2_I, tcoordVC.st+coordi).rgb;
-    zi = texture2D(s2_D, tcoordVC.st+coordi).r;
+    Ci = texture(s2_I, tcoordVC.st+coordi).rgb;
+    zi = texture(s2_D, tcoordVC.st+coordi).r;
 
     dist = clamp( float(c*c+d*d)/float(hN*hN) , 0., 1. );
     dz   = (z-zi)*(z-zi);

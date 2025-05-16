@@ -29,8 +29,8 @@ void main()
   // current is what is most recently rendered
   // translucent is what is in FRONT of it
   // we render front to back
-  vec4 t1Color = texture2D(translucentRGBATexture, texCoord);
-  vec4 t2Color = texture2D(currentRGBATexture, texCoord);
+  vec4 t1Color = texture(translucentRGBATexture, texCoord);
+  vec4 t2Color = texture(currentRGBATexture, texCoord);
   gl_FragData[0].a = t1Color.a + t2Color.a * (1.0-t1Color.a);
   if (gl_FragData[0].a > 0.0)
     {

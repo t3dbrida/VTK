@@ -59,9 +59,9 @@ uniform sampler2D    s2_C;   // scene color image
 
 void main (void)
 {
-  vec4 shade1  =  texture2D(s2_S1,tcoordVC.st);
-  vec4 shade2  =  texture2D(s2_S2,tcoordVC.st);
-  vec4  color   =  texture2D(s2_C,tcoordVC.st);
+  vec4 shade1  =  texture(s2_S1,tcoordVC.st);
+  vec4 shade2  =  texture(s2_S2,tcoordVC.st);
+  vec4  color   =  texture(s2_C,tcoordVC.st);
 
   // if it is the background (ala depth > 0.99) just copy it
   //if(shade1.a > 0.99)

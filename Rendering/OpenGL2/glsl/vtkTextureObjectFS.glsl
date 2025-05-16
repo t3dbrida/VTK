@@ -25,5 +25,5 @@ uniform sampler2D source;
 
 void main(void)
 {
-  gl_FragData[0] = texture2D(source,tcoordVC);
+  gl_FragData[0] = texture(source,tcoordVC);
 }

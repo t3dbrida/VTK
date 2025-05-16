@@ -207,8 +207,8 @@ int nvidiaEndpointSearch(vec2 posC, float lumC, float lumHC, float lengthSign,
 #endif // FXAA_DEBUG_EDGE_NUM_STEPS
 
     // Sample on the edge boundary in both directions:
-    if (!doneN) lumAveN = luminosity(texture2D(Input, posN).rgb);
-    if (!doneP) lumAveP = luminosity(texture2D(Input, posP).rgb);
+    if (!doneN) lumAveN = luminosity(texture(Input, posN).rgb);
+    if (!doneP) lumAveP = luminosity(texture(Input, posP).rgb);
 
     // Edge endpoint is where the contrast changes significantly:
     doneN = doneN || (abs(lumAveN - lumAveCHC) >= contrastThreshold);
@@ -430,13 +430,13 @@ int vtkEndpointSearch(vec2 posC, float lumC, float lumHC, float lengthSign,
     // Sample the luminosities along the edge:
     if (!doneN)
       {
-      lumHCN = luminosity(texture2D(Input, posHCN).rgb);
-      lumCN  = luminosity(texture2D(Input, posCN).rgb);
+      lumHCN = luminosity(texture(Input, posHCN).rgb);
+      lumCN  = luminosity(texture(Input, posCN).rgb);
       }
     if (!doneP)
       {
-      lumHCP = luminosity(texture2D(Input, posHCP).rgb);
-      lumCP  = luminosity(texture2D(Input, posCP).rgb);
+      lumHCP = luminosity(texture(Input, posHCP).rgb);
+      lumCP  = luminosity(texture(Input, posCP).rgb);
       }
 
     // Check contrast to detect endpoint:
@@ -568,11 +568,11 @@ void main()
   vec2 tcE = texCoord + vec2( tcPixel.x,  0.f);
 
   // Extract the rgb values of these pixels:
-  vec3 rgbC = texture2D(Input, tcC).rgb;
-  vec3 rgbN = texture2D(Input, tcN).rgb;
-  vec3 rgbS = texture2D(Input, tcS).rgb;
-  vec3 rgbW = texture2D(Input, tcW).rgb;
-  vec3 rgbE = texture2D(Input, tcE).rgb;
+  vec3 rgbC = texture(Input, tcC).rgb;
+  vec3 rgbN = texture(Input, tcN).rgb;
+  vec3 rgbS = texture(Input, tcS).rgb;
+  vec3 rgbW = texture(Input, tcW).rgb;
+  vec3 rgbE = texture(Input, tcE).rgb;
 
   // Convert to luminosity:
   float lumC = luminosity(rgbC);
@@ -605,10 +605,10 @@ void main()
   vec2 tcSE = texCoord + vec2( tcPixel.x,  tcPixel.y);
   vec2 tcNW = texCoord + vec2(-tcPixel.x, -tcPixel.y);
   vec2 tcSW = texCoord + vec2(-tcPixel.x,  tcPixel.y);
-  vec3 rgbNE = texture2D(Input, tcNE).rgb;
-  vec3 rgbSE = texture2D(Input, tcSE).rgb;
-  vec3 rgbNW = texture2D(Input, tcNW).rgb;
-  vec3 rgbSW = texture2D(Input, tcSW).rgb;
+  vec3 rgbNE = texture(Input, tcNE).rgb;
+  vec3 rgbSE = texture(Input, tcSE).rgb;
+  vec3 rgbNW = texture(Input, tcNW).rgb;
+  vec3 rgbSW = texture(Input, tcSW).rgb;
   float lumNE = luminosity(rgbNE);
   float lumSE = luminosity(rgbSE);
   float lumNW = luminosity(rgbNW);
@@ -768,7 +768,7 @@ void main()
       return;
 
     case FXAA_NEED_EDGE_AA: // Resample the texture at the requested position.
-      rgbEdgeAA = texture2D(Input, posEdgeAA).rgb;
+      rgbEdgeAA = texture(Input, posEdgeAA).rgb;
       break;
 
     case FXAA_NO_EDGE_AA: // Current pixel does not need edge anti-aliasing.

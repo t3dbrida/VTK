@@ -31,7 +31,7 @@ void main(void)
 {
   vec2 offset=vec2(offsetx,offsety);
 
-  gl_FragData[0] = coef[0]*texture2D(source,tcoordVC-offset)
-    +coef[1]*texture2D(source,tcoordVC)
-    +coef[2]*texture2D(source,tcoordVC+offset);
+  gl_FragData[0] = coef[0]*texture(source,tcoordVC-offset)
+    +coef[1]*texture(source,tcoordVC)
+    +coef[2]*texture(source,tcoordVC+offset);
 }

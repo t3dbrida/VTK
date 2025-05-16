@@ -32,9 +32,9 @@ void main(void)
 
   // Gx
 
-  vec4 tx1=texture2D(gx1,tcoordVC-offset);
-  vec4 tx2=texture2D(gx1,tcoordVC);
-  vec4 tx3=texture2D(gx1,tcoordVC+offset);
+  vec4 tx1=texture(gx1,tcoordVC-offset);
+  vec4 tx2=texture(gx1,tcoordVC);
+  vec4 tx3=texture(gx1,tcoordVC+offset);
 
   // if clamped textures, rescale values from [0,1] to [-1,1]
   tx1=tx1*2.0-1.0;
@@ -45,8 +45,8 @@ void main(void)
 
   // Gy
 
-  vec4 ty1=texture2D(gy1,tcoordVC-offset);
-  vec4 ty3=texture2D(gy1,tcoordVC+offset);
+  vec4 ty1=texture(gy1,tcoordVC-offset);
+  vec4 ty3=texture(gy1,tcoordVC+offset);
 
   vec4 gy=ty3-ty1;
 

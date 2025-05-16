@@ -26,5 +26,5 @@ uniform float blendScale;
 
 void main(void)
 {
-  gl_FragData[0] = blendScale*texture2D(source,tcoordVC);
+  gl_FragData[0] = blendScale*texture(source,tcoordVC);
 }

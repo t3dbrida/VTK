@@ -27,9 +27,9 @@ uniform float stepSize; // 1/W
 void main(void)
 {
   vec2 offset=vec2(stepSize,0.0);
-  vec4 t1=texture2D(source,tcoordVC-offset);
-  vec4 t2=texture2D(source,tcoordVC);
-  vec4 t3=texture2D(source,tcoordVC+offset);
+  vec4 t1=texture(source,tcoordVC-offset);
+  vec4 t2=texture(source,tcoordVC);
+  vec4 t3=texture(source,tcoordVC+offset);
 
   // Gx
 
