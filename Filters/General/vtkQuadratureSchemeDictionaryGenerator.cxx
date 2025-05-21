@@ -262,7 +262,7 @@ int vtkQuadratureSchemeDictionaryGenerator::Generate(
       default:
         cerr << "Error: Cell type " << cellType << " found "
             << "with no definition provided. Add a definition " << " in "
-            << __FILE__ << ". Aborting." << endl;
+            << "<redacted_file>" << ". Aborting." << endl;
         return 0;
     }
 

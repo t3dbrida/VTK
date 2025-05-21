@@ -392,8 +392,8 @@ void vtkAMRBox::Coarsen(int r)
   if( this->Empty() )
   {
     std::cerr << "WARNING: tried refining an empty AMR box!\n";
-    std::cerr << "FILE:" << __FILE__ << std::endl;
-    std::cerr << "LINE:" << __LINE__ << std::endl;
+    std::cerr << "FILE:" << "<redacted_file>" << std::endl;
+    std::cerr << "LINE:" << "<redacted_file>" << std::endl;
     std::cerr.flush();
     return;
   }

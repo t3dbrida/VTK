@@ -57,7 +57,7 @@ WARRANTY OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
 #include <cassert>
 
 /* memory allocation */
-#define myalloc(mem_size) vtkPLY::my_alloc((mem_size), __LINE__, __FILE__)
+#define myalloc(mem_size) vtkPLY::my_alloc((mem_size), __LINE__, "<redacted_file>")
 
 //wjs: added to manage memory leak
 static vtkHeap *plyHeap=nullptr;

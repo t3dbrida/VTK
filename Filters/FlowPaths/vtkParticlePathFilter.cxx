@@ -120,7 +120,7 @@ void ParticlePathFilterInternal::Finalize()
   if(!outLines)
   {
     vtkOStrStreamWrapper vtkmsg;
-    vtkmsg << "ERROR: In " __FILE__ ", line " << __LINE__
+    vtkmsg << "ERROR: In <redacted_file>, line " << __LINE__
            << "\n" << "): " <<" no lines in the output"<< "\n\n";
     return;
   }

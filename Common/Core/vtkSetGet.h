@@ -31,6 +31,7 @@
 #include "vtkSystemIncludes.h"
 #include <math.h>
 #include <typeinfo>
+#include <string>
 
 //----------------------------------------------------------------------------
 // Check for unsupported old compilers.
@@ -454,7 +455,9 @@ extern VTKCOMMONCORE_EXPORT void vtkOutputWindowDisplayDebugText(const char*);
       vtkOStreamWrapper::EndlType endl; \
       vtkOStreamWrapper::UseEndl(endl); \
       vtkOStrStreamWrapper vtkmsg; \
-      vtkmsg << "Generic Warning: In " __FILE__ ", line " << __LINE__ << "\n" x \
+      std::string file = __FILE__; \
+      file = file.substr(file.find_last_of("/\\") + 1); \
+      vtkmsg << "Generic Warning: In " << file << ", line " << __LINE__ << "\n" x \
       << "\n\n"; \
       vtkOutputWindowDisplayGenericWarningText(vtkmsg.str());\
       vtkmsg.rdbuf()->freeze(0);}}
@@ -496,7 +499,9 @@ extern VTKCOMMONCORE_EXPORT void vtkOutputWindowDisplayDebugText(const char*);
     vtkOStreamWrapper::EndlType endl;                                \
     vtkOStreamWrapper::UseEndl(endl);                                \
     vtkOStrStreamWrapper vtkmsg;                                     \
-    vtkmsg << "ERROR: In " __FILE__ ", line " << __LINE__ << "\n";   \
+    std::string file = __FILE__;                                     \
+    file = file.substr(file.find_last_of("/\\") + 1);                \
+    vtkmsg << "ERROR: In " << file << ", line " << __LINE__ << "\n"; \
     if (_object)                                                     \
     {                                                                \
       vtkmsg << _object->GetClassName() << " (" << _object << "): "; \
@@ -530,7 +535,9 @@ extern VTKCOMMONCORE_EXPORT void vtkOutputWindowDisplayDebugText(const char*);
     vtkOStreamWrapper::EndlType endl;                                \
     vtkOStreamWrapper::UseEndl(endl);                                \
     vtkOStrStreamWrapper vtkmsg;                                     \
-    vtkmsg << "Warning: In " __FILE__ ", line " << __LINE__ << "\n"; \
+    std::string file = __FILE__;                                     \
+    file = file.substr(file.find_last_of("/\\") + 1);                \
+    vtkmsg << "Warning: In " << file << ", line " << __LINE__ << "\n"; \
     if (_object)                                                     \
     {                                                                \
       vtkmsg << _object->GetClassName() << " (" << _object << "): "; \
@@ -568,7 +575,9 @@ extern VTKCOMMONCORE_EXPORT void vtkOutputWindowDisplayDebugText(const char*);
     vtkOStreamWrapper::EndlType endl;                                            \
     vtkOStreamWrapper::UseEndl(endl);                                            \
     vtkOStrStreamWrapper vtkmsg;                                                 \
-    vtkmsg << "Debug: In " __FILE__ ", line " << __LINE__ << "\n";               \
+    std::string file = __FILE__;                                                 \
+    file = file.substr(file.find_last_of("/\\") + 1);                            \
+    vtkmsg << "Debug: In " << file << ", line " << __LINE__ << "\n";             \
     if (_object)                                                                 \
     {                                                                            \
       vtkmsg << _object->GetClassName() << " (" << _object << "): ";             \

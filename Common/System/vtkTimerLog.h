@@ -288,7 +288,7 @@ private:
 #define vtkTimerLogMacro(string) \
   { \
       vtkTimerLog::FormatAndMarkEvent("Mark: In %s, line %d, class %s: %s", \
-                              __FILE__, __LINE__, this->GetClassName(), string); \
+                              "<redacted_file>", __LINE__, this->GetClassName(), string); \
   }
 
 #endif

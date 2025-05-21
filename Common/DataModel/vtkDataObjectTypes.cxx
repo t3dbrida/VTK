@@ -312,7 +312,7 @@ int vtkDataObjectTypes::Validate()
 
     if(strcmp(vtkDataObjectTypesStrings[type], cls) != 0)
     {
-      cerr << "ERROR: In " __FILE__ ", line " << __LINE__ << endl;
+      cerr << "ERROR: In <redacted_file>, line " << __LINE__ << endl;
       cerr << "Type mismatch for: " << cls << endl;
       cerr << "The value looked up in vtkDataObjectTypesStrings using ";
       cerr << "the index returned by GetDataObjectType() does not match the object type." << endl;

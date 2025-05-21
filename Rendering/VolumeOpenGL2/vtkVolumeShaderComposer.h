@@ -1226,7 +1226,7 @@ namespace vtkvolume
         ss << "\
           \nvec4 computeColor(int index, vec4 scalar, float opacity)\
           \n{\
-          \n  return computeLighting(index, vec4(scalar.xyz, opacity), computeGradient(index, g_dataPos));\
+          \n  return computeLighting(index, vec4(scalar.xyz, opacity), computeGradient(index, g_dataPos), TYPE_VOLUME);\
           \n}\n";
         return ss.str();
       }
@@ -1847,15 +1847,15 @@ namespace vtkvolume
         shader <<
           "g_gradients[0] = computeGradient(0, g_dataPos);\n";
       }
-      else
-      {
-        // Multiple components
-        shader <<
-          "for (int comp = 0; comp < in_noOfComponents[0]; comp++)\n"
-          "{\n"
-          "  g_gradients[0] = computeGradient(g_dataPos, comp, in_volume[0], 0);\n"
-          "}\n";
-      }
+      //else
+      //{
+      //  // Multiple components
+      //  shader <<
+      //    "for (int comp = 0; comp < in_noOfComponents[0]; comp++)\n"
+      //    "{\n"
+      //    "  g_gradients[0] = computeGradient(g_dataPos, comp, in_volume[0], 0);\n"
+      //    "}\n";
+      //}
     }
     else
     {
@@ -1902,10 +1902,6 @@ namespace vtkvolume
             {
                 ++visibleCount;
             }
-        }
-        if (visibleCount == 1)
-        {
-            visibleCount = 2; // this is for downsample compensation to match single input shading
         }
         //for (auto& item : inputs)
         {
@@ -2030,9 +2026,9 @@ namespace vtkvolume
               "        if (colorCount != 0)\n"
               "        {\n"
               "          g_srcColor /= float(colorCount);\n"
-              "          g_srcColor.a *= in_downsampleCompensation / " + std::to_string(visibleCount) +  ";\n"
+              "          //g_srcColor.a *= in_downsampleCompensation / " + std::to_string(visibleCount) +  ";\n"
               "          g_srcColor.rgb *= g_srcColor.a;\n"
-              "          for (int ds = 0; ds < " + std::to_string(visibleCount) + "; ++ds)\n"
+              "          //for (int ds = 0; ds < " + std::to_string(visibleCount) + "; ++ds)\n"
               "          {\n"
               "            g_fragColor += (1. - g_fragColor.a) * g_srcColor;\n"
               "          }\n"
@@ -2075,14 +2071,14 @@ namespace vtkvolume
       {
         shaderStr += "    g_gradients[0] = computeGradient(0, g_dataPos);\n";
       }
-      else
-      {
-        // Multiple components
-        shaderStr += "    for (int comp = 0; comp < in_noOfComponents[0]; comp++)\n"
-          "    {\n"
-          "      g_gradients[0] = computeGradient(g_dataPos, comp, in_volume[0], 0);\n"
-          "    }\n";
-      }
+      //else
+      //{
+      //  // Multiple components
+      //  shaderStr += "    for (int comp = 0; comp < in_noOfComponents[0]; comp++)\n"
+      //    "    {\n"
+      //    "      g_gradients[0] = computeGradient(g_dataPos, comp, in_volume[0], 0);\n"
+      //    "    }\n";
+      //}
     }
     else
     {
@@ -2188,6 +2184,8 @@ namespace vtkvolume
           \n          g_srcColor.rgb *= g_srcColor.a;\
           \n          g_fragColor += (1. - g_fragColor.a) * g_srcColor;\
           \n        }";
+        shaderStr += "\
+          \n      }"; // if TYPE_VOLUME
       }
       else
       {
