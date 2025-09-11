@@ -19,6 +19,8 @@
 
 #include "vtkVolumeShaderComposer.h"
 #include "vtkVolumeStateRAII.h"
+#include "vtkImageResample.h"
+#include "vtkImageFlip.h"
 
 // Include compiled shader code
 #include <raycasterfs.h>
@@ -899,6 +901,8 @@ public:
   bool LoadDepthTextureExtensionsSucceeded;
   bool CameraWasInsideInLastUpdate;
 
+  bool DepthTextureInitialized = false;
+
   GLuint CubeVBOId;
   GLuint CubeVAOId;
   GLuint CubeIndicesId;
@@ -1765,6 +1769,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetupRegionDepthFramebuffer(v
           {
               this->RegionDepthFBO = nullptr;
               this->RegionDepthTextureObject = nullptr;
+              this->RegionDepthShaderProgram = nullptr;
           }
       }
 
@@ -1773,6 +1778,17 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetupRegionDepthFramebuffer(v
           this->RegionDepthShaderProgram = nullptr;
       }
       this->HadClippingPlanes = this->Parent->GetClippingPlanes();
+
+      if (this->RegionDepthTextureObject && this->RegionDepthTextureObject->GetContext() != context)
+      {
+          this->RegionDepthTextureObject = nullptr;
+          this->RegionDepthShaderProgram = nullptr;
+      }
+      if (this->RegionDepthFBO && this->RegionDepthFBO->GetContext() != context)
+      {
+          this->RegionDepthFBO = nullptr;
+          this->RegionDepthShaderProgram = nullptr;
+      }
 
       if (!this->RegionDepthTextureObject)
       {
@@ -1788,8 +1804,8 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetupRegionDepthFramebuffer(v
       if (!this->RegionDepthFBO)
       {
           this->RegionDepthFBO = vtkSmartPointer<vtkOpenGLFramebufferObject>::New();
-          this->RegionDepthFBO->SaveCurrentBindingsAndBuffers(GL_FRAMEBUFFER);
           this->RegionDepthFBO->SetContext(vtkOpenGLRenderWindow::SafeDownCast(ren->GetRenderWindow()));
+          this->RegionDepthFBO->SaveCurrentBindingsAndBuffers(GL_FRAMEBUFFER);
           this->RegionDepthFBO->Bind(GL_FRAMEBUFFER);
           this->RegionDepthFBO->InitializeViewport(this->WindowSize[0], this->WindowSize[1]);
           this->RegionDepthFBO->AddColorAttachment(GL_FRAMEBUFFER, 0U, this->RegionDepthTextureObject);
@@ -1938,13 +1954,18 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::CaptureDepthTexture(
     return;
   }
 
+  if ((this->Parent->ImageSampleDistance != 1.f && this->DepthTextureInitialized) ||
+      ((this->Parent->ImageSampleDistance == 1.f && !this->DepthTextureInitialized)))
+  {
+      this->DepthTextureObject = nullptr;
+  }
+
   if (!this->DepthTextureObject)
   {
     this->DepthTextureObject = vtkTextureObject::New();
   }
 
-  this->DepthTextureObject->SetContext(vtkOpenGLRenderWindow::SafeDownCast(
-                                        ren->GetRenderWindow()));
+  this->DepthTextureObject->SetContext(vtkOpenGLRenderWindow::SafeDownCast(ren->GetRenderWindow()));
 
 //  this->DepthTextureObject->Activate();
   if (!this->DepthTextureObject->GetHandle())
@@ -1954,19 +1975,56 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::CaptureDepthTexture(
     this->DepthTextureObject->SetWrapT(vtkTextureObject::ClampToEdge);
     this->DepthTextureObject->SetMagnificationFilter(vtkTextureObject::Linear);
     this->DepthTextureObject->SetMinificationFilter(vtkTextureObject::Linear);
-    this->DepthTextureObject->AllocateDepth(
-      this->WindowSize[0], this->WindowSize[1], 4);
   }
 
+  if (this->Parent->ImageSampleDistance != 1.f)
+  {
+      this->DepthTextureInitialized = false;
+
+      int* const renderWindowSize = ren->GetRenderWindow()->GetSize();
+      auto zBuffer = vtkSmartPointer<vtkFloatArray>::New();
+      static_cast<vtkOpenGLRenderWindow*>(ren->GetRenderWindow())->GetZbufferData(0, 0, renderWindowSize[0] - 1, renderWindowSize[1] - 1, zBuffer);
+
+      // -------------------------------
+      // 1. Wrap depth buffer as image
+      // -------------------------------
+      auto depthImage = vtkSmartPointer<vtkImageData>::New();
+      depthImage->SetDimensions(renderWindowSize[0], renderWindowSize[1], 1);
+      depthImage->SetSpacing(1.0, 1.0, 1.0);
+      depthImage->SetOrigin(0.0, 0.0, 0.0);
+      depthImage->GetPointData()->SetScalars(zBuffer);
+
+      // -------------------------------
+      // 2. Downsample with vtkImageResample
+      // -------------------------------
+      auto resample = vtkSmartPointer<vtkImageResample>::New();
+      resample->SetInputData(depthImage);
+      resample->SetAxisMagnificationFactor(0, 1.f / this->Parent->ImageSampleDistance); // X axis (width)
+      resample->SetAxisMagnificationFactor(1, 1.f / this->Parent->ImageSampleDistance); // Y axis (height)
+      resample->SetAxisMagnificationFactor(2, 1.0); // Z axis
+      resample->SetInterpolationModeToLinear();     // Options: Nearest, Linear, Cubic
+      resample->Update();
+
+      auto downsampledImage = resample->GetOutput();
+      this->DepthTextureObject->Create2DFromRaw(downsampledImage->GetDimensions()[0], downsampledImage->GetDimensions()[1], 1, VTK_FLOAT, downsampledImage->GetScalarPointer());
+  }
+  else
+  {
+      this->DepthTextureInitialized = true;
+
+      this->DepthTextureObject->AllocateDepth(this->WindowSize[0], this->WindowSize[1], 4);
 #if GL_ES_VERSION_3_0 != 1
-  // currently broken on ES
-  this->DepthTextureObject->CopyFromFrameBuffer(this->WindowLowerLeft[0],
-    this->WindowLowerLeft[1],
-    0,
-    0,
-    this->WindowSize[0],
-    this->WindowSize[1]);
+      // currently broken on ES
+      this->DepthTextureObject->CopyFromFrameBuffer(
+          this->WindowLowerLeft[0],
+          this->WindowLowerLeft[1],
+          0,
+          0,
+          this->WindowSize[0],
+          this->WindowSize[1]
+      );
 #endif
+  }
 //  this->DepthTextureObject->Deactivate();
 }
 
@@ -3779,7 +3837,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::ReplaceShaderBase(
     vtkvolume::BaseImplementation(ren, this, vol));
 
   vtkShaderProgram::Substitute(
-    fragmentShader, "//VTK::Base::Advance", vtkvolume::BaseAdvance(ren, this, vol));
+    fragmentShader, "//VTK::Base::Advance", vtkvolume::BaseAdvance(ren, this, vol, this->AssembledInputs));
 
   vtkShaderProgram::Substitute(
     fragmentShader, "//VTK::Base::Exit", vtkvolume::BaseExit(ren, this, vol));
@@ -5588,10 +5646,10 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderSingleInput(vtkRenderer
             this->RegionDepthFBO->Bind(GL_FRAMEBUFFER);
             vtkOpenGLState* const state = this->RegionDepthFBO->GetContext()->GetState();
             state->vtkglViewport(this->WindowLowerLeft[0], this->WindowLowerLeft[1], this->WindowSize[0], this->WindowSize[1]);
-            state->vtkglClear(GL_COLOR_BUFFER_BIT);
             float zero{0.f};
-            glClearBufferfv(GL_COLOR, 0, &zero);
+            state->vtkglClearColor(0.f, 0.f, 0.f, 0.f);
             state->vtkglClearDepth(0.f);
+            state->vtkglClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             state->vtkglDisable(GL_DEPTH_TEST);
             this->RenderVolumeGeometry(ren, this->RegionDepthShaderProgram, vol, block->LoadedBounds);
             state->vtkglEnable(GL_DEPTH_TEST);

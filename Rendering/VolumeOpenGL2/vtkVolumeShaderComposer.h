@@ -1723,7 +1723,8 @@ namespace vtkvolume
                     "                       g_rayDir.z != 0. ? (g_rayDirSign.z * ((nextGridLine.z - g_eyePosObj.z) / cs.z) * g_tDelta[0].z) : FLOAT_MAX);\n"
                     "        segT = min(segTMax.x, min(segTMax.y, segTMax.z));\n"
                     "        segNormal = vec4(-g_rayDirSign * vec3(lessThanEqual(segTMax, vec3(segT))), 1.);\n"
-                    "        ++stepCounter;\n"
+                    "        if (g_terminatePosLength >= length((g_eyePosObj.xyz + segT * g_rayDir.xyz) - g_eyePosObj.xyz))\n"
+                    "        { ++stepCounter; }\n"
                     "      }\n"
                     "\n"
                   ;
@@ -1741,7 +1742,8 @@ namespace vtkvolume
                 "          volDataPos += g_dirStep;\n"
                 "        }\n"
                 "        volT = intersections[i].t;\n"
-                "        ++stepCounter;\n"
+                "        if (g_terminatePosLength >= length((g_eyePosObj.xyz + volT * g_rayDir.xyz) - g_eyePosObj.xyz))\n"
+                "        { ++stepCounter; }\n"
                 "      }\n"
               ;
             str +=
@@ -1750,6 +1752,7 @@ namespace vtkvolume
             "\n"
             "  bool doingVol = false;\n"
             "  if (volT != FLOAT_MAX && volT < segT) doingVol = true;\n"
+            "  g_exit = (stepCounter == 0);\n"
             "\n"
           ;
     }
@@ -1879,6 +1882,11 @@ namespace vtkvolume
       "    {\n"
       "      break;\n"
       "    }\n"
+      "\n"
+      "    if (g_terminatePosLength < length((g_eyePosObj.xyz + frontSamplePoint.t * g_rayDir.xyz) - g_eyePosObj.xyz))\n"
+	  "    {\n"
+	  "      continue;\n"
+	  "    }\n"
       "\n"
       "    g_dataPos = frontSamplePoint.dataPos;\n"
       "\n"
@@ -2057,14 +2065,9 @@ namespace vtkvolume
     std::string shaderStr;
     shaderStr +=
         "\n"
-        "    if (stepCounter == 0) break;\n"
         "    g_skip = false;\n"
         "    g_dataPos = doingVol ? volDataPos : segDataPos;\n"
-        "    --stepCounter;\n"
-        "    if (doingVol == false && g_terminatePosLength < length((g_eyePosObj.xyz + segT * g_rayDir.xyz) - g_eyePosObj.xyz))\n"
-	    "    {\n"
-	    "      continue;\n"
-	    "    }\n";
+        "    --stepCounter;\n";
     if (independentComponents)
     {
       if (noOfComponents == 1)
@@ -2645,7 +2648,9 @@ namespace vtkvolume
 
   std::string BaseAdvance(vtkRenderer* vtkNotUsed(ren),
                           vtkVolumeMapper* mapper,
-                          vtkVolume* vtkNotUsed(vol))
+                          vtkVolume* vtkNotUsed(vol),
+                          vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs)
+
   {
     std::string str = "";
     auto* const glMapper = static_cast<vtkOpenGLGPUVolumeRayCastMapper*>(mapper);
@@ -2678,7 +2683,14 @@ namespace vtkvolume
             "      volDataPos += g_dirStep;\n"
             "      volT = tNext = dot((in_textureDatasetMatrix * vec4(volDataPos, 1.) - g_eyePosObj).xyz, g_rayDir) / g_rayDirDot;\n"
             "    }\n";
-        if (!glMapper->GetSimpleRegionRendering())
+        std::size_t inputsWithBitRegionCount = 0,
+                    totalRegionCount = 0;
+        for (const auto& input : inputs)
+        {
+           inputsWithBitRegionCount += static_cast<bool>(input.second.Volume->GetProperty()->GetBitRegion().mask && input.second.Volume->GetProperty()->GetBitRegion().colors.size() > 0);
+           totalRegionCount += input.second.Volume->GetProperty()->GetBitRegion().colors.size();
+        }
+        if (!glMapper->GetSimpleRegionRendering() && inputsWithBitRegionCount > 0)
         {
             str +=
                 "    else // if (frontSamplePoint.type == TYPE_REGION)\n"
@@ -2710,11 +2722,12 @@ namespace vtkvolume
                 "    }\n";
         }
         str +=
-          "    if (tNext < intervals[0].tExit + FLOAT_EPS)\n"
+          "    if (g_terminatePosLength >= length((g_eyePosObj.xyz + tNext * g_rayDir.xyz) - g_eyePosObj.xyz) && tNext < intervals[0].tExit + FLOAT_EPS)\n"
           "    {\n"
           "      ++stepCounter;\n"
           "    }\n"
-          "    doingVol = volT < segT;\n";
+          "    doingVol = volT < segT;\n"
+          "    g_exit = (stepCounter == 0);\n";
       ;
     }
     return str;
