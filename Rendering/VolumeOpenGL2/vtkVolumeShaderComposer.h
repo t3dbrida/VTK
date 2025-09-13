@@ -152,8 +152,7 @@ namespace vtkvolume
                                       int noOfComponents,
                                       int independentComponents)
   {
-    const int numInputs = static_cast<int>(inputs.size()),
-              numInputs2x = 2 * numInputs; // for regions
+    const int numInputs = static_cast<int>(inputs.size());
 
     std::ostringstream toShaderStr;
     toShaderStr << "uniform sampler3D in_volume[" << numInputs << "];\n"
@@ -184,10 +183,6 @@ namespace vtkvolume
                    "\n"
                    "  float t;\n"
                    "\n"
-                   "  vec3 tMax;\n"
-                   "\n"
-                   "  vec3 normal;\n"
-                   "\n"
                    "  int volumeIndex;\n"
                    "\n"
                    "  int type;\n"
@@ -195,7 +190,7 @@ namespace vtkvolume
                    "\n";
     toShaderStr << "struct SamplePointSet\n"
                    "{\n"
-                   "  SamplePoint samplePoints[" << numInputs2x << "];\n"
+                   "  SamplePoint samplePoints[" << numInputs << "];\n"
                    "\n"
                    "  int size; // actual size\n"
                    "};\n"
@@ -204,7 +199,7 @@ namespace vtkvolume
                    "{\n"
                    "  bool inserted = false;\n"
                    "\n"
-                   "  if (samplePointSet.size < " << numInputs2x << ")\n"
+                   "  if (samplePointSet.size < " << numInputs << ")\n"
                    "  {\n"
                    "    int pos = samplePointSet.size;\n"
                    "    for (int i = 0; i < samplePointSet.size; ++i)\n"
@@ -222,7 +217,7 @@ namespace vtkvolume
                    "    samplePointSet.samplePoints[pos] = samplePoint;\n"
                    "\n"
                    "    ++samplePointSet.size;\n"
-                   "    for (int i = samplePointSet.size; i < " << numInputs2x << "; ++i)\n"
+                   "    for (int i = samplePointSet.size; i < " << numInputs << "; ++i)\n"
                    "    {\n"
                    "      samplePointSet.samplePoints[i].volumeIndex = -1;\n"
                    "      samplePointSet.samplePoints[i].t = FLOAT_MAX;\n"
@@ -248,7 +243,7 @@ namespace vtkvolume
                    "    {\n"
                    "      samplePointSet.samplePoints[i] = samplePointSet.samplePoints[i + 1];\n"
                    "    }\n"
-                   "    for (int i = samplePointSet.size; i < " << numInputs2x << "; ++i)\n"
+                   "    for (int i = samplePointSet.size; i < " << numInputs << "; ++i)\n"
                    "    {\n"
                    "      samplePointSet.samplePoints[i].volumeIndex = -1;\n"
                    "      samplePointSet.samplePoints[i].t = FLOAT_MAX;\n"
@@ -2266,7 +2261,7 @@ namespace vtkvolume
            "\n";
             if (!glMapper->GetSimpleRegionRendering())
             {
-                shaderStr +=
+                /*shaderStr +=
                     "          vec3 cs = volumeParameters.data[0].cellSpacing.xyz;\n"
                     "          vec3 hp = g_eyePosObj.xyz + segT * g_rayDir;\n"
                     "          hp = (hp + .5 * cs) / cs;\n"
@@ -2300,7 +2295,7 @@ namespace vtkvolume
                     "                g_srcColor.rgb = vec3(.25);\n"
                     "              }\n"
                     "            }\n"
-                    "          }\n";
+                    "          }\n";*/
               shaderStr += "\
                \n          if (colorCount != 0)\
                \n          {\
