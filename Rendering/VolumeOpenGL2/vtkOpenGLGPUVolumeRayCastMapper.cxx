@@ -562,6 +562,114 @@ constexpr int TEXTURE_WIDTH = 512,
 
 }
 
+namespace
+{
+
+// octahedral encoding of normalized vector
+std::uint16_t encodeOctNormalToUShort(float x, float y, float z) noexcept
+{
+    // Normalize the vector
+    float length = std::sqrt(x * x + y * y + z * z);
+    if (length < 1e-15f)
+    {
+        return 0; // No direction
+    }
+
+    x /= length;
+    y /= length;
+    z /= length;
+
+    // Octahedral mapping
+    const float absSum = std::abs(x) + std::abs(y) + std::abs(z);
+    x /= absSum;
+    y /= absSum;
+    z /= absSum;
+
+    float u = x,
+          v = y;
+
+    if (z < 0.0f)
+    {
+        const float oldU = u;
+        u = (1.0f - std::abs(v)) * (oldU >= 0.0f ? 1.0f : -1.0f);
+        v = (1.0f - std::abs(oldU)) * (v >= 0.0f ? 1.0f : -1.0f);
+    }
+
+    const auto clamp01 = [] (const float v) noexcept
+    {
+        return std::max(0.f, std::min(1.f, v));
+    };
+
+    // Map from [-1, 1] to [0, 255]
+    std::uint8_t byteU = static_cast<uint8_t>(clamp01(u * 0.5f + 0.5f) * 255.0f + 0.5f);
+    std::uint8_t byteV = static_cast<uint8_t>(clamp01(v * 0.5f + 0.5f) * 255.0f + 0.5f);
+
+    return (static_cast<std::uint16_t>(byteU) << 8) | byteV;
+}
+
+std::vector<std::uint16_t> computeOctahedralGradients(vtkImageData* const inputImage) noexcept
+{
+    if (!inputImage)
+    {
+        return {};
+    }
+
+    int dims[3];
+    inputImage->GetDimensions(dims);
+
+    vtkDataArray* scalars = inputImage->GetPointData()->GetScalars();
+    if (!scalars)
+    {
+        return {};
+    }
+
+    const auto getIndex = [dims] (const int x, const int y, const int z) -> vtkIdType {
+        return z * dims[0] * dims[1] + y * dims[0] + x;
+    };
+
+    const std::size_t n = dims[0] * dims[1] * dims[2];
+
+    std::vector<std::uint16_t> octGradients;
+    octGradients.reserve(n);
+
+    for (int z = 0; z < dims[2]; ++z)
+    {
+        for (int y = 0; y < dims[1]; ++y)
+        {
+            for (int x = 0; x < dims[0]; ++x)
+            {
+                // Default zero gradient for boundary voxels
+                if (x == 0 || x == dims[0] - 1 ||
+                    y == 0 || y == dims[1] - 1 ||
+                    z == 0 || z == dims[2] - 1)
+                {
+                    octGradients.emplace_back(0);
+                    continue;
+                }
+
+                // Central difference
+                const double gx = (scalars->GetComponent(getIndex(x + 1, y, z), 0) -
+                                  scalars->GetComponent(getIndex(x - 1, y, z), 0)) * 0.5;
+                const double gy = (scalars->GetComponent(getIndex(x, y + 1, z), 0) -
+                                   scalars->GetComponent(getIndex(x, y - 1, z), 0)) * 0.5;
+                const double gz = (scalars->GetComponent(getIndex(x, y, z + 1), 0) -
+                                   scalars->GetComponent(getIndex(x, y, z - 1), 0)) * 0.5;
+
+                octGradients.emplace_back(encodeOctNormalToUShort(
+                        static_cast<float>(gx),
+                        static_cast<float>(gy),
+                        static_cast<float>(gz)
+                    )
+                );
+            }
+        }
+    }
+
+    return octGradients;
+}
+
+}
+
 vtkStandardNewMacro(vtkOpenGLGPUVolumeRayCastMapper);
 
 //----------------------------------------------------------------------------
@@ -691,6 +799,8 @@ public:
   static void CopyMatrixToVector(T* matrix, float* matrixVec, int offset);
   template <typename T, int SizeSrc>
   static void CopyVector(T* srcVec, T* dstVec, int offset);
+
+  bool UpdateGradientVolume(vtkRenderer* ren, vtkImageData* volume);
 
   ///@{
   /**
@@ -946,6 +1056,7 @@ public:
       uint64_t timestamp;
   };
 
+  std::map<vtkImageData*, vtkSmartPointer<vtkTextureObject>> GradientVolumeTextures;
   std::map<int, RegionMaskTexture> RegionMaskTextures;
 
   vtkTimeStamp InitializationTime;
@@ -1141,6 +1252,7 @@ public:
             volumeBias[4];
 
       int noOfComponents_maskIndex_regionIndex_transfer2dIndex[4];
+      int volumeDimensions[4];
 
       float volumeMatrix[16],
             inverseVolumeMatrix[16],
@@ -1574,6 +1686,31 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RefreshMaskTransfer(
     this->SetupMaskTransfer(ren);
   }
   this->UpdateMaskTransfer(ren, vol, 0);
+}
+
+bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateGradientVolume(vtkRenderer* ren, vtkImageData* volume)
+{
+    std::vector<std::uint16_t> octGradients = computeOctahedralGradients(volume);
+
+    int dims[3];
+    volume->GetDimensions(dims);
+
+    auto* context = vtkOpenGLRenderWindow::SafeDownCast(ren->GetRenderWindow());
+    auto& gradientVolumeTexture = this->GradientVolumeTextures[volume];
+    if (!gradientVolumeTexture || gradientVolumeTexture->GetContext() != context || gradientVolumeTexture->GetWidth() != dims[0] || gradientVolumeTexture->GetHeight() != dims[1] || gradientVolumeTexture->GetDepth() != dims[2])
+    {
+        gradientVolumeTexture = vtkSmartPointer<vtkTextureObject>::New();
+        gradientVolumeTexture->SetContext(context);
+        gradientVolumeTexture->Create2D(dims[0], dims[1], dims[2], VTK_UNSIGNED_SHORT, true);
+        gradientVolumeTexture->Activate();
+        gradientVolumeTexture->SetMinificationFilter(vtkTextureObject::Nearest);
+        gradientVolumeTexture->SetMagnificationFilter(vtkTextureObject::Nearest);
+        gradientVolumeTexture->SetWrapS(vtkTextureObject::ClampToEdge);
+        gradientVolumeTexture->SetWrapT(vtkTextureObject::ClampToEdge);
+        gradientVolumeTexture->SetWrapR(vtkTextureObject::ClampToEdge);
+        gradientVolumeTexture->SetAutoParameters(0);
+    }
+    return gradientVolumeTexture->Create3DFromRaw(dims[0], dims[1], dims[2], 1, VTK_UNSIGNED_SHORT, octGradients.data(), true);
 }
 
 //----------------------------------------------------------------------------
@@ -4631,6 +4768,8 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateInputs(vtkRenderer* ren
       success &= volumeTex->LoadVolume(ren, input, scalars,
         this->Parent->CellFlag, property->GetInterpolationType());
       volInput.ComponentMode = this->GetComponentMode(property, scalars);
+
+      success &= this->UpdateGradientVolume(ren, input);
     }
     else
     {
@@ -5104,11 +5243,20 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
     vtkInternal::CopyVector<float, 3>(min, this->VolumeParameters[index].boundsMin, 0);
     vtkInternal::CopyVector<float, 3>(max, this->VolumeParameters[index].boundsMax, 0);
 
+    this->VolumeParameters[index].volumeDimensions[0] = imgData->GetDimensions()[0];
+    this->VolumeParameters[index].volumeDimensions[1] = imgData->GetDimensions()[1];
+    this->VolumeParameters[index].volumeDimensions[2] = imgData->GetDimensions()[2];
+
     // Bind volume textures
     auto block = volumeInput.Texture->GetCurrentBlock();
-    std::stringstream ss; ss << "in_volume[" << index << "]";
+    std::string str = "in_volume[" + std::to_string(index) + "]";
     block->TextureObject->Activate();
-    prog->SetUniformi(ss.str().c_str(), block->TextureObject->GetTextureUnit());
+    prog->SetUniformi(str.c_str(), block->TextureObject->GetTextureUnit());
+
+    str = "in_gradientVolume[" + std::to_string(index) + "]";
+    const auto& gradientVolumeTexture = this->GradientVolumeTextures.at(this->Parent->TransformedInputs.at(index));
+    gradientVolumeTexture->Activate();
+    prog->SetUniformi(str.c_str(), gradientVolumeTexture->GetTextureUnit());
 
     // LargeDataTypes have been already biased and scaled so in those cases 0s
     // and 1s are passed respectively.
