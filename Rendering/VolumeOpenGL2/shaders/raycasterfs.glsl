@@ -36,6 +36,7 @@ in vec3 ip_vertexPos;
 
 vec4 g_fragColor = vec4(0.0);
 
+
 //////////////////////////////////////////////////////////////////////////////
 ///
 /// Uniforms, attributes, and globals
@@ -67,6 +68,7 @@ struct VolumeParameters
        volumeBias;
 
   ivec4 noOfComponents_maskIndex_regionIndex_transfer2dIndex;
+  ivec4 volumeDimensions;
 
   mat4 volumeMatrix,
        inverseVolumeMatrix,
