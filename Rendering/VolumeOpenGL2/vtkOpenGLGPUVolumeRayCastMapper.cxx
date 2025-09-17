@@ -1263,8 +1263,8 @@ public:
             volumeScale[4],
             volumeBias[4];
 
-      int noOfComponents_maskIndex_regionIndex_transfer2dIndex[4];
-      int volumeDimensions[4];
+      int noOfComponents_maskIndex_regionIndex_transfer2dIndex[4],
+          volumeDimensions[4];
 
       float volumeMatrix[16],
             inverseVolumeMatrix[16],
