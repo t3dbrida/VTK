@@ -210,15 +210,7 @@ public:
   vtkGetMacro(SimpleRegionRendering, bool);
   vtkSetMacro(SimpleRegionRendering, bool);
 
-  const std::vector<float>& GetGradMagMaxs() const noexcept
-  {
-      return this->GradMagMaxs;
-  }
-
-  void SetGradMagMaxs(const std::vector<float>& gradMagMaxs) noexcept
-  {
-      this->GradMagMaxs = gradMagMaxs;
-  }
+  void SetPrecomputedVolumeGradient(int index, const std::vector<std::uint16_t>& precomputedVolumeGradient) noexcept;
 
   // Description:
   // Delete OpenGL objects.
@@ -363,11 +355,11 @@ protected:
   vtkNew<vtkOpenGLUniforms> FragmentCustomUniforms;
   vtkNew<vtkOpenGLUniforms> VertexCustomUniforms;
 
-  std::vector<float> GradMagMaxs;
-
   bool OutlineRegionVoxels;
 
   bool SimpleRegionRendering;
+
+  std::map<int, std::vector<std::uint16_t>> PrecomputedVolumeGradients;
 
 public:
   using VolumeInput = vtkVolumeInputHelper;
