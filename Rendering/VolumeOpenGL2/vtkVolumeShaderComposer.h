@@ -261,20 +261,24 @@ namespace vtkvolume
         "\n"
         "  // we use texel fetch just to make sure there is never any sort of interpolation,\n"
         "  // octahedral-encoded normals are very sensitive\n"
-        "  ivec3 coords = ivec3(vec3(volumeParameters.data[index].volumeDimensions.xyz) * uvw);\n"
-        "  switch (index)\n"
-        "  {\n";
+        "  ivec3 volumeDimensions = volumeParameters.data[index].volumeDimensions.xyz;"
+        "  ivec3 coords = ivec3(floor(vec3(volumeDimensions) * uvw));\n"
+        "  if (all(greaterThanEqual(coords, ivec3(0))) && all(lessThan(coords, ivec3(volumeDimensions.xyz))))\n"
+        "  {\n"
+        "    switch (index)\n"
+        "    {\n";
     for (int i = 0; i < numInputs; ++i)
     {
         toShaderStr <<
-            "    case " << i << ":\n"
-            "      result = texelFetch(in_gradientVolume[" << i << "], coords, 0);\n"
-            "      break;\n";
+            "      case " << i << ":\n"
+            "        result = texelFetch(in_gradientVolume[" << i << "], coords, 0);\n"
+            "        break;\n";
     }
     toShaderStr <<
+        "    }\n"
         "  }\n"
         "\n"
-        "  return result;\n"
+        "    return result;\n"
         "}\n";
 
     toShaderStr <<
@@ -720,7 +724,7 @@ namespace vtkvolume
             "  }\n"
             "  else\n"
             "  {\n"
-            "      return vec4(sampleGradient(index, texPos), 1.);\n"
+            "      return vec4(sampleGradient(index, texPos), 0.);\n"
             "  }\n"
             "}\n";
       //if (UseClippedVoxelIntensity(inputs) && mapper->GetClippingPlanes())
@@ -3099,21 +3103,25 @@ namespace vtkvolume
         "uvec4 sampleRegionMask(int index, vec3 uvw)\n"
         "{\n"
         "  uvec4 result = uvec4(0);\n"
-        "\n"
-        "  switch (index)\n"
-        "  {\n";
+        "  ivec3 volumeDimensions = volumeParameters.data[index].volumeDimensions.xyz;"
+        "  ivec3 coords = ivec3(floor(vec3(volumeDimensions) * uvw));\n"
+        "  if (all(greaterThanEqual(coords, ivec3(0))) && all(lessThan(coords, ivec3(volumeDimensions.xyz))))\n"
+        "  {\n"
+        "    switch (index)\n"
+        "    {\n";
     for (std::size_t i = 0; i < inputsWithBitRegionCount; ++i)
     {
         const std::string iStr = std::to_string(i);
         str +=
-            "    case " + iStr + ":\n"
-            "    {\n"
-            "      result = texture(in_regionMask[" + iStr + "], uvw);\n"
-            "      break;\n"
-            "    }\n";
+            "      case " + iStr + ":\n"
+            "      {\n"
+            "        result = texelFetch(in_regionMask[" + iStr + "], coords, 0);\n"
+            "        break;\n"
+            "      }\n";
     }
     str +=
-        "    default: break;\n"
+        "      default: break;\n"
+        "    }\n"
         "  }\n"
         "\n"
         "  return result;\n"

@@ -206,6 +206,7 @@ struct VolumeParameters
        volumeBias;
 
   ivec4 noOfComponents_maskIndex_regionIndex_transfer2dIndex;
+  ivec4 volumeDimensions;
 
   mat4 volumeMatrix,
        inverseVolumeMatrix,
@@ -569,7 +570,7 @@ namespace
 std::uint16_t encodeOctNormalToUShort(float x, float y, float z) noexcept
 {
     // Normalize the vector
-    float length = std::sqrt(x * x + y * y + z * z);
+    const float length = std::sqrt(x * x + y * y + z * z);
     if (length < 1e-15f)
     {
         return 0; // No direction
@@ -588,11 +589,11 @@ std::uint16_t encodeOctNormalToUShort(float x, float y, float z) noexcept
     float u = x,
           v = y;
 
-    if (z < 0.0f)
+    if (z < 0.f)
     {
         const float oldU = u;
-        u = (1.0f - std::abs(v)) * (oldU >= 0.0f ? 1.0f : -1.0f);
-        v = (1.0f - std::abs(oldU)) * (v >= 0.0f ? 1.0f : -1.0f);
+        u = (1.f - std::abs(v)) * (oldU >= 0.f ? 1.f : -1.f);
+        v = (1.f - std::abs(oldU)) * (v >= 0.f ? 1.f : -1.f);
     }
 
     const auto clamp01 = [] (const float v) noexcept
@@ -601,8 +602,8 @@ std::uint16_t encodeOctNormalToUShort(float x, float y, float z) noexcept
     };
 
     // Map from [-1, 1] to [0, 255]
-    std::uint8_t byteU = static_cast<uint8_t>(clamp01(u * 0.5f + 0.5f) * 255.0f + 0.5f);
-    std::uint8_t byteV = static_cast<uint8_t>(clamp01(v * 0.5f + 0.5f) * 255.0f + 0.5f);
+    const std::uint8_t byteU = static_cast<std::uint8_t>(clamp01(u * .5f + .5f) * 255.f + .5f),
+                       byteV = static_cast<std::uint8_t>(clamp01(v * .5f + .5f) * 255.f + .5f);
 
     return (static_cast<std::uint16_t>(byteU) << 8) | byteV;
 }
@@ -617,13 +618,23 @@ std::vector<std::uint16_t> computeOctahedralGradients(vtkImageData* const inputI
     int dims[3];
     inputImage->GetDimensions(dims);
 
+    double spacing[3];
+    inputImage->GetSpacing(spacing);
+
+    const double avgSpacing = (spacing[0] + spacing[1] + spacing[2]) / 3.;
+    double aspect[3];
+    aspect[0] = 1. / (2. * spacing[0] / avgSpacing);
+    aspect[1] = 1. / (2. * spacing[1] / avgSpacing);
+    aspect[2] = 1. / (2. * spacing[2] / avgSpacing);
+
     vtkDataArray* scalars = inputImage->GetPointData()->GetScalars();
     if (!scalars)
     {
         return {};
     }
 
-    const auto getIndex = [dims] (const int x, const int y, const int z) -> vtkIdType {
+    const auto getIndex = [dims] (const int x, const int y, const int z) noexcept -> vtkIdType
+    {
         return z * dims[0] * dims[1] + y * dims[0] + x;
     };
 
@@ -643,19 +654,20 @@ std::vector<std::uint16_t> computeOctahedralGradients(vtkImageData* const inputI
                     y == 0 || y == dims[1] - 1 ||
                     z == 0 || z == dims[2] - 1)
                 {
-                    octGradients.emplace_back(0);
+                    octGradients.emplace_back(1.);
                     continue;
                 }
 
                 // Central difference
                 const double gx = (scalars->GetComponent(getIndex(x + 1, y, z), 0) -
-                                  scalars->GetComponent(getIndex(x - 1, y, z), 0)) * 0.5;
+                                  scalars->GetComponent(getIndex(x - 1, y, z), 0)) * aspect[0];
                 const double gy = (scalars->GetComponent(getIndex(x, y + 1, z), 0) -
-                                   scalars->GetComponent(getIndex(x, y - 1, z), 0)) * 0.5;
+                                   scalars->GetComponent(getIndex(x, y - 1, z), 0)) * aspect[1];
                 const double gz = (scalars->GetComponent(getIndex(x, y, z + 1), 0) -
-                                   scalars->GetComponent(getIndex(x, y, z - 1), 0)) * 0.5;
+                                   scalars->GetComponent(getIndex(x, y, z - 1), 0)) * aspect[2];
 
-                octGradients.emplace_back(encodeOctNormalToUShort(
+                octGradients.emplace_back(
+                    encodeOctNormalToUShort(
                         static_cast<float>(gx),
                         static_cast<float>(gy),
                         static_cast<float>(gz)
@@ -800,7 +812,7 @@ public:
   template <typename T, int SizeSrc>
   static void CopyVector(T* srcVec, T* dstVec, int offset);
 
-  bool UpdateGradientVolume(vtkRenderer* ren, vtkImageData* volume);
+  bool UpdateGradientVolume(vtkRenderer* ren, vtkImageData* volume, int index);
 
   ///@{
   /**
@@ -1688,9 +1700,20 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RefreshMaskTransfer(
   this->UpdateMaskTransfer(ren, vol, 0);
 }
 
-bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateGradientVolume(vtkRenderer* ren, vtkImageData* volume)
+bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateGradientVolume(vtkRenderer* ren, vtkImageData* volume, int index)
 {
-    std::vector<std::uint16_t> octGradients = computeOctahedralGradients(volume);
+    std::uint16_t* octGradientsData = nullptr;
+    std::vector<std::uint16_t> octGradients;
+    auto precomputedGradientIt = this->Parent->PrecomputedVolumeGradients.find(index);
+    if (precomputedGradientIt == this->Parent->PrecomputedVolumeGradients.end())
+    {
+        octGradients = computeOctahedralGradients(volume);
+        octGradientsData = octGradients.data();
+    }
+    else
+    {
+        octGradientsData = precomputedGradientIt->second.data();
+    }
 
     int dims[3];
     volume->GetDimensions(dims);
@@ -1710,7 +1733,7 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateGradientVolume(vtkRende
         gradientVolumeTexture->SetWrapR(vtkTextureObject::ClampToEdge);
         gradientVolumeTexture->SetAutoParameters(0);
     }
-    return gradientVolumeTexture->Create3DFromRaw(dims[0], dims[1], dims[2], 1, VTK_UNSIGNED_SHORT, octGradients.data(), true);
+    return gradientVolumeTexture->Create3DFromRaw(dims[0], dims[1], dims[2], 1, VTK_UNSIGNED_SHORT, octGradientsData, true);
 }
 
 //----------------------------------------------------------------------------
@@ -3737,6 +3760,22 @@ void vtkOpenGLGPUVolumeRayCastMapper::GetColorImage(vtkImageData* output)
     this->Impl->RTTColorTextureObject, output);
 }
 
+void vtkOpenGLGPUVolumeRayCastMapper::SetPrecomputedVolumeGradient(int index, const std::vector<std::uint16_t>& precomputedVolumeGradient) noexcept
+{
+    if (index >= 0)
+    {
+        if (!precomputedVolumeGradient.empty())
+        {
+            this->PrecomputedVolumeGradients[index] = precomputedVolumeGradient;
+        }
+        else
+        {
+            this->PrecomputedVolumeGradients.erase(index);
+        }
+        this->Modified();
+    }
+}
+
 //----------------------------------------------------------------------------
 void vtkOpenGLGPUVolumeRayCastMapper::ReleaseGraphicsResources(
   vtkWindow* window)
@@ -4769,7 +4808,7 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateInputs(vtkRenderer* ren
         this->Parent->CellFlag, property->GetInterpolationType());
       volInput.ComponentMode = this->GetComponentMode(property, scalars);
 
-      success &= this->UpdateGradientVolume(ren, input);
+      success &= this->UpdateGradientVolume(ren, input, port);
     }
     else
     {
@@ -5343,7 +5382,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
 
     this->VolumeParameters[index].volumeVisibility[0] = volume->GetVisibility();
 
-    this->VolumeParameters[index].scalarsRange_gradMagMax_sampling[2] = this->Parent->GradMagMaxs[index];
+    this->VolumeParameters[index].scalarsRange_gradMagMax_sampling[2] = 0.;
 
     ++index;
   }
