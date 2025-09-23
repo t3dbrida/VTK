@@ -174,19 +174,36 @@ precision mediump sampler3D;
 #endif // GL_ES
 #define varying in
 
+/*=========================================================================
+
+  Program:   Visualization Toolkit
+  Module:    raycasterfs.glsl
+
+  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+  All rights reserved.
+  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
+
+     This software is distributed WITHOUT ANY WARRANTY; without even
+     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+     PURPOSE.  See the above copyright notice for more information.
+
+=========================================================================*/
+
 #define FLOAT_MAX 1e20
 #define FLOAT_EPS 1e-7
 
 in vec3 ip_textureCoords;
 in vec3 ip_vertexPos;
 
-out float out_fragDepth;
+float g_fragDepth = 0.;
 
 vec3 g_rayDir;
 vec3 g_rayDirSign;
 float g_rayDirDot;
 vec3 g_dataPos;
 vec3 g_terminatePos;
+vec3 g_dirStep;
+vec4 g_srcColor;
 vec4 g_eyePosObj;
 vec3 g_eyePosTex;
 bool g_exit;
@@ -230,14 +247,84 @@ layout (std430, binding = 0) buffer VP
     VolumeParameters data[];
 } volumeParameters;
 
-float g_fragDepth;
+float lmap(float x, float minA, float maxA, float minB, float maxB)
+{
+    return (minA == maxA) ? minB : (x - minA) * ((maxB - minB) / (maxA - minA)) + minB;
+}
 
-float g_terminatePosEyeLength;
-float g_terminatePosLength;
+out float out_fragDepth;
 
-#ifndef GL_ES
-uniform sampler2D in_depthSampler;
-#endif
+uniform usampler3D in_gradientVolume[1];
+
+struct Intersection
+{
+  float t;
+
+  int volumeIndex;
+};
+
+struct Interval
+{
+  float tEnter;
+
+  float tExit;
+
+  bool valid;
+};
+
+#define TYPE_VOLUME 0
+#define TYPE_REGION 1
+
+vec3 g_dirSteps[1];
+
+Intersection[1] sortIntersections(Interval intervals[1])
+{
+  Intersection intersections[1];
+
+  for (int i = 0; i < 1; ++i)
+  {
+    if (intervals[i].valid == false)
+    {
+      intersections[i].t = FLOAT_MAX;
+      intersections[i].volumeIndex = -1;
+    }
+    else
+    {
+      intersections[i].t = intervals[i].tEnter;
+      intersections[i].volumeIndex = i;
+    }
+  }
+
+  // bubble sort (array size is very small so it doesn't matter which alg. we use)
+  for (int i = 0; i < 0; ++i)
+  {
+    for (int j = 0; j < 0 - i; ++j)
+    {
+      if (intersections[j].t > intersections[j + 1].t)
+      {
+        Intersection tmp = intersections[j];
+        intersections[j] = intersections[j + 1];
+        intersections[j + 1] = tmp;
+      }
+    }
+  }
+
+  // clamp negative starting times to zero
+  for (int i = 0; i < 1; ++i)
+  {
+    if (intersections[i].t < 0.)
+    {
+      intersections[i].t = 0.;
+    }
+  }
+
+  return intersections;
+}
+
+uniform int in_independentComponents;
+uniform bool in_outlineRegionVoxels;
+
+uniform sampler2D in_noiseSampler;
 
 // Camera position
 uniform vec3 in_cameraPos;
@@ -245,25 +332,32 @@ uniform mat4 in_volumeMatrix;
 uniform mat4 in_inverseVolumeMatrix;
 uniform mat4 in_textureDatasetMatrix;
 uniform mat4 in_inverseTextureDatasetMatrix;
+uniform mat4 in_textureToEye;
+uniform vec3 in_texMin;
+uniform vec3 in_texMax;
+uniform mat4 in_cellToPoint;
 // view and model matrices
 uniform mat4 in_projectionMatrix;
 uniform mat4 in_inverseProjectionMatrix;
 uniform mat4 in_modelViewMatrix;
 uniform mat4 in_inverseModelViewMatrix;
-uniform vec3 in_texMin;
-uniform vec3 in_texMax;
-uniform float in_sampleDistance;
 flat in mat4 ip_inverseTextureDataAdjusted;
+
+// Sample distance
+uniform float in_sampleDistance;
+uniform float in_downsampleCompensation;
 
 // Scales
 uniform vec2 in_windowLowerLeftCorner;
 uniform vec2 in_inverseOriginalWindowSize;
 uniform vec2 in_inverseWindowSize;
+uniform vec3 in_textureExtentsMax;
+uniform vec3 in_textureExtentsMin;
 
 // Others
+uniform bool in_useJittering;
+vec3 g_rayJitter[2];
 vec3 g_tDelta[1];
-
-//VTK::Clipping::Dec
 
 vec4 sampleMask(int index, vec3 uvw)
 {
@@ -279,29 +373,39 @@ vec4 sampleMask(int index, vec3 uvw)
   return result;
 }
 
+
 uniform int in_regionOffset[2];
 uniform usampler3D in_regionMask[1];
 
 uvec4 sampleRegionMask(int index, vec3 uvw)
 {
   uvec4 result = uvec4(0);
-
-  switch (index)
+  ivec3 volumeDimensions = volumeParameters.data[index].volumeDimensions.xyz;  ivec3 coords = ivec3(floor(vec3(volumeDimensions) * uvw));
+  if (all(greaterThanEqual(coords, ivec3(0))) && all(lessThan(coords, ivec3(volumeDimensions.xyz))))
   {
-    case 0:
+    switch (index)
     {
-      result = texture(in_regionMask[0], uvw);
-      break;
+      case 0:
+      {
+        result = texelFetch(in_regionMask[0], coords, 0);
+        break;
+      }
+      default: break;
     }
-    default: break;
   }
 
   return result;
 }
 
-/**
- * Transform window coordinate to NDC.
- */
+uniform vec4 in_regionColor[4];
+
+vec4 getRegionColor(int index)
+{
+  vec4 result = vec4(0.);
+  result = in_regionColor[index];
+  return result;
+}
+
 vec4 WindowToNDC(const float xCoord, const float yCoord, const float zCoord)
 {
   vec4 NDCCoord = vec4(0.0, 0.0, 0.0, 1.0);
@@ -313,9 +417,6 @@ vec4 WindowToNDC(const float xCoord, const float yCoord, const float zCoord)
   return NDCCoord;
 }
 
-/**
- * Transform NDC coordinate to window coordinates.
- */
 vec4 NDCToWindow(const float xNDC, const float yNDC, const float zNDC)
 {
   vec4 WinCoord = vec4(0.0, 0.0, 0.0, 1.0);
@@ -327,9 +428,77 @@ vec4 NDCToWindow(const float xNDC, const float yNDC, const float zNDC)
   return WinCoord;
 }
 
+vec2 intersectRayBox(vec3 rayOrigin, vec3 rayDir, vec3 aabbMin, vec3 aabbMax)
+{
+        float tMin = -FLOAT_MAX;
+        float tMax = FLOAT_MAX;
+
+		vec3 inverseRayDirection = vec3(1.) / rayDir;
+        for (int i = 0; i < 3; ++i)
+        {
+            float t0, t1;
+            if (inverseRayDirection[i] >= 0.)
+            {
+                t0 = (aabbMin[i] - rayOrigin[i]) * inverseRayDirection[i];
+                t1 = (aabbMax[i] - rayOrigin[i]) * inverseRayDirection[i];
+            }
+            else {
+                t1 = (aabbMin[i] - rayOrigin[i]) * inverseRayDirection[i];
+                t0 = (aabbMax[i] - rayOrigin[i]) * inverseRayDirection[i];
+            }
+
+            tMin = t0 > tMin ? t0 : tMin;
+            tMax = t1 < tMax ? t1 : tMax;
+        }
+
+        return tMax >= tMin ? vec2(tMin, tMax) : vec2(FLOAT_MAX, -FLOAT_MAX);
+}
+
+vec3 ClampToSampleLocation(vec3 start, vec3 step, vec3 pos, bool ceiling)
+{
+  pos -= g_rayJitter[0];
+
+  vec3 offset = pos - start;
+  float stepLength = length(step);
+
+  // Scalar projection of offset on step:
+  float dist = dot(offset, step / stepLength);
+  if (dist < 0.) // Don't move before the start position:
+  {
+    return start + g_rayJitter[0];
+  }
+
+  // Number of steps
+  float steps = dist / stepLength;
+
+  // If we're reeaaaaallly close, just round -- it's likely just numerical noise
+  // and the value should be considered exact.
+  if (abs(mod(steps, 1.)) > 1e-5)
+  {
+    if (ceiling)
+    {
+      steps = ceil(steps);
+    }
+    else
+    {
+      steps = floor(steps);
+    }
+  }
+  else
+  {
+    steps = floor(steps + 0.5);
+  }
+
+  return start + steps * step + g_rayJitter[0];
+}
+
 void initializeRayCast()
 {
+  g_fragDepth = 0.;
+  g_dirStep = vec3(0.0);
   g_exit = false;
+
+  g_dataPos = ip_textureCoords.xyz;      
       
   g_eyePosObj = in_inverseVolumeMatrix * vec4(in_cameraPos, 1.0);      
   g_eyePosTex = (in_inverseTextureDatasetMatrix * vec4(g_eyePosObj.xyz, 1.)).xyz;      
@@ -338,125 +507,83 @@ void initializeRayCast()
   g_rayDirSign = sign(g_rayDir);      
   g_rayDirDot = dot(g_rayDir, g_rayDir);      
       
+  g_dirStep = in_sampleDistance * (ip_inverseTextureDataAdjusted * vec4(g_rayDir, 0.0)).xyz;          
   vec3 cs = volumeParameters.data[0].cellSpacing.xyz;          
   g_tDelta[0] = vec3(g_rayDir.x != 0. ? (g_rayDirSign.x * cs.x / g_rayDir.x) : FLOAT_MAX,          
                      g_rayDir.y != 0. ? (g_rayDirSign.y * cs.y / g_rayDir.y) : FLOAT_MAX,          
-                     g_rayDir.z != 0. ? (g_rayDirSign.z * cs.z / g_rayDir.z) : FLOAT_MAX);              
-      
-  vec2 fragTexCoord = (gl_FragCoord.xy - in_windowLowerLeftCorner) * in_inverseWindowSize;      
-      
-  // Flag to deternmine if voxel should be considered for the rendering      
-  g_skip = false;          
-      
-#ifdef GL_ES      
-  vec4 l_depthValue = vec4(1.0,1.0,1.0,1.0);      
-#else      
-  vec4 l_depthValue = texture(in_depthSampler, fragTexCoord);      
-#endif      
-  // Depth test      
-  if(gl_FragCoord.z >= l_depthValue.x)      
-  {      
-    discard;      
-  }      
-      
-  // color buffer or max scalar buffer have a reduced size.      
-  fragTexCoord = (gl_FragCoord.xy - in_windowLowerLeftCorner) * in_inverseOriginalWindowSize;      
-      
-  // Compute max number of iterations it will take before we hit      
-  // the termination point      
-      
-  // Abscissa of the point on the depth buffer along the ray.      
-  // point in texture coordinates      
-  vec4 terminatePosTmp = WindowToNDC(gl_FragCoord.x, gl_FragCoord.y, l_depthValue.x);      
-      
-  // From normalized device coordinates to eye coordinates.      
-  // in_projectionMatrix is inversed because of way VT      
-  // From eye coordinates to texture coordinates      
-  terminatePosTmp = in_inverseVolumeMatrix *      
-                    in_inverseModelViewMatrix *      
-                    in_inverseProjectionMatrix *      
-                    terminatePosTmp;      
-  g_terminatePos = terminatePosTmp.xyz / terminatePosTmp.w;      
-  g_terminatePosLength = length(g_terminatePos - g_eyePosObj.xyz);      
-  terminatePosTmp = ip_inverseTextureDataAdjusted * terminatePosTmp;      
-  g_terminatePos = terminatePosTmp.xyz / terminatePosTmp.w;      
-  g_terminatePosEyeLength = length(g_terminatePos - g_eyePosTex.xyz);      
+                     g_rayDir.z != 0. ? (g_rayDirSign.z * cs.z / g_rayDir.z) : FLOAT_MAX);      
 }
 
-vec2 intersectRayBox(vec3 rayOrigin, vec3 rayDir, vec3 aabbMin, vec3 aabbMax)
-{
-    float tMin = -FLOAT_MAX;
-    float tMax = FLOAT_MAX;
-
-    vec3 inverseRayDirection = vec3(1.) / rayDir;
-    for (int i = 0; i < 3; ++i)
-    {
-        float t0, t1;
-        if (inverseRayDirection[i] >= 0.)
-        {
-            t0 = (aabbMin[i] - rayOrigin[i]) * inverseRayDirection[i];
-            t1 = (aabbMax[i] - rayOrigin[i]) * inverseRayDirection[i];
-        }
-        else {
-            t1 = (aabbMin[i] - rayOrigin[i]) * inverseRayDirection[i];
-            t0 = (aabbMax[i] - rayOrigin[i]) * inverseRayDirection[i];
-        }
-
-        tMin = t0 > tMin ? t0 : tMin;
-        tMax = t1 < tMax ? t1 : tMax;
-    }
-
-    return tMax >= tMin ? vec2(tMin, tMax) : vec2(FLOAT_MAX, -FLOAT_MAX);
-}
+//VTK::Clipping::Dec
 
 void castRay(const float zStart, const float zEnd)
 {
-  g_fragDepth = 0.;
+  g_fragDepth = 0;
 
   //VTK::Clipping::Init
+  if (abs(g_rayDirDot) < 1e-20)
+  {
+    return;
+  }
 
-  float tExit = -FLOAT_MAX;
+  Interval intervals[1];
   for (int i = 0; i < 1; ++i)
   {
-    bool valid = false;
-    if (volumeParameters.data[i].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)
+    intervals[i].tEnter = FLOAT_MAX;
+    intervals[i].tExit = -FLOAT_MAX;
+    intervals[i].valid = false;
+    if (volumeParameters.data[i].volumeVisibility.x == 1 || volumeParameters.data[i].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)
     {
-      vec3 bboxMin = volumeParameters.data[0].boundsMin.xyz;
-      vec3 bboxMax = volumeParameters.data[0].boundsMax.xyz;
+      vec3 bboxMin = volumeParameters.data[i].boundsMin.xyz;
+      vec3 bboxMax = volumeParameters.data[i].boundsMax.xyz;
       vec2 interval = intersectRayBox(g_eyePosObj.xyz, g_rayDir, bboxMin, bboxMax);
-      valid = interval.x < interval.y && interval.x < FLOAT_MAX && interval.y > 0.;
-      if (valid == true)
+      intervals[i].valid = interval.x < interval.y && interval.x < FLOAT_MAX && interval.y > 0.;
+      if (intervals[i].valid == true)
       {
-        tExit = interval.y;
+        vec3 posEnter = g_eyePosObj.xyz + interval.x * g_rayDir;
+        vec3 posExit = g_eyePosObj.xyz + interval.y * g_rayDir;
+        intervals[i].tEnter = dot(posEnter - g_eyePosObj.xyz, g_rayDir) / g_rayDirDot;
+        intervals[i].tExit = dot(posExit - g_eyePosObj.xyz, g_rayDir) / g_rayDirDot;
       }
     }
   }
 
+  Intersection intersections[1] = sortIntersections(intervals);
+
   float segT = FLOAT_MAX;
   vec3 segTMax;
+  int stepCounter = 0;
 
-  if (volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)
+  g_exit = true;
+  for (int i = 0; i < 1; ++i)
   {
-    vec3 cs = volumeParameters.data[0].cellSpacing.xyz;
-    // grid corner is computed with respect to the fact that the volume bounding box is enlarged by half a voxel in all directions, beginning in negative numbers
-    vec3 hitPoint = ip_vertexPos.xyz - in_sampleDistance * g_rayDir;
-    vec3 gridCorner = cs * floor((hitPoint + .5 * cs) / cs) - .5 * cs; // we move the enlarged volume by half voxel to properly work with rounding (necessary when working with half voxel offset), then restore the original grid corner position
-    vec3 nextGridLine = gridCorner + vec3(greaterThanEqual(g_rayDirSign, vec3(0.))) * cs;
+    if (intersections[i].volumeIndex >= 0)
+    {
+      vec3 hitPoint = g_eyePosObj.xyz + intersections[i].t * g_rayDir;
 
-    g_dataPos = (in_inverseTextureDatasetMatrix * vec4(gridCorner + .5 * cs, 1.)).xyz;
-    segTMax = vec3(g_rayDir.x != 0. ? (g_rayDirSign.x * ((nextGridLine.x - g_eyePosObj.x) / cs.x) * g_tDelta[0].x) : FLOAT_MAX,
-                   g_rayDir.y != 0. ? (g_rayDirSign.y * ((nextGridLine.y - g_eyePosObj.y) / cs.y) * g_tDelta[0].y) : FLOAT_MAX,
-                   g_rayDir.z != 0. ? (g_rayDirSign.z * ((nextGridLine.z - g_eyePosObj.z) / cs.z) * g_tDelta[0].z) : FLOAT_MAX);
-    segT = min(segTMax.x, min(segTMax.y, segTMax.z));
+      int vi = intersections[i].volumeIndex;
+
+      if (volumeParameters.data[i].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)
+      {
+        vec3 cs = volumeParameters.data[0].cellSpacing.xyz;
+        // grid corner is computed with respect to the fact that the volume bounding box is enlarged by half a voxel in all directions, beginning in negative numbers
+        vec3 hitPoint = g_eyePosObj.xyz + g_rayDir * intersections[0].t - in_sampleDistance * g_rayDir; // add an arbitrary offset to start outside the intersection position
+        vec3 gridCorner = cs * floor((hitPoint + .5 * cs) / cs) - .5 * cs; // we move the enlarged volume by half voxel to properly work with rounding (necessary when working with half voxel offset), then restore the original grid corner position
+        vec3 nextGridLine = gridCorner + vec3(greaterThanEqual(g_rayDirSign, vec3(0.))) * cs;
+
+        g_dataPos = (in_inverseTextureDatasetMatrix * vec4(gridCorner + .5 * cs, 1.)).xyz;
+        segTMax = vec3(g_rayDir.x != 0. ? (g_rayDirSign.x * ((nextGridLine.x - g_eyePosObj.x) / cs.x) * g_tDelta[0].x) : FLOAT_MAX,
+                       g_rayDir.y != 0. ? (g_rayDirSign.y * ((nextGridLine.y - g_eyePosObj.y) / cs.y) * g_tDelta[0].y) : FLOAT_MAX,
+                       g_rayDir.z != 0. ? (g_rayDirSign.z * ((nextGridLine.z - g_eyePosObj.z) / cs.z) * g_tDelta[0].z) : FLOAT_MAX);
+        segT = min(segTMax.x, min(segTMax.y, segTMax.z));
+        g_exit = false;
+      }
+    }
   }
 
   while (!g_exit)
   {
     g_skip = false;
-    //if (g_terminatePosLength >= length((g_eyePosObj.xyz + segT * g_rayDir.xyz) - g_eyePosObj.xyz))
-    //{
-    //  break;
-    //}
 
     bool noMask = true;
     bool maskedByBox = false;
@@ -494,8 +621,8 @@ void castRay(const float zStart, const float zEnd)
     if (g_skip == false && (noMask || (maskedByBox || maskedByClippingPlanes || maskedByCylinder)))
     {
       if (g_dataPos.x >= 0. && g_dataPos.x <= 1. &&
-          g_dataPos.y >= 0. && g_dataPos.y <= 1. &&
-          g_dataPos.z >= 0. && g_dataPos.z <= 1.)
+               g_dataPos.y >= 0. && g_dataPos.y <= 1. &&
+               g_dataPos.z >= 0. && g_dataPos.z <= 1.)
       {
         if (volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)
         {
@@ -506,47 +633,55 @@ void castRay(const float zStart, const float zEnd)
           {
             if ((regionMaskValue[regionIndex / digits] & uint(1 << (regionIndex % digits))) != uint(0))
             {
-              g_fragDepth = length(p - g_eyePosObj.xyz);
-              return;
+              //vec4 regionColor = getRegionColor(in_regionOffset[0] + regionIndex);
+              //if (regionColor.a > 0.)
+              {
+                g_fragDepth = length(p - g_eyePosObj.xyz);
+                return;
+              }
             }
           }
         }
       }
     }
-    
-    vec3 cellSteps = volumeParameters.data[0].cellStep.xyz;
-    if (segTMax.x < segTMax.y && segTMax.x < segTMax.z)
+    // TYPE_REGION
     {
-      g_dataPos.x += g_rayDirSign.x * cellSteps.x;
-      segT = segTMax.x;
-      segTMax.x += g_tDelta[0].x;
+      vec3 cellSteps = volumeParameters.data[0].cellStep.xyz;
+      if (segTMax.x < segTMax.y && segTMax.x < segTMax.z)
+      {
+        g_dataPos.x += g_rayDirSign.x * cellSteps.x;
+        segT = segTMax.x;
+        segTMax.x += g_tDelta[0].x;
+      }
+      else if (segTMax.y < segTMax.z)
+      {
+        g_dataPos.y += g_rayDirSign.y * cellSteps.y;
+        segT = segTMax.y;
+        segTMax.y += g_tDelta[0].y;
+      }
+      else
+      {
+        g_dataPos.z += g_rayDirSign.z * cellSteps.z;
+        segT = segTMax.z;
+        segTMax.z += g_tDelta[0].z;
+      }
     }
-    else if (segTMax.y < segTMax.z)
-    {
-      g_dataPos.y += g_rayDirSign.y * cellSteps.y;
-      segT = segTMax.y;
-      segTMax.y += g_tDelta[0].y;
-    }
-    else
-    {
-      g_dataPos.z += g_rayDirSign.z * cellSteps.z;
-      segT = segTMax.z;
-      segTMax.z += g_tDelta[0].z;
-    }
-    if (segT >= tExit)
+    if (segT > intervals[0].tExit)
     {
       g_exit = true;
     }
   }
+  return;
 }
 
 void finalizeRayCast()
 {
-    out_fragDepth = g_fragDepth;
+  out_fragDepth = g_fragDepth;
 }
 
 void main()
 {
+      
   initializeRayCast();    
   castRay(-1.0, -1.0);    
   finalizeRayCast();
@@ -569,16 +704,17 @@ namespace
 // octahedral encoding of normalized vector
 std::uint16_t encodeOctahedralNormal(float x, float y, float z) noexcept
 {
-    // Normalize the vector
-    const float length = std::sqrt(x * x + y * y + z * z);
-    if (length < 1e-15f)
+    // Compute magnitude (length)
+    const float magnitude = std::sqrt(x * x + y * y + z * z);
+    if (magnitude < 1e-15f)
     {
-        return 0; // No direction
+        return 0; // No direction and zero magnitude
     }
 
-    x /= length;
-    y /= length;
-    z /= length;
+    // Normalize the vector
+    x /= magnitude;
+    y /= magnitude;
+    z /= magnitude;
 
     // Octahedral mapping
     const float absSum = std::abs(x) + std::abs(y) + std::abs(z);
@@ -586,8 +722,7 @@ std::uint16_t encodeOctahedralNormal(float x, float y, float z) noexcept
     y /= absSum;
     z /= absSum;
 
-    float u = x,
-          v = y;
+    float u = x, v = y;
 
     if (z < 0.f)
     {
@@ -596,16 +731,24 @@ std::uint16_t encodeOctahedralNormal(float x, float y, float z) noexcept
         v = (1.f - std::abs(oldU)) * (v >= 0.f ? 1.f : -1.f);
     }
 
-    const auto clamp01 = [] (const float v) noexcept
-    {
-        return std::max(0.f, std::min(1.f, v));
+    const auto clamp01 = [](float val) noexcept {
+        return std::max(0.f, std::min(1.f, val));
     };
 
-    // Map from [-1, 1] to [0, 255]
-    const std::uint8_t byteU = static_cast<std::uint8_t>(clamp01(u * .5f + .5f) * 255.f + .5f),
-                       byteV = static_cast<std::uint8_t>(clamp01(v * .5f + .5f) * 255.f + .5f);
+    // Encode u,v in 6 bits each (range [0, 63])
+    const std::uint8_t u6 = static_cast<std::uint8_t>(clamp01(u * .5f + .5f) * 63.f + .5f);
+    const std::uint8_t v6 = static_cast<std::uint8_t>(clamp01(v * .5f + .5f) * 63.f + .5f);
 
-    return (static_cast<std::uint16_t>(byteU) << 8) | byteV;
+    // Encode magnitude in 4 bits (range [0, 15])
+    // You might want to clamp magnitude to a reasonable max value for encoding
+    // For example, assume max magnitude = 1.0f; scale accordingly or clamp higher values.
+    const float maxMagnitude = 1.f;
+    const std::uint8_t m4 = static_cast<std::uint8_t>(clamp01(magnitude / maxMagnitude) * 15.f + .5f);
+
+    // Pack bits: u6 (6 bits), v6 (6 bits), m4 (4 bits)
+    return (static_cast<std::uint16_t>(u6) << 10) |
+           (static_cast<std::uint16_t>(v6) << 4)  |
+           m4;
 }
 
 std::vector<std::uint16_t> computeOctahedralGradients(vtkImageData* const inputImage) noexcept
@@ -666,13 +809,7 @@ std::vector<std::uint16_t> computeOctahedralGradients(vtkImageData* const inputI
                 const double gz = (scalars->GetComponent(getIndex(x, y, z + 1), 0) -
                                    scalars->GetComponent(getIndex(x, y, z - 1), 0)) * aspect[2];
 
-                octGradients.emplace_back(
-                    encodeOctahedralNormal(
-                        static_cast<float>(gx),
-                        static_cast<float>(gy),
-                        static_cast<float>(gz)
-                    )
-                );
+                octGradients.emplace_back(encodeOctahedralNormal(static_cast<float>(gx), static_cast<float>(gy), static_cast<float>(gz)));
             }
         }
     }
@@ -1724,14 +1861,11 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateGradientVolume(vtkRende
     {
         gradientVolumeTexture = vtkSmartPointer<vtkTextureObject>::New();
         gradientVolumeTexture->SetContext(context);
-        gradientVolumeTexture->Create2D(dims[0], dims[1], dims[2], VTK_UNSIGNED_SHORT, true);
-        gradientVolumeTexture->Activate();
         gradientVolumeTexture->SetMinificationFilter(vtkTextureObject::Nearest);
         gradientVolumeTexture->SetMagnificationFilter(vtkTextureObject::Nearest);
         gradientVolumeTexture->SetWrapS(vtkTextureObject::ClampToEdge);
         gradientVolumeTexture->SetWrapT(vtkTextureObject::ClampToEdge);
         gradientVolumeTexture->SetWrapR(vtkTextureObject::ClampToEdge);
-        gradientVolumeTexture->SetAutoParameters(0);
     }
     return gradientVolumeTexture->Create3DFromRaw(dims[0], dims[1], dims[2], 1, VTK_UNSIGNED_SHORT, octGradientsData, true);
 }
@@ -5568,7 +5702,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetRegionShaderParameters(vtk
     const std::string viStr = std::to_string(vi);
     prog->SetUniformi(("in_regionOffset[" + viStr + "]").c_str(), regionOffset);
     const struct vtkVolumeProperty::BitRegion& region = in.second.Volume->GetProperty()->GetBitRegion();
-    if (region.mask)
+    if (region.mask && !region.colors.empty())
     {
       this->VolumeParameters[vi].noOfComponents_maskIndex_regionIndex_transfer2dIndex[2] = regionIndex;
       //prog->SetUniformi(("in_regionIndex[" + viStr + "]").c_str(), regionIndex);
