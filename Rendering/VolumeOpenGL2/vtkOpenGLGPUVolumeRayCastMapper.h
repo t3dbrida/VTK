@@ -210,6 +210,7 @@ public:
   vtkGetMacro(SimpleRegionRendering, bool);
   vtkSetMacro(SimpleRegionRendering, bool);
 
+  void SetMaxGradientMagnitude(int index, double maxGradientMagnitude) noexcept;
   void SetPrecomputedVolumeGradient(int index, const std::vector<std::uint16_t>& precomputedVolumeGradient) noexcept;
 
   // Description:
@@ -359,6 +360,7 @@ protected:
 
   bool SimpleRegionRendering;
 
+  std::map<int, double> MaxGradientMagnitudes;
   std::map<int, std::vector<std::uint16_t>> PrecomputedVolumeGradients;
 
 public:

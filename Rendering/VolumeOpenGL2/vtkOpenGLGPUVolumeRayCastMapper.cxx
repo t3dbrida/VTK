@@ -254,8 +254,6 @@ float lmap(float x, float minA, float maxA, float minB, float maxB)
 
 out float out_fragDepth;
 
-uniform usampler3D in_gradientVolume[1];
-
 struct Intersection
 {
   float t;
@@ -702,7 +700,7 @@ namespace
 {
 
 // octahedral encoding of normalized vector
-std::uint16_t encodeOctahedralNormal(float x, float y, float z) noexcept
+std::uint16_t encodeOctahedralNormal(float x, float y, float z, float maxMagnitude) noexcept
 {
     // Compute magnitude (length)
     const float magnitude = std::sqrt(x * x + y * y + z * z);
@@ -742,7 +740,6 @@ std::uint16_t encodeOctahedralNormal(float x, float y, float z) noexcept
     // Encode magnitude in 4 bits (range [0, 15])
     // You might want to clamp magnitude to a reasonable max value for encoding
     // For example, assume max magnitude = 1.0f; scale accordingly or clamp higher values.
-    const float maxMagnitude = 1.f;
     const std::uint8_t m4 = static_cast<std::uint8_t>(clamp01(magnitude / maxMagnitude) * 15.f + .5f);
 
     // Pack bits: u6 (6 bits), v6 (6 bits), m4 (4 bits)
@@ -751,7 +748,7 @@ std::uint16_t encodeOctahedralNormal(float x, float y, float z) noexcept
            m4;
 }
 
-std::vector<std::uint16_t> computeOctahedralGradients(vtkImageData* const inputImage) noexcept
+std::vector<std::uint16_t> computeOctahedralGradients(vtkImageData* const inputImage, const float maxMagnitude) noexcept
 {
     if (!inputImage)
     {
@@ -809,7 +806,7 @@ std::vector<std::uint16_t> computeOctahedralGradients(vtkImageData* const inputI
                 const double gz = (scalars->GetComponent(getIndex(x, y, z + 1), 0) -
                                    scalars->GetComponent(getIndex(x, y, z - 1), 0)) * aspect[2];
 
-                octGradients.emplace_back(encodeOctahedralNormal(static_cast<float>(gx), static_cast<float>(gy), static_cast<float>(gz)));
+                octGradients.emplace_back(encodeOctahedralNormal(static_cast<float>(gx), static_cast<float>(gy), static_cast<float>(gz), maxMagnitude));
             }
         }
     }
@@ -1844,7 +1841,13 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateGradientVolume(vtkRende
     auto precomputedGradientIt = this->Parent->PrecomputedVolumeGradients.find(index);
     if (precomputedGradientIt == this->Parent->PrecomputedVolumeGradients.end())
     {
-        octGradients = computeOctahedralGradients(volume);
+        float maxMagnitude = 0.f;
+        auto it = this->Parent->MaxGradientMagnitudes.find(index);
+        if (it != this->Parent->MaxGradientMagnitudes.end())
+        {
+            maxMagnitude = static_cast<float>(it->second);
+        }
+        octGradients = computeOctahedralGradients(volume, maxMagnitude);
         octGradientsData = octGradients.data();
     }
     else
@@ -3892,6 +3895,22 @@ void vtkOpenGLGPUVolumeRayCastMapper::GetColorImage(vtkImageData* output)
 {
   return this->Impl->ConvertTextureToImageData(
     this->Impl->RTTColorTextureObject, output);
+}
+
+void vtkOpenGLGPUVolumeRayCastMapper::SetMaxGradientMagnitude(int index, double maxGradientMagnitude) noexcept
+{
+    if (index >= 0)
+    {
+        if (maxGradientMagnitude != 0.)
+        {
+            this->MaxGradientMagnitudes[index] = maxGradientMagnitude;
+        }
+        else
+        {
+            this->PrecomputedVolumeGradients.erase(index);
+        }
+        this->Modified();
+    }
 }
 
 void vtkOpenGLGPUVolumeRayCastMapper::SetPrecomputedVolumeGradient(int index, const std::vector<std::uint16_t>& precomputedVolumeGradient) noexcept
