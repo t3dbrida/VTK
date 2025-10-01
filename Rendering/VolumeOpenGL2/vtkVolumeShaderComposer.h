@@ -157,10 +157,21 @@ namespace vtkvolume
     std::ostringstream toShaderStr;
     toShaderStr << "uniform sampler3D in_volume[" << numInputs << "];\n"
                    "\n";
-    toShaderStr << "uniform usampler3D in_gradientVolume[" << numInputs << "];\n"
-                   "\n";
+    //toShaderStr << "uniform usampler3D in_gradientVolume[" << numInputs << "];\n"
+    //               "\n";
 
-    toShaderStr << "struct Intersection\n"
+    toShaderStr <<
+        "layout (std430, binding = 1) buffer VG\n" // we are offset by one binding point because of VolumeParameters
+        "{\n"
+        "  uint data[];\n"
+        "} volumeGradient;\n";
+
+    toShaderStr <<
+        "\n"
+        "uint in_volumeGradientOffsets[" << numInputs << "];\n";
+
+    toShaderStr << "\n"
+                   "struct Intersection\n"
                    "{\n"
                    "  float t;\n"
                    "\n"
@@ -263,22 +274,22 @@ namespace vtkvolume
         "  // octahedral-encoded normals are very sensitive\n"
         "  ivec3 volumeDimensions = volumeParameters.data[index].volumeDimensions.xyz;"
         "  ivec3 coords = ivec3(floor(vec3(volumeDimensions) * uvw));\n"
+        "  uint coord1d = volumeDimensions.x * volumeDimensions.y * coords.z + volumeDimensions.x * coords.y + coords.x;\n"
         "  if (all(greaterThanEqual(coords, ivec3(0))) && all(lessThan(coords, ivec3(volumeDimensions.xyz))))\n"
         "  {\n"
-        "    switch (index)\n"
-        "    {\n";
-    for (int i = 0; i < numInputs; ++i)
-    {
-        toShaderStr <<
-            "      case " << i << ":\n"
-            "        result = texelFetch(in_gradientVolume[" << i << "], coords, 0);\n"
-            "        break;\n";
-    }
-    toShaderStr <<
+        "    uint word = volumeGradient.data[in_volumeGradientOffsets[index] + coord1d / 2u];\n"
+        "    if ((index & 1u) == 0u) // check if index is odd\n"
+        "    {\n"
+        "       word = word & 0xFFFFu; // lower 16 bits\n"
         "    }\n"
+        "    else // is even\n"
+        "    {\n"
+        "       word = word >> 16; // upper 16 bits\n"
+        "    }\n"
+        "    result = uvec4(word);\n"
         "  }\n"
         "\n"
-        "    return result;\n"
+        "  return result;\n"
         "}\n";
 
     //toShaderStr <<

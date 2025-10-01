@@ -1202,7 +1202,6 @@ public:
       uint64_t timestamp;
   };
 
-  std::map<vtkImageData*, vtkSmartPointer<vtkTextureObject>> GradientVolumeTextures;
   std::map<int, RegionMaskTexture> RegionMaskTextures;
 
   vtkTimeStamp InitializationTime;
@@ -1338,7 +1337,7 @@ public:
           }
       }
 
-      void Update(vtkRenderer* const renderer, const std::size_t size, const void* const ptr) noexcept
+      void SetSize(vtkRenderer* const renderer, const std::size_t size) noexcept
       {
           vtkOpenGLRenderWindow* const renderWindow = static_cast<vtkOpenGLRenderWindow*>(renderer->GetRenderWindow());
           if (m_currentSize != size || m_renderWindow != renderWindow)
@@ -1356,16 +1355,21 @@ public:
                   renderWindow->MakeCurrent();
                   glGenBuffers(1, &m_id);
                   BufferBinder binder{GL_SHADER_STORAGE_BUFFER, m_id};
-                  glBufferData(GL_SHADER_STORAGE_BUFFER, size, ptr, GL_STATIC_DRAW);
+                  glBufferData(GL_SHADER_STORAGE_BUFFER, size, nullptr, GL_STATIC_DRAW);
                   m_currentSize = size;
                   m_renderWindow = renderWindow;
               }
           }
-          else if (m_id != 0)
+      };
+
+      void Update(vtkRenderer* const renderer, const std::size_t offset, const std::size_t size, const void* const ptr) noexcept
+      {
+          vtkOpenGLRenderWindow* const renderWindow = static_cast<vtkOpenGLRenderWindow*>(renderer->GetRenderWindow());
+          if (m_id != 0)
           {
               static_cast<vtkOpenGLRenderWindow*>(renderWindow)->MakeCurrent();
               BufferBinder binder{GL_SHADER_STORAGE_BUFFER, m_id};
-              glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, size, ptr);
+              glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, size, ptr);
           }
           else
           {
@@ -1374,6 +1378,8 @@ public:
       };
 
       GLuint getId() const noexcept { return m_id; }
+
+      std::size_t getSize() const noexcept { return m_currentSize; }
 
   private:
       GLuint m_id;
@@ -1419,7 +1425,11 @@ public:
 
   ShaderStorageBufferObject ParameterBuffer;
 
+  ShaderStorageBufferObject OctahedralGradientBuffer;
+
   std::vector<VolumeParameters> VolumeParameters;
+
+  std::vector<std::uint32_t> OctahedralGradientBufferOffsets;
 };
 
 bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpace::UpdateRegion(vtkImageData* const image, const int volumeIndex, const bool force) noexcept
@@ -1858,19 +1868,10 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateGradientVolume(vtkRende
     int dims[3];
     volume->GetDimensions(dims);
 
-    auto* context = vtkOpenGLRenderWindow::SafeDownCast(ren->GetRenderWindow());
-    auto& gradientVolumeTexture = this->GradientVolumeTextures[volume];
-    if (!gradientVolumeTexture || gradientVolumeTexture->GetContext() != context || gradientVolumeTexture->GetWidth() != dims[0] || gradientVolumeTexture->GetHeight() != dims[1] || gradientVolumeTexture->GetDepth() != dims[2])
-    {
-        gradientVolumeTexture = vtkSmartPointer<vtkTextureObject>::New();
-        gradientVolumeTexture->SetContext(context);
-        gradientVolumeTexture->SetMinificationFilter(vtkTextureObject::Nearest);
-        gradientVolumeTexture->SetMagnificationFilter(vtkTextureObject::Nearest);
-        gradientVolumeTexture->SetWrapS(vtkTextureObject::ClampToEdge);
-        gradientVolumeTexture->SetWrapT(vtkTextureObject::ClampToEdge);
-        gradientVolumeTexture->SetWrapR(vtkTextureObject::ClampToEdge);
-    }
-    return gradientVolumeTexture->Create3DFromRaw(dims[0], dims[1], dims[2], 1, VTK_UNSIGNED_SHORT, octGradientsData, true);
+    const int size = sizeof(std::uint16_t) * dims[0] * dims[1] * dims[2];
+    this->OctahedralGradientBuffer.Update(ren, this->OctahedralGradientBufferOffsets[index], size, octGradientsData);
+
+    return true;
 }
 
 //----------------------------------------------------------------------------
@@ -2766,9 +2767,18 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderVolumeGeometry(
   }
 
   const GLuint parameterBufferId = this->ParameterBuffer.getId();
-  BufferBinder binder{GL_SHADER_STORAGE_BUFFER, parameterBufferId};
-  glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, parameterBufferId);
-  vtkOpenGLStaticCheckErrorMacro("binding buffer error");
+  {
+      BufferBinder binder{GL_SHADER_STORAGE_BUFFER, parameterBufferId};
+      glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, parameterBufferId);
+      vtkOpenGLStaticCheckErrorMacro("binding buffer error");
+  }
+
+  const GLuint octahedralGradientBufferId = this->OctahedralGradientBuffer.getId();
+  {
+      BufferBinder binder{GL_SHADER_STORAGE_BUFFER, octahedralGradientBufferId};
+      glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, octahedralGradientBufferId);
+      vtkOpenGLStaticCheckErrorMacro("binding buffer error");
+  }
 
   glDrawElements(GL_TRIANGLES,
     this->BBoxPolyData->GetNumberOfCells() * 3,
@@ -3704,8 +3714,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::ExitDepthPass(
 }
 
 //----------------------------------------------------------------------------
-void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal ::
-  ReleaseRenderToTextureGraphicsResources(vtkWindow* win)
+void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::ReleaseRenderToTextureGraphicsResources(vtkWindow* win)
 {
   vtkOpenGLRenderWindow* rwin = vtkOpenGLRenderWindow::SafeDownCast(win);
 
@@ -3741,8 +3750,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal ::
 }
 
 //----------------------------------------------------------------------------
-void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal ::
-  ReleaseDepthPassGraphicsResources(vtkWindow* win)
+void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::ReleaseDepthPassGraphicsResources(vtkWindow* win)
 {
   vtkOpenGLRenderWindow* rwin = vtkOpenGLRenderWindow::SafeDownCast(win);
 
@@ -3773,8 +3781,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal ::
 }
 
 //----------------------------------------------------------------------------
-void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal ::
-  ReleaseImageSampleGraphicsResources(vtkWindow* win)
+void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::ReleaseImageSampleGraphicsResources(vtkWindow* win)
 {
   vtkOpenGLRenderWindow* rwin = vtkOpenGLRenderWindow::SafeDownCast(win);
 
@@ -4911,6 +4918,24 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateInputs(vtkRenderer* ren
   this->VolumePropertyChanged = false;
   bool orderChanged = false;
   bool success = true;
+
+  this->OctahedralGradientBufferOffsets.clear();
+  std::size_t octahedralGradientBufferSize = 0;
+  for (const auto& port : this->Parent->Ports)
+  {
+      this->OctahedralGradientBufferOffsets.push_back(octahedralGradientBufferSize);
+      auto input = this->Parent->GetTransformedInput(port);
+      int dims[3];
+      input->GetDimensions(dims);
+      const std::size_t rawSize = sizeof(std::uint16_t) * dims[0] * dims[1] * dims[2];
+
+      // Round up to next multiple of 4 (in the shader storage buffer we have 32-bit uint data array)
+      const std::size_t alignedSize = (rawSize + 3) & ~std::size_t(3);
+      octahedralGradientBufferSize += alignedSize;
+  }
+
+  this->OctahedralGradientBuffer.SetSize(ren, octahedralGradientBufferSize);
+
   for (const auto& port : this->Parent->Ports)
   {
     if (this->MultiVolume)
@@ -4957,8 +4982,7 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateInputs(vtkRenderer* ren
         this->Parent->ArrayAccessMode, this->Parent->ArrayId,
         this->Parent->ArrayName, this->Parent->CellFlag);
 
-      success &= volumeTex->LoadVolume(ren, input, scalars,
-        this->Parent->CellFlag, property->GetInterpolationType());
+      success &= volumeTex->LoadVolume(ren, input, scalars, this->Parent->CellFlag, property->GetInterpolationType());
       volInput.ComponentMode = this->GetComponentMode(property, scalars);
 
       success &= this->UpdateGradientVolume(ren, input, port);
@@ -5445,10 +5469,9 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
     block->TextureObject->Activate();
     prog->SetUniformi(str.c_str(), block->TextureObject->GetTextureUnit());
 
-    str = "in_gradientVolume[" + std::to_string(index) + "]";
-    const auto& gradientVolumeTexture = this->GradientVolumeTextures.at(this->Parent->TransformedInputs.at(index));
-    gradientVolumeTexture->Activate();
-    prog->SetUniformi(str.c_str(), gradientVolumeTexture->GetTextureUnit());
+    const int vi = input.first;
+    const std::string viStr = std::to_string(vi);
+    prog->SetUniformi(("in_volumeGradientOffsets[" + viStr + "]").c_str(), this->OctahedralGradientBufferOffsets[index] / sizeof(std::uint32_t));
 
     // LargeDataTypes have been already biased and scaled so in those cases 0s
     // and 1s are passed respectively.
@@ -5926,7 +5949,8 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderMultipleInputs(vtkRende
   this->SetLightingShaderParameters(ren, prog, this->MultiVolume, numSamplers);
   this->SetCameraShaderParameters(prog, ren, cam);
   this->SetAdvancedShaderParameters(ren, prog, vol, nullptr, numComp);
-  this->ParameterBuffer.Update(ren, sizeof(struct VolumeParameters) * this->Parent->GetInputCount(), this->VolumeParameters.data());
+  this->ParameterBuffer.SetSize(ren, sizeof(struct VolumeParameters) * this->Parent->GetInputCount());
+  this->ParameterBuffer.Update(ren, 0, sizeof(struct VolumeParameters) * this->Parent->GetInputCount(), this->VolumeParameters.data());
   this->RenderVolumeGeometry(ren, prog, this->MultiVolume, bounds);
   this->FinishRendering(numComp);
 }
@@ -5980,7 +6004,8 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderSingleInput(vtkRenderer
             this->SetMaskShaderParameters(this->RegionDepthShaderProgram, numComp);
             this->SetRegionShaderParameters(this->RegionDepthShaderProgram);
             this->SetCameraShaderParameters(this->RegionDepthShaderProgram, ren, cam);
-            this->ParameterBuffer.Update(ren, sizeof(struct VolumeParameters) * this->Parent->GetInputCount(), this->VolumeParameters.data());
+            this->ParameterBuffer.SetSize(ren, sizeof(struct VolumeParameters) * this->Parent->GetInputCount());
+            this->ParameterBuffer.Update(ren, 0, sizeof(struct VolumeParameters) * this->Parent->GetInputCount(), this->VolumeParameters.data());
 
             this->RegionDepthFBO->SaveCurrentBindingsAndBuffers(GL_FRAMEBUFFER);
             this->RegionDepthFBO->Bind(GL_FRAMEBUFFER);
@@ -6028,7 +6053,8 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderSingleInput(vtkRenderer
     this->SetLightingShaderParameters(ren, prog, vol, numSamplers);
     this->SetCameraShaderParameters(prog, ren, cam);
     this->SetAdvancedShaderParameters(ren, prog, vol, block, numComp);
-    this->ParameterBuffer.Update(ren, sizeof(struct VolumeParameters) * this->Parent->GetInputCount(), this->VolumeParameters.data());
+    this->ParameterBuffer.SetSize(ren, sizeof(struct VolumeParameters) * this->Parent->GetInputCount());
+    this->ParameterBuffer.Update(ren, 0, sizeof(struct VolumeParameters) * this->Parent->GetInputCount(), this->VolumeParameters.data());
 
     this->RenderVolumeGeometry(ren, prog, vol, block->LoadedBounds);
 
