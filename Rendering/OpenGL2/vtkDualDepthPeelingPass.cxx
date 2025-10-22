@@ -455,7 +455,14 @@ bool vtkDualDepthPeelingPass::PreReplaceVolumetricShaderValues(
     "  {\n"
     "    vec4 endPoint = WindowToNDC(gl_FragCoord.x, gl_FragCoord.y, zEnd);\n"
     "    endPoint = NDCToTextureCoords * endPoint;\n"
+    "    vec4 terminatePosTmp = vec4(endPoint.xyz / endPoint.w, 1.);\n"
+    "    terminatePosTmp = in_textureDatasetMatrix * terminatePosTmp;\n"
+    "    g_terminatePos = terminatePosTmp.xyz / terminatePosTmp.w;\n"
+    "    g_terminatePosLength = length(g_terminatePos - g_eyePosObj.xyz);\n"
+    "\n"
+    "    // To texture coordinates\n"
     "    g_terminatePos = endPoint.xyz / endPoint.w;\n"
+    "    g_terminatePosEyeLength = length(g_terminatePos - g_eyePosTex.xyz);\n"
     "  }\n"
     "\n";
 

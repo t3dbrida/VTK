@@ -1350,17 +1350,17 @@ public:
                   m_currentSize = 0;
                   m_renderWindow = nullptr;
               }
-              if (size != 0)
+              if (size != 0 && renderWindow)
               {
                   renderWindow->MakeCurrent();
                   glGenBuffers(1, &m_id);
                   BufferBinder binder{GL_SHADER_STORAGE_BUFFER, m_id};
-                  glBufferData(GL_SHADER_STORAGE_BUFFER, size, nullptr, GL_STATIC_DRAW);
+                  glBufferStorage(GL_SHADER_STORAGE_BUFFER, size, nullptr, GL_DYNAMIC_STORAGE_BIT);
                   m_currentSize = size;
                   m_renderWindow = renderWindow;
               }
           }
-      };
+      }
 
       void Update(vtkRenderer* const renderer, const std::size_t offset, const std::size_t size, const void* const ptr) noexcept
       {
@@ -1375,7 +1375,7 @@ public:
           {
               assert(false && "bad buffer");
           }
-      };
+      }
 
       GLuint getId() const noexcept { return m_id; }
 
@@ -1868,7 +1868,7 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateGradientVolume(vtkRende
     int dims[3];
     volume->GetDimensions(dims);
 
-    const int size = sizeof(std::uint16_t) * dims[0] * dims[1] * dims[2];
+    const std::size_t size = sizeof(std::uint16_t) * static_cast<std::size_t>(dims[0]) * static_cast<std::size_t>(dims[1]) * static_cast<std::size_t>(dims[2]);
     this->OctahedralGradientBuffer.Update(ren, this->OctahedralGradientBufferOffsets[index], size, octGradientsData);
 
     return true;
@@ -2009,7 +2009,11 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadRegions(vtkRenderer* ren)
       }
 
       RegionMaskTexture& regionTexture = it->second;
-      bool update = bitRegionMask != regionTexture.image || regionTexture.texture->GetContext() != context;
+      bool update = bitRegionMask != regionTexture.image ||
+                    regionTexture.texture->GetContext() != context ||
+                    regionTexture.texture->GetWidth() != bitRegionMask->GetDimensions()[0] ||
+                    regionTexture.texture->GetHeight() != bitRegionMask->GetDimensions()[1] ||
+                    regionTexture.texture->GetDepth() != bitRegionMask->GetDimensions()[2];
       if (update)
       {
         regionTexture = {bitRegionMask, vtkSmartPointer<vtkTextureObject>::New(), 0};
@@ -3914,7 +3918,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::SetMaxGradientMagnitude(int index, double 
         }
         else
         {
-            this->PrecomputedVolumeGradients.erase(index);
+            this->MaxGradientMagnitudes.erase(index);
         }
         this->Modified();
     }
@@ -4951,13 +4955,10 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateInputs(vtkRenderer* ren
     auto input = this->Parent->GetTransformedInput(port);
 
     // Check for property changes
-    this->VolumePropertyChanged |=
-      property->GetMTime() > this->ShaderBuildTime.GetMTime();
+    this->VolumePropertyChanged |= property->GetMTime() > this->ShaderBuildTime.GetMTime();
 
     auto it = this->Parent->AssembledInputs.find(port);
-    if (this->NeedToInitializeResources ||
-        it == this->Parent->AssembledInputs.cend() ||
-        (input->GetMTime() > it->second.Texture->UploadTime))
+    if (this->NeedToInitializeResources || it == this->Parent->AssembledInputs.cend() || (input->GetMTime() > it->second.Texture->UploadTime))
     {
       if (it == this->Parent->AssembledInputs.cend())
       {
@@ -4971,16 +4972,17 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateInputs(vtkRenderer* ren
 
       auto& volInput = this->Parent->AssembledInputs[port];
       auto volumeTex = volInput.Texture.GetPointer();
-      volumeTex->SetPartitions(this->Partitions[0], this->Partitions[1],
-        this->Partitions[2]);
+      volumeTex->SetPartitions(this->Partitions[0], this->Partitions[1], this->Partitions[2]);
 
       ///TODO Currently, only input arrays with the same name/id/mode can be
       // (across input objects) can be rendered. This could be addressed by
       // overriding the mapper's settings with array settings defined in the
       // vtkMultiVolume instance.
-      vtkDataArray* scalars = this->Parent->GetScalars(input, this->Parent->ScalarMode,
+      vtkDataArray* scalars = this->Parent->GetScalars(
+        input, this->Parent->ScalarMode,
         this->Parent->ArrayAccessMode, this->Parent->ArrayId,
-        this->Parent->ArrayName, this->Parent->CellFlag);
+        this->Parent->ArrayName, this->Parent->CellFlag
+      );
 
       success &= volumeTex->LoadVolume(ren, input, scalars, this->Parent->CellFlag, property->GetInterpolationType());
       volInput.ComponentMode = this->GetComponentMode(property, scalars);
