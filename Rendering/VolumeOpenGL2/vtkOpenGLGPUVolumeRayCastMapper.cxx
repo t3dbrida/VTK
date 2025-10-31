@@ -1157,8 +1157,6 @@ public:
   bool LoadDepthTextureExtensionsSucceeded;
   bool CameraWasInsideInLastUpdate;
 
-  bool DepthTextureInitialized = false;
-
   GLuint CubeVBOId;
   GLuint CubeVAOId;
   GLuint CubeIndicesId;
@@ -2256,8 +2254,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::CaptureDepthTexture(
     return;
   }
 
-  if ((this->Parent->ImageSampleDistance != 1.f && this->DepthTextureInitialized) ||
-      ((this->Parent->ImageSampleDistance == 1.f && !this->DepthTextureInitialized)))
+  if (this->DepthTextureObject && (this->DepthTextureObject->GetWidth() != this->WindowSize[0] || this->DepthTextureObject->GetHeight() != this->WindowSize[1]))
   {
       this->DepthTextureObject = nullptr;
   }
@@ -2281,11 +2278,37 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::CaptureDepthTexture(
 
   if (this->Parent->ImageSampleDistance != 1.f)
   {
-      this->DepthTextureInitialized = false;
-
       int* const renderWindowSize = ren->GetRenderWindow()->GetSize();
+      //auto zBuffer = vtkSmartPointer<vtkFloatArray>::New();
+      //static_cast<vtkOpenGLRenderWindow*>(ren->GetRenderWindow())->GetZbufferData(0, 0, renderWindowSize[0] - 1, renderWindowSize[1] - 1, zBuffer);
+
+      const auto depthTextureObject = vtkSmartPointer<vtkTextureObject>::New();
+      depthTextureObject->SetContext(vtkOpenGLRenderWindow::SafeDownCast(ren->GetRenderWindow()));
+
+      // First set the parameters
+      depthTextureObject->SetWrapS(vtkTextureObject::ClampToEdge);
+      depthTextureObject->SetWrapT(vtkTextureObject::ClampToEdge);
+      depthTextureObject->SetMagnificationFilter(vtkTextureObject::Linear);
+      depthTextureObject->SetMinificationFilter(vtkTextureObject::Linear);
+
+      depthTextureObject->AllocateDepth(renderWindowSize[0], renderWindowSize[1], vtkTextureObject::Fixed32);
+#if GL_ES_VERSION_3_0 != 1
+      // currently broken on ES
+      depthTextureObject->CopyFromFrameBuffer(
+          this->WindowLowerLeft[0],
+          this->WindowLowerLeft[1],
+          0,
+          0,
+          renderWindowSize[0],
+          renderWindowSize[1]
+      );
+#endif
+
       auto zBuffer = vtkSmartPointer<vtkFloatArray>::New();
-      static_cast<vtkOpenGLRenderWindow*>(ren->GetRenderWindow())->GetZbufferData(0, 0, renderWindowSize[0] - 1, renderWindowSize[1] - 1, zBuffer);
+      zBuffer->SetNumberOfComponents(1);
+      zBuffer->SetNumberOfTuples(renderWindowSize[0] * renderWindowSize[1]);
+      vtkIdType inc[2]{0, 0};
+      depthTextureObject->Download()->Download2D(VTK_FLOAT, zBuffer->GetVoidPointer(0), std::array<unsigned, 2>{static_cast<unsigned>(renderWindowSize[0]), static_cast<unsigned>(renderWindowSize[1])}.data(), 1, inc);
 
       // -------------------------------
       // 1. Wrap depth buffer as image
@@ -2301,20 +2324,24 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::CaptureDepthTexture(
       // -------------------------------
       auto resample = vtkSmartPointer<vtkImageResample>::New();
       resample->SetInputData(depthImage);
-      resample->SetAxisMagnificationFactor(0, 1.f / this->Parent->ImageSampleDistance); // X axis (width)
-      resample->SetAxisMagnificationFactor(1, 1.f / this->Parent->ImageSampleDistance); // Y axis (height)
-      resample->SetAxisMagnificationFactor(2, 1.0); // Z axis
-      resample->SetInterpolationModeToLinear();     // Options: Nearest, Linear, Cubic
+      resample->SetAxisMagnificationFactor(0, 1. / this->Parent->ImageSampleDistance); // X axis (width)
+      resample->SetAxisMagnificationFactor(1, 1. / this->Parent->ImageSampleDistance); // Y axis (height)
+      resample->SetAxisMagnificationFactor(2, 1.); // Z axis
+      resample->SetInterpolationModeToLinear();
       resample->Update();
 
       auto downsampledImage = resample->GetOutput();
-      this->DepthTextureObject->Create2DFromRaw(downsampledImage->GetDimensions()[0], downsampledImage->GetDimensions()[1], 1, VTK_FLOAT, downsampledImage->GetScalarPointer());
+      this->DepthTextureObject->CreateDepthFromRaw(
+          this->WindowSize[0],
+          this->WindowSize[1],
+          vtkTextureObject::Fixed32,
+          VTK_FLOAT,
+          downsampledImage->GetScalarPointer()
+      );
   }
   else
   {
-      this->DepthTextureInitialized = true;
-
-      this->DepthTextureObject->AllocateDepth(this->WindowSize[0], this->WindowSize[1], 4);
+      this->DepthTextureObject->AllocateDepth(this->WindowSize[0], this->WindowSize[1], vtkTextureObject::Fixed32);
 #if GL_ES_VERSION_3_0 != 1
       // currently broken on ES
       this->DepthTextureObject->CopyFromFrameBuffer(
