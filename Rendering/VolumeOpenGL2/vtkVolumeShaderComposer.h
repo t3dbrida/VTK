@@ -889,7 +889,7 @@ namespace vtkvolume
                   "\n  if (type == TYPE_REGION)"
                   "\n  {"
                   "\n    // Kate shading"
-                  "\n    float dLoc = dist - in_regionDepth;"
+                  "\n    float dLoc = max(0., dist - in_regionDepth);"
                   "\n    vec3 boundsMin = volumeParameters.data[index].boundsMin.xyz;"
                   "\n    vec3 boundsMax = volumeParameters.data[index].boundsMax.xyz;"
                   "\n    float D = length(boundsMax - boundsMin);"

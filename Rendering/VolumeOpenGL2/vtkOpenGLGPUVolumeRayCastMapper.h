@@ -210,8 +210,15 @@ public:
   vtkGetMacro(SimpleRegionRendering, bool);
   vtkSetMacro(SimpleRegionRendering, bool);
 
+  struct PrecomputedGradient
+  {
+      const std::uint16_t* data;
+
+      std::size_t size;
+  };
+
   void SetMaxGradientMagnitude(int index, double maxGradientMagnitude) noexcept;
-  void SetPrecomputedVolumeGradient(int index, const std::vector<std::uint16_t>& precomputedVolumeGradient) noexcept;
+  void SetPrecomputedVolumeGradient(int index, const PrecomputedGradient& precomputedVolumeGradient) noexcept;
 
   // Description:
   // Delete OpenGL objects.
@@ -361,7 +368,7 @@ protected:
   bool SimpleRegionRendering;
 
   std::map<int, double> MaxGradientMagnitudes;
-  std::map<int, std::vector<std::uint16_t>> PrecomputedVolumeGradients;
+  std::map<int, PrecomputedGradient> PrecomputedVolumeGradients;
 
 public:
   using VolumeInput = vtkVolumeInputHelper;

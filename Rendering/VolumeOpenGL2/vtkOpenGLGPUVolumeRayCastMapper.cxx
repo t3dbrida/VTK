@@ -209,6 +209,9 @@ vec3 g_eyePosTex;
 bool g_exit;
 bool g_skip;
 
+uniform sampler3D in_mask[1];
+uniform bool in_hasMask;
+
 struct VolumeParameters
 {
   vec4 boundsMin,
@@ -616,7 +619,17 @@ void castRay(const float zStart, const float zEnd)
     bool maskedByClippingPlanes = false;
     //VTK::Clipping::Impl
 
-    if (g_skip == false && (noMask || (maskedByBox || maskedByClippingPlanes || maskedByCylinder)))
+    bool maskedByRegion = false;
+    if (in_hasMask)
+    {
+      noMask = false;
+      if (texture(in_mask[0], g_dataPos).r > 0.)
+      {
+          maskedByRegion = true;
+      }
+    }
+
+    if (g_skip == false && (noMask || (maskedByBox || maskedByClippingPlanes || maskedByCylinder || maskedByRegion)))
     {
       if (g_dataPos.x >= 0. && g_dataPos.x <= 1. &&
                g_dataPos.y >= 0. && g_dataPos.y <= 1. &&
@@ -1352,10 +1365,15 @@ public:
               {
                   renderWindow->MakeCurrent();
                   glGenBuffers(1, &m_id);
-                  BufferBinder binder{GL_SHADER_STORAGE_BUFFER, m_id};
-                  glBufferStorage(GL_SHADER_STORAGE_BUFFER, size, nullptr, GL_DYNAMIC_STORAGE_BIT);
-                  m_currentSize = size;
-                  m_renderWindow = renderWindow;
+                  GLint maxSize = 0;
+                  glGetIntegerv(GL_MAX_SHADER_STORAGE_BLOCK_SIZE, &maxSize);
+                  if (maxSize)
+                  {
+                      BufferBinder binder{GL_SHADER_STORAGE_BUFFER, m_id};
+                      glBufferStorage(GL_SHADER_STORAGE_BUFFER, size, nullptr, GL_DYNAMIC_STORAGE_BIT);
+                      m_currentSize = size;
+                      m_renderWindow = renderWindow;
+                  }
               }
           }
       }
@@ -1844,30 +1862,31 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RefreshMaskTransfer(
 
 bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateGradientVolume(vtkRenderer* ren, vtkImageData* volume, int index)
 {
-    std::uint16_t* octGradientsData = nullptr;
-    std::vector<std::uint16_t> octGradients;
+    std::vector<std::uint16_t> localOctGradients;
+    PrecomputedGradient precomputedGradient;
     auto precomputedGradientIt = this->Parent->PrecomputedVolumeGradients.find(index);
     if (precomputedGradientIt == this->Parent->PrecomputedVolumeGradients.end())
     {
-        float maxMagnitude = 0.f;
+        float maxMagnitude = 1.f;
         auto it = this->Parent->MaxGradientMagnitudes.find(index);
         if (it != this->Parent->MaxGradientMagnitudes.end())
         {
             maxMagnitude = static_cast<float>(it->second);
         }
-        octGradients = computeOctahedralGradients(volume, maxMagnitude);
-        octGradientsData = octGradients.data();
+        localOctGradients = computeOctahedralGradients(volume, maxMagnitude);
+        precomputedGradient.data = localOctGradients.data();
+        precomputedGradient.size = localOctGradients.size();
     }
     else
     {
-        octGradientsData = precomputedGradientIt->second.data();
+        precomputedGradient.data = precomputedGradientIt->second.data;
+        precomputedGradient.size = precomputedGradientIt->second.size;
     }
 
     int dims[3];
     volume->GetDimensions(dims);
 
-    const std::size_t size = sizeof(std::uint16_t) * static_cast<std::size_t>(dims[0]) * static_cast<std::size_t>(dims[1]) * static_cast<std::size_t>(dims[2]);
-    this->OctahedralGradientBuffer.Update(ren, this->OctahedralGradientBufferOffsets[index], size, octGradientsData);
+    this->OctahedralGradientBuffer.Update(ren, this->OctahedralGradientBufferOffsets[index], sizeof(std::uint16_t) * precomputedGradient.size, precomputedGradient.data);
 
     return true;
 }
@@ -3951,11 +3970,11 @@ void vtkOpenGLGPUVolumeRayCastMapper::SetMaxGradientMagnitude(int index, double 
     }
 }
 
-void vtkOpenGLGPUVolumeRayCastMapper::SetPrecomputedVolumeGradient(int index, const std::vector<std::uint16_t>& precomputedVolumeGradient) noexcept
+void vtkOpenGLGPUVolumeRayCastMapper::SetPrecomputedVolumeGradient(int index, const PrecomputedGradient& precomputedVolumeGradient) noexcept
 {
     if (index >= 0)
     {
-        if (!precomputedVolumeGradient.empty())
+        if (precomputedVolumeGradient.size != 0)
         {
             this->PrecomputedVolumeGradients[index] = precomputedVolumeGradient;
         }
@@ -6029,6 +6048,15 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderSingleInput(vtkRenderer
             vtkMatrix4x4* wcvc, *vcdc, *wcdc;
             vtkMatrix3x3* norm;
             cam->GetKeyMatrices(ren, wcvc, norm, vcdc, wcdc);
+            auto it = this->CurrentMasks.find(vol);
+            if (it != this->CurrentMasks.end())
+            {
+
+                auto maskTex = it->second->GetCurrentBlock()->TextureObject;
+                maskTex->Activate();
+                this->RegionDepthShaderProgram->SetUniformi("in_mask[0]", maskTex->GetTextureUnit());
+            }
+            this->RegionDepthShaderProgram->SetUniformi("in_hasMask", true);
             this->SetVolumeShaderParameters(this->RegionDepthShaderProgram, independent, numComp, wcvc);
             this->SetMaskShaderParameters(this->RegionDepthShaderProgram, numComp);
             this->SetRegionShaderParameters(this->RegionDepthShaderProgram);
