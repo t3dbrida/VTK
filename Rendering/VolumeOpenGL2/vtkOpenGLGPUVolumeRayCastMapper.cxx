@@ -713,53 +713,108 @@ namespace
 {
 
 // octahedral encoding of normalized vector
-std::uint16_t encodeOctahedralNormal(float x, float y, float z, float maxMagnitude) noexcept
+uint32_t encodeOctahedralNormal(float nx, float ny, float nz, float magnitude) noexcept
 {
-    // Compute magnitude (length)
-    const float magnitude = std::sqrt(x * x + y * y + z * z);
-    if (magnitude < 1e-15f)
+    // Normalize ----------------------------------------------------------
+    float len = std::sqrt(nx*nx + ny*ny + nz*nz);
+    nx /= len;
+    ny /= len;
+    nz /= len;
+
+    // Octahedral projection ---------------------------------------------
+    float ax = nx;
+    float ay = ny;
+    float az = nz;
+    float invL1 = 1.0f / (std::fabs(ax) + std::fabs(ay) + std::fabs(az));
+
+    ax *= invL1;
+    ay *= invL1;
+    az *= invL1;
+
+    float u, v;
+
+    if (az >= 0.0f)
     {
-        return 0; // No direction and zero magnitude
+        // Upper hemisphere
+        u = ax;
+        v = ay;
+    }
+    else
+    {
+        // Folded lower hemisphere
+        float sx = (ax >= 0.0f ? 1.0f : -1.0f);
+        float sy = (ay >= 0.0f ? 1.0f : -1.0f);
+
+        u = (1.0f - std::fabs(ay)) * sx;
+        v = (1.0f - std::fabs(ax)) * sy;
     }
 
-    // Normalize the vector
-    x /= magnitude;
-    y /= magnitude;
-    z /= magnitude;
+    // Quantize u and v to 6 bits each ----------------------------------
+    float uf = (u * 0.5f + 0.5f) * 63.0f;
+    float vf = (v * 0.5f + 0.5f) * 63.0f;
 
-    // Octahedral mapping
-    const float absSum = std::abs(x) + std::abs(y) + std::abs(z);
-    x /= absSum;
-    y /= absSum;
-    z /= absSum;
-
-    float u = x, v = y;
-
-    if (z < 0.f)
-    {
-        const float oldU = u;
-        u = (1.f - std::abs(v)) * (oldU >= 0.f ? 1.f : -1.f);
-        v = (1.f - std::abs(oldU)) * (v >= 0.f ? 1.f : -1.f);
-    }
-
-    const auto clamp01 = [](float val) noexcept {
-        return std::max(0.f, std::min(1.f, val));
+    const auto clamp = [] (float val, float min, float max) noexcept {
+        return std::max(min, std::min(max, val));
     };
 
-    // Encode u,v in 6 bits each (range [0, 63])
-    const std::uint8_t u6 = static_cast<std::uint8_t>(clamp01(u * .5f + .5f) * 63.f + .5f);
-    const std::uint8_t v6 = static_cast<std::uint8_t>(clamp01(v * .5f + .5f) * 63.f + .5f);
+    uint32_t u6 = (uint32_t) clamp(uf + 0.5f, 0.0f, 63.0f);
+    uint32_t v6 = (uint32_t) clamp(vf + 0.5f, 0.0f, 63.0f);
 
-    // Encode magnitude in 4 bits (range [0, 15])
-    // You might want to clamp magnitude to a reasonable max value for encoding
-    // For example, assume max magnitude = 1.0f; scale accordingly or clamp higher values.
-    const std::uint8_t m4 = static_cast<std::uint8_t>(clamp01(magnitude / maxMagnitude) * 15.f + .5f);
+    // Quantize magnitude to 4 bits --------------------------------------
+    float mf = magnitude * 15.0f;
+    uint32_t m4 = (uint32_t) clamp(mf + 0.5f, 0.0f, 15.0f);
 
-    // Pack bits: u6 (6 bits), v6 (6 bits), m4 (4 bits)
-    return (static_cast<std::uint16_t>(u6) << 10) |
-           (static_cast<std::uint16_t>(v6) << 4)  |
-           m4;
+    // Pack into 16 bits: [u6 | v6 | m4] ---------------------------------
+    return (u6 << 10) | (v6 << 4) | m4;
 }
+
+//std::uint16_t encodeOctahedralNormal(float x, float y, float z, float maxMagnitude) noexcept
+//{
+//    // Compute magnitude (length)
+//    const float magnitude = std::sqrt(x * x + y * y + z * z);
+//    if (magnitude < 1e-15f)
+//    {
+//        return 0; // No direction and zero magnitude
+//    }
+//
+//    // Normalize the vector
+//    x /= magnitude;
+//    y /= magnitude;
+//    z /= magnitude;
+//
+//    // Octahedral mapping
+//    const float absSum = std::abs(x) + std::abs(y) + std::abs(z);
+//    x /= absSum;
+//    y /= absSum;
+//    z /= absSum;
+//
+//    float u = x, v = y;
+//
+//    if (z < 0.f)
+//    {
+//        const float oldU = u;
+//        u = (1.f - std::abs(v)) * (oldU >= 0.f ? 1.f : -1.f);
+//        v = (1.f - std::abs(oldU)) * (v >= 0.f ? 1.f : -1.f);
+//    }
+//
+//    const auto clamp01 = [](float val) noexcept {
+//        return std::max(0.f, std::min(1.f, val));
+//    };
+//
+//    // Encode u,v in 6 bits each (range [0, 63])
+//    const std::uint8_t u6 = static_cast<std::uint8_t>(clamp01(u * .5f + .5f) * 63.f + .5f);
+//    const std::uint8_t v6 = static_cast<std::uint8_t>(clamp01(v * .5f + .5f) * 63.f + .5f);
+//
+//    // Encode magnitude in 4 bits (range [0, 15])
+//    // You might want to clamp magnitude to a reasonable max value for encoding
+//    // For example, assume max magnitude = 1.0f; scale accordingly or clamp higher values.
+//    const std::uint8_t m4 = static_cast<std::uint8_t>(clamp01(magnitude / maxMagnitude) * 15.f + .5f);
+//
+//    // Pack bits: u6 (6 bits), v6 (6 bits), m4 (4 bits)
+//    return (static_cast<std::uint16_t>(u6) << 10) |
+//           (static_cast<std::uint16_t>(v6) << 4)  |
+//           m4;
+//}
 
 std::vector<std::uint16_t> computeOctahedralGradients(vtkImageData* const inputImage, const float maxMagnitude) noexcept
 {
@@ -1353,27 +1408,47 @@ public:
           vtkOpenGLRenderWindow* const renderWindow = static_cast<vtkOpenGLRenderWindow*>(renderer->GetRenderWindow());
           if (m_currentSize != size || m_renderWindow != renderWindow)
           {
+              //std::vector<std::uint8_t> oldData;
+
               if (m_id != 0)
               {
-                  m_renderWindow->MakeCurrent();
-                  glDeleteBuffers(1, &m_id);
+                  if (m_renderWindow != nullptr)
+                  {
+                      m_renderWindow->MakeCurrent();
+
+                      //if (m_currentSize != 0)
+                      //{
+                      //    BufferBinder bufferBinder{GL_SHADER_STORAGE_BUFFER, m_id};
+                      //    oldData.resize(m_currentSize);
+                      //    const void* const mappedBuffer = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_READ_ONLY);
+                      //    std::memcpy(oldData.data(), mappedBuffer, m_currentSize);
+                      //    glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+                      //}
+
+                      glDeleteBuffers(1, &m_id);
+                  }
+
                   m_id = 0;
                   m_currentSize = 0;
                   m_renderWindow = nullptr;
               }
-              if (size != 0 && renderWindow)
+              if (size != 0 && renderWindow != nullptr)
               {
                   renderWindow->MakeCurrent();
+
                   glGenBuffers(1, &m_id);
-                  GLint maxSize = 0;
-                  glGetIntegerv(GL_MAX_SHADER_STORAGE_BLOCK_SIZE, &maxSize);
-                  if (maxSize)
-                  {
-                      BufferBinder binder{GL_SHADER_STORAGE_BUFFER, m_id};
-                      glBufferStorage(GL_SHADER_STORAGE_BUFFER, size, nullptr, GL_DYNAMIC_STORAGE_BIT);
-                      m_currentSize = size;
-                      m_renderWindow = renderWindow;
-                  }
+
+                  BufferBinder bufferBinder{GL_SHADER_STORAGE_BUFFER, m_id};
+                  glBufferStorage(GL_SHADER_STORAGE_BUFFER, size, nullptr, GL_DYNAMIC_STORAGE_BIT | GL_MAP_READ_BIT);
+                  m_currentSize = size;
+                  m_renderWindow = renderWindow;
+
+                  //if (!oldData.empty())
+                  //{
+                  //  // TODO what if we have less datasets???
+                  //  // write old data into new buffer
+                  //  glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, oldData.size(), oldData.data());
+                  //}
               }
           }
       }
@@ -1384,7 +1459,7 @@ public:
           if (m_id != 0)
           {
               static_cast<vtkOpenGLRenderWindow*>(renderWindow)->MakeCurrent();
-              BufferBinder binder{GL_SHADER_STORAGE_BUFFER, m_id};
+              BufferBinder bufferBinder{GL_SHADER_STORAGE_BUFFER, m_id};
               glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, size, ptr);
           }
           else
@@ -1865,7 +1940,7 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateGradientVolume(vtkRende
     std::vector<std::uint16_t> localOctGradients;
     PrecomputedGradient precomputedGradient;
     auto precomputedGradientIt = this->Parent->PrecomputedVolumeGradients.find(index);
-    if (precomputedGradientIt == this->Parent->PrecomputedVolumeGradients.end())
+    //if (precomputedGradientIt == this->Parent->PrecomputedVolumeGradients.end())
     {
         float maxMagnitude = 1.f;
         auto it = this->Parent->MaxGradientMagnitudes.find(index);
@@ -1877,11 +1952,11 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateGradientVolume(vtkRende
         precomputedGradient.data = localOctGradients.data();
         precomputedGradient.size = localOctGradients.size();
     }
-    else
+    /*else
     {
         precomputedGradient.data = precomputedGradientIt->second.data;
         precomputedGradient.size = precomputedGradientIt->second.size;
-    }
+    }*/
 
     int dims[3];
     volume->GetDimensions(dims);
@@ -2395,7 +2470,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetLightingShaderParameters(
 
   if (this->MultiVolume)
   {
-      for (const auto& port : this->Parent->Ports)
+      for (const int port : this->Parent->Ports)
       {
           vtkVolume* const volume = this->MultiVolume->GetVolume(port);
           auto volumeProperty = volume->GetProperty();
@@ -4971,7 +5046,7 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateInputs(vtkRenderer* ren
 
   this->OctahedralGradientBufferOffsets.clear();
   std::size_t octahedralGradientBufferSize = 0;
-  for (const auto& port : this->Parent->Ports)
+  for (const int port : this->Parent->Ports)
   {
       this->OctahedralGradientBufferOffsets.push_back(octahedralGradientBufferSize);
       auto input = this->Parent->GetTransformedInput(port);
@@ -4979,14 +5054,27 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateInputs(vtkRenderer* ren
       input->GetDimensions(dims);
       const std::size_t rawSize = sizeof(std::uint16_t) * dims[0] * dims[1] * dims[2];
 
-      // Round up to next multiple of 4 (in the shader storage buffer we have 32-bit uint data array)
-      const std::size_t alignedSize = (rawSize + 3) & ~std::size_t(3);
+      // Round up to next multiple of 4 (in the shader storage buffer we have 32-bit [4 bytes] uint data array)
+      const std::size_t remainder32b = rawSize % 4,
+                        alignedSize = remainder32b == 0 ? rawSize : rawSize + (4 - remainder32b);
       octahedralGradientBufferSize += alignedSize;
   }
 
-  this->OctahedralGradientBuffer.SetSize(ren, octahedralGradientBufferSize);
+  //GLint maxSize = 0;
+  //glGetIntegerv(GL_MAX_SHADER_STORAGE_BLOCK_SIZE, &maxSize);
+  //const std::size_t numberOfSsbos = static_cast<std::size_t>(std::ceil(static_cast<float>(octahedralGradientBufferSize) / static_cast<float>(maxSize)));
 
-  for (const auto& port : this->Parent->Ports)
+  if (this->OctahedralGradientBuffer.getSize() != octahedralGradientBufferSize)
+  {
+      this->OctahedralGradientBuffer.SetSize(ren, octahedralGradientBufferSize);
+      for (const int port : this->Parent->Ports)
+      {
+          auto input = this->Parent->GetTransformedInput(port);
+          this->UpdateGradientVolume(ren, input, port);
+      }
+  }
+
+  for (const int port : this->Parent->Ports)
   {
     if (this->MultiVolume)
     {
@@ -5517,9 +5605,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
     block->TextureObject->Activate();
     prog->SetUniformi(str.c_str(), block->TextureObject->GetTextureUnit());
 
-    const int vi = input.first;
-    const std::string viStr = std::to_string(vi);
-    prog->SetUniformi(("in_volumeGradientOffsets[" + viStr + "]").c_str(), this->OctahedralGradientBufferOffsets[index] / sizeof(std::uint32_t));
+    prog->SetUniformi(("in_volumeGradientOffsets[" + std::to_string(index) + "]").c_str(), this->OctahedralGradientBufferOffsets[index] / sizeof(std::uint32_t));
 
     // LargeDataTypes have been already biased and scaled so in those cases 0s
     // and 1s are passed respectively.
