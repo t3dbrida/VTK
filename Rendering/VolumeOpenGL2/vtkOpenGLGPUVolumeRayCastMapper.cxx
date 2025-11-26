@@ -1406,50 +1406,36 @@ public:
       void SetSize(vtkRenderer* const renderer, const std::size_t size) noexcept
       {
           vtkOpenGLRenderWindow* const renderWindow = static_cast<vtkOpenGLRenderWindow*>(renderer->GetRenderWindow());
-          if (m_currentSize != size || m_renderWindow != renderWindow)
+
+          if (m_renderWindow != renderWindow)
           {
-              //std::vector<std::uint8_t> oldData;
-
-              if (m_id != 0)
+              if (m_id != 0 && m_renderWindow != nullptr)
               {
-                  if (m_renderWindow != nullptr)
-                  {
-                      m_renderWindow->MakeCurrent();
+                  m_renderWindow->MakeCurrent();
 
-                      //if (m_currentSize != 0)
-                      //{
-                      //    BufferBinder bufferBinder{GL_SHADER_STORAGE_BUFFER, m_id};
-                      //    oldData.resize(m_currentSize);
-                      //    const void* const mappedBuffer = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_READ_ONLY);
-                      //    std::memcpy(oldData.data(), mappedBuffer, m_currentSize);
-                      //    glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
-                      //}
-
-                      glDeleteBuffers(1, &m_id);
-                  }
+                  glDeleteBuffers(1, &m_id);
 
                   m_id = 0;
                   m_currentSize = 0;
                   m_renderWindow = nullptr;
               }
-              if (size != 0 && renderWindow != nullptr)
+
+              if (renderWindow != nullptr)
               {
                   renderWindow->MakeCurrent();
 
                   glGenBuffers(1, &m_id);
-
-                  BufferBinder bufferBinder{GL_SHADER_STORAGE_BUFFER, m_id};
-                  glBufferStorage(GL_SHADER_STORAGE_BUFFER, size, nullptr, GL_DYNAMIC_STORAGE_BIT | GL_MAP_READ_BIT);
-                  m_currentSize = size;
-                  m_renderWindow = renderWindow;
-
-                  //if (!oldData.empty())
-                  //{
-                  //  // TODO what if we have less datasets???
-                  //  // write old data into new buffer
-                  //  glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, oldData.size(), oldData.data());
-                  //}
               }
+          }
+
+          if (m_id != 0 && m_currentSize != size)
+          {
+              renderWindow->MakeCurrent();
+
+              BufferBinder bufferBinder{GL_SHADER_STORAGE_BUFFER, m_id};
+              glBufferData(GL_SHADER_STORAGE_BUFFER, size, nullptr, GL_DYNAMIC_DRAW);
+              m_currentSize = size;
+              m_renderWindow = renderWindow;
           }
       }
 
@@ -1461,6 +1447,7 @@ public:
               static_cast<vtkOpenGLRenderWindow*>(renderWindow)->MakeCurrent();
               BufferBinder bufferBinder{GL_SHADER_STORAGE_BUFFER, m_id};
               glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, size, ptr);
+              glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
           }
           else
           {
@@ -5060,9 +5047,14 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateInputs(vtkRenderer* ren
       octahedralGradientBufferSize += alignedSize;
   }
 
-  //GLint maxSize = 0;
-  //glGetIntegerv(GL_MAX_SHADER_STORAGE_BLOCK_SIZE, &maxSize);
-  //const std::size_t numberOfSsbos = static_cast<std::size_t>(std::ceil(static_cast<float>(octahedralGradientBufferSize) / static_cast<float>(maxSize)));
+  GLint maxSize = 0;
+  glGetIntegerv(GL_MAX_SHADER_STORAGE_BLOCK_SIZE, &maxSize);
+  const std::size_t numberOfSsbos = static_cast<std::size_t>(std::ceil(static_cast<float>(octahedralGradientBufferSize) / static_cast<float>(maxSize)));
+
+  if (numberOfSsbos > 1)
+  {
+      throw;
+  }
 
   if (this->OctahedralGradientBuffer.getSize() != octahedralGradientBufferSize)
   {
