@@ -1,4 +1,4 @@
-/*=========================================================================
+﻿/*=========================================================================
 
   Program:   Visualization Toolkit
   Module:    vtkOpenGLGPUVolumeRayCastMapper.cxx
@@ -713,108 +713,43 @@ namespace
 {
 
 // octahedral encoding of normalized vector
-uint32_t encodeOctahedralNormal(float nx, float ny, float nz, float magnitude) noexcept
+std::uint16_t encodeOctahedralNormal(float x, float y, float z, const float maxMagnitude) noexcept
 {
-    // Normalize ----------------------------------------------------------
-    float len = std::sqrt(nx*nx + ny*ny + nz*nz);
-    nx /= len;
-    ny /= len;
-    nz /= len;
+    // magnitude
+    float mag = std::sqrt(x*x + y*y + z*z);
+    float nmag = (maxMagnitude > 0) ? std::min(mag / maxMagnitude, 1.0f) : 0.0f;
 
-    // Octahedral projection ---------------------------------------------
-    float ax = nx;
-    float ay = ny;
-    float az = nz;
-    float invL1 = 1.0f / (std::fabs(ax) + std::fabs(ay) + std::fabs(az));
+    // normalized direction (fallback to +Z if zero)
+    float nx = (mag > 0) ? x / mag : 0.0f;
+    float ny = (mag > 0) ? y / mag : 0.0f;
+    float nz = (mag > 0) ? z / mag : 1.0f;
 
-    ax *= invL1;
-    ay *= invL1;
-    az *= invL1;
+    // octahedral encode
+    float ax = std::fabs(nx);
+    float ay = std::fabs(ny);
+    float az = std::fabs(nz);
+    float inv = 1.0f / (ax + ay + az);
 
-    float u, v;
+    float ox = nx * inv;
+    float oy = ny * inv;
+    float oz = nz * inv;
 
-    if (az >= 0.0f)
-    {
-        // Upper hemisphere
-        u = ax;
-        v = ay;
-    }
-    else
-    {
-        // Folded lower hemisphere
-        float sx = (ax >= 0.0f ? 1.0f : -1.0f);
-        float sy = (ay >= 0.0f ? 1.0f : -1.0f);
-
-        u = (1.0f - std::fabs(ay)) * sx;
-        v = (1.0f - std::fabs(ax)) * sy;
+    if (oz < 0.0f) {
+        float oldX = ox;
+        ox = (1.0f - std::fabs(oy)) * (oldX >= 0.0f ? 1.0f : -1.0f);
+        oy = (1.0f - std::fabs(oldX)) * (oy >= 0.0f ? 1.0f : -1.0f);
     }
 
-    // Quantize u and v to 6 bits each ----------------------------------
-    float uf = (u * 0.5f + 0.5f) * 63.0f;
-    float vf = (v * 0.5f + 0.5f) * 63.0f;
+    ox = ox * 0.5f + 0.5f;   // [-1,1] → [0,1]
+    oy = oy * 0.5f + 0.5f;
 
-    const auto clamp = [] (float val, float min, float max) noexcept {
-        return std::max(min, std::min(max, val));
-    };
+    // quantize
+    uint16_t ox_i = (uint16_t)std::round(ox * 63.0f);   // 6 bits
+    uint16_t oy_i = (uint16_t)std::round(oy * 63.0f);   // 6 bits
+    uint16_t m_i  = (uint16_t)std::round(nmag * 15.0f); // 4 bits
 
-    uint32_t u6 = (uint32_t) clamp(uf + 0.5f, 0.0f, 63.0f);
-    uint32_t v6 = (uint32_t) clamp(vf + 0.5f, 0.0f, 63.0f);
-
-    // Quantize magnitude to 4 bits --------------------------------------
-    float mf = magnitude * 15.0f;
-    uint32_t m4 = (uint32_t) clamp(mf + 0.5f, 0.0f, 15.0f);
-
-    // Pack into 16 bits: [u6 | v6 | m4] ---------------------------------
-    return (u6 << 10) | (v6 << 4) | m4;
+    return (m_i << 12) | (oy_i << 6) | ox_i;
 }
-
-//std::uint16_t encodeOctahedralNormal(float x, float y, float z, float maxMagnitude) noexcept
-//{
-//    // Compute magnitude (length)
-//    const float magnitude = std::sqrt(x * x + y * y + z * z);
-//    if (magnitude < 1e-15f)
-//    {
-//        return 0; // No direction and zero magnitude
-//    }
-//
-//    // Normalize the vector
-//    x /= magnitude;
-//    y /= magnitude;
-//    z /= magnitude;
-//
-//    // Octahedral mapping
-//    const float absSum = std::abs(x) + std::abs(y) + std::abs(z);
-//    x /= absSum;
-//    y /= absSum;
-//    z /= absSum;
-//
-//    float u = x, v = y;
-//
-//    if (z < 0.f)
-//    {
-//        const float oldU = u;
-//        u = (1.f - std::abs(v)) * (oldU >= 0.f ? 1.f : -1.f);
-//        v = (1.f - std::abs(oldU)) * (v >= 0.f ? 1.f : -1.f);
-//    }
-//
-//    const auto clamp01 = [](float val) noexcept {
-//        return std::max(0.f, std::min(1.f, val));
-//    };
-//
-//    // Encode u,v in 6 bits each (range [0, 63])
-//    const std::uint8_t u6 = static_cast<std::uint8_t>(clamp01(u * .5f + .5f) * 63.f + .5f);
-//    const std::uint8_t v6 = static_cast<std::uint8_t>(clamp01(v * .5f + .5f) * 63.f + .5f);
-//
-//    // Encode magnitude in 4 bits (range [0, 15])
-//    // You might want to clamp magnitude to a reasonable max value for encoding
-//    // For example, assume max magnitude = 1.0f; scale accordingly or clamp higher values.
-//    const std::uint8_t m4 = static_cast<std::uint8_t>(clamp01(magnitude / maxMagnitude) * 15.f + .5f);
-//
-//    // Pack bits: u6 (6 bits), v6 (6 bits), m4 (4 bits)
-//    return (static_cast<std::uint16_t>(u6) << 10) |
-//           (static_cast<std::uint16_t>(v6) << 4)  |
-//           m4;
-//}
 
 std::vector<std::uint16_t> computeOctahedralGradients(vtkImageData* const inputImage, const float maxMagnitude) noexcept
 {
@@ -1927,7 +1862,7 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateGradientVolume(vtkRende
     std::vector<std::uint16_t> localOctGradients;
     PrecomputedGradient precomputedGradient;
     auto precomputedGradientIt = this->Parent->PrecomputedVolumeGradients.find(index);
-    //if (precomputedGradientIt == this->Parent->PrecomputedVolumeGradients.end())
+    if (precomputedGradientIt == this->Parent->PrecomputedVolumeGradients.end())
     {
         float maxMagnitude = 1.f;
         auto it = this->Parent->MaxGradientMagnitudes.find(index);
@@ -1939,11 +1874,11 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateGradientVolume(vtkRende
         precomputedGradient.data = localOctGradients.data();
         precomputedGradient.size = localOctGradients.size();
     }
-    /*else
+    else
     {
         precomputedGradient.data = precomputedGradientIt->second.data;
         precomputedGradient.size = precomputedGradientIt->second.size;
-    }*/
+    }
 
     int dims[3];
     volume->GetDimensions(dims);
@@ -5597,7 +5532,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
     block->TextureObject->Activate();
     prog->SetUniformi(str.c_str(), block->TextureObject->GetTextureUnit());
 
-    prog->SetUniformi(("in_volumeGradientOffsets[" + std::to_string(index) + "]").c_str(), this->OctahedralGradientBufferOffsets[index] / sizeof(std::uint32_t));
+    prog->SetUniformi(("in_volumeGradientOffsets[" + std::to_string(index) + "]").c_str(), static_cast<std::uint32_t>(this->OctahedralGradientBufferOffsets[index] / sizeof(std::uint32_t)));
 
     // LargeDataTypes have been already biased and scaled so in those cases 0s
     // and 1s are passed respectively.
@@ -5684,7 +5619,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
 
     this->VolumeParameters[index].volumeVisibility[0] = volume->GetVisibility();
 
-    this->VolumeParameters[index].scalarsRange_gradMagMax_sampling[2] = 0.;
+    this->VolumeParameters[index].scalarsRange_gradMagMax_sampling[2] = this->Parent->MaxGradientMagnitudes.at(index);
 
     ++index;
   }
