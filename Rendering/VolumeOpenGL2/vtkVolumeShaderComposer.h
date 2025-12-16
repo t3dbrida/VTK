@@ -147,6 +147,7 @@ namespace vtkvolume
   std::string BaseDeclarationFragment(vtkRenderer* vtkNotUsed(ren),
                                       vtkVolumeMapper* mapper,
                                       vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs,
+                                      int maxGradientTextures,
                                       int vtkNotUsed(numberOfLights),
                                       int lightingComplexity,
                                       int noOfComponents,
@@ -157,18 +158,8 @@ namespace vtkvolume
     std::ostringstream toShaderStr;
     toShaderStr << "uniform sampler3D in_volume[" << numInputs << "];\n"
                    "\n";
-    //toShaderStr << "uniform usampler3D in_gradientVolume[" << numInputs << "];\n"
-    //               "\n";
-
-    toShaderStr <<
-        "layout (std430, binding = 1) buffer VG\n" // we are offset by one binding point because of VolumeParameters
-        "{\n"
-        "  uint data[];\n"
-        "} volumeGradient;\n";
-
-    toShaderStr <<
-        "\n"
-        "uniform uint in_volumeGradientOffsets[" << numInputs << "];\n";
+    toShaderStr << "uniform usampler3D in_gradientVolume[" << std::min(numInputs, maxGradientTextures) << "];\n"
+                   "\n";
 
     toShaderStr << "\n"
                    "struct Intersection\n"
@@ -265,66 +256,76 @@ namespace vtkvolume
         "}\n";
 
     toShaderStr <<
-    "uvec4 sampleGradientVolume(int index, vec3 uvw)\n"
-    "{\n"
-    "    // Force uvw into [0,1) so last voxel is reachable\n"
-    "    vec3 uv = clamp(uvw, vec3(0.0), vec3(1.0 - 1e-7));\n"
-    "\n"
-    "    ivec3 dims = volumeParameters.data[index].volumeDimensions.xyz;\n"
-    "\n"
-    "    // Compute integer voxel coords\n"
-    "    ivec3 coords = ivec3(vec3(dims) * uv);\n"
-    "\n"
-    "    // Convert 3D coord -> 1D index\n"
-    "    uint coord1d = uint(coords.x)\n"
-    "                 + uint(dims.x) * uint(coords.y)\n"
-    "                 + uint(dims.x * dims.y) * uint(coords.z);\n"
-    "\n"
-    "    uvec4 result = uvec4(0u);\n"
-    "\n"
-    "    // Half-words: 2 values per 32-bit word\n"
-    "    uint wordIndex = coord1d >> 1u;   // = coord1d / 2\n"
-    "    uint word = volumeGradient.data[in_volumeGradientOffsets[index] + wordIndex];\n"
-    "\n"
-    "    // Extract correct 16-bit half\n"
-    "    if ((coord1d & 1u) == 0u)\n"
-    "    {\n"
-    "        // Even index → lower 16 bits\n"
-    "        word &= 0xFFFFu;\n"
-    "    }\n"
-    "    else\n"
-    "    {\n"
-    "        // Odd index → upper 16 bits\n"
-    "        word >>= 16u;\n"
-    "    }\n"
-    "\n"
-    "    result = uvec4(word);\n"
-    "    return result;\n"
-    "}\n";
+        "\n"
+        "uvec4 sampleGradientVolume(int index, vec3 uvw)\n"
+        "{\n"
+        "  uvec4 result = uvec4(0);\n"
+        "\n"
+        "  // we use texel fetch just to make sure there is never any sort of interpolation,\n"
+        "  // octahedral-encoded normals are very sensitive\n"
+        "  ivec3 volumeDimensions = volumeParameters.data[index].volumeDimensions.xyz;"
+        "  ivec3 coords = ivec3(floor(vec3(volumeDimensions) * uvw));\n"
+        "  if (all(greaterThanEqual(coords, ivec3(0))) && all(lessThan(coords, ivec3(volumeDimensions.xyz))))\n"
+        "  {\n"
+        "    switch (index)\n"
+        "    {\n";
+    for (int i = 0; i < numInputs; ++i)
+    {
+        toShaderStr <<
+            "      case " << i << ":\n"
+            "        result = texelFetch(in_gradientVolume[" << i << "], coords, 0);\n"
+            "        break;\n";
+    }
+    toShaderStr <<
+        "    }\n"
+        "  }\n"
+        "\n"
+        "    return result;\n"
+        "}\n";
 
     toShaderStr <<
-        /*"vec4 sampleGradient(int index, vec3 uvw)\n"
+        "vec4 sampleGradient(int index, vec3 uvw)\n"
         "{\n"
         "    uint octVal = sampleGradientVolume(index, uvw).r;\n"
         "\n"
-        "    uint ox =  octVal        & 63u;\n"
-        "    uint oy = (octVal >> 6)  & 63u;\n"
-        "    uint m  = (octVal >> 12) & 15u;\n"
+        "    // Extract bits\n"
+        "    uint u6 = (octVal >> 10) & 0x3Fu; // 6 bits for u\n"
+        "    uint v6 = (octVal >> 4)  & 0x3Fu; // 6 bits for v\n"
+        "    uint m4 =  octVal        & 0xFu;  // 4 bits for magnitude\n"
         "\n"
-        "    vec2 e = vec2(float(ox) / 63.0, float(oy) / 63.0);\n"
-        "    e = e * 2.0 - 1.0;\n"
+        "    // Decode to [-1, 1]\n"
+        "    float u = float(u6) / 63. * 2. - 1.;\n"
+        "    float v = float(v6) / 63. * 2. - 1.;\n"
         "\n"
-        "    vec3 v = vec3(e.x, e.y, 1.0 - abs(e.x) - abs(e.y));\n"
-        "    float t = max(-v.z, 0.0);\n"
-        "    v.x += (v.x >= 0.0 ? -t : t);\n"
-        "    v.y += (v.y >= 0.0 ? -t : t);\n"
+        "    // Reconstruct z component of octahedral normal\n"
+        "    float z = 1. - abs(u) - abs(v);\n"
         "\n"
-        "    vec3 n = normalize(v);\n"
+        "    vec3 n = vec3(u, v, z);\n"
         "\n"
-        "    float mag = float(m) / 15.0;\n"
+        "    if (n.z < 0.)\n"
+        "    {\n"
+        "        float oldX = n.x;\n"
+        "        n.x = (1. - abs(n.y)) * (oldX >= 0. ? 1. : -1.);\n"
+        "        n.y = (1. - abs(oldX)) * (n.y >= 0. ? 1. : -1.);\n"
+        "    }\n"
         "\n"
-        "    return vec4(n * (mag * volumeParameters.data[index].scalarsRange_gradMagMax_sampling.z), mag);\n"
-        "}\n";*/
+        "    n = normalize(n);\n"
+        "\n"
+        "    // Decode magnitude from 4 bits [0..15] -> [0..1]\n"
+        "    float magnitude = float(m4) / 15.;\n"
+        "\n"
+        "    return vec4(n, magnitude);\n"
+        "}\n";
+
+    /*toShaderStr <<
+    "uvec4 sampleGradientVolume(int index, vec3 uvw)\n"
+    "{\n"
+    "    ivec3 dims = volumeParameters.data[index].volumeDimensions.xyz;\n"
+    "    ivec3 coords = ivec3(vec3(dims) * uvw);\n"
+    "    return texelFetch(in_gradientVolume[index], coords, 0);\n"
+    "}\n";
+
+    toShaderStr <<
         "vec4 sampleGradient(int index, vec3 uvw)\n"
         "{\n"
         "    // Fetch the 16-bit encoded octahedral gradient\n"
@@ -352,8 +353,8 @@ namespace vtkvolume
         "    //mag *= volumeParameters.data[index].scalarsRange_gradMagMax_sampling.z;\n"
         "\n"
         "    // Return final gradient vector (scaled by magnitude) and mag for reference\n"
-        "    return vec4(n/* * mag*/, mag);\n"
-        "}\n";
+        "    return vec4(n, mag);\n"
+        "}\n";*/
 
     toShaderStr <<
       //"uniform int in_noOfComponents[" << numInputs << "];\n"
@@ -743,7 +744,8 @@ namespace vtkvolume
 
   //--------------------------------------------------------------------------
   std::string ComputeGradientDeclaration(vtkOpenGLGPUVolumeRayCastMapper* mapper,
-                                         vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs)
+                                         vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs,
+                                         int maxGradientTextures)
   {
     std::string shaderStr;
     //for (size_t i = 0; i < inputs.size(); ++i)
@@ -821,7 +823,57 @@ namespace vtkvolume
             "  }\n"
             "  else\n"
             "  {\n"
+            "    if (index < " + std::to_string(maxGradientTextures) + ")\n"
+            "    {\n"
             "      return vec4(sampleGradient(index, texPos));\n"
+            "    }\n"
+            "    else\n"
+            "    {\n"
+            "      // Approximate Nabla(F) derivatives with central differences.\n"
+            "      vec3 g1; // F_front\n"
+            "      vec3 g2; // F_back\n"
+            "      vec3 xvec = vec3(volumeParameters.data[index].cellStep.x, 0.0, 0.0);\n"
+            "      vec3 yvec = vec3(0.0, volumeParameters.data[index].cellStep.y, 0.0);\n"
+            "      vec3 zvec = vec3(0.0, 0.0, volumeParameters.data[index].cellStep.z);\n"
+            "      vec3 texPosPvec[3];\n"
+            "      texPosPvec[0] = texPos + xvec;\n"
+            "      texPosPvec[1] = texPos + yvec;\n"
+            "      texPosPvec[2] = texPos + zvec;\n"
+            "      vec3 texPosNvec[3];\n"
+            "      texPosNvec[0] = texPos - xvec;\n"
+            "      texPosNvec[1] = texPos - yvec;\n"
+            "      texPosNvec[2] = texPos - zvec;\n"
+            "      g1.x = sampleVolume(index, texPosPvec[0])[0];\n"
+            "      g1.y = sampleVolume(index, texPosPvec[1])[0];\n"
+            "      g1.z = sampleVolume(index, texPosPvec[2])[0];\n"
+            "      g2.x = sampleVolume(index, texPosNvec[0])[0];\n"
+            "      g2.y = sampleVolume(index, texPosNvec[1])[0];\n"
+            "      g2.z = sampleVolume(index, texPosNvec[2])[0];\n"
+            "\n"
+            "      // Apply scale and bias to the fetched values.\n"
+            "      g1 = g1 * volumeParameters.data[index].volumeScale[0] + volumeParameters.data[index].volumeBias[0];\n"
+            "      g2 = g2 * volumeParameters.data[index].volumeScale[0] + volumeParameters.data[index].volumeBias[0];\n"
+            "      float range = volumeParameters.data[index].scalarsRange_gradMagMax_sampling[1] - volumeParameters.data[index].scalarsRange_gradMagMax_sampling[0];\n"
+            "      g1 = volumeParameters.data[index].scalarsRange_gradMagMax_sampling[0] + range * g1;\n"
+            "      g2 = volumeParameters.data[index].scalarsRange_gradMagMax_sampling[0] + range * g2;\n"
+            "\n"
+            "      // Central differences: (F_front - F_back) / 2h\n"
+            "      g2 = g1 - g2;\n"
+            "\n"
+            "      float avgSpacing = (volumeParameters.data[index].cellSpacing.x + volumeParameters.data[index].cellSpacing.y + volumeParameters.data[index].cellSpacing.z) / 3.0;\n"
+            "      vec3 aspect = volumeParameters.data[index].cellSpacing.xyz * 2.0 / avgSpacing;\n"
+            "      g2 /= aspect;\n"
+            "      float grad_mag = length(g2);\n"
+            "\n"
+            "      // Handle normalizing with grad_mag == 0.0\n"
+            "      g2 = grad_mag > 0.0 ? normalize(g2) : vec3(0.0);\n"
+            "\n"
+            "      range = range != 0 ? range : 1.0;\n"
+            "      grad_mag = grad_mag / volumeParameters.data[index].scalarsRange_gradMagMax_sampling.z;\n"
+            "      grad_mag = clamp(grad_mag, 0.0, 1.0);\n"
+            "\n"
+            "      return vec4(g2.xyz, grad_mag);\n"
+            "    }\n"
             "  }\n"
             "}\n";
     }
@@ -1748,8 +1800,9 @@ namespace vtkvolume
           "        vec3 posExit = (localToGlobalDatasetTransform * vec4(localEye + interval.y * localDir, 1.)).xyz;\n"
           "        intervals[i].tEnter = dot(posEnter - g_eyePosObj.xyz, g_rayDir) / g_rayDirDot;\n"
           "        intervals[i].tExit = dot(posExit - g_eyePosObj.xyz, g_rayDir) / g_rayDirDot;\n"
-          "        dataPos[i] = (in_inverseTextureDatasetMatrix * vec4(g_eyePosObj.xyz + intervals[i].tEnter * vec3(FLOAT_EPS) * g_rayDir, 1.)).xyz + g_rayJitter[i + 1];\n"
+          "        dataPos[i] = (in_inverseTextureDatasetMatrix * vec4(g_eyePosObj.xyz + (intervals[i].tEnter * FLOAT_EPS) * g_rayDir, 1.)).xyz + g_rayJitter[i + 1];\n"
           "        t[i] = intervals[i].tEnter;\n"
+          "        if (t[i] < 0.) { t[i] = 0.; }\n"
           "      }\n"
           "    }\n"
           "\n"
