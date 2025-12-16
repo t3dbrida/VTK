@@ -5567,7 +5567,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
     block->TextureObject->Activate();
     prog->SetUniformi(str.c_str(), block->TextureObject->GetTextureUnit());
 
-    auto gradTexIt = this->OctahedralGradientTextures.find(this->Parent->TransformedInputs.at(index));
+    auto gradTexIt = this->OctahedralGradientTextures.find(imgData);
     if (gradTexIt != this->OctahedralGradientTextures.end())
     {
         str = "in_gradientVolume[" + std::to_string(index) + "]";
@@ -5664,7 +5664,13 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
 
     this->VolumeParameters[index].volumeVisibility[0] = volume->GetVisibility();
 
-    this->VolumeParameters[index].scalarsRange_gradMagMax_sampling[2] = this->Parent->MaxGradientMagnitudes.at(index);
+    float maxGrad = 1.f;
+    auto maxGradIt = this->Parent->MaxGradientMagnitudes.find(index);
+    if (maxGradIt != this->Parent->MaxGradientMagnitudes.end())
+    {
+        maxGrad = maxGradIt->second;
+    }
+    this->VolumeParameters[index].scalarsRange_gradMagMax_sampling[2] = maxGrad;
 
     ++index;
   }
