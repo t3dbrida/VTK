@@ -707,6 +707,11 @@ namespace tf2d
 constexpr int TEXTURE_WIDTH = 512,
               TEXTURE_HEIGHT = 256;
 
+constexpr int PADDING = 1;
+
+constexpr int PADDED_WIDTH  = TEXTURE_WIDTH  + 2 * PADDING;
+constexpr int PADDED_HEIGHT = TEXTURE_HEIGHT + 2 * PADDING;
+
 }
 
 namespace
@@ -1498,7 +1503,7 @@ public:
   std::vector<VolumeParameters> VolumeParameters;
 };
 
-bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpace::UpdateRegion(vtkImageData* const image, const int volumeIndex, const bool force) noexcept
+/*bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpace::UpdateRegion(vtkImageData* const image, const int volumeIndex, const bool force) noexcept
 {
   int newDims[3];
   image->GetDimensions(newDims);
@@ -1588,6 +1593,154 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpace::Upda
 
   // couldn't find empty space, may need to recreate the entire texture then call again
   return false;
+}*/
+
+bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpace::UpdateRegion(
+  vtkImageData* const image,
+  const int volumeIndex,
+  const bool force) noexcept
+{
+  int newDims[3];
+  image->GetDimensions(newDims);
+
+  // this fills out padded edges with pixels at the edge of real region (similar to repeat filtering)
+  auto uploadWithPadding =
+    [&](int x, int y, void* data)
+  {
+    float* pixels = static_cast<float*>(data);
+    const int stride = tf2d::TEXTURE_WIDTH * 4;
+
+    glBindTexture(GL_TEXTURE_2D, this->Texture->GetHandle());
+
+    // center
+    glTexSubImage2D(
+      GL_TEXTURE_2D, 0,
+      x + tf2d::PADDING, y + tf2d::PADDING,
+      tf2d::TEXTURE_WIDTH, tf2d::TEXTURE_HEIGHT,
+      GL_RGBA, GL_FLOAT, pixels);
+
+    // top
+    glTexSubImage2D(
+      GL_TEXTURE_2D, 0,
+      x + tf2d::PADDING, y,
+      tf2d::TEXTURE_WIDTH, 1,
+      GL_RGBA, GL_FLOAT, pixels);
+
+    // bottom
+    glTexSubImage2D(
+      GL_TEXTURE_2D, 0,
+      x + tf2d::PADDING,
+      y + tf2d::PADDING + tf2d::TEXTURE_HEIGHT,
+      tf2d::TEXTURE_WIDTH, 1,
+      GL_RGBA, GL_FLOAT,
+      pixels + (tf2d::TEXTURE_HEIGHT - 1) * stride);
+
+    // left & right
+    std::vector<float> left(tf2d::TEXTURE_HEIGHT * 4);
+    std::vector<float> right(tf2d::TEXTURE_HEIGHT * 4);
+
+    for (int row = 0; row < tf2d::TEXTURE_HEIGHT; ++row)
+    {
+      std::memcpy(&left[row * 4],
+                  &pixels[row * stride],
+                  4 * sizeof(float));
+
+      std::memcpy(&right[row * 4],
+                  &pixels[row * stride + (tf2d::TEXTURE_WIDTH - 1) * 4],
+                  4 * sizeof(float));
+    }
+
+    glTexSubImage2D(
+      GL_TEXTURE_2D, 0,
+      x, y + tf2d::PADDING,
+      1, tf2d::TEXTURE_HEIGHT,
+      GL_RGBA, GL_FLOAT, left.data());
+
+    glTexSubImage2D(
+      GL_TEXTURE_2D, 0,
+      x + tf2d::PADDING + tf2d::TEXTURE_WIDTH,
+      y + tf2d::PADDING,
+      1, tf2d::TEXTURE_HEIGHT,
+      GL_RGBA, GL_FLOAT, right.data());
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+  };
+
+  // update existing
+  for (auto& rp : this->Regions)
+  {
+    const vtkVector2i& pos = rp.first;
+    Region& region = rp.second;
+
+    if (region.VolumeIndex == volumeIndex)
+    {
+      bool update = region.Timestamp < image->GetMTime() || force;
+      if (!update)
+        return true;
+
+      void* data = image->GetScalarPointer();
+      vtkSmartPointer<vtkImageData> resized;
+
+      if (newDims[0] != tf2d::TEXTURE_WIDTH ||
+          newDims[1] != tf2d::TEXTURE_HEIGHT)
+      {
+        vtkNew<vtkImageResize> resize;
+        resize->SetInputData(image);
+        resize->SetResizeMethodToOutputDimensions();
+        resize->SetOutputDimensions(
+          tf2d::TEXTURE_WIDTH,
+          tf2d::TEXTURE_HEIGHT, 1);
+        resize->Update();
+        resized = resize->GetOutput();
+        data = resized->GetScalarPointer();
+      }
+
+      uploadWithPadding(pos.GetX(), pos.GetY(), data);
+      region.Timestamp.Modified();
+      return true;
+    }
+  }
+
+  // create new region
+  const int w = this->Texture->GetWidth();
+  const int h = this->Texture->GetHeight();
+
+  for (int y = 0; y + tf2d::PADDED_HEIGHT <= h; y += tf2d::PADDED_HEIGHT)
+  {
+    for (int x = 0; x + tf2d::PADDED_WIDTH <= w; x += tf2d::PADDED_WIDTH)
+    {
+      vtkVector2i pos{x, y};
+      if (this->Regions.find(pos) != this->Regions.end())
+        continue;
+
+      void* data = image->GetScalarPointer();
+      vtkSmartPointer<vtkImageData> resized;
+
+      if (newDims[0] != tf2d::TEXTURE_WIDTH ||
+          newDims[1] != tf2d::TEXTURE_HEIGHT)
+      {
+        vtkNew<vtkImageResize> resize;
+        resize->SetInputData(image);
+        resize->SetResizeMethodToOutputDimensions();
+        resize->SetOutputDimensions(
+          tf2d::TEXTURE_WIDTH,
+          tf2d::TEXTURE_HEIGHT, 1);
+        resize->Update();
+        resized = resize->GetOutput();
+        data = resized->GetScalarPointer();
+      }
+
+      uploadWithPadding(x, y, data);
+
+      auto r = this->Regions.emplace(
+        pos,
+        Region{volumeIndex, {newDims[0], newDims[1]}, image});
+      r.first->second.Timestamp.Modified();
+      return true;
+    }
+  }
+
+  return false;
 }
 
 std::pair<vtkVector2i, vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpace::Region*> vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpace::GetRegion(const int volumeIndex) noexcept
@@ -1647,7 +1800,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::Che
   }
 }
 
-void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::UpdateRegion(vtkOpenGLRenderWindow& window, vtkImageData* const image, const int volumeIndex) noexcept
+/*void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::UpdateRegion(vtkOpenGLRenderWindow& window, vtkImageData* const image, const int volumeIndex) noexcept
 {
   for (TransferFunction2DSpace& s : this->Spaces)
   {
@@ -1706,6 +1859,91 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::Upd
     texture->SetMagnificationFilter(vtkTextureObject::Linear);
     texture->SetWrapS(vtkTextureObject::ClampToEdge);
     texture->SetWrapT(vtkTextureObject::ClampToEdge);
+    this->Spaces.emplace_back();
+    space = &this->Spaces.back();
+    space->Texture = texture;
+  }
+
+  space->UpdateRegion(image, volumeIndex);
+}*/
+
+void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::TransferFunction2DSpaces::UpdateRegion(
+  vtkOpenGLRenderWindow& window,
+  vtkImageData* const image,
+  const int volumeIndex) noexcept
+{
+  for (TransferFunction2DSpace& s : this->Spaces)
+  {
+    if (s.UpdateRegion(image, volumeIndex))
+    {
+      return;
+    }
+  }
+
+  TransferFunction2DSpace* space = nullptr;
+  bool resizedTexture = false;
+  const int maximumTextureSize =
+    vtkTextureObject::GetMaximumTextureSize(&window);
+
+  for (TransferFunction2DSpace& s : this->Spaces)
+  {
+    vtkTextureObject* const texture = s.Texture;
+    const int w = texture->GetWidth();
+    const int h = texture->GetHeight();
+
+    // [PAD] grow by padded region size
+    const int newW = w + tf2d::PADDED_WIDTH;
+    const int newH = h + tf2d::PADDED_HEIGHT;
+
+    if (newW <= maximumTextureSize)
+    {
+      resizedTexture = true;
+      std::vector<float> zeros(4 * newW * h, 0);
+      texture->Create2DFromRaw(newW, h, 4, VTK_FLOAT, zeros.data());
+    }
+    else if (newH <= maximumTextureSize)
+    {
+      resizedTexture = true;
+      std::vector<float> zeros(4 * w * newH, 0);
+      texture->Create2DFromRaw(w, newH, 4, VTK_FLOAT, zeros.data());
+    }
+    else
+    {
+      continue;
+    }
+
+    if (resizedTexture)
+    {
+      space = &s;
+      // recreate the original texture (reupload former regions)
+      for (const auto& r : s.Regions)
+      {
+        space->UpdateRegion(r.second.Image,
+                            r.second.VolumeIndex,
+                            true);
+      }
+      break;
+    }
+  }
+
+  // no texture was resized, create a completely new one
+  if (!resizedTexture)
+  {
+    const vtkSmartPointer<vtkTextureObject> texture =
+      vtkSmartPointer<vtkTextureObject>::New();
+    texture->SetContext(&window);
+
+    // [PAD] allocate padded size
+    texture->Allocate2D(
+      tf2d::PADDED_WIDTH,
+      tf2d::PADDED_HEIGHT,
+      4, VTK_FLOAT);
+
+    texture->SetMinificationFilter(vtkTextureObject::Linear);
+    texture->SetMagnificationFilter(vtkTextureObject::Linear);
+    texture->SetWrapS(vtkTextureObject::ClampToEdge);
+    texture->SetWrapT(vtkTextureObject::ClampToEdge);
+
     this->Spaces.emplace_back();
     space = &this->Spaces.back();
     space->Texture = texture;
@@ -5608,14 +5846,46 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
         const TransferFunction2DRegionQuery regionQuery = this->TransferFunction2DSpaces.QueryRegion(input.first);
         if (regionQuery.space)
         {
-            const int w = regionQuery.space->Texture->GetWidth(),
+            /*const int w = regionQuery.space->Texture->GetWidth(),
                       h = regionQuery.space->Texture->GetHeight();
 
             const vtkVector2i& pos = regionQuery.pos,
                              & size = regionQuery.region->Size;
 
+            const constexpr float sizeEps = 0.02f; // necessary to avoid some artifacts, empirically derived
+            float v[4]
+            {
+                static_cast<float>(pos.GetX()) / w,
+                static_cast<float>(pos.GetY()) / h,
+                static_cast<float>(size.GetX()) / w - sizeEps,
+                static_cast<float>(size.GetY()) / h - sizeEps
+            };*/
+            const int texW = regionQuery.space->Texture->GetWidth();
+            const int texH = regionQuery.space->Texture->GetHeight();
+
+            const vtkVector2i& pos  = regionQuery.pos;
+            const vtkVector2i& size = regionQuery.region->Size; // logical size
+
+            // half-texel inset avoids precision issues
+            constexpr float halfTexel = 0.5f;
+
+            float v[4]
+            {
+                // u0
+                (pos.GetX() + tf2d::PADDING + halfTexel) / texW,
+
+                // v0
+                (pos.GetY() + tf2d::PADDING + halfTexel) / texH,
+
+                // uSize
+                (tf2d::TEXTURE_WIDTH  - 1.0f) / texW,
+
+                // vSize
+                (tf2d::TEXTURE_HEIGHT - 1.0f) / texH
+            };
+
             // necessary to avoid some artifacts, empirically derived
-            const float offsetX = 3.f * (1.f / w),
+            /*const float offsetX = 3.f * (1.f / w),
                         offsetY = 3.f * (1.f / h);
             float v[4]
             {
@@ -5623,7 +5893,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
                 static_cast<float>(pos.GetY()) / h + offsetY,
                 static_cast<float>(size.GetX()) / w - offsetX,
                 static_cast<float>(size.GetY()) / h - offsetY
-            };
+            };*/
             const std::string indexStr = std::to_string(input.first);
             vtkInternal::CopyVector<float, 4>(v, this->VolumeParameters[index].transfer2dRegion, 0);
             this->VolumeParameters[index].noOfComponents_maskIndex_regionIndex_transfer2dIndex[3] = regionQuery.textureIndex;

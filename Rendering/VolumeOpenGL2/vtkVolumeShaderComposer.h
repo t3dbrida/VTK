@@ -158,7 +158,8 @@ namespace vtkvolume
     std::ostringstream toShaderStr;
     toShaderStr << "uniform sampler3D in_volume[" << numInputs << "];\n"
                    "\n";
-    toShaderStr << "uniform usampler3D in_gradientVolume[" << std::min(numInputs, maxGradientTextures) << "];\n"
+    auto gradientTexturesCount = std::min(numInputs, maxGradientTextures);
+    toShaderStr << "uniform usampler3D in_gradientVolume[" << gradientTexturesCount << "];\n"
                    "\n";
 
     toShaderStr << "\n"
@@ -269,7 +270,7 @@ namespace vtkvolume
         "  {\n"
         "    switch (index)\n"
         "    {\n";
-    for (int i = 0; i < numInputs; ++i)
+    for (int i = 0; i < gradientTexturesCount; ++i)
     {
         toShaderStr <<
             "      case " << i << ":\n"
