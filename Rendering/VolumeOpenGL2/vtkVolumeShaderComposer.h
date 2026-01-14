@@ -184,7 +184,7 @@ namespace vtkvolume
                    "\n";
     toShaderStr << "vec3 g_dirSteps[" << numInputs << "];\n";
     toShaderStr << "float g_terminatePosEyeLength;\n";
-    toShaderStr << "float g_terminatePosLength;\n";
+    toShaderStr << "float g_terminateT;\n";
 
     toShaderStr << "\n"
                    "Intersection[" << numInputs << "] sortIntersections(Interval intervals[" << numInputs << "])\n"
@@ -195,7 +195,7 @@ namespace vtkvolume
                    "  {\n"
                    "    if (intervals[i].valid == false)\n"
                    "    {\n"
-                   "      intersections[i].t = FLOAT_MAX;\n"
+                   "      intersections[i].t = FLOAT_INF;\n"
                    "      intersections[i].volumeIndex = -1;\n"
                    "    }\n"
                    "    else\n"
@@ -572,9 +572,9 @@ namespace vtkvolume
           \n  {\
           \n    g_dirSteps[i] = volumeParameters.data[i].scalarsRange_gradMagMax_sampling.w * (ip_inverseTextureDataAdjusted * vec4(g_rayDir, 0.0)).xyz;\
           \n    vec3 cs = volumeParameters.data[i].cellSpacing.xyz;\
-          \n    g_tDelta[i] = vec3(g_rayDir.x != 0. ? (g_rayDirSign.x * cs.x / g_rayDir.x) : FLOAT_MAX,\
-          \n                       g_rayDir.y != 0. ? (g_rayDirSign.y * cs.y / g_rayDir.y) : FLOAT_MAX,\
-          \n                       g_rayDir.z != 0. ? (g_rayDirSign.z * cs.z / g_rayDir.z) : FLOAT_MAX);\
+          \n    g_tDelta[i] = vec3(g_rayDir.x != 0. ? (g_rayDirSign.x * cs.x / g_rayDir.x) : FLOAT_INF,\
+          \n                       g_rayDir.y != 0. ? (g_rayDirSign.y * cs.y / g_rayDir.y) : FLOAT_INF,\
+          \n                       g_rayDir.z != 0. ? (g_rayDirSign.z * cs.z / g_rayDir.z) : FLOAT_INF);\
           \n  }"
         ;
     }
@@ -582,9 +582,9 @@ namespace vtkvolume
     {
         shaderStr += "\
           \n    vec3 cs = volumeParameters.data[0].cellSpacing.xyz;\
-          \n    g_tDelta[0] = vec3(g_rayDir.x != 0. ? (g_rayDirSign.x * cs.x / g_rayDir.x) : FLOAT_MAX,\
-          \n                       g_rayDir.y != 0. ? (g_rayDirSign.y * cs.y / g_rayDir.y) : FLOAT_MAX,\
-          \n                       g_rayDir.z != 0. ? (g_rayDirSign.z * cs.z / g_rayDir.z) : FLOAT_MAX);\
+          \n    g_tDelta[0] = vec3(g_rayDir.x != 0. ? (g_rayDirSign.x * cs.x / g_rayDir.x) : FLOAT_INF,\
+          \n                       g_rayDir.y != 0. ? (g_rayDirSign.y * cs.y / g_rayDir.y) : FLOAT_INF,\
+          \n                       g_rayDir.z != 0. ? (g_rayDirSign.z * cs.z / g_rayDir.z) : FLOAT_INF);\
         ";
     }
     shaderStr += "\
@@ -633,7 +633,7 @@ namespace vtkvolume
     if (inputCount > 1)
     {
       shaderStr += "\
-        \n  vec3 minRayJitter = vec3(FLOAT_MAX);\
+        \n  vec3 minRayJitter = vec3(FLOAT_INF);\
         \n  for (int i = 0; i < " + std::to_string(inputCount) + "; ++i)\
         \n  {\
         \n    if (any(lessThan(g_rayJitter[i + 1], minRayJitter)))\
@@ -1781,11 +1781,11 @@ namespace vtkvolume
           "\n"
           "  for (int i = 0; i < " + numInputsStr + "; ++i)\n"
           "  {\n"
-          "    dataPos[i] = vec3(FLOAT_MAX, FLOAT_MAX, FLOAT_MAX);\n"
-          "    t[i] = FLOAT_MAX;\n"
+          "    dataPos[i] = vec3(FLOAT_INF, FLOAT_INF, FLOAT_INF);\n"
+          "    t[i] = FLOAT_INF;\n"
           "\n"
-          "    intervals[i].tEnter = FLOAT_MAX;\n"
-          "    intervals[i].tExit = -FLOAT_MAX;\n"
+          "    intervals[i].tEnter = FLOAT_INF;\n"
+          "    intervals[i].tExit = FLOAT_INF_NEG;\n"
           "    intervals[i].valid = false;\n"
           "    if (volumeParameters.data[i].volumeVisibility.x == 1 || volumeParameters.data[i].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)\n"
           "    {\n"
@@ -1793,7 +1793,7 @@ namespace vtkvolume
           "      vec3 localEye = (globalToLocalDatasetTransform * g_eyePosObj).xyz;\n"
           "      vec3 localDir = normalize((globalToLocalDatasetTransform * vec4(g_rayDir, 0.)).xyz);\n"
           "      vec2 interval = intersectRayBox(localEye, localDir, volumeParameters.data[i].boundsMin.xyz, volumeParameters.data[i].boundsMax.xyz);\n"
-          "      intervals[i].valid = interval.x < interval.y && interval.x < FLOAT_MAX && interval.y > 0.;\n"
+          "      intervals[i].valid = interval.x < interval.y && interval.x < FLOAT_INF && interval.y > 0.;\n"
           "      if (intervals[i].valid == true)\n"
           "      {\n"
           "        mat4 localToGlobalDatasetTransform = in_inverseVolumeMatrix * volumeParameters.data[i].volumeMatrix;\n"
@@ -1801,16 +1801,16 @@ namespace vtkvolume
           "        vec3 posExit = (localToGlobalDatasetTransform * vec4(localEye + interval.y * localDir, 1.)).xyz;\n"
           "        intervals[i].tEnter = dot(posEnter - g_eyePosObj.xyz, g_rayDir) / g_rayDirDot;\n"
           "        intervals[i].tExit = dot(posExit - g_eyePosObj.xyz, g_rayDir) / g_rayDirDot;\n"
-          "        dataPos[i] = (in_inverseTextureDatasetMatrix * vec4(g_eyePosObj.xyz + (intervals[i].tEnter * FLOAT_EPS) * g_rayDir, 1.)).xyz + g_rayJitter[i + 1];\n"
+          "        dataPos[i] = (in_inverseTextureDatasetMatrix * vec4(g_eyePosObj.xyz + intervals[i].tEnter * g_rayDir, 1.)).xyz + g_rayJitter[i + 1];\n"
           "        t[i] = intervals[i].tEnter;\n"
           "        if (t[i] < 0.) { t[i] = 0.; }\n"
           "      }\n"
           "    }\n"
           "\n"
           "    // dirSteps can't be too small\n"
-          "    if (length(g_dirSteps[i]) < 1e-6)\n"
+          "    if (t[i] != 0. && length(g_dirSteps[i]) < FLOAT_EPS)\n"
           "    {\n"
-          "      t[i] = FLOAT_MAX;\n"
+          "      t[i] = FLOAT_INF;\n"
           "    }\n"
           "  }\n"
           "\n"
@@ -1823,15 +1823,15 @@ namespace vtkvolume
             "  Interval intervals[" + numInputsStr + "];\n"
             "  for (int i = 0; i < " + numInputsStr + "; ++i)\n"
             "  {\n"
-            "    intervals[i].tEnter = FLOAT_MAX;\n"
-            "    intervals[i].tExit = -FLOAT_MAX;\n"
+            "    intervals[i].tEnter = FLOAT_INF;\n"
+            "    intervals[i].tExit = FLOAT_INF_NEG;\n"
             "    intervals[i].valid = false;\n"
             "    if (volumeParameters.data[i].volumeVisibility.x == 1 || volumeParameters.data[i].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)\n"
             "    {\n"
             "      vec3 bboxMin = volumeParameters.data[i].boundsMin.xyz;\n"
             "      vec3 bboxMax = volumeParameters.data[i].boundsMax.xyz;\n"
             "      vec2 interval = intersectRayBox(g_eyePosObj.xyz, g_rayDir, bboxMin, bboxMax);\n"
-            "      intervals[i].valid = interval.x < interval.y && interval.x < FLOAT_MAX && interval.y > 0.;\n"
+            "      intervals[i].valid = interval.x < interval.y && interval.x < FLOAT_INF && interval.y > 0.;\n"
             "      if (intervals[i].valid == true)\n"
             "      {\n"
             "        vec3 posEnter = g_eyePosObj.xyz + interval.x * g_rayDir;\n"
@@ -1846,7 +1846,7 @@ namespace vtkvolume
             "  Intersection intersections[" + numInputsStr + "] = sortIntersections(intervals);\n"
             "\n"
             "  vec3 volDataPos, segDataPos;\n"
-            "  float volT = FLOAT_MAX, segT = FLOAT_MAX;\n"
+            "  float volT = FLOAT_INF, segT = FLOAT_INF;\n"
             "  vec3 segTMax;\n"
             "  vec4 segNormal;\n"
             "  int stepCounter = 0; // indicates validity of marched through volumes, if 0 then the loop exits\n"
@@ -1873,12 +1873,12 @@ namespace vtkvolume
                     "        vec3 nextGridLine = gridCorner + vec3(greaterThanEqual(g_rayDirSign, vec3(0.))) * cs;\n"
                     "\n"
                     "        segDataPos = (in_inverseTextureDatasetMatrix * vec4(gridCorner + .5 * cs, 1.)).xyz;\n"
-                    "        segTMax = vec3(g_rayDir.x != 0. ? (g_rayDirSign.x * ((nextGridLine.x - g_eyePosObj.x) / cs.x) * g_tDelta[0].x) : FLOAT_MAX,\n"
-                    "                       g_rayDir.y != 0. ? (g_rayDirSign.y * ((nextGridLine.y - g_eyePosObj.y) / cs.y) * g_tDelta[0].y) : FLOAT_MAX,\n"
-                    "                       g_rayDir.z != 0. ? (g_rayDirSign.z * ((nextGridLine.z - g_eyePosObj.z) / cs.z) * g_tDelta[0].z) : FLOAT_MAX);\n"
+                    "        segTMax = vec3(g_rayDir.x != 0. ? (g_rayDirSign.x * ((nextGridLine.x - g_eyePosObj.x) / cs.x) * g_tDelta[0].x) : FLOAT_INF,\n"
+                    "                       g_rayDir.y != 0. ? (g_rayDirSign.y * ((nextGridLine.y - g_eyePosObj.y) / cs.y) * g_tDelta[0].y) : FLOAT_INF,\n"
+                    "                       g_rayDir.z != 0. ? (g_rayDirSign.z * ((nextGridLine.z - g_eyePosObj.z) / cs.z) * g_tDelta[0].z) : FLOAT_INF);\n"
                     "        segT = min(segTMax.x, min(segTMax.y, segTMax.z));\n"
                     "        segNormal = vec4(-g_rayDirSign * vec3(lessThanEqual(segTMax, vec3(segT))), 1.);\n"
-                    "        if (g_terminatePosLength >= length((g_eyePosObj.xyz + segT * g_rayDir.xyz) - g_eyePosObj.xyz))\n"
+                    "        if (g_terminateT >= segT)\n"
                     "        { ++stepCounter; }\n"
                     "      }\n"
                     "\n"
@@ -1897,7 +1897,7 @@ namespace vtkvolume
                 "          volDataPos += g_dirStep;\n"
                 "        }\n"
                 "        volT = intersections[i].t;\n"
-                "        if (g_terminatePosLength >= length((g_eyePosObj.xyz + volT * g_rayDir.xyz) - g_eyePosObj.xyz))\n"
+                "        if (g_terminateT >= volT)\n"
                 "        { ++stepCounter; }\n"
                 "      }\n"
               ;
@@ -1906,7 +1906,7 @@ namespace vtkvolume
             "  }\n"
             "\n"
             "  bool doingVol = false;\n"
-            "  if (volT != FLOAT_MAX && volT < segT) doingVol = true;\n"
+            "  if (volT != FLOAT_INF && volT < segT) doingVol = true;\n"
             "  g_exit = (stepCounter == 0);\n"
             "\n"
           ;
@@ -1948,8 +1948,8 @@ namespace vtkvolume
     //      str +=
     //       "\n  initialIndexUnset[" + ii + "] = true;"
     //       "\n#if NUMBER_OF_CONTOURS_" + ii + "\
-    //        \n  l_normValues_" + ii + "[0] = -FLOAT_MAX; //-infinity\
-    //        \n  l_normValues_" + ii + "[NUMBER_OF_CONTOURS_" + ii + " + 1] = +FLOAT_MAX; //+infinity\
+    //        \n  l_normValues_" + ii + "[0] = FLOAT_INF_NEG; //-infinity\
+    //        \n  l_normValues_" + ii + "[NUMBER_OF_CONTOURS_" + ii + " + 1] = FLOAT_INF; //+infinity\
     //        \n  for (int i = 0; i < NUMBER_OF_CONTOURS_" + ii + "; ++i)\
     //        \n  {\
     //        \n    l_normValues_" + ii + "[i + 1] = (in_isosurfacesValues_" + ii + "[i] - "
@@ -2034,10 +2034,10 @@ namespace vtkvolume
     toShaderStr <<
       "    int volumeIndex = -1;\n"
       "\n"
-      "    float minT = FLOAT_MAX;\n"
+      "    float minT = FLOAT_INF;\n"
       "    for (int i = 0; i < " + std::to_string(inputs.size()) + "; ++i)\n"
       "    {\n"
-      "      if (t[i] != FLOAT_MAX && t[i] < minT)\n"
+      "      if (t[i] != FLOAT_INF && t[i] < minT)\n"
       "      {\n"
       "        minT = t[i];\n"
       "        volumeIndex = i;\n"
@@ -2052,7 +2052,7 @@ namespace vtkvolume
       "    g_dataPos = dataPos[volumeIndex];\n"
       "    texPos = (volumeParameters.data[volumeIndex].cellToPoint * volumeParameters.data[volumeIndex].inverseTextureDatasetMatrix * volumeParameters.data[volumeIndex].inverseVolumeMatrix *\n"
       "             in_volumeMatrix * in_textureDatasetMatrix * vec4(g_dataPos.xyz, 1.0)).xyz;\n"
-      "    if (minT != FLOAT_MAX && g_terminatePosLength >= length((g_eyePosObj.xyz + minT * g_rayDir.xyz) - g_eyePosObj.xyz) && all(lessThanEqual(texPos, volumeParameters.data[volumeIndex].texMax.xyz)) && all(greaterThanEqual(texPos, volumeParameters.data[volumeIndex].texMin.xyz)))\n"
+      "    if (minT != FLOAT_INF && g_terminateT >= minT && all(lessThanEqual(texPos, volumeParameters.data[volumeIndex].texMax.xyz)) && all(greaterThanEqual(texPos, volumeParameters.data[volumeIndex].texMin.xyz)))\n"
       "    {\n"
     ;
 
@@ -2193,20 +2193,20 @@ namespace vtkvolume
               "      }\n"
               "    }\n"
               "\n"
-              "    if (minT != FLOAT_MAX)\n"
+              "    if (minT != FLOAT_INF)\n"
               "    {\n"
               "      dataPos[volumeIndex] = dataPos[volumeIndex] + g_dirSteps[volumeIndex];\n"
               "      t[volumeIndex] = dot((in_textureDatasetMatrix * vec4(dataPos[volumeIndex], 1.) - g_eyePosObj).xyz, g_rayDir) / g_rayDirDot;\n"
               "      if (isnan(t[volumeIndex]) || t[volumeIndex] > intervals[volumeIndex].tExit + FLOAT_EPS)\n"
               "      {\n"
-              "          t[volumeIndex] = FLOAT_MAX;\n"
+              "          t[volumeIndex] = FLOAT_INF;\n"
               "      }\n"
               "    }\n"
               "\n"
               "    g_exit = true;\n"
               "    for (int i = 0; i < " + std::to_string(inputs.size()) + "; ++i)\n"
               "    {\n"
-              "      if (t[i] != FLOAT_MAX)\n"
+              "      if (t[i] != FLOAT_INF)\n"
               "      {\n"
               "        g_exit = false;\n"
               "        break;\n"
@@ -2782,7 +2782,7 @@ namespace vtkvolume
       \n                    in_inverseProjectionMatrix *\
       \n                    terminatePosTmp;\
       \n  g_terminatePos = terminatePosTmp.xyz / terminatePosTmp.w;\
-      \n  g_terminatePosLength = length(g_terminatePos - g_eyePosObj.xyz);\
+      \n  g_terminateT = dot(g_terminatePos - g_eyePosObj.xyz, g_rayDir) / g_rayDirDot;\
       \n\
       \n  // To texture coordinates\
       \n  terminatePosTmp = ip_inverseTextureDataAdjusted * terminatePosTmp;\
@@ -2846,7 +2846,7 @@ namespace vtkvolume
     else
     {
         str += "\n"
-            "    float tNext = FLOAT_MAX;\n"
+            "    float tNext = FLOAT_INF;\n"
             "    if (doingVol)\n"
             "    {\n"
             "      volDataPos += g_dirStep;\n"
@@ -2891,7 +2891,7 @@ namespace vtkvolume
                 "    }\n";
         }
         str +=
-          "    if (g_terminatePosLength >= length((g_eyePosObj.xyz + tNext * g_rayDir.xyz) - g_eyePosObj.xyz) && tNext < intervals[0].tExit + FLOAT_EPS)\n"
+          "    if (g_terminateT >= tNext && tNext < intervals[0].tExit + FLOAT_EPS)\n"
           "    {\n"
           "      ++stepCounter;\n"
           "    }\n"
