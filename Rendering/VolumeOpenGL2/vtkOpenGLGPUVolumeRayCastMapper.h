@@ -217,7 +217,9 @@ public:
       std::size_t size;
   };
 
+  double GetMaxGradientMagnitude(int index) noexcept;
   void SetMaxGradientMagnitude(int index, double maxGradientMagnitude) noexcept;
+  const PrecomputedGradient& GetPrecomputedVolumeGradient(int index) noexcept;
   void SetPrecomputedVolumeGradient(int index, const PrecomputedGradient& precomputedVolumeGradient) noexcept;
 
   // Description:

@@ -468,7 +468,6 @@ bool vtkDualDepthPeelingPass::PreReplaceVolumetricShaderValues(
     "\n"
     "    // To texture coordinates\n"
     "    g_terminatePos = endPoint.xyz / endPoint.w;\n"
-    "    g_terminatePosEyeLength = length(g_terminatePos - g_eyePosTex.xyz);\n"
     "  }\n"
     "\n";
 
@@ -477,7 +476,8 @@ bool vtkDualDepthPeelingPass::PreReplaceVolumetricShaderValues(
 
   const std::string pathCheck =
     "  // Make sure that we're sampling consistently across boundaries:\n"
-    "  g_dataPos = ClampToSampleLocation(rayOrigin, g_dirStep, g_dataPos, true /*ceil*/);\n"
+    "  // TODO we won't do this and see how it looks\n"
+    "  //g_dataPos = ClampToSampleLocation(rayOrigin, g_dirStep, g_dataPos, true /*ceil*/);\n"
     "\n"
     "  // Ensure end is not located before start. This could be the case\n"
     "  // if end lies outside of the volume's bounding box. In those cases\n"
@@ -489,7 +489,6 @@ bool vtkDualDepthPeelingPass::PreReplaceVolumetricShaderValues(
     "  }\n"
     "\n"
     "  // Compute the number of steps and reinitialize the step counter.\n"
-    "  g_terminatePosEyeLength = length(g_terminatePos - g_eyePosTex);\n"
     "  g_fragColor = vec4(0.0);\n"
     "\n";
 

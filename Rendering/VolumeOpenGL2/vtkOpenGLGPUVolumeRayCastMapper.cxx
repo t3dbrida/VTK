@@ -357,7 +357,6 @@ uniform vec3 in_textureExtentsMin;
 
 // Others
 uniform bool in_useJittering;
-vec3 g_rayJitter[2];
 vec3 g_tDelta[1];
 
 vec4 sampleMask(int index, vec3 uvw)
@@ -453,44 +452,6 @@ vec2 intersectRayBox(vec3 rayOrigin, vec3 rayDir, vec3 aabbMin, vec3 aabbMax)
         }
 
         return tMax >= tMin ? vec2(tMin, tMax) : vec2(FLOAT_MAX, -FLOAT_MAX);
-}
-
-vec3 ClampToSampleLocation(vec3 start, vec3 step, vec3 pos, bool ceiling)
-{
-  pos -= g_rayJitter[0];
-
-  vec3 offset = pos - start;
-  float stepLength = length(step);
-
-  // Scalar projection of offset on step:
-  float dist = dot(offset, step / stepLength);
-  if (dist < 0.) // Don't move before the start position:
-  {
-    return start + g_rayJitter[0];
-  }
-
-  // Number of steps
-  float steps = dist / stepLength;
-
-  // If we're reeaaaaallly close, just round -- it's likely just numerical noise
-  // and the value should be considered exact.
-  if (abs(mod(steps, 1.)) > 1e-5)
-  {
-    if (ceiling)
-    {
-      steps = ceil(steps);
-    }
-    else
-    {
-      steps = floor(steps);
-    }
-  }
-  else
-  {
-    steps = floor(steps + 0.5);
-  }
-
-  return start + steps * step + g_rayJitter[0];
 }
 
 void initializeRayCast()
@@ -920,12 +881,6 @@ public:
     this->PreserveGLState = false;
 
     this->Partitions[0] = this->Partitions[1] = this->Partitions[2] = 1;
-
-    GLint maxTextureUnits;
-    glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &maxTextureUnits);
-
-    // transfer function textures, noise texture, depth texture
-    this->MaxGradientTextures = std::max(0, maxTextureUnits / 2 - 6);
   }
 
   // Destructor
@@ -4258,6 +4213,11 @@ void vtkOpenGLGPUVolumeRayCastMapper::GetColorImage(vtkImageData* output)
     this->Impl->RTTColorTextureObject, output);
 }
 
+double vtkOpenGLGPUVolumeRayCastMapper::GetMaxGradientMagnitude(int index) noexcept
+{
+    return this->MaxGradientMagnitudes.at(index);
+}
+
 void vtkOpenGLGPUVolumeRayCastMapper::SetMaxGradientMagnitude(int index, double maxGradientMagnitude) noexcept
 {
     if (index >= 0)
@@ -4288,6 +4248,11 @@ void vtkOpenGLGPUVolumeRayCastMapper::SetPrecomputedVolumeGradient(int index, co
         }
         this->Modified();
     }
+}
+
+const vtkOpenGLGPUVolumeRayCastMapper::PrecomputedGradient& vtkOpenGLGPUVolumeRayCastMapper::GetPrecomputedVolumeGradient(int index) noexcept
+{
+    return this->PrecomputedVolumeGradients.at(index);
 }
 
 //----------------------------------------------------------------------------
@@ -5368,6 +5333,13 @@ void vtkOpenGLGPUVolumeRayCastMapper::GPURender(vtkRenderer* ren,
                                                 vtkVolume* vol)
 {
   vtkOpenGLClearErrorMacro();
+
+  ren->GetRenderWindow()->MakeCurrent();
+  GLint maxTextureUnits;
+  glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &maxTextureUnits);
+
+  // transfer function textures, noise texture, depth texture
+  this->Impl->MaxGradientTextures = std::max(0, maxTextureUnits / 2 - 6);
 
   this->Impl->ActiveVolume = vol;
   const auto multiVol = vtkMultiVolume::SafeDownCast(vol);

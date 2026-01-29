@@ -210,7 +210,7 @@ vec2 intersectRayBox(vec3 rayOrigin, vec3 rayDir, vec3 aabbMin, vec3 aabbMax)
  * is true, the sample located further in the direction of @a step is used,
  * otherwise the sample location closer to the eye is used.
  */
-vec3 ClampToSampleLocation(vec3 start, vec3 step, vec3 pos, bool ceiling)
+/*vec3 ClampToSampleLocation(vec3 start, vec3 step, vec3 pos, bool ceiling)
 {
   pos -= g_rayJitter[0];
 
@@ -246,7 +246,7 @@ vec3 ClampToSampleLocation(vec3 start, vec3 step, vec3 pos, bool ceiling)
   }
 
   return start + steps * step + g_rayJitter[0];
-}
+}*/
 
 //////////////////////////////////////////////////////////////////////////////
 ///
