@@ -3288,9 +3288,6 @@ namespace vtkvolume
         "uvec4 sampleRegionMask(int index, vec3 uvw)\n"
         "{\n"
         "  uvec4 result = uvec4(0);\n"
-        "  ivec3 volumeDimensions = volumeParameters.data[index].volumeDimensions.xyz;"
-        "  ivec3 coords = ivec3(floor(vec3(volumeDimensions) * uvw));\n"
-        "  if (all(greaterThanEqual(coords, ivec3(0))) && all(lessThan(coords, ivec3(volumeDimensions.xyz))))\n"
         "  {\n"
         "    switch (index)\n"
         "    {\n";
@@ -3300,7 +3297,12 @@ namespace vtkvolume
         str +=
             "      case " + iStr + ":\n"
             "      {\n"
-            "        result = texelFetch(in_regionMask[" + iStr + "], coords, 0);\n"
+            "        ivec3 volumeDimensions = textureSize(in_regionMask[" + iStr + "], 0);\n"// volumeParameters.data[index].volumeDimensions.xyz;\n"
+            "        ivec3 coords = ivec3(floor(vec3(volumeDimensions) * uvw));\n"
+            "        if (all(greaterThanEqual(coords, ivec3(0))) && all(lessThan(coords, ivec3(volumeDimensions.xyz))))\n"
+            "        {\n"
+            "          result = texelFetch(in_regionMask[" + iStr + "], coords, 0);\n"
+            "        }\n"
             "        break;\n"
             "      }\n";
     }

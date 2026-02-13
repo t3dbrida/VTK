@@ -174,22 +174,9 @@ precision mediump sampler3D;
 #endif // GL_ES
 #define varying in
 
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    raycasterfs.glsl
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-
 #define FLOAT_MAX 1e20
+#define FLOAT_INF (1. / 0.)
+#define FLOAT_INF_NEG (-1. / 0.)
 #define FLOAT_EPS 1e-7
 
 in vec3 ip_textureCoords;
@@ -208,9 +195,6 @@ vec4 g_eyePosObj;
 vec3 g_eyePosTex;
 bool g_exit;
 bool g_skip;
-
-uniform sampler3D in_mask[1];
-uniform bool in_hasMask;
 
 struct VolumeParameters
 {
@@ -255,7 +239,9 @@ float lmap(float x, float minA, float maxA, float minB, float maxB)
     return (minA == maxA) ? minB : (x - minA) * ((maxB - minB) / (maxA - minA)) + minB;
 }
 
-out float out_fragDepth;
+out float fragDepth;
+
+uniform sampler3D in_volume[1];
 
 struct Intersection
 {
@@ -276,7 +262,8 @@ struct Interval
 #define TYPE_VOLUME 0
 #define TYPE_REGION 1
 
-vec3 g_dirSteps[1];
+float g_stepT[1];
+float g_terminateT;
 
 Intersection[1] sortIntersections(Interval intervals[1])
 {
@@ -286,7 +273,7 @@ Intersection[1] sortIntersections(Interval intervals[1])
   {
     if (intervals[i].valid == false)
     {
-      intersections[i].t = FLOAT_MAX;
+      intersections[i].t = FLOAT_INF;
       intersections[i].volumeIndex = -1;
     }
     else
@@ -296,7 +283,6 @@ Intersection[1] sortIntersections(Interval intervals[1])
     }
   }
 
-  // bubble sort (array size is very small so it doesn't matter which alg. we use)
   for (int i = 0; i < 0; ++i)
   {
     for (int j = 0; j < 0 - i; ++j)
@@ -310,7 +296,6 @@ Intersection[1] sortIntersections(Interval intervals[1])
     }
   }
 
-  // clamp negative starting times to zero
   for (int i = 0; i < 1; ++i)
   {
     if (intersections[i].t < 0.)
@@ -322,12 +307,39 @@ Intersection[1] sortIntersections(Interval intervals[1])
   return intersections;
 }
 
+uniform vec4 in_regionColor[4];
+
+vec4 getRegionColor(int index)
+{
+  vec4 result = vec4(0.);
+  result = in_regionColor[index];
+  return result;
+}
+
+vec4 sampleVolume(int index, vec3 uvw)
+{
+  vec4 result = vec4(0.);
+
+  vec3 diffx = dFdx(uvw);
+  vec3 diffy = dFdy(uvw);
+  switch (index)
+  {
+    case 0:
+      result = textureGrad(in_volume[0], uvw, diffx, diffy);
+      break;
+  }
+
+  return result;
+}
+
 uniform int in_independentComponents;
 uniform bool in_outlineRegionVoxels;
 
 uniform sampler2D in_noiseSampler;
+#ifndef GL_ES
+uniform sampler2D in_depthSampler;
+#endif
 
-// Camera position
 uniform vec3 in_cameraPos;
 uniform mat4 in_volumeMatrix;
 uniform mat4 in_inverseVolumeMatrix;
@@ -337,26 +349,25 @@ uniform mat4 in_textureToEye;
 uniform vec3 in_texMin;
 uniform vec3 in_texMax;
 uniform mat4 in_cellToPoint;
-// view and model matrices
 uniform mat4 in_projectionMatrix;
 uniform mat4 in_inverseProjectionMatrix;
 uniform mat4 in_modelViewMatrix;
 uniform mat4 in_inverseModelViewMatrix;
 flat in mat4 ip_inverseTextureDataAdjusted;
 
-// Sample distance
 uniform float in_sampleDistance;
 uniform float in_downsampleCompensation;
 
-// Scales
 uniform vec2 in_windowLowerLeftCorner;
 uniform vec2 in_inverseOriginalWindowSize;
 uniform vec2 in_inverseWindowSize;
 uniform vec3 in_textureExtentsMax;
 uniform vec3 in_textureExtentsMin;
 
-// Others
+uniform float in_opacities[1];
+
 uniform bool in_useJittering;
+float g_rayJitter;
 vec3 g_tDelta[1];
 
 vec4 sampleMask(int index, vec3 uvw)
@@ -373,21 +384,23 @@ vec4 sampleMask(int index, vec3 uvw)
   return result;
 }
 
-
 uniform int in_regionOffset[2];
 uniform usampler3D in_regionMask[1];
 
 uvec4 sampleRegionMask(int index, vec3 uvw)
 {
   uvec4 result = uvec4(0);
-  ivec3 volumeDimensions = volumeParameters.data[index].volumeDimensions.xyz;  ivec3 coords = ivec3(floor(vec3(volumeDimensions) * uvw));
-  if (all(greaterThanEqual(coords, ivec3(0))) && all(lessThan(coords, ivec3(volumeDimensions.xyz))))
   {
     switch (index)
     {
       case 0:
       {
-        result = texelFetch(in_regionMask[0], coords, 0);
+        ivec3 volumeDimensions = textureSize(in_regionMask[0], 0);
+        ivec3 coords = ivec3(floor(vec3(volumeDimensions) * uvw));
+        if (all(greaterThanEqual(coords, ivec3(0))) && all(lessThan(coords, ivec3(volumeDimensions.xyz))))
+        {
+          result = texelFetch(in_regionMask[0], coords, 0);
+        }
         break;
       }
       default: break;
@@ -397,14 +410,16 @@ uvec4 sampleRegionMask(int index, vec3 uvw)
   return result;
 }
 
-uniform vec4 in_regionColor[4];
+//VTK::CompositeMask::Dec
 
-vec4 getRegionColor(int index)
-{
-  vec4 result = vec4(0.);
-  result = in_regionColor[index];
-  return result;
-}
+//VTK::ComputeRayDirection::Dec
+
+//VTK::RenderToImage::Dec
+
+//VTK::DepthPeeling::Dec
+
+uniform float in_scale;
+uniform float in_bias;
 
 vec4 WindowToNDC(const float xCoord, const float yCoord, const float zCoord)
 {
@@ -430,34 +445,36 @@ vec4 NDCToWindow(const float xNDC, const float yNDC, const float zNDC)
 
 vec2 intersectRayBox(vec3 rayOrigin, vec3 rayDir, vec3 aabbMin, vec3 aabbMax)
 {
-        float tMin = -FLOAT_MAX;
-        float tMax = FLOAT_MAX;
+    float tMin = -FLOAT_MAX;
+    float tMax = FLOAT_MAX;
 
-		vec3 inverseRayDirection = vec3(1.) / rayDir;
-        for (int i = 0; i < 3; ++i)
+    vec3 inverseRayDirection = vec3(1.) / rayDir;
+    for (int i = 0; i < 3; ++i)
+    {
+        float t0, t1;
+        if (inverseRayDirection[i] >= 0.)
         {
-            float t0, t1;
-            if (inverseRayDirection[i] >= 0.)
-            {
-                t0 = (aabbMin[i] - rayOrigin[i]) * inverseRayDirection[i];
-                t1 = (aabbMax[i] - rayOrigin[i]) * inverseRayDirection[i];
-            }
-            else {
-                t1 = (aabbMin[i] - rayOrigin[i]) * inverseRayDirection[i];
-                t0 = (aabbMax[i] - rayOrigin[i]) * inverseRayDirection[i];
-            }
-
-            tMin = t0 > tMin ? t0 : tMin;
-            tMax = t1 < tMax ? t1 : tMax;
+            t0 = (aabbMin[i] - rayOrigin[i]) * inverseRayDirection[i];
+            t1 = (aabbMax[i] - rayOrigin[i]) * inverseRayDirection[i];
+        }
+        else {
+            t1 = (aabbMin[i] - rayOrigin[i]) * inverseRayDirection[i];
+            t0 = (aabbMax[i] - rayOrigin[i]) * inverseRayDirection[i];
         }
 
-        return tMax >= tMin ? vec2(tMin, tMax) : vec2(FLOAT_MAX, -FLOAT_MAX);
-}
+        tMin = t0 > tMin ? t0 : tMin;
+        tMax = t1 < tMax ? t1 : tMax;
+    }
 
+    return tMax >= tMin ? vec2(tMin, tMax) : vec2(FLOAT_MAX, -FLOAT_MAX);
+}
+)"
+R"(
 void initializeRayCast()
 {
-  g_fragDepth = 0.;
+  g_fragDepth = 0.0;
   g_dirStep = vec3(0.0);
+  g_srcColor = vec4(0.0);
   g_exit = false;
 
   g_dataPos = ip_textureCoords.xyz;      
@@ -471,35 +488,80 @@ void initializeRayCast()
       
   g_dirStep = in_sampleDistance * (ip_inverseTextureDataAdjusted * vec4(g_rayDir, 0.0)).xyz;          
   vec3 cs = volumeParameters.data[0].cellSpacing.xyz;          
-  g_tDelta[0] = vec3(g_rayDir.x != 0. ? (g_rayDirSign.x * cs.x / g_rayDir.x) : FLOAT_MAX,          
-                     g_rayDir.y != 0. ? (g_rayDirSign.y * cs.y / g_rayDir.y) : FLOAT_MAX,          
-                     g_rayDir.z != 0. ? (g_rayDirSign.z * cs.z / g_rayDir.z) : FLOAT_MAX);      
+  g_tDelta[0] = vec3(g_rayDir.x != 0. ? (g_rayDirSign.x * cs.x / g_rayDir.x) : FLOAT_INF,          
+                     g_rayDir.y != 0. ? (g_rayDirSign.y * cs.y / g_rayDir.y) : FLOAT_INF,          
+                     g_rayDir.z != 0. ? (g_rayDirSign.z * cs.z / g_rayDir.z) : FLOAT_INF);              
+      
+  vec2 fragTexCoord = (gl_FragCoord.xy - in_windowLowerLeftCorner) * in_inverseWindowSize;      
+      
+  if (in_useJittering)      
+  {      
+    g_rayJitter = texture(in_noiseSampler, gl_FragCoord.xy / textureSize(in_noiseSampler, 0)).x;      
+  }      
+  else      
+  {      
+    g_rayJitter = 0.;      
+  }      
+      
+  g_skip = false;          
+
+  bool stop = false;      
+      
+#ifdef GL_ES      
+  vec4 l_depthValue = vec4(1.0,1.0,1.0,1.0);      
+#else      
+  vec4 l_depthValue = texture(in_depthSampler, fragTexCoord);      
+#endif      
+  if(gl_FragCoord.z >= l_depthValue.x)      
+  {      
+    discard;      
+  }      
+      
+  fragTexCoord = (gl_FragCoord.xy - in_windowLowerLeftCorner) *      
+                 in_inverseOriginalWindowSize;      
+      
+  vec4 terminatePosTmp = WindowToNDC(gl_FragCoord.x, gl_FragCoord.y, l_depthValue.x);      
+      
+  terminatePosTmp = in_inverseVolumeMatrix *      
+                    in_inverseModelViewMatrix *      
+                    in_inverseProjectionMatrix *      
+                    terminatePosTmp;      
+  g_terminatePos = terminatePosTmp.xyz / terminatePosTmp.w;      
+  g_terminateT = dot(g_terminatePos - g_eyePosObj.xyz, g_rayDir) / g_rayDirDot;      
+      
+  terminatePosTmp = ip_inverseTextureDataAdjusted * terminatePosTmp;      
+  g_terminatePos = terminatePosTmp.xyz / terminatePosTmp.w;      
+
+  //VTK::RenderToImage::Init
+
+  //VTK::DepthPass::Init
 }
 
-//VTK::Clipping::Dec
-
-void castRay(const float zStart, const float zEnd)
+float castRay(const float zStart, const float zEnd)
 {
-  g_fragDepth = 0;
+  //VTK::DepthPeeling::Ray::Init
 
-  //VTK::Clipping::Init
+  //VTK::Clipping::Impl
+
+  //VTK::DepthPeeling::Ray::PathCheck
+
   if (abs(g_rayDirDot) < 1e-20)
   {
-    return;
+    return g_fragDepth;
   }
 
   Interval intervals[1];
   for (int i = 0; i < 1; ++i)
   {
-    intervals[i].tEnter = FLOAT_MAX;
-    intervals[i].tExit = -FLOAT_MAX;
+    intervals[i].tEnter = FLOAT_INF;
+    intervals[i].tExit = FLOAT_INF_NEG;
     intervals[i].valid = false;
     if (volumeParameters.data[i].volumeVisibility.x == 1 || volumeParameters.data[i].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)
     {
       vec3 bboxMin = volumeParameters.data[i].boundsMin.xyz;
       vec3 bboxMax = volumeParameters.data[i].boundsMax.xyz;
       vec2 interval = intersectRayBox(g_eyePosObj.xyz, g_rayDir, bboxMin, bboxMax);
-      intervals[i].valid = interval.x < interval.y && interval.x < FLOAT_MAX && interval.y > 0.;
+      intervals[i].valid = interval.x < interval.y && interval.x < FLOAT_INF && interval.y > 0.;
       if (intervals[i].valid == true)
       {
         vec3 posEnter = g_eyePosObj.xyz + interval.x * g_rayDir;
@@ -512,11 +574,12 @@ void castRay(const float zStart, const float zEnd)
 
   Intersection intersections[1] = sortIntersections(intervals);
 
-  float segT = FLOAT_MAX;
+  vec3 volDataPos, segDataPos;
+  float volT = FLOAT_INF, segT = FLOAT_INF;
   vec3 segTMax;
-  int stepCounter = 0;
+  vec4 segNormal;
+  int stepCounter = 0; // indicates validity of marched through volumes, if 0 then the loop exits
 
-  g_exit = true;
   for (int i = 0; i < 1; ++i)
   {
     if (intersections[i].volumeIndex >= 0)
@@ -528,24 +591,35 @@ void castRay(const float zStart, const float zEnd)
       if (volumeParameters.data[i].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)
       {
         vec3 cs = volumeParameters.data[0].cellSpacing.xyz;
-        // grid corner is computed with respect to the fact that the volume bounding box is enlarged by half a voxel in all directions, beginning in negative numbers
         vec3 hitPoint = g_eyePosObj.xyz + g_rayDir * intersections[0].t - in_sampleDistance * g_rayDir; // add an arbitrary offset to start outside the intersection position
         vec3 gridCorner = cs * floor((hitPoint + .5 * cs) / cs) - .5 * cs; // we move the enlarged volume by half voxel to properly work with rounding (necessary when working with half voxel offset), then restore the original grid corner position
         vec3 nextGridLine = gridCorner + vec3(greaterThanEqual(g_rayDirSign, vec3(0.))) * cs;
 
-        g_dataPos = (in_inverseTextureDatasetMatrix * vec4(gridCorner + .5 * cs, 1.)).xyz;
-        segTMax = vec3(g_rayDir.x != 0. ? (g_rayDirSign.x * ((nextGridLine.x - g_eyePosObj.x) / cs.x) * g_tDelta[0].x) : FLOAT_MAX,
-                       g_rayDir.y != 0. ? (g_rayDirSign.y * ((nextGridLine.y - g_eyePosObj.y) / cs.y) * g_tDelta[0].y) : FLOAT_MAX,
-                       g_rayDir.z != 0. ? (g_rayDirSign.z * ((nextGridLine.z - g_eyePosObj.z) / cs.z) * g_tDelta[0].z) : FLOAT_MAX);
+        segDataPos = (in_inverseTextureDatasetMatrix * vec4(gridCorner + .5 * cs, 1.)).xyz;
+        segTMax = vec3(g_rayDir.x != 0. ? (g_rayDirSign.x * ((nextGridLine.x - g_eyePosObj.x) / cs.x) * g_tDelta[0].x) : FLOAT_INF,
+                       g_rayDir.y != 0. ? (g_rayDirSign.y * ((nextGridLine.y - g_eyePosObj.y) / cs.y) * g_tDelta[0].y) : FLOAT_INF,
+                       g_rayDir.z != 0. ? (g_rayDirSign.z * ((nextGridLine.z - g_eyePosObj.z) / cs.z) * g_tDelta[0].z) : FLOAT_INF);
         segT = min(segTMax.x, min(segTMax.y, segTMax.z));
-        g_exit = false;
+        segNormal = vec4(-g_rayDirSign * vec3(lessThanEqual(segTMax, vec3(segT))), 1.);
+        if (g_terminateT >= segT)
+        { ++stepCounter; }
       }
     }
   }
 
+  g_exit = (stepCounter == 0);
+
   while (!g_exit)
   {
+    //VTK::RegionMask::Impl
+
+    //VTK::CompositeMask::Impl
+
+    //VTK::PreComputeGradients::Impl
+
     g_skip = false;
+    g_dataPos = segDataPos;
+    --stepCounter;
 
     bool noMask = true;
     bool maskedByBox = false;
@@ -578,77 +652,87 @@ void castRay(const float zStart, const float zEnd)
       }
     }
     bool maskedByClippingPlanes = false;
-    //VTK::Clipping::Impl
 
-    bool maskedByRegion = false;
-    if (in_hasMask)
+    if (g_skip == false && (noMask || (maskedByBox || maskedByClippingPlanes || maskedByCylinder)))
     {
-      noMask = false;
-      if (texture(in_mask[0], g_dataPos).r > 0.)
-      {
-          maskedByRegion = true;
-      }
-    }
-
-    if (g_skip == false && (noMask || (maskedByBox || maskedByClippingPlanes || maskedByCylinder || maskedByRegion)))
-    {
+      int colorCount = 0;
       if (g_dataPos.x >= 0. && g_dataPos.x <= 1. &&
-               g_dataPos.y >= 0. && g_dataPos.y <= 1. &&
-               g_dataPos.z >= 0. && g_dataPos.z <= 1.)
+          g_dataPos.y >= 0. && g_dataPos.y <= 1. &&
+          g_dataPos.z >= 0. && g_dataPos.z <= 1.)
       {
         if (volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)
         {
           uvec4 regionMaskValue = sampleRegionMask(volumeParameters.data[0].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z, g_dataPos);
           int regionCount = in_regionOffset[1] - in_regionOffset[0];
           int digits = regionCount <= 8 ? 8 : (regionCount <= 16 ? 16 : 32);
+          int divisor = 0;
           for (int regionIndex = 0; regionIndex < regionCount; ++regionIndex)
           {
             if ((regionMaskValue[regionIndex / digits] & uint(1 << (regionIndex % digits))) != uint(0))
             {
-              //vec4 regionColor = getRegionColor(in_regionOffset[0] + regionIndex);
-              //if (regionColor.a > 0.)
+              vec4 regionColor = getRegionColor(in_regionOffset[0] + regionIndex);
+              if (regionColor.a > 0.)
               {
                 g_fragDepth = length(p - g_eyePosObj.xyz);
-                return;
+                return g_fragDepth;
               }
             }
           }
         }
       }
+
     }
-    // TYPE_REGION
+
+    //VTK::RenderToImage::Impl
+
+    //VTK::DepthPass::Impl
+    
+    float tNext = FLOAT_INF;
     {
       vec3 cellSteps = volumeParameters.data[0].cellStep.xyz;
+      segNormal = vec4(vec3(0.), 1.);
       if (segTMax.x < segTMax.y && segTMax.x < segTMax.z)
       {
-        g_dataPos.x += g_rayDirSign.x * cellSteps.x;
-        segT = segTMax.x;
+        segDataPos.x += g_rayDirSign.x * cellSteps.x;
+        tNext = segTMax.x;
         segTMax.x += g_tDelta[0].x;
+        segNormal.x = -g_rayDirSign.x;
       }
       else if (segTMax.y < segTMax.z)
       {
-        g_dataPos.y += g_rayDirSign.y * cellSteps.y;
-        segT = segTMax.y;
+        segDataPos.y += g_rayDirSign.y * cellSteps.y;
+        tNext = segTMax.y;
         segTMax.y += g_tDelta[0].y;
+        segNormal.y = -g_rayDirSign.y;
       }
       else
       {
-        g_dataPos.z += g_rayDirSign.z * cellSteps.z;
-        segT = segTMax.z;
+        segDataPos.z += g_rayDirSign.z * cellSteps.z;
+        tNext = segTMax.z;
         segTMax.z += g_tDelta[0].z;
+        segNormal.z = -g_rayDirSign.z;
       }
+      segT = tNext;
     }
-    if (segT > intervals[0].tExit)
+    if (g_terminateT >= tNext && tNext < intervals[0].tExit + FLOAT_EPS)
     {
-      g_exit = true;
+      ++stepCounter;
     }
+    g_exit = (stepCounter == 0);
   }
-  return;
+
+  return g_fragDepth;
 }
 
 void finalizeRayCast()
 {
-  out_fragDepth = g_fragDepth;
+  //VTK::Picking::Exit
+
+  fragDepth = g_fragDepth;
+
+  //VTK::RenderToImage::Exit
+
+  //VTK::DepthPass::Exit
 }
 
 void main()
