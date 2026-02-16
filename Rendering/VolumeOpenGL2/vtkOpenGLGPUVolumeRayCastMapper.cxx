@@ -370,6 +370,8 @@ uniform bool in_useJittering;
 float g_rayJitter;
 vec3 g_tDelta[1];
 
+//VTK::Clipping::Dec
+
 vec4 sampleMask(int index, vec3 uvw)
 {
   vec4 result = vec4(0.);
@@ -541,8 +543,6 @@ float castRay(const float zStart, const float zEnd)
 {
   //VTK::DepthPeeling::Ray::Init
 
-  //VTK::Clipping::Impl
-
   //VTK::DepthPeeling::Ray::PathCheck
 
   if (abs(g_rayDirDot) < 1e-20)
@@ -652,6 +652,8 @@ float castRay(const float zStart, const float zEnd)
       }
     }
     bool maskedByClippingPlanes = false;
+
+    //VTK::Clipping::Impl
 
     if (g_skip == false && (noMask || (maskedByBox || maskedByClippingPlanes || maskedByCylinder)))
     {
