@@ -2643,10 +2643,24 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::CaptureDepthTexture(
   if (this->Parent->ImageSampleDistance != 1.f)
   {
       int* const renderWindowSize = ren->GetRenderWindow()->GetSize();
-      auto zBuffer = vtkSmartPointer<vtkFloatArray>::New();
-      static_cast<vtkOpenGLRenderWindow*>(ren->GetRenderWindow())->GetZbufferData(0, 0, renderWindowSize[0] - 1, renderWindowSize[1] - 1, zBuffer);
+      //auto zBuffer = vtkSmartPointer<vtkFloatArray>::New();
+      //static_cast<vtkOpenGLRenderWindow*>(ren->GetRenderWindow())->GetZbufferData(0, 0, renderWindowSize[0] - 1, renderWindowSize[1] - 1, zBuffer);
 
-      /*const auto depthTextureObject = vtkSmartPointer<vtkTextureObject>::New();
+      std::vector<float> depthBuffer(renderWindowSize[0] * renderWindowSize[1], 0.f);
+      glReadPixels(
+        0,
+        0,
+        renderWindowSize[0],
+        renderWindowSize[1],
+        GL_DEPTH_COMPONENT,
+        GL_FLOAT,
+        depthBuffer.data()
+      );
+
+      auto zBuffer = vtkSmartPointer<vtkFloatArray>::New();
+      zBuffer->SetArray(depthBuffer.data(), depthBuffer.size(), 1);
+/*
+      const auto depthTextureObject = vtkSmartPointer<vtkTextureObject>::New();
       depthTextureObject->SetContext(vtkOpenGLRenderWindow::SafeDownCast(ren->GetRenderWindow()));
 
       // First set the parameters
