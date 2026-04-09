@@ -42,6 +42,19 @@ namespace {
     return false;
   }
 
+  bool HasBitRegionMask(vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs)
+  {
+    for (auto& item : inputs)
+    {
+      const auto& region = item.second.Volume->GetProperty()->GetBitRegion();
+      if (region.mask && !region.colors.empty())
+      {
+        return true;
+      }
+    }
+    return false;
+  }
+
   bool HasLighting(vtkOpenGLGPUVolumeRayCastMapper::VolumeInputMap& inputs)
   {
     for (auto& item : inputs)
@@ -1050,6 +1063,21 @@ namespace vtkvolume
                   "\n    attenuation = 1. / (in_lightAttenuation[0].x + in_lightAttenuation[0].y * dist + in_lightAttenuation[0].z * dist * dist);"
                   "\n  }";
           }
+          else if (inputs.size() > 1 && !glMapper->GetSimpleRegionRendering() && HasBitRegionMask(inputs))
+          {
+              shaderStr +=
+                  "\n  float attenuation = 0.;"
+                  "\n  if (type == TYPE_REGION)"
+                  "\n  {"
+                  "\n    float regionDepth = 0.1 * float(index + 1);"
+                  "\n    float dLoc = max(0., dist - regionDepth);"
+                  "\n    attenuation = 1. / (1. + dLoc);"
+                  "\n  }"
+                  "\n  else"
+                  "\n  {"
+                  "\n    attenuation = 1. / (in_lightAttenuation[0].x + in_lightAttenuation[0].y * dist + in_lightAttenuation[0].z * dist * dist);"
+                  "\n  }";
+          }
           else
           {
               shaderStr += "\n  float attenuation = 1. / (in_lightAttenuation[0].x + in_lightAttenuation[0].y * dist + in_lightAttenuation[0].z * dist * dist);";
@@ -1723,6 +1751,8 @@ namespace vtkvolume
     const int numInputs = gpuMapper->GetInputCount();
     const std::string numInputsStr = std::to_string(numInputs);
     const std::string numInputs2xStr = std::to_string(2 * numInputs);
+    const bool useRegionDDA = numInputs > 1 && !gpuMapper->GetSimpleRegionRendering() &&
+      HasBitRegionMask(gpuMapper->AssembledInputs);
 
     std::string str = "";
     str +=
@@ -1737,11 +1767,41 @@ namespace vtkvolume
           "  Interval intervals[" + numInputsStr + "];\n"
           "  vec3 dataPos[" + numInputsStr + "];\n"
           "  float t[" + numInputsStr + "];\n"
+          ;
+        if (useRegionDDA)
+        {
+          str +=
+            "  vec3 segDataPos[" + numInputsStr + "];\n"
+            "  vec3 segTMax[" + numInputsStr + "];\n"
+            "  vec4 segNormals[" + numInputsStr + "];\n"
+            "  float segT[" + numInputsStr + "];\n"
+            "  vec3 segRayOrigin[" + numInputsStr + "];\n"
+            "  vec3 segRayDir[" + numInputsStr + "];\n"
+            "  vec3 segRayDirSign[" + numInputsStr + "];\n"
+            "  mat4 segLocalToGlobal[" + numInputsStr + "];\n"
+          ;
+        }
+        str +=
           "\n"
           "  for (int i = 0; i < " + numInputsStr + "; ++i)\n"
           "  {\n"
           "    dataPos[i] = vec3(FLOAT_INF, FLOAT_INF, FLOAT_INF);\n"
           "    t[i] = FLOAT_INF;\n"
+        ;
+        if (useRegionDDA)
+        {
+          str +=
+            "    segDataPos[i] = vec3(FLOAT_INF, FLOAT_INF, FLOAT_INF);\n"
+            "    segTMax[i] = vec3(FLOAT_INF, FLOAT_INF, FLOAT_INF);\n"
+            "    segNormals[i] = vec4(0.);\n"
+            "    segT[i] = FLOAT_INF;\n"
+            "    segRayOrigin[i] = vec3(0.);\n"
+            "    segRayDir[i] = vec3(0.);\n"
+            "    segRayDirSign[i] = vec3(0.);\n"
+            "    segLocalToGlobal[i] = mat4(1.0);\n"
+          ;
+        }
+        str +=
           "\n"
           "    intervals[i].tEnter = FLOAT_INF;\n"
           "    intervals[i].tExit = FLOAT_INF_NEG;\n"
@@ -1762,6 +1822,36 @@ namespace vtkvolume
           "        intervals[i].tExit = dot(posExit - g_eyePosObj.xyz, g_rayDir) / g_rayDirDot;\n"
           "        t[i] = intervals[i].tEnter + g_rayJitter * g_stepT[i];\n"
           "        if (t[i] < 0.) { t[i] = 0.; }\n"
+        ;
+        if (useRegionDDA)
+        {
+          str +=
+            "        if (volumeParameters.data[i].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)\n"
+            "        {\n"
+            "          vec3 cs = volumeParameters.data[i].cellSpacing.xyz;\n"
+            "          vec3 localRayDirSign = sign(localDir);\n"
+            "          g_tDelta[i] = vec3(localDir.x != 0. ? abs(cs.x / localDir.x) : FLOAT_INF,\n"
+            "                             localDir.y != 0. ? abs(cs.y / localDir.y) : FLOAT_INF,\n"
+            "                             localDir.z != 0. ? abs(cs.z / localDir.z) : FLOAT_INF);\n"
+            "          vec3 hitPointLocal = localEye + localDir * intervals[i].tEnter - in_sampleDistance * localDir;\n"
+            "          vec3 gridCorner = cs * floor((hitPointLocal + .5 * cs) / cs) - .5 * cs;\n"
+            "          vec3 nextGridLine = gridCorner + vec3(greaterThanEqual(localRayDirSign, vec3(0.))) * cs;\n"
+            "          segRayOrigin[i] = localEye;\n"
+            "          segRayDir[i] = localDir;\n"
+            "          segRayDirSign[i] = localRayDirSign;\n"
+            "          segLocalToGlobal[i] = in_inverseVolumeMatrix * volumeParameters.data[i].volumeMatrix;\n"
+            "          segDataPos[i] = (volumeParameters.data[i].cellToPoint * volumeParameters.data[i].inverseTextureDatasetMatrix * vec4(gridCorner + .5 * cs, 1.)).xyz;\n"
+            "          segTMax[i] = vec3(localDir.x != 0. ? (nextGridLine.x - localEye.x) / localDir.x : FLOAT_INF,\n"
+            "                         localDir.y != 0. ? (nextGridLine.y - localEye.y) / localDir.y : FLOAT_INF,\n"
+            "                         localDir.z != 0. ? (nextGridLine.z - localEye.z) / localDir.z : FLOAT_INF);\n"
+            "          float segTLocal = min(segTMax[i].x, min(segTMax[i].y, segTMax[i].z));\n"
+            "          vec3 segWorld = (segLocalToGlobal[i] * vec4(localEye + localDir * segTLocal, 1.)).xyz;\n"
+            "          segT[i] = dot(segWorld - g_eyePosObj.xyz, g_rayDir) / g_rayDirDot;\n"
+            "          segNormals[i] = vec4(-localRayDirSign * vec3(lessThanEqual(segTMax[i], vec3(segTLocal))), 1.);\n"
+            "        }\n"
+          ;
+        }
+        str +=
           "      }\n"
           "    }\n"
           "\n"
@@ -1769,6 +1859,10 @@ namespace vtkvolume
           "\n"
         ;
         str += "  vec3 texPos;\n";
+        if (useRegionDDA)
+        {
+          str += "  vec4 segNormal;\n";
+        }
     }
     else
     {
@@ -1983,18 +2077,47 @@ namespace vtkvolume
                                     const std::map<vtkVolume*, vtkImageData*>& maskInputs,
                                     const std::map<vtkVolume*, vtkSmartPointer<vtkVolumeTexture>>& masks)
   {
+    auto glMapper = vtkOpenGLGPUVolumeRayCastMapper::SafeDownCast(mapper);
+    const bool useRegionDDA = glMapper && glMapper->GetInputCount() > 1 &&
+      !glMapper->GetSimpleRegionRendering() && HasBitRegionMask(inputs);
     std::ostringstream toShaderStr;
     toShaderStr <<
-      "    int volumeIndex = -1;\n"
+      "    int volumeIndex = -1;\n";
+    if (useRegionDDA)
+    {
+      toShaderStr << "    bool doingVol = true;\n";
+    }
+    toShaderStr <<
       "\n"
       "    float minT = FLOAT_INF;\n"
       "    for (int i = 0; i < " + std::to_string(inputs.size()) + "; ++i)\n"
-      "    {\n"
-      "      if (t[i] != FLOAT_INF && t[i] < minT)\n"
-      "      {\n"
-      "        minT = t[i];\n"
-      "        volumeIndex = i;\n"
-      "      }\n"
+      "    {\n";
+    if (useRegionDDA)
+    {
+      toShaderStr <<
+        "      if (t[i] != FLOAT_INF && t[i] < minT)\n"
+        "      {\n"
+        "        minT = t[i];\n"
+        "        volumeIndex = i;\n"
+        "        doingVol = true;\n"
+        "      }\n"
+        "      if (segT[i] != FLOAT_INF && segT[i] < minT)\n"
+        "      {\n"
+        "        minT = segT[i];\n"
+        "        volumeIndex = i;\n"
+        "        doingVol = false;\n"
+        "      }\n";
+    }
+    else
+    {
+      toShaderStr <<
+        "      if (t[i] != FLOAT_INF && t[i] < minT)\n"
+        "      {\n"
+        "        minT = t[i];\n"
+        "        volumeIndex = i;\n"
+        "      }\n";
+    }
+    toShaderStr <<
       "    }\n"
       "\n"
       "    if (volumeIndex == -1)\n"
@@ -2002,13 +2125,43 @@ namespace vtkvolume
       "      break;\n"
       "    }\n"
       "\n"
-      "    vec3 worldPos = g_eyePosObj.xyz + t[volumeIndex] * g_rayDir;\n"
-      "    g_dataPos = (ip_inverseTextureDataAdjusted * vec4(worldPos, 1.0)).xyz;\n"
-      "    texPos = (volumeParameters.data[volumeIndex].cellToPoint * volumeParameters.data[volumeIndex].inverseTextureDatasetMatrix * volumeParameters.data[volumeIndex].inverseVolumeMatrix *\n"
-      "             in_volumeMatrix * vec4(worldPos, 1.)).xyz;\n"
+      "    float sampleT = ";
+    if (useRegionDDA)
+    {
+      toShaderStr << "(doingVol ? t[volumeIndex] : segT[volumeIndex]);\n";
+    }
+    else
+    {
+      toShaderStr << "t[volumeIndex];\n";
+    }
+    toShaderStr <<
+      "    vec3 worldPos = g_eyePosObj.xyz + sampleT * g_rayDir;\n";
+    if (useRegionDDA)
+    {
+      toShaderStr <<
+        "    if (doingVol)\n"
+        "    {\n"
+        "      g_dataPos = (ip_inverseTextureDataAdjusted * vec4(worldPos, 1.0)).xyz;\n"
+        "      texPos = (volumeParameters.data[volumeIndex].cellToPoint * volumeParameters.data[volumeIndex].inverseTextureDatasetMatrix * volumeParameters.data[volumeIndex].inverseVolumeMatrix *\n"
+        "               in_volumeMatrix * vec4(worldPos, 1.)).xyz;\n"
+        "    }\n"
+        "    else\n"
+        "    {\n"
+        "      g_dataPos = segDataPos[volumeIndex];\n"
+        "      texPos = segDataPos[volumeIndex];\n"
+        "      segNormal = segNormals[volumeIndex];\n"
+        "    }\n";
+    }
+    else
+    {
+      toShaderStr <<
+        "    g_dataPos = (ip_inverseTextureDataAdjusted * vec4(worldPos, 1.0)).xyz;\n"
+        "    texPos = (volumeParameters.data[volumeIndex].cellToPoint * volumeParameters.data[volumeIndex].inverseTextureDatasetMatrix * volumeParameters.data[volumeIndex].inverseVolumeMatrix *\n"
+        "             in_volumeMatrix * vec4(worldPos, 1.)).xyz;\n";
+    }
+    toShaderStr <<
       "    if (minT != FLOAT_INF && g_terminateT >= minT && all(lessThanEqual(texPos, volumeParameters.data[volumeIndex].texMax.xyz)) && all(greaterThanEqual(texPos, volumeParameters.data[volumeIndex].texMin.xyz)))\n"
-      "    {\n"
-    ;
+      "    {\n";
 
     switch (mapper->GetBlendMode())
     {
@@ -2104,9 +2257,20 @@ namespace vtkvolume
               "            regionResultColor /= float(divisor);\n"
               "          }\n"
               "\n"
-              "          g_srcColor = vec4(0.);\n"
+              "          g_srcColor = vec4(0.);\n";
+          if (useRegionDDA)
+          {
+            toShaderStr <<
+              "          if (doingVol && volumeParameters.data[volumeIndex].volumeVisibility.x == 1)\n"
+              "          {\n";
+          }
+          else
+          {
+            toShaderStr <<
               "          if (volumeParameters.data[volumeIndex].volumeVisibility.x == 1)\n"
-              "          {\n"
+              "          {\n";
+          }
+          toShaderStr <<
               "            vec4 color = vec4(0.);\n"
               "            vec4 grad = vec4(0.);\n"
               "\n"
@@ -2132,8 +2296,19 @@ namespace vtkvolume
               "\n"
               "          if (regionResultColor.a > 0.)\n"
               "          {\n"
-              "            ++colorCount;\n"
-              "            regionResultColor = computeLighting(volumeIndex, regionResultColor, computeGradient(volumeIndex, texPos), TYPE_REGION);\n"
+              "            ++colorCount;\n";
+          if (useRegionDDA)
+          {
+            toShaderStr <<
+              "            vec4 regionGrad = doingVol ? computeGradient(volumeIndex, texPos) : segNormal;\n"
+              "            regionResultColor = computeLighting(volumeIndex, regionResultColor, regionGrad, TYPE_REGION);\n";
+          }
+          else
+          {
+            toShaderStr <<
+              "            regionResultColor = computeLighting(volumeIndex, regionResultColor, computeGradient(volumeIndex, texPos), TYPE_REGION);\n";
+          }
+          toShaderStr <<
               "            g_srcColor += regionResultColor;\n"
               "          }\n"
               "\n"
@@ -2148,22 +2323,89 @@ namespace vtkvolume
               "    }\n"
               "\n"
               "    if (minT != FLOAT_INF)\n"
-              "    {\n"
+              "    {\n";
+          if (useRegionDDA)
+          {
+            toShaderStr <<
+              "      if (doingVol)\n"
+              "      {\n"
+              "        t[volumeIndex] += g_stepT[volumeIndex];\n"
+              "        if (t[volumeIndex] > intervals[volumeIndex].tExit + FLOAT_EPS)\n"
+              "        {\n"
+              "          t[volumeIndex] = FLOAT_INF;\n"
+              "        }\n"
+              "      }\n"
+              "      else\n"
+              "      {\n"
+              "        vec3 cellSteps = volumeParameters.data[volumeIndex].cellStep.xyz;\n"
+              "        segNormals[volumeIndex] = vec4(vec3(0.), 1.);\n"
+              "        if (segTMax[volumeIndex].x < segTMax[volumeIndex].y && segTMax[volumeIndex].x < segTMax[volumeIndex].z)\n"
+              "        {\n"
+              "          segDataPos[volumeIndex].x += segRayDirSign[volumeIndex].x * cellSteps.x;\n"
+              "          float segTLocal = segTMax[volumeIndex].x;\n"
+              "          vec3 segWorld = (segLocalToGlobal[volumeIndex] * vec4(segRayOrigin[volumeIndex] + segRayDir[volumeIndex] * segTLocal, 1.)).xyz;\n"
+              "          segT[volumeIndex] = dot(segWorld - g_eyePosObj.xyz, g_rayDir) / g_rayDirDot;\n"
+              "          segTMax[volumeIndex].x += g_tDelta[volumeIndex].x;\n"
+              "          segNormals[volumeIndex].x = -segRayDirSign[volumeIndex].x;\n"
+              "        }\n"
+              "        else if (segTMax[volumeIndex].y < segTMax[volumeIndex].z)\n"
+              "        {\n"
+              "          segDataPos[volumeIndex].y += segRayDirSign[volumeIndex].y * cellSteps.y;\n"
+              "          float segTLocal = segTMax[volumeIndex].y;\n"
+              "          vec3 segWorld = (segLocalToGlobal[volumeIndex] * vec4(segRayOrigin[volumeIndex] + segRayDir[volumeIndex] * segTLocal, 1.)).xyz;\n"
+              "          segT[volumeIndex] = dot(segWorld - g_eyePosObj.xyz, g_rayDir) / g_rayDirDot;\n"
+              "          segTMax[volumeIndex].y += g_tDelta[volumeIndex].y;\n"
+              "          segNormals[volumeIndex].y = -segRayDirSign[volumeIndex].y;\n"
+              "        }\n"
+              "        else\n"
+              "        {\n"
+              "          segDataPos[volumeIndex].z += segRayDirSign[volumeIndex].z * cellSteps.z;\n"
+              "          float segTLocal = segTMax[volumeIndex].z;\n"
+              "          vec3 segWorld = (segLocalToGlobal[volumeIndex] * vec4(segRayOrigin[volumeIndex] + segRayDir[volumeIndex] * segTLocal, 1.)).xyz;\n"
+              "          segT[volumeIndex] = dot(segWorld - g_eyePosObj.xyz, g_rayDir) / g_rayDirDot;\n"
+              "          segTMax[volumeIndex].z += g_tDelta[volumeIndex].z;\n"
+              "          segNormals[volumeIndex].z = -segRayDirSign[volumeIndex].z;\n"
+              "        }\n"
+              "        if (segT[volumeIndex] > intervals[volumeIndex].tExit + FLOAT_EPS)\n"
+              "        {\n"
+              "          segT[volumeIndex] = FLOAT_INF;\n"
+              "        }\n"
+              "      }\n";
+          }
+          else
+          {
+            toShaderStr <<
               "      t[volumeIndex] += g_stepT[volumeIndex];\n"
               "      if (t[volumeIndex] > intervals[volumeIndex].tExit + FLOAT_EPS)\n"
               "      {\n"
               "          t[volumeIndex] = FLOAT_INF;\n"
-              "      }\n"
+              "      }\n";
+          }
+          toShaderStr <<
               "    }\n"
               "\n"
               "    g_exit = true;\n"
               "    for (int i = 0; i < " + std::to_string(inputs.size()) + "; ++i)\n"
-              "    {\n"
+              "    {\n";
+          if (useRegionDDA)
+          {
+            toShaderStr <<
+              "      if (t[i] != FLOAT_INF || segT[i] != FLOAT_INF)\n"
+              "      {\n"
+              "        g_exit = false;\n"
+              "        break;\n"
+              "      }\n";
+          }
+          else
+          {
+            toShaderStr <<
               "      if (t[i] != FLOAT_INF)\n"
               "      {\n"
               "        g_exit = false;\n"
               "        break;\n"
-              "      }\n"
+              "      }\n";
+          }
+          toShaderStr <<
               "    }\n"
               "\n";
         }
@@ -2778,22 +3020,6 @@ namespace vtkvolume
     const int inputCount = glMapper->GetInputCount();
     if (inputCount > 1)
     {
-      /*str += "\n"
-        "    vec3 nextDataPos = g_dataPos + g_dirSteps[frontSamplePoint.volumeIndex];\n"
-        "    float tNext = dot((in_textureDatasetMatrix * vec4(nextDataPos, 1.) - g_eyePosObj).xyz, g_rayDir) / g_rayDirDot;\n"
-        "    if (tNext < intervals[frontSamplePoint.volumeIndex].tExit + FLOAT_EPS)\n"
-        "    {\n"
-        "      SamplePoint newSamplePoint;\n"
-        "      newSamplePoint.dataPos = nextDataPos;\n"
-        "      newSamplePoint.t = tNext;\n"
-        "      newSamplePoint.volumeIndex = frontSamplePoint.volumeIndex;\n"
-        "      newSamplePoint.type = frontSamplePoint.type;\n"
-        "      if (insertSamplePoint(samplePointSet, newSamplePoint) == false)\n"
-        "      {\n"
-        "        g_exit = true; // something bad happened, let's better finish\n"
-        "      }\n"
-        "    }\n"
-      ;*/
     }
     else
     {
