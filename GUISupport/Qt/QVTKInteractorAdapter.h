@@ -1,28 +1,6 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    QVTKInteractorAdapter.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-
-/*=========================================================================
-
-  Copyright 2004 Sandia Corporation.
-  Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-  license for use of this work by or on behalf of the
-  U.S. Government. Redistribution and use in source and binary forms, with
-  or without modification, are permitted provided that this Notice and any
-  statement of authorship are reproduced on all copies.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-FileCopyrightText: Copyright 2004 Sandia Corporation
+// SPDX-License-Identifier: LicenseRef-BSD-3-Clause-Sandia-USGov
 
 /*========================================================================
  For general information about using VTK and Qt, see:
@@ -36,12 +14,14 @@
 #ifndef Q_VTK_INTERACTOR_ADAPTER_H
 #define Q_VTK_INTERACTOR_ADAPTER_H
 
-#include "vtkGUISupportQtModule.h" // For export macro
 #include "QVTKWin32Header.h"
+#include "vtkGUISupportQtModule.h" // For export macro
 #include <QtCore/QObject>
 
-class vtkRenderWindowInteractor;
 class QEvent;
+
+VTK_ABI_NAMESPACE_BEGIN
+class vtkRenderWindowInteractor;
 
 // .NAME QVTKInteractorAdapter - A QEvent translator.
 // .SECTION Description
@@ -53,11 +33,16 @@ class VTKGUISUPPORTQT_EXPORT QVTKInteractorAdapter : public QObject
 public:
   // Description:
   // Constructor: takes QObject parent
-  QVTKInteractorAdapter(QObject* parent);
+  QVTKInteractorAdapter(QObject* parent = nullptr);
 
   // Description:
   // Destructor
   ~QVTKInteractorAdapter() override;
+
+  // Description:
+  // Enable/disable the touch event processing
+  void SetEnableTouchEventProcessing(bool val);
+  bool GetEnableTouchEventProcessing() const { return this->EnableTouchEventProcessing; }
 
   // Description:
   // Set the device pixel ratio, this defaults to 1.0, but in Qt 5 can be != 1.0.
@@ -67,12 +52,15 @@ public:
   // Description:
   // Process a QEvent and send it to the interactor
   // returns whether the event was recognized and processed
-  bool ProcessEvent(QEvent* e, vtkRenderWindowInteractor* iren);
+  virtual bool ProcessEvent(QEvent* e, vtkRenderWindowInteractor* iren);
 
 protected:
   int AccumulatedDelta;
+  bool EnableTouchEventProcessing = true;
   float DevicePixelRatio;
   static const double DevicePixelRatioTolerance;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif
+// VTK-HeaderTest-Exclude: QVTKInteractorAdapter.h

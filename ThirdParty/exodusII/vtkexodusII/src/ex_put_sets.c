@@ -1,46 +1,13 @@
 /*
- * Copyright (c) 2005-2017 National Technology & Engineering Solutions
+ * Copyright(C) 1999-2020, 2022 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met:
- *
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *
- *     * Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following
- *       disclaimer in the documentation and/or other materials provided
- *       with the distribution.
- *
- *     * Neither the name of NTESS nor the names of its
- *       contributors may be used to endorse or promote products derived
- *       from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
+ * See packages/seacas/LICENSE for details
  */
 
 #include "exodusII.h"     // for ex_set, ex_err, etc
 #include "exodusII_int.h" // for EX_FATAL, etc
-#include "vtk_netcdf.h"       // for NC_NOERR, nc_def_var, etc
-#include <inttypes.h>     // for PRId64
-#include <stddef.h>       // for size_t
-#include <stdio.h>
-#include <stdlib.h>    // for NULL, free, malloc
-#include <sys/types.h> // for int64_t
 
 /*!
  * writes the set parameters and optionally set data for 1 or more sets
@@ -59,22 +26,31 @@ int ex_put_sets(int exoid, size_t set_count, const struct ex_set *sets)
   size_t start[1];
   int    cur_num_sets;
   char   errmsg[MAX_ERR_LENGTH];
-  int *  sets_to_define = NULL;
-  char * numentryptr    = NULL;
-  char * entryptr       = NULL;
-  char * extraptr       = NULL;
-  char * idsptr         = NULL;
-  char * statptr        = NULL;
-  char * numdfptr       = NULL;
-  char * factptr        = NULL;
+  int   *sets_to_define = NULL;
+  char  *numentryptr    = NULL;
+  char  *entryptr       = NULL;
+  char  *extraptr       = NULL;
+  char  *idsptr         = NULL;
+  char  *statptr        = NULL;
+  char  *numdfptr       = NULL;
+  char  *factptr        = NULL;
 
   int int_type;
 
   EX_FUNC_ENTER();
 
-  ex_check_valid_file_id(exoid, __func__);
+  if (exi_check_valid_file_id(exoid, __func__) == EX_FATAL) {
+    EX_FUNC_LEAVE(EX_FATAL);
+  }
 
-  sets_to_define = malloc(set_count * sizeof(int));
+  if (!(sets_to_define = malloc(set_count * sizeof(int)))) {
+    snprintf(errmsg, MAX_ERR_LENGTH,
+             "ERROR: failed to allocate memory for internal sets_to_define "
+             "array in file id %d",
+             exoid);
+    ex_err_fn(exoid, __func__, errmsg, EX_MEMFAIL);
+    EX_FUNC_LEAVE(EX_FATAL);
+  }
 
   /* Note that this routine can be called:
      1) just define the sets
@@ -83,16 +59,16 @@ int ex_put_sets(int exoid, size_t set_count, const struct ex_set *sets)
   */
   for (i = 0; i < set_count; i++) {
     /* first check if any sets are specified */
-    if ((status = nc_inq_dimid(exoid, ex_dim_num_objects(sets[i].type), &dimid)) != NC_NOERR) {
+    if ((status = nc_inq_dimid(exoid, exi_dim_num_objects(sets[i].type), &dimid)) != NC_NOERR) {
       if (status == NC_EBADDIM) {
         snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: no %ss defined for file id %d",
                  ex_name_of_object(sets[i].type), exoid);
-        ex_err(__func__, errmsg, status);
+        ex_err_fn(exoid, __func__, errmsg, status);
       }
       else {
         snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to locate %ss defined in file id %d",
                  ex_name_of_object(sets[i].type), exoid);
-        ex_err(__func__, errmsg, status);
+        ex_err_fn(exoid, __func__, errmsg, status);
       }
       free(sets_to_define);
       EX_FUNC_LEAVE(EX_FATAL);
@@ -107,7 +83,7 @@ int ex_put_sets(int exoid, size_t set_count, const struct ex_set *sets)
       sets_to_define[i] = -1;
     }
     else {
-      status = ex_id_lkup(exoid, sets[i].type, sets[i].id);
+      status = exi_id_lkup(exoid, sets[i].type, sets[i].id);
       if (status != -EX_LOOKUPFAIL) { /* found the side set id, so set is already defined... */
         sets_to_define[i] = 0;
       }
@@ -120,9 +96,9 @@ int ex_put_sets(int exoid, size_t set_count, const struct ex_set *sets)
 
   if (needs_define > 0) {
     /* put netcdf file into define mode  */
-    if ((status = nc_redef(exoid)) != NC_NOERR) {
+    if ((status = exi_redef(exoid, __func__)) != NC_NOERR) {
       snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to put file id %d into define mode", exoid);
-      ex_err(__func__, errmsg, status);
+      ex_err_fn(exoid, __func__, errmsg, status);
       free(sets_to_define);
       EX_FUNC_LEAVE(EX_FATAL);
     }
@@ -133,14 +109,14 @@ int ex_put_sets(int exoid, size_t set_count, const struct ex_set *sets)
       }
 
       if (sets_to_define[i] > 0) {
-        /*   NOTE: ex_inc_file_item finds the current number of sets defined
+        /*   NOTE: exi_inc_file_item finds the current number of sets defined
              for a specific file and returns that value incremented. */
-        cur_num_sets      = ex_inc_file_item(exoid, ex_get_counter_list(sets[i].type));
+        cur_num_sets      = exi_inc_file_item(exoid, exi_get_counter_list(sets[i].type));
         set_id_ndx        = cur_num_sets + 1;
         sets_to_define[i] = set_id_ndx;
       }
       else {
-        cur_num_sets      = ex_get_file_item(exoid, ex_get_counter_list(sets[i].type));
+        cur_num_sets      = exi_get_file_item(exoid, exi_get_counter_list(sets[i].type));
         set_id_ndx        = cur_num_sets - set_count + i + 1;
         sets_to_define[i] = set_id_ndx;
       }
@@ -193,13 +169,13 @@ int ex_put_sets(int exoid, size_t set_count, const struct ex_set *sets)
           snprintf(errmsg, MAX_ERR_LENGTH,
                    "ERROR: %s %" PRId64 " -- size already defined in file id %d",
                    ex_name_of_object(sets[i].type), sets[i].id, exoid);
-          ex_err(__func__, errmsg, status);
+          ex_err_fn(exoid, __func__, errmsg, status);
         }
         else {
           snprintf(errmsg, MAX_ERR_LENGTH,
                    "ERROR: failed to define number of entries in %s %" PRId64 " in file id %d",
                    ex_name_of_object(sets[i].type), sets[i].id, exoid);
-          ex_err(__func__, errmsg, status);
+          ex_err_fn(exoid, __func__, errmsg, status);
         }
         goto error_ret;
       }
@@ -216,17 +192,17 @@ int ex_put_sets(int exoid, size_t set_count, const struct ex_set *sets)
           snprintf(errmsg, MAX_ERR_LENGTH,
                    "ERROR: entry list already exists for %s %" PRId64 " in file id %d",
                    ex_name_of_object(sets[i].type), sets[i].id, exoid);
-          ex_err(__func__, errmsg, status);
+          ex_err_fn(exoid, __func__, errmsg, status);
         }
         else {
           snprintf(errmsg, MAX_ERR_LENGTH,
                    "ERROR: failed to create entry list for %s %" PRId64 " in file id %d",
                    ex_name_of_object(sets[i].type), sets[i].id, exoid);
-          ex_err(__func__, errmsg, status);
+          ex_err_fn(exoid, __func__, errmsg, status);
         }
         goto error_ret; /* exit define mode and return */
       }
-      ex_compress_variable(exoid, varid, 1);
+      exi_compress_variable(exoid, varid, 1);
 
       if (extraptr) {
         if ((status = nc_def_var(exoid, extraptr, int_type, 1, dims, &varid)) != NC_NOERR) {
@@ -234,17 +210,17 @@ int ex_put_sets(int exoid, size_t set_count, const struct ex_set *sets)
             snprintf(errmsg, MAX_ERR_LENGTH,
                      "ERROR: extra list already exists for %s %" PRId64 " in file id %d",
                      ex_name_of_object(sets[i].type), sets[i].id, exoid);
-            ex_err(__func__, errmsg, status);
+            ex_err_fn(exoid, __func__, errmsg, status);
           }
           else {
             snprintf(errmsg, MAX_ERR_LENGTH,
                      "ERROR: failed to create extra list for %s %" PRId64 " in file id %d",
                      ex_name_of_object(sets[i].type), sets[i].id, exoid);
-            ex_err(__func__, errmsg, status);
+            ex_err_fn(exoid, __func__, errmsg, status);
           }
           goto error_ret; /* exit define mode and return */
         }
-        ex_compress_variable(exoid, varid, 1);
+        exi_compress_variable(exoid, varid, 1);
       }
 
       /* Create distribution factors variable if required */
@@ -256,19 +232,19 @@ int ex_put_sets(int exoid, size_t set_count, const struct ex_set *sets)
                      "ERROR: # dist fact (%" PRId64 ") not equal to # nodes (%" PRId64
                      ") in node  set %" PRId64 " file id %d",
                      sets[i].num_distribution_factor, sets[i].num_entry, sets[i].id, exoid);
-            ex_err(__func__, errmsg, EX_BADPARAM);
+            ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
             goto error_ret; /* exit define mode and return */
           }
         }
         else {
-          /* resuse dimid from entry lists */
+          /* reuse dimid from entry lists */
           if ((status = nc_def_dim(exoid, numdfptr, sets[i].num_distribution_factor, &dimid)) !=
               NC_NOERR) {
             snprintf(errmsg, MAX_ERR_LENGTH,
                      "ERROR: failed to define number of dist factors in %s %" PRId64
                      " in file id %d",
                      ex_name_of_object(sets[i].type), sets[i].id, exoid);
-            ex_err(__func__, errmsg, status);
+            ex_err_fn(exoid, __func__, errmsg, status);
             goto error_ret; /* exit define mode and return */
           }
         }
@@ -282,24 +258,24 @@ int ex_put_sets(int exoid, size_t set_count, const struct ex_set *sets)
             snprintf(errmsg, MAX_ERR_LENGTH,
                      "ERROR: dist factors list already exists for %s %" PRId64 " in file id %d",
                      ex_name_of_object(sets[i].type), sets[i].id, exoid);
-            ex_err(__func__, errmsg, status);
+            ex_err_fn(exoid, __func__, errmsg, status);
           }
           else {
             snprintf(errmsg, MAX_ERR_LENGTH,
                      "ERROR: failed to create dist factors list for %s %" PRId64 " in file id %d",
                      ex_name_of_object(sets[i].type), sets[i].id, exoid);
-            ex_err(__func__, errmsg, status);
+            ex_err_fn(exoid, __func__, errmsg, status);
           }
           goto error_ret; /* exit define mode and return */
         }
-        ex_compress_variable(exoid, varid, 2);
+        exi_compress_variable(exoid, varid, 2);
       }
     }
 
     /* leave define mode  */
-    if ((status = nc_enddef(exoid)) != NC_NOERR) {
-      snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to complete definition in file id %d", exoid);
-      ex_err(__func__, errmsg, status);
+    if ((status = exi_leavedef(exoid, __func__)) != NC_NOERR) {
+      snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to exit define mode");
+      ex_err_fn(exoid, __func__, errmsg, status);
       free(sets_to_define);
       EX_FUNC_LEAVE(EX_FATAL);
     }
@@ -332,7 +308,7 @@ int ex_put_sets(int exoid, size_t set_count, const struct ex_set *sets)
       if ((status = nc_inq_varid(exoid, idsptr, &varid)) != NC_NOERR) {
         snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to locate %s %" PRId64 " in file id %d",
                  ex_name_of_object(sets[i].type), sets[i].id, exoid);
-        ex_err(__func__, errmsg, status);
+        ex_err_fn(exoid, __func__, errmsg, status);
         free(sets_to_define);
         EX_FUNC_LEAVE(EX_FATAL);
       }
@@ -348,7 +324,7 @@ int ex_put_sets(int exoid, size_t set_count, const struct ex_set *sets)
       if (status != NC_NOERR) {
         snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to store %s id %" PRId64 " in file id %d",
                  ex_name_of_object(sets[i].type), sets[i].id, exoid);
-        ex_err(__func__, errmsg, status);
+        ex_err_fn(exoid, __func__, errmsg, status);
         free(sets_to_define);
         EX_FUNC_LEAVE(EX_FATAL);
       }
@@ -358,7 +334,7 @@ int ex_put_sets(int exoid, size_t set_count, const struct ex_set *sets)
       if ((status = nc_inq_varid(exoid, statptr, &varid)) != NC_NOERR) {
         snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to locate %s status in file id %d",
                  ex_name_of_object(sets[i].type), exoid);
-        ex_err(__func__, errmsg, status);
+        ex_err_fn(exoid, __func__, errmsg, status);
         free(sets_to_define);
         EX_FUNC_LEAVE(EX_FATAL);
       }
@@ -367,7 +343,7 @@ int ex_put_sets(int exoid, size_t set_count, const struct ex_set *sets)
         snprintf(errmsg, MAX_ERR_LENGTH,
                  "ERROR: failed to store %s %" PRId64 " status to file id %d",
                  ex_name_of_object(sets[i].type), sets[i].id, exoid);
-        ex_err(__func__, errmsg, status);
+        ex_err_fn(exoid, __func__, errmsg, status);
         free(sets_to_define);
         EX_FUNC_LEAVE(EX_FATAL);
       }
@@ -405,9 +381,6 @@ int ex_put_sets(int exoid, size_t set_count, const struct ex_set *sets)
 error_ret:
   free(sets_to_define);
 
-  if ((status = nc_enddef(exoid)) != NC_NOERR) { /* exit define mode */
-    snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to complete definition for file id %d", exoid);
-    ex_err(__func__, errmsg, status);
-  }
+  exi_leavedef(exoid, __func__);
   EX_FUNC_LEAVE(EX_FATAL);
 }

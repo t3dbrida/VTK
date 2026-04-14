@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkTRUCHASReader.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkTRUCHASReader.h"
 
 #include "vtkCellArray.h"
@@ -25,6 +13,7 @@
 #include "vtkObjectFactory.h"
 #include "vtkPointData.h"
 #include "vtkStreamingDemandDrivenPipeline.h"
+#include "vtkStringFormatter.h"
 #include "vtkUnstructuredGrid.h"
 
 #include "vtk_hdf5.h"
@@ -33,8 +22,12 @@
 #include <set>
 #include <sstream>
 
-//----------------------------------------------------------------------------
-class vtkTRUCHASReader::Internal {
+#include <iostream>
+
+//------------------------------------------------------------------------------
+VTK_ABI_NAMESPACE_BEGIN
+class vtkTRUCHASReader::Internal
+{
 public:
   //----------------------------------------------------------------------------
   Internal()
@@ -71,7 +64,15 @@ public:
       this->Points->Delete();
     }
     this->ReleaseGrids();
+    if (this->bids_out)
+    {
+      delete[] this->bids_out[0];
+    }
     delete[] this->bids_out;
+    if (this->cells_out)
+    {
+      delete[] this->cells_out[0];
+    }
     delete[] this->cells_out;
   };
 
@@ -95,15 +96,15 @@ public:
   }
 
   //----------------------------------------------------------------------------
-  hid_t OpenFile(char *_FileName)
+  hid_t OpenFile(char* _filename)
   {
-    if (this->FileName.compare(_FileName)!=0)
+    if (this->FileName != _filename)
     {
       this->CloseFile();
-      if (_FileName != nullptr)
+      if (_filename != nullptr)
       {
-        this->FileName = std::string(_FileName);
-        this->FileIndx = H5Fopen(_FileName, H5F_ACC_RDONLY, H5P_DEFAULT );
+        this->FileName = std::string(_filename);
+        this->FileIndx = H5Fopen(_filename, H5F_ACC_RDONLY, H5P_DEFAULT);
         this->PointData = vtkPointData::New();
       }
     }
@@ -111,7 +112,7 @@ public:
   }
 
   //----------------------------------------------------------------------------
-  void ReadTimeSteps(unsigned int &numSteps, double **outSteps)
+  void ReadTimeSteps(unsigned int& numSteps, double** outSteps)
   {
     if (this->TimeFileIndx == this->FileIndx)
     {
@@ -124,10 +125,9 @@ public:
     this->tmap.clear();
     delete[] this->Steps;
 
-    #define MAX_NAME 1024
+#define MAX_NAME 1024
     char memb_name[MAX_NAME];
-    hid_t gid = H5Gopen
-      (this->FileIndx, "/Simulations/MAIN/Series Data", H5P_DEFAULT);
+    hid_t gid = H5Gopen(this->FileIndx, "/Simulations/MAIN/Series Data", H5P_DEFAULT);
     hsize_t nobj;
     ssize_t len;
     int otype;
@@ -139,13 +139,12 @@ public:
     }
     for (unsigned int i = 0; i < nobj; i++)
     {
-      len = H5Gget_objname_by_idx(gid, (hsize_t)i,
-                                  memb_name, (size_t)MAX_NAME );
-      if (len<=0)
+      len = H5Gget_objname_by_idx(gid, (hsize_t)i, memb_name, (size_t)MAX_NAME);
+      if (len <= 0)
       {
         continue;
       }
-      otype = H5Gget_objtype_by_idx(gid, (size_t)i );
+      otype = H5Gget_objtype_by_idx(gid, (size_t)i);
       if (otype == H5G_GROUP)
       {
         hid_t gid2 = H5Gopen(gid, memb_name, H5P_DEFAULT);
@@ -173,7 +172,7 @@ public:
   }
 
   //----------------------------------------------------------------------------
-  vtkPoints *ReadGeometry()
+  vtkPoints* ReadGeometry()
   {
     if (this->GeometryFileIndx == this->FileIndx)
     {
@@ -185,10 +184,9 @@ public:
       this->Points->Delete();
     }
 
-    //coordinates
-    hid_t coordinates = H5Dopen
-      (this->FileIndx, "/Meshes/DEFAULT/Nodal Coordinates", H5P_DEFAULT );
-    if( coordinates < 0 )
+    // coordinates
+    hid_t coordinates = H5Dopen(this->FileIndx, "/Meshes/DEFAULT/Nodal Coordinates", H5P_DEFAULT);
+    if (coordinates < 0)
     {
       return nullptr;
     }
@@ -197,33 +195,35 @@ public:
     hid_t dataspace = H5Dget_space(coordinates);
     H5Sget_simple_extent_ndims(dataspace);
     herr_t status = H5Sget_simple_extent_dims(dataspace, dims, nullptr);
-    if( status < 0 )
+    if (status < 0)
     {
       return nullptr;
     }
 
-    double **points_out = new double *[dims[0]];
-    points_out[0] = new double[dims[0]*dims[1]];
+    double** points_out = new double*[dims[0]];
+    points_out[0] = new double[dims[0] * dims[1]];
     for (unsigned int i = 1; i < dims[0]; i++)
     {
-      points_out[i] = points_out[0]+i*dims[1];
+      points_out[i] = points_out[0] + i * dims[1];
     }
 
-    status = H5Dread(coordinates, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
-                     H5P_DEFAULT, &points_out[0][0]);
-    if( status < 0 )
+    status =
+      H5Dread(coordinates, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &points_out[0][0]);
+    if (status < 0)
     {
+      delete[] points_out[0];
+      delete[] points_out;
       return nullptr;
     }
 
     this->Points = vtkPoints::New();
-    //TODO: pass in pointer directly instead of this loop
-    double *ptr = points_out[0];
+    // TODO: pass in pointer directly instead of this loop
+    double* ptr = points_out[0];
     unsigned int i;
     for (i = 0; i < dims[0]; i++)
     {
-      this->Points->InsertNextPoint(*(ptr+0),*(ptr+1),*(ptr+2));
-      ptr+=3;
+      this->Points->InsertNextPoint(*(ptr + 0), *(ptr + 1), *(ptr + 2));
+      ptr += 3;
     }
     H5Dclose(coordinates);
     H5Sclose(dataspace);
@@ -235,16 +235,7 @@ public:
   }
 
   //----------------------------------------------------------------------------
-  static std::string to_string(int number)
-  {
-    //TODO: use c++11's to_string when c++11 is min required
-    std::ostringstream oss;
-    oss << number;
-    return oss.str();
-  }
-
-  //----------------------------------------------------------------------------
-  bool ReadAvailableBlocks(vtkTRUCHASReader *self)
+  bool ReadAvailableBlocks(vtkTRUCHASReader* self)
   {
     if (this->BlockFileIndx == this->FileIndx)
     {
@@ -252,9 +243,9 @@ public:
     }
     this->BlockFileIndx = this->FileIndx;
 
-    hid_t blockids = H5Dopen
-      (this->FileIndx, "/Simulations/MAIN/Non-series Data/BLOCKID", H5P_DEFAULT );
-    if( blockids < 0 )
+    hid_t blockids =
+      H5Dopen(this->FileIndx, "/Simulations/MAIN/Non-series Data/BLOCKID", H5P_DEFAULT);
+    if (blockids < 0)
     {
       return false;
     }
@@ -265,52 +256,53 @@ public:
     dataspace = H5Dget_space(blockids);
     H5Sget_simple_extent_ndims(dataspace);
     status = H5Sget_simple_extent_dims(dataspace, dims, nullptr);
-    if( status < 0 )
+    if (status < 0)
     {
       return false;
     }
     dims[1] = 1;
     H5Sclose(dataspace);
 
-    //TODO: this is ugly
+    // TODO: this is ugly
+    if (this->bids_out)
+    {
+      delete[] this->bids_out[0];
+    }
     delete[] this->bids_out;
-    this->bids_out = new int *[dims[0]];
-    bids_out[0] = new int[dims[0]*dims[1]];
+    this->bids_out = new int*[dims[0]];
+    bids_out[0] = new int[dims[0] * dims[1]];
     for (unsigned int i = 1; i < dims[0]; i++)
     {
-      bids_out[i] = bids_out[0]+i*dims[1];
+      bids_out[i] = bids_out[0] + i * dims[1];
     }
 
-    status = H5Dread(blockids, H5T_NATIVE_INT, H5S_ALL, H5S_ALL,
-                     H5P_DEFAULT, &bids_out[0][0]);
-    if( status < 0 )
+    status = H5Dread(blockids, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &bids_out[0][0]);
+    if (status < 0)
     {
       return false;
     }
-    //bids_out is a list of possible block ids
-    //every cell in the data says which block it is part of
+    // bids_out is a list of possible block ids
+    // every cell in the data says which block it is part of
 
-    //Reduce to a unique list of blocks
+    // Reduce to a unique list of blocks
     std::set<int> unique_blocks;
-    int *block = bids_out[0];
+    int* block = bids_out[0];
     for (unsigned int i = 0; i < dims[0]; i++)
     {
       unique_blocks.insert(block[i]);
     }
 
-    //now update some bookkeeping information
+    // now update some bookkeeping information
     this->blockmap.clear();
     this->mapblock.clear();
     int i = 0;
-    for (std::set<int>::iterator it = unique_blocks.begin();
-         it!= unique_blocks.end();
-         ++it)
+    for (std::set<int>::iterator it = unique_blocks.begin(); it != unique_blocks.end(); ++it)
     {
-      //keep record of the "name" of the block for GUI to choose from
-      self->BlockChoices->AddArray(to_string(*it).c_str());
-      //keep track of location to block id
+      // keep record of the "name" of the block for GUI to choose from
+      self->BlockChoices->AddArray(vtk::to_string(*it).c_str());
+      // keep track of location to block id
       this->blockmap.push_back(*it);
-      //keep track of block id to location
+      // keep track of block id to location
       this->mapblock[*it] = i;
       i++;
     }
@@ -328,10 +320,9 @@ public:
     }
     this->TopoFileIndx = this->FileIndx;
 
-    //read the cell connectivity
-    hid_t elements = H5Dopen
-      (this->FileIndx, "/Meshes/DEFAULT/Element Connectivity", H5P_DEFAULT );
-    if( elements < 0 )
+    // read the cell connectivity
+    hid_t elements = H5Dopen(this->FileIndx, "/Meshes/DEFAULT/Element Connectivity", H5P_DEFAULT);
+    if (elements < 0)
     {
       return false;
     }
@@ -342,25 +333,28 @@ public:
 
     dataspace = H5Dget_space(elements);
     H5Sget_simple_extent_ndims(dataspace);
-    status  = H5Sget_simple_extent_dims(dataspace, dims, nullptr);
-    if( status < 0 )
+    status = H5Sget_simple_extent_dims(dataspace, dims, nullptr);
+    if (status < 0)
     {
       H5Dclose(elements);
       return false;
     }
 
+    if (this->cells_out)
+    {
+      delete[] this->cells_out[0];
+    }
     delete[] this->cells_out;
-    this->cells_out = new int *[dims[0]];
-    cells_out[0] = new int[dims[0]*dims[1]];
+    this->cells_out = new int*[dims[0]];
+    cells_out[0] = new int[dims[0] * dims[1]];
     for (unsigned int i = 1; i < dims[0]; i++)
     {
-      cells_out[i] = cells_out[0]+i*dims[1];
+      cells_out[i] = cells_out[0] + i * dims[1];
     }
     this->totalNumCells = dims[0];
 
-    status = H5Dread(elements, H5T_NATIVE_INT, H5S_ALL, H5S_ALL,
-                     H5P_DEFAULT, &cells_out[0][0]);
-    if( status < 0 )
+    status = H5Dread(elements, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &cells_out[0][0]);
+    if (status < 0)
     {
       H5Dclose(elements);
       return false;
@@ -368,49 +362,44 @@ public:
 
     H5Dclose(elements);
 
-
-    //read the part ids if present
-    int partnum=1;
+    // read the part ids if present
+    int partnum = 1;
     bool done = false;
     while (!done)
     {
-      std::string nextpartname = "/Simulations/MAIN/Non-series Data/part" +
-        to_string(partnum);
-      htri_t exists = H5Lexists(this->FileIndx, nextpartname.c_str(),
-                                H5P_DEFAULT);
-      if( !exists )
+      std::string nextpartname = "/Simulations/MAIN/Non-series Data/part" + vtk::to_string(partnum);
+      htri_t exists = H5Lexists(this->FileIndx, nextpartname.c_str(), H5P_DEFAULT);
+      if (!exists)
       {
-        //no (more) moving part info
+        // no (more) moving part info
         done = true;
       }
       else
       {
-        hid_t nextpart = H5Dopen
-        (this->FileIndx, nextpartname.c_str(), H5P_DEFAULT );
+        hid_t nextpart = H5Dopen(this->FileIndx, nextpartname.c_str(), H5P_DEFAULT);
 
         dataspace = H5Dget_space(nextpart);
         H5Sget_simple_extent_ndims(dataspace);
-        status  = H5Sget_simple_extent_dims(dataspace, dims, nullptr);
-        if( status < 0 )
+        status = H5Sget_simple_extent_dims(dataspace, dims, nullptr);
+        if (status < 0)
         {
           H5Dclose(nextpart);
           return false;
         }
 
-        int *blocksinpart = new int[dims[0]];
-        status = H5Dread(nextpart, H5T_NATIVE_INT, H5S_ALL, H5S_ALL,
-                         H5P_DEFAULT, blocksinpart);
-        if( status < 0 )
+        int* blocksinpart = new int[dims[0]];
+        status = H5Dread(nextpart, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, blocksinpart);
+        if (status < 0)
         {
           H5Dclose(nextpart);
           delete[] blocksinpart;
           return false;
         }
 
-        this->part_to_blocks[partnum-1] = std::vector<int>(dims[0]);
+        this->part_to_blocks[partnum - 1] = std::vector<int>(dims[0]);
         for (unsigned int i = 0; i < dims[0]; i++)
         {
-          this->part_to_blocks[partnum-1][i] = blocksinpart[i];
+          this->part_to_blocks[partnum - 1][i] = blocksinpart[i];
         }
         delete[] blocksinpart;
 
@@ -436,11 +425,10 @@ public:
   }
 
   //----------------------------------------------------------------------------
-  bool MakeVTKBlocks(vtkTRUCHASReader *self)
+  bool MakeVTKBlocks(vtkTRUCHASReader* self)
   {
     if (this->VTKBlockFileIndx == this->FileIndx &&
-        this->BlockChoiceTime == self->BlockChoices->GetMTime()
-        )
+      this->BlockChoiceTime == self->BlockChoices->GetMTime())
     {
       return true;
     }
@@ -449,7 +437,7 @@ public:
 
     this->ReleaseGrids();
 
-    //topology
+    // topology
     int ret = this->ReadTopology();
     if (!ret)
     {
@@ -458,7 +446,7 @@ public:
 
     unsigned int totalNumBlocks = static_cast<unsigned int>(this->blockmap.size());
     this->grid.resize(totalNumBlocks);
-    for(unsigned int b = 0; b < totalNumBlocks; b++)
+    for (unsigned int b = 0; b < totalNumBlocks; b++)
     {
       if (self->BlockChoices->GetArraySetting(b) != 0)
       {
@@ -473,68 +461,60 @@ public:
       }
     }
 
-    int *blockptr = this->bids_out[0];
-    int *cptr = this->cells_out[0];
+    int* blockptr = this->bids_out[0];
+    int* cptr = this->cells_out[0];
     for (unsigned int c = 0; c < this->totalNumCells; c++)
     {
       int gblockid = *blockptr;
       int blockidx = this->mapblock[gblockid];
       if (self->BlockChoices->GetArraySetting(blockidx) != 0)
       {
-        //from truchas's danu_xdmf_mesh.c
+        // from truchas's danu_xdmf_mesh.c
         int i;
-        vtkIdType list[8] =
-          {
-            *(cptr+0),*(cptr+1),*(cptr+2),*(cptr+3),
-            *(cptr+4),*(cptr+5),*(cptr+6),*(cptr+7)
-          };
+        vtkIdType list[8] = { *(cptr + 0), *(cptr + 1), *(cptr + 2), *(cptr + 3), *(cptr + 4),
+          *(cptr + 5), *(cptr + 6), *(cptr + 7) };
         if (list[0] == list[1])
         { /* tet element */
-          //cerr << "T" << endl;
-          for (i=0; i < 4; i++)
+          // std::cerr << "T" << endl;
+          for (i = 0; i < 4; i++)
           {
-            list[i] = list[1+i]-1;
+            list[i] = list[1 + i] - 1;
           }
           this->grid[blockidx]->InsertNextCell(VTK_TETRA, 4, &list[0]);
         }
         else if (list[4] == list[5])
         { /* pyramid element */
-          //cerr << "P" << endl;
-          for (i=0; i < 5; i++)
+          // std::cerr << "P" << endl;
+          for (i = 0; i < 5; i++)
           {
-            list[i] = list[i]-1;
+            list[i] = list[i] - 1;
           }
           this->grid[blockidx]->InsertNextCell(VTK_PYRAMID, 5, &list[0]);
         }
         else if (list[5] == list[6])
         { /* wedge element */
-          //cerr << "W" << endl;
-          i = list[1]; list[1] = list[3]; list[3] = i;  /* swap 1 and 3 */
-          i = list[2]; list[2] = list[4]; list[4] = i;  /* swap 2 and 4 */
-          /* Convert from Exodus ordering to VTK / XDMF ordering */
-          i = list[1]; list[1] = list[2]; list[2] = i;  /* swap 1 and 2 */
-          i = list[4]; list[4] = list[5]; list[5] = i;  /* swap 4 and 5 */
-          for (i=0; i < 6; i++)
+          // std::cerr << "W" << endl;
+          for (i = 0; i < 6; i++)
           {
-            list[i] = list[i]-1;
+            list[i] = list[i] - 1;
           }
           this->grid[blockidx]->InsertNextCell(VTK_WEDGE, 6, &list[0]);
         }
         else
         { /* hex element */
-          //cerr << "H" << endl;
-          for (i=0; i < 8; i++)
+          // std::cerr << "H" << endl;
+          for (i = 0; i < 8; i++)
           {
-            list[i] = list[i]-1;
+            list[i] = list[i] - 1;
           }
           this->grid[blockidx]->InsertNextCell(VTK_HEXAHEDRON, 8, &list[0]);
         }
       }
       blockptr++;
-      cptr+=8;
+      cptr += 8;
     }
 
-    for(unsigned int b = 0; b < totalNumBlocks; b++)
+    for (unsigned int b = 0; b < totalNumBlocks; b++)
     {
       if (self->BlockChoices->GetArraySetting(b) != 0)
       {
@@ -546,17 +526,17 @@ public:
   }
 
   //----------------------------------------------------------------------------
-  bool MoveVTKBlocks(vtkTRUCHASReader *self, hid_t now_gid)
+  bool MoveVTKBlocks(vtkTRUCHASReader* self, hid_t now_gid)
   {
 
-    if (this->part_to_blocks.size() == 0)
+    if (this->part_to_blocks.empty())
     {
       return true;
     }
 
     for (unsigned int i = 0; i < this->part_to_blocks.size(); i++)
     {
-      std::string nextpartname = "translate_part" + to_string(i+1);
+      std::string nextpartname = "translate_part" + vtk::to_string(i + 1);
       hid_t att = H5Aopen(now_gid, nextpartname.c_str(), H5P_DEFAULT);
       double transform[3];
       H5Aread(att, H5T_NATIVE_DOUBLE, &transform);
@@ -576,15 +556,15 @@ public:
       if (needed)
       {
         double nextpt[3];
-        vtkPoints *pts = vtkPoints::New();
+        vtkPoints* pts = vtkPoints::New();
         unsigned int npts = this->Points->GetNumberOfPoints();
         pts->SetNumberOfPoints(npts);
         for (unsigned int p = 0; p < npts; p++)
         {
           this->Points->GetPoint(p, nextpt);
-          nextpt[0] = nextpt[0]+transform[0];
-          nextpt[1] = nextpt[1]+transform[1];
-          nextpt[2] = nextpt[2]+transform[2];
+          nextpt[0] = nextpt[0] + transform[0];
+          nextpt[1] = nextpt[1] + transform[1];
+          nextpt[2] = nextpt[2] + transform[2];
           pts->SetPoint(p, nextpt);
         }
 
@@ -608,7 +588,7 @@ public:
   }
 
   //----------------------------------------------------------------------------
-  bool ReadArrayNames(vtkTRUCHASReader *self)
+  bool ReadArrayNames(vtkTRUCHASReader* self)
   {
     if (this->ArrayNameFileIndx == this->FileIndx)
     {
@@ -616,42 +596,38 @@ public:
     }
     this->ArrayNameFileIndx = this->FileIndx;
 
-    std::string time_group_name =
-      "/Simulations/MAIN/Series Data/Series 1";
+    std::string time_group_name = "/Simulations/MAIN/Series Data/Series 1";
 
     this->array_names.clear();
     this->array_isFloat.clear();
     self->PointArrayChoices->RemoveAllArrays();
     self->CellArrayChoices->RemoveAllArrays();
 
-    hid_t now_gid = H5Gopen
-      (this->FileIndx, time_group_name.c_str(), H5P_DEFAULT);
+    hid_t now_gid = H5Gopen(this->FileIndx, time_group_name.c_str(), H5P_DEFAULT);
     hsize_t nobj;
     herr_t status;
     status = H5Gget_num_objs(now_gid, &nobj);
-    if( status < 0 )
+    if (status < 0)
     {
       return false;
     }
 
-    #define MAX_NAME 1024
+#define MAX_NAME 1024
     char array_name[MAX_NAME];
     int otype;
     for (unsigned int i = 0; i < nobj; i++)
     {
-      otype =  H5Gget_objtype_by_idx(now_gid, (size_t)i );
+      otype = H5Gget_objtype_by_idx(now_gid, (size_t)i);
       if (otype != H5G_DATASET)
       {
         continue;
       }
 
-      H5Gget_objname_by_idx(now_gid, (hsize_t)i,
-                            array_name, (size_t)MAX_NAME );
+      H5Gget_objname_by_idx(now_gid, (hsize_t)i, array_name, (size_t)MAX_NAME);
       hid_t did = H5Dopen(now_gid, array_name, H5P_DEFAULT);
 
-      //reject bookkeeping arrays
-      if (!H5Aexists_by_name
-          (now_gid, array_name, "FIELDTYPE", H5P_DEFAULT))
+      // reject bookkeeping arrays
+      if (!H5Aexists_by_name(now_gid, array_name, "FIELDTYPE", H5P_DEFAULT))
       {
         H5Dclose(did);
         continue;
@@ -664,17 +640,17 @@ public:
       H5Aclose(attr);
 
       int align = -1;
-      if (!strcmp(alignment, "CELL"))
+      if (!strncmp(alignment, "CELL", 4))
       {
         align = 0;
       }
-      if (!strcmp(alignment, "NODE"))
+      if (!strncmp(alignment, "NODE", 4))
       {
         align = 1;
       }
       if (align < 0 || align > 1)
       {
-        //probably neutral-neutral ;)
+        // probably neutral-neutral ;)
         H5Dclose(did);
         continue;
       }
@@ -704,26 +680,26 @@ public:
   }
 
   std::map<double, std::string> tmap;
-  int **bids_out;
-  std::vector<int> blockmap; //location to blockid
-  std::map<int, int> mapblock; //blockid to location
-  std::vector< vtkUnstructuredGrid * > grid;
-  vtkPoints *Points;
+  int** bids_out;
+  std::vector<int> blockmap;   // location to blockid
+  std::map<int, int> mapblock; // blockid to location
+  std::vector<vtkUnstructuredGrid*> grid;
+  vtkPoints* Points;
 
-  int **cells_out;
+  int** cells_out;
   unsigned int totalNumCells;
   std::map<std::string, int> array_names;
   std::map<std::string, bool> array_isFloat;
-  vtkPointData *PointData;
+  vtkPointData* PointData;
 
-  std::map<int, std::vector<int> > part_to_blocks; //part id to list of blocks
+  std::map<int, std::vector<int>> part_to_blocks; // part id to list of blocks
 
 private:
   hid_t FileIndx;
   std::string FileName;
 
   hid_t TimeFileIndx;
-  double *Steps;
+  double* Steps;
 
   hid_t GeometryFileIndx;
 
@@ -735,15 +711,13 @@ private:
   vtkMTimeType BlockChoiceTime;
 
   hid_t ArrayNameFileIndx;
-
 };
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkStandardNewMacro(vtkTRUCHASReader);
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkTRUCHASReader::vtkTRUCHASReader()
-  : vtkMultiBlockDataSetAlgorithm()
 {
   this->Internals = new vtkTRUCHASReader::Internal;
   this->FileName = nullptr;
@@ -751,64 +725,55 @@ vtkTRUCHASReader::vtkTRUCHASReader()
   this->PointArrayChoices = vtkDataArraySelection::New();
   this->CellArrayChoices = vtkDataArraySelection::New();
 
-
   this->SetNumberOfInputPorts(0);
   this->SetNumberOfOutputPorts(1);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkTRUCHASReader::~vtkTRUCHASReader()
 {
   delete this->Internals;
 
-  delete [] this->FileName;
+  delete[] this->FileName;
   this->BlockChoices->Delete();
   this->PointArrayChoices->Delete();
   this->CellArrayChoices->Delete();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkTRUCHASReader::RequestInformation(
-  vtkInformation* reqInfo,
-  vtkInformationVector** inVector,
-  vtkInformationVector* outVector
-  )
+  vtkInformation* reqInfo, vtkInformationVector** inVector, vtkInformationVector* outVector)
 {
-  if(!this->Superclass::RequestInformation(reqInfo,inVector,outVector))
+  if (!this->Superclass::RequestInformation(reqInfo, inVector, outVector))
   {
     return 0;
   }
 
   hid_t fileIndx = this->Internals->OpenFile(this->FileName);
-  if( fileIndx < 0 )
+  if (fileIndx < 0)
   {
     return 0;
   }
 
-  //tell the caller that I can provide time varying data and
-  //tell it what range of times I can deal with
-  double *steps;
+  // tell the caller that I can provide time varying data and
+  // tell it what range of times I can deal with
+  double* steps;
   double tRange[2];
   unsigned int numSteps;
   this->Internals->ReadTimeSteps(numSteps, &steps);
   tRange[0] = steps[0];
-  tRange[1] = steps[numSteps-1];
-  vtkInformation *info=outVector->GetInformationObject(0);
-  info->Set(vtkStreamingDemandDrivenPipeline::TIME_RANGE(),
-            tRange,
-            2);
-  info->Set(vtkStreamingDemandDrivenPipeline::TIME_STEPS(),
-            steps,
-            numSteps);
+  tRange[1] = steps[numSteps - 1];
+  vtkInformation* info = outVector->GetInformationObject(0);
+  info->Set(vtkStreamingDemandDrivenPipeline::TIME_RANGE(), tRange, 2);
+  info->Set(vtkStreamingDemandDrivenPipeline::TIME_STEPS(), steps, numSteps);
 
-
-  //what blocks are available to read?
+  // what blocks are available to read?
   if (!this->Internals->ReadAvailableBlocks(this))
   {
     return 0;
   }
 
-  //what arrays are available to read?
+  // what arrays are available to read?
   if (!this->Internals->ReadArrayNames(this))
   {
     return 0;
@@ -817,90 +782,84 @@ int vtkTRUCHASReader::RequestInformation(
   return 1;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkTRUCHASReader::RequestData(
-  vtkInformation *,
-  vtkInformationVector **,
-  vtkInformationVector *outputVector)
+  vtkInformation*, vtkInformationVector**, vtkInformationVector* outputVector)
 {
-  vtkInformation *outInfo = outputVector->GetInformationObject(0);
-  vtkMultiBlockDataSet *output = vtkMultiBlockDataSet::SafeDownCast(
-    outInfo->Get(vtkMultiBlockDataSet::DATA_OBJECT()));
+  vtkInformation* outInfo = outputVector->GetInformationObject(0);
+  vtkMultiBlockDataSet* output =
+    vtkMultiBlockDataSet::SafeDownCast(outInfo->Get(vtkMultiBlockDataSet::DATA_OBJECT()));
 
   hid_t fileIndx = this->Internals->OpenFile(this->FileName);
-  if( fileIndx < 0 )
+  if (fileIndx < 0)
   {
     return 0;
   }
 
-  vtkDebugMacro(<<"Reading truchas unstructured grid...");
+  vtkDebugMacro(<< "Reading truchas unstructured grid...");
 
   hsize_t dims[2];
   hid_t dataspace;
   herr_t status;
   bool ret;
 
-  //coordinates
-  vtkPoints *pts = this->Internals->ReadGeometry();
+  // coordinates
+  vtkPoints* pts = this->Internals->ReadGeometry();
   if (!pts)
   {
     return 0;
   }
 
-  //blockids
+  // blockids
   ret = this->Internals->ReadAvailableBlocks(this);
   if (!ret)
   {
     return 0;
   }
 
-  //block containers up to topology
+  // block containers up to topology
   ret = this->Internals->MakeVTKBlocks(this);
   if (!ret)
   {
     return 0;
   }
 
-  std::vector< vtkUnstructuredGrid * > &grid = this->Internals->grid;
+  std::vector<vtkUnstructuredGrid*>& grid = this->Internals->grid;
   unsigned int totalNumBlocks = static_cast<unsigned int>(grid.size());
   output->SetNumberOfBlocks(totalNumBlocks);
   unsigned int totalNumCells = this->Internals->totalNumCells;
   unsigned int totalNumPoints = this->Internals->Points->GetNumberOfPoints();
 
-  //what time to produce data for?
+  // what time to produce data for?
   double reqTime = 0.0;
   double reqTS(0);
   if (outInfo->Has(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP()))
   {
-    reqTS = outInfo->Get
-      (vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP());
+    reqTS = outInfo->Get(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP());
     reqTime = reqTS;
   }
-  std::map<double, std::string>::iterator tit
-    = this->Internals->tmap.begin();
+  std::map<double, std::string>::iterator tit = this->Internals->tmap.begin();
 
-  for (std::map<double, std::string>::iterator ttit =
-         this->Internals->tmap.begin();
+  for (std::map<double, std::string>::iterator ttit = this->Internals->tmap.begin();
        ttit != this->Internals->tmap.end();)
   {
-    if (ttit->first < reqTime)
+    if (ttit->first <= reqTime)
     {
       tit = ttit;
     }
     ++ttit;
   }
-  //open the corresponding section in the hdf5 file to get arrays from
-  std::string time_group_name ="/Simulations/MAIN/Series Data/" + tit->second;
-  hid_t now_gid = H5Gopen
-    (fileIndx, time_group_name.c_str(), H5P_DEFAULT);
+  // open the corresponding section in the hdf5 file to get arrays from
+  std::string time_group_name = "/Simulations/MAIN/Series Data/" + tit->second;
+  hid_t now_gid = H5Gopen(fileIndx, time_group_name.c_str(), H5P_DEFAULT);
   hsize_t nobj;
   status = H5Gget_num_objs(now_gid, &nobj);
-  if( status < 0 )
+  if (status < 0)
   {
     return 0;
   }
 
-  //save time by determining what blocks are enabled/disabled once
+  // save time by determining what blocks are enabled/disabled once
   std::map<int, bool> gBlockToEnabled;
   for (unsigned b = 0; b < totalNumBlocks; b++)
   {
@@ -915,7 +874,7 @@ int vtkTRUCHASReader::RequestData(
     }
   }
 
-  //move any moving blocks accordingly
+  // move any moving blocks accordingly
   ret = this->Internals->MoveVTKBlocks(this, now_gid);
   if (!ret)
   {
@@ -923,20 +882,18 @@ int vtkTRUCHASReader::RequestData(
     return 0;
   }
 
-  #define MAX_NAME 1024
-  char array_name[MAX_NAME];
+#define MAX_NAME 1024
+  char array_name[MAX_NAME + 1];
   std::map<std::string, int>::iterator nit;
-  for (nit = this->Internals->array_names.begin();
-       nit != this->Internals->array_names.end();
-       ++nit)
+  for (nit = this->Internals->array_names.begin(); nit != this->Internals->array_names.end(); ++nit)
   {
     std::string name = nit->first;
     int align = nit->second;
-    if (align==0)
+    if (align == 0)
     {
       if (this->CellArrayChoices->GetArraySetting(name.c_str()) == 0)
       {
-        //prevent stale (deselected) arrays from sticking around
+        // prevent stale (deselected) arrays from sticking around
         for (unsigned b = 0; b < totalNumBlocks; b++)
         {
           if (grid[b])
@@ -951,7 +908,7 @@ int vtkTRUCHASReader::RequestData(
     {
       if (this->PointArrayChoices->GetArraySetting(name.c_str()) == 0)
       {
-        //prevent stale (deselected) arrays from sticking around
+        // prevent stale (deselected) arrays from sticking around
         for (unsigned b = 0; b < totalNumBlocks; b++)
         {
           if (grid[b])
@@ -966,8 +923,8 @@ int vtkTRUCHASReader::RequestData(
     strncpy(array_name, name.c_str(), MAX_NAME);
     hid_t did = H5Dopen(now_gid, array_name, H5P_DEFAULT);
     dataspace = H5Dget_space(did);
-    //we either get 2 or 1 d
-    //this ensures that when we go down to 1, we don't have leftover junk
+    // we either get 2 or 1 d
+    // this ensures that when we go down to 1, we don't have leftover junk
     dims[1] = 1;
     status = H5Sget_simple_extent_dims(dataspace, dims, nullptr);
     if (status < 0)
@@ -975,63 +932,74 @@ int vtkTRUCHASReader::RequestData(
       H5Dclose(did);
       continue;
     }
-    if ((align == 0 && dims[0] != totalNumCells) ||
-        (align == 1 && dims[0] != totalNumPoints))
+    if ((align == 0 && dims[0] != totalNumCells) || (align == 1 && dims[0] != totalNumPoints))
     {
       H5Dclose(did);
       continue;
     }
 
-
-    bool isFloat = this->Internals->array_isFloat[array_name];
-    double **vals_out = nullptr;
-    int **ivals_out = nullptr;
-    if (isFloat)
+    // get the visualization field name
+    char field_name[MAX_NAME + 1];
+    if (H5Aexists_by_name(now_gid, array_name, "FIELDNAME", H5P_DEFAULT))
     {
-      vals_out = new double *[dims[0]];
-      vals_out[0] = new double[dims[0]*dims[1]];
-      for (unsigned int i = 1; i < dims[0]; i++)
-      {
-        vals_out[i] = vals_out[0]+i*dims[1];
-      }
-      status = H5Dread(did, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
-                       H5P_DEFAULT, &vals_out[0][0]);
+      memset(field_name, 0, strlen(field_name));
+      hid_t attr = H5Aopen(did, "FIELDNAME", H5P_DEFAULT);
+      hid_t atype = H5Aget_type(attr);
+      hid_t atype_mem = H5Tget_native_type(atype, H5T_DIR_ASCEND);
+      H5Aread(attr, atype_mem, field_name);
+      H5Aclose(attr);
     }
     else
     {
-      ivals_out = new int *[dims[0]];
-      ivals_out[0] = new int[dims[0]*dims[1]];
-      for (unsigned int i = 1; i < dims[0]; i++)
-      {
-        ivals_out[i] = ivals_out[0]+i*dims[1];
-      }
-      status = H5Dread(did, H5T_NATIVE_INT, H5S_ALL, H5S_ALL,
-                       H5P_DEFAULT, &ivals_out[0][0]);
+      strncpy(field_name, array_name, sizeof(field_name));
     }
 
-    int *blockptr = this->Internals->bids_out[0];
+    bool isFloat = this->Internals->array_isFloat[array_name];
+    double** vals_out = nullptr;
+    int** ivals_out = nullptr;
+    if (isFloat)
+    {
+      vals_out = new double*[dims[0]];
+      vals_out[0] = new double[dims[0] * dims[1]];
+      for (unsigned int i = 1; i < dims[0]; i++)
+      {
+        vals_out[i] = vals_out[0] + i * dims[1];
+      }
+      status = H5Dread(did, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &vals_out[0][0]);
+    }
+    else
+    {
+      ivals_out = new int*[dims[0]];
+      ivals_out[0] = new int[dims[0] * dims[1]];
+      for (unsigned int i = 1; i < dims[0]; i++)
+      {
+        ivals_out[i] = ivals_out[0] + i * dims[1];
+      }
+      status = H5Dread(did, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &ivals_out[0][0]);
+    }
+
+    int* blockptr = this->Internals->bids_out[0];
     bool forcells = (align == 0);
 
-    //save time by keeping track of what array goes to what block once
-    std::map<int, vtkDataArray *> gblockToArray;
+    // save time by keeping track of what array goes to what block once
+    std::map<int, vtkDataArray*> gblockToArray;
     for (unsigned b = 0; b < totalNumBlocks; b++)
     {
       gblockToArray[b] = nullptr;
     }
 
-    //likewise we keep a master set of point data arrays
-    //speed things up by keeping track of array name to location
-    std::map<std::string, vtkDataArray *> nameToPointArray;
+    // likewise we keep a master set of point data arrays
+    // speed things up by keeping track of array name to location
+    std::map<std::string, vtkDataArray*> nameToPointArray;
     for (int a = 0; a < this->Internals->PointData->GetNumberOfArrays(); a++)
     {
-      //populate the map when filled in a different timestep
-      vtkDataArray *da = vtkDataArray::SafeDownCast
-        (this->Internals->PointData->GetArray(a));
+      // populate the map when filled in a different timestep
+      vtkDataArray* da = vtkDataArray::SafeDownCast(this->Internals->PointData->GetArray(a));
       nameToPointArray[std::string(da->GetName())] = da;
     }
 
-    //add this array to each enabled block
-    std::map<int, int> tcnt; //a counter so we can insert instead of append
+    // add this array to each enabled block
+    std::map<int, int> tcnt; // a counter so we can insert instead of append
     for (unsigned int b = 0; b < totalNumBlocks; b++)
     {
       if (this->BlockChoices->GetArraySetting(b) == 0)
@@ -1040,14 +1008,13 @@ int vtkTRUCHASReader::RequestData(
       }
       int gblockid = this->Internals->blockmap[b];
       tcnt[gblockid] = 0;
-      vtkDataArray *vArray = nullptr;
-      vtkDataSetAttributes *arrayGroup = grid[b]->GetCellData();
+      vtkDataArray* vArray = nullptr;
+      vtkDataSetAttributes* arrayGroup = grid[b]->GetCellData();
       if (!forcells)
       {
         arrayGroup = grid[b]->GetPointData();
       }
-      vArray = vtkDoubleArray::SafeDownCast
-        (arrayGroup->GetArray(array_name));
+      vArray = vtkDoubleArray::SafeDownCast(arrayGroup->GetArray(array_name));
       if (!vArray)
       {
         if (forcells)
@@ -1060,26 +1027,43 @@ int vtkTRUCHASReader::RequestData(
           {
             vArray = vtkIntArray::New();
           }
-          vArray->SetName(array_name);
+          vArray->SetName(field_name);
           vArray->SetNumberOfComponents(dims[1]);
+          if (strncmp(array_name, "VOF", 3) == 0)
+          {
+            // For the VOF field, name the components by the given FIELDNAMEX attribute.
+            for (size_t i = 0; i < dims[1]; i++)
+            {
+              std::string attr_name = "FIELDNAME" + vtk::to_string(i + 1);
+              if (!H5Aexists_by_name(now_gid, array_name, attr_name.c_str(), H5P_DEFAULT))
+                continue;
+              hid_t attr = H5Aopen(did, attr_name.c_str(), H5P_DEFAULT);
+              hid_t atype = H5Aget_type(attr);
+              hid_t atype_mem = H5Tget_native_type(atype, H5T_DIR_ASCEND);
+              char component_name[MAX_NAME + 1];
+              memset(component_name, 0, MAX_NAME);
+              H5Aread(attr, atype_mem, component_name);
+              H5Aclose(attr);
+              vArray->SetComponentName(i, component_name);
+            }
+          }
           vArray->SetNumberOfTuples(grid[b]->GetNumberOfCells());
           arrayGroup->AddArray(vArray);
           vArray->Delete();
         }
         else
         {
-          vtkDataArray *mArray = nameToPointArray[std::string(array_name)];
+          vtkDataArray* mArray = nameToPointArray[std::string(array_name)];
           if (!mArray)
           {
             if (isFloat)
             {
-              mArray = vtkDoubleArray::SafeDownCast
-                (this->Internals->PointData->GetArray(array_name));
+              mArray =
+                vtkDoubleArray::SafeDownCast(this->Internals->PointData->GetArray(array_name));
             }
             else
             {
-              mArray = vtkIntArray::SafeDownCast
-                (this->Internals->PointData->GetArray(array_name));
+              mArray = vtkIntArray::SafeDownCast(this->Internals->PointData->GetArray(array_name));
             }
             if (!mArray)
             {
@@ -1091,7 +1075,7 @@ int vtkTRUCHASReader::RequestData(
               {
                 mArray = vtkIntArray::New();
               }
-              mArray->SetName(array_name);
+              mArray->SetName(field_name);
               mArray->SetNumberOfComponents(dims[1]);
               mArray->SetNumberOfTuples(totalNumPoints);
               this->Internals->PointData->AddArray(mArray);
@@ -1103,13 +1087,13 @@ int vtkTRUCHASReader::RequestData(
           arrayGroup->AddArray(vArray);
         }
       }
-      vArray->Modified(); //be sure consumers know, we modify in place and that won't trigger
+      vArray->Modified(); // be sure consumers know, we modify in place and that won't trigger
       gblockToArray[gblockid] = vArray;
     }
 
-    //now move the array contents into place, element by element
-    double *ptr = nullptr;
-    int *iptr = nullptr;
+    // now move the array contents into place, element by element
+    double* ptr = nullptr;
+    int* iptr = nullptr;
     if (isFloat)
     {
       ptr = vals_out[0];
@@ -1128,7 +1112,7 @@ int vtkTRUCHASReader::RequestData(
           ptr += dims[1];
           continue;
         }
-        vtkDataArray *vArray = gblockToArray[gblockid];
+        vtkDataArray* vArray = gblockToArray[gblockid];
         for (unsigned int comp = 0; comp < dims[1]; comp++)
         {
           if (isFloat)
@@ -1145,7 +1129,7 @@ int vtkTRUCHASReader::RequestData(
       }
       else
       {
-        vtkDataArray *vArray = nameToPointArray[std::string(array_name)];
+        vtkDataArray* vArray = nameToPointArray[std::string(array_name)];
         for (unsigned int comp = 0; comp < dims[1]; comp++)
         {
           if (isFloat)
@@ -1177,10 +1161,10 @@ int vtkTRUCHASReader::RequestData(
 
   H5Gclose(now_gid);
 
-  for(unsigned int b = 0; b < totalNumBlocks; b++)
+  for (unsigned int b = 0; b < totalNumBlocks; b++)
   {
     int gblockid = this->Internals->blockmap[b];
-    std::string bname = vtkTRUCHASReader::Internal::to_string(gblockid);
+    std::string bname = vtk::to_string(gblockid);
     output->SetBlock(b, grid[b]);
     output->GetMetaData(b)->Set(vtkCompositeDataSet::NAME(), bname);
   }
@@ -1188,11 +1172,11 @@ int vtkTRUCHASReader::RequestData(
   return 1;
 }
 
-//----------------------------------------------------------------------------
-int vtkTRUCHASReader::CanReadFile(const char *filename)
+//------------------------------------------------------------------------------
+int vtkTRUCHASReader::CanReadFile(const char* filename)
 {
   size_t len = strlen(filename);
-  if (len < 3 || strcmp(filename+len-3, ".h5"))
+  if (len < 3 || strcmp(filename + len - 3, ".h5") != 0)
   {
     return 0;
   }
@@ -1200,33 +1184,29 @@ int vtkTRUCHASReader::CanReadFile(const char *filename)
   // Silence error messages to stdout generated by HDF5
   H5Eset_auto(H5E_DEFAULT, nullptr, nullptr);
 
-  hid_t fileIndx = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT );
-  if( fileIndx < 0 )
+  hid_t fileIndx = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
+  if (fileIndx < 0)
   {
     return 0;
   }
 
-  const char *needful_things[5]= {
-    //datasets
-    "/Meshes/DEFAULT/Nodal Coordinates",
-    "/Simulations/MAIN/Non-series Data/BLOCKID",
+  const char* needful_things[5] = { // datasets
+    "/Meshes/DEFAULT/Nodal Coordinates", "/Simulations/MAIN/Non-series Data/BLOCKID",
     "/Meshes/DEFAULT/Element Connectivity",
-    //groups
-    "/Simulations/MAIN/Series Data",
-    "/Simulations/MAIN/Series Data/Series 1"
+    // groups
+    "/Simulations/MAIN/Series Data", "/Simulations/MAIN/Series Data/Series 1"
   };
 
   for (int i = 0; i < 3; i++)
   {
     htri_t exists = H5Lexists(fileIndx, needful_things[i], H5P_DEFAULT);
-    if( !exists )
+    if (!exists)
     {
       H5Fclose(fileIndx);
       return 0;
     }
-    hid_t dset = H5Dopen
-      (fileIndx, needful_things[i], H5P_DEFAULT );
-    if( dset < 0 )
+    hid_t dset = H5Dopen(fileIndx, needful_things[i], H5P_DEFAULT);
+    if (dset < 0)
     {
       H5Fclose(fileIndx);
       return 0;
@@ -1237,14 +1217,13 @@ int vtkTRUCHASReader::CanReadFile(const char *filename)
   for (int i = 3; i < 5; i++)
   {
     htri_t exists = H5Lexists(fileIndx, needful_things[i], H5P_DEFAULT);
-    if( !exists )
+    if (!exists)
     {
       H5Fclose(fileIndx);
       return 0;
     }
-    hid_t gid = H5Gopen
-      (fileIndx, needful_things[i], H5P_DEFAULT);
-    if( gid < 0 )
+    hid_t gid = H5Gopen(fileIndx, needful_things[i], H5P_DEFAULT);
+    if (gid < 0)
     {
       H5Fclose(fileIndx);
       return 0;
@@ -1252,30 +1231,29 @@ int vtkTRUCHASReader::CanReadFile(const char *filename)
     H5Gclose(gid);
   }
 
-  //it most likely has everything everything we need
+  // it most likely has everything everything we need
 
   H5Fclose(fileIndx);
   return 1;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkTRUCHASReader::PrintSelf(ostream& os, vtkIndent indent)
 {
-  this->Superclass::PrintSelf(os,indent);
-  os << indent << "File Name: "
-     << (this->FileName ? this->FileName : "(none)") << "\n";
+  this->Superclass::PrintSelf(os, indent);
+  os << indent << "File Name: " << (this->FileName ? this->FileName : "(none)") << "\n";
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkTRUCHASReader::GetNumberOfBlockArrays()
 {
   return this->BlockChoices->GetNumberOfArrays();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkTRUCHASReader::SetBlockArrayStatus(const char* gridname, int status)
 {
-  if (status!=0)
+  if (status != 0)
   {
     this->BlockChoices->EnableArray(gridname);
   }
@@ -1286,28 +1264,28 @@ void vtkTRUCHASReader::SetBlockArrayStatus(const char* gridname, int status)
   this->Modified();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkTRUCHASReader::GetBlockArrayStatus(const char* arrayname)
 {
   return this->BlockChoices->ArrayIsEnabled(arrayname);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 const char* vtkTRUCHASReader::GetBlockArrayName(int index)
 {
   return this->BlockChoices->GetArrayName(index);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkTRUCHASReader::GetNumberOfPointArrays()
 {
   return this->PointArrayChoices->GetNumberOfArrays();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkTRUCHASReader::SetPointArrayStatus(const char* gridname, int status)
 {
-  if (status!=0)
+  if (status != 0)
   {
     this->PointArrayChoices->EnableArray(gridname);
   }
@@ -1318,28 +1296,28 @@ void vtkTRUCHASReader::SetPointArrayStatus(const char* gridname, int status)
   this->Modified();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkTRUCHASReader::GetPointArrayStatus(const char* arrayname)
 {
   return this->PointArrayChoices->ArrayIsEnabled(arrayname);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 const char* vtkTRUCHASReader::GetPointArrayName(int index)
 {
   return this->PointArrayChoices->GetArrayName(index);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkTRUCHASReader::GetNumberOfCellArrays()
 {
   return this->CellArrayChoices->GetNumberOfArrays();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkTRUCHASReader::SetCellArrayStatus(const char* gridname, int status)
 {
-  if (status!=0)
+  if (status != 0)
   {
     this->CellArrayChoices->EnableArray(gridname);
   }
@@ -1350,14 +1328,15 @@ void vtkTRUCHASReader::SetCellArrayStatus(const char* gridname, int status)
   this->Modified();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkTRUCHASReader::GetCellArrayStatus(const char* arrayname)
 {
   return this->CellArrayChoices->ArrayIsEnabled(arrayname);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 const char* vtkTRUCHASReader::GetCellArrayName(int index)
 {
   return this->CellArrayChoices->GetArrayName(index);
 }
+VTK_ABI_NAMESPACE_END

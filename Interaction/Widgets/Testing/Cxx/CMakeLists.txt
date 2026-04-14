@@ -4,23 +4,29 @@ vtk_add_test_cxx(vtkInteractionWidgetsCxxTests tests
   BoxWidget.cxx
   BoxWidget2.cxx
   ImagePlaneWidget.cxx
+  ImagePlaneWidgetOriented.cxx
   TerrainPolylineEditor.cxx
   TestAffineWidget.cxx
   TestAngleWidget2D.cxx
   TestAngleWidget3D.cxx
   TestBalloonWidget.cxx
-  TestBiDimensionalWidget.cxx
+  TestBiDimensionalWidget.cxx,LOOSE_VALID
   TestBorderWidget.cxx
   TestBrokenLineWidget.cxx
+  TestCamera3DWidget.cxx
   TestCameraWidget.cxx
   TestCaptionWidget.cxx
   TestCellCentersPointPlacer.cxx
   TestCenteredSliderWidget2D.cxx
   TestCheckerboardWidget.cxx
+  TestCoincidentHandleWidgets.cxx
+  TestCompassWidget.cxx
   TestConstrainedHandleWidget.cxx
   TestContourWidget2.cxx
+  TestCoordinateFrameWidget.cxx
   TestDijkstraImageGeodesicPath.cxx
-  TestDistanceWidget.cxx
+  TestDisplaySizedImplicitPlaneWidget.cxx
+  TestDistanceWidget.cxx,LOOSE_VALID
   TestDistanceWidget3D.cxx
   TestFinitePlaneWidget.cxx
   TestFixedSizeHandleRepresentation3D.cxx
@@ -28,20 +34,28 @@ vtk_add_test_cxx(vtkInteractionWidgetsCxxTests tests
   TestHandleWidget.cxx
   TestHandleWidget2D.cxx
   TestImageActorContourWidget.cxx
+  TestImplicitAnnulusRadius.cxx
+  TestImplicitAnnulusWidget.cxx
+  TestImplicitConeWidget.cxx
   TestImplicitCylinderWidget.cxx
   TestImplicitCylinderWidget2.cxx
+  TestImplicitFrustumWidget.cxx
   TestImplicitPlaneWidget.cxx
   TestImplicitPlaneWidget2.cxx
   TestImplicitPlaneWidget2LockNormalToCamera.cxx
   TestImplicitPlaneWidget2b.cxx
   TestImplicitPlaneWidget3.cxx
+  TestLightWidget.cxx
   TestLogoWidget.cxx
   TestLogoWidgetAlphaBlending.cxx
   TestLogoWidgetDepthPeeling.cxx
+  TestLineWidget2b.cxx,NO_VALID
   TestMeasurementCubeHandleRepresentation3D.cxx
   TestMultipleViewports.cxx
   TestOrientationMarkerWidget.cxx
   TestOrientationMarkerWidget2.cxx
+  TestOrientationMarkerWidgetRepeatedAdd.cxx
+  TestOrientationWidget.cxx
   TestOrthoPlanes.cxx
   TestParallelopipedWidget.cxx
   TestPickingManagerSeedWidget.cxx
@@ -55,7 +69,7 @@ vtk_add_test_cxx(vtkInteractionWidgetsCxxTests tests
   TestRectilinearWipeWidget.cxx
   TestResliceCursorWidget2.cxx
   TestResliceCursorWidget3.cxx
-  TestScalarBarWidget.cxx
+  TestScalarBarWidget.cxx,LOOSE_VALID
   TestSeedWidget.cxx
   TestSeedWidget2.cxx
   TestSeedWidgetNonUniformRepresentations.cxx
@@ -66,9 +80,13 @@ vtk_add_test_cxx(vtkInteractionWidgetsCxxTests tests
   TestSphereWidgetZoomInOut.cxx
   TestSplineWidget.cxx
   TestTextWidget.cxx
+  TestTextRepresentationWithBorders.cxx
+  TestTextWidgetBackgroundInteractive.cxx
   )
 vtk_add_test_cxx(vtkInteractionWidgetsCxxTests no_valid_tests
   NO_VALID
+  TestEqualizerContextItem.cxx
+  TestMultiLineRepresentation.cxx
   vtkAngleRepresentation2DTest1.cxx
   vtkAngleRepresentation3DTest1.cxx
   vtkAngleWidgetTest1.cxx
@@ -77,16 +95,23 @@ vtk_add_test_cxx(vtkInteractionWidgetsCxxTests no_valid_tests
   vtkBiDimensionalRepresentation2DTest1.cxx
   vtkBiDimensionalWidgetTest1.cxx
   vtkBorderWidgetTest1.cxx
+  vtkCameraPathRepresentationTest1.cxx
   vtkCaptionRepresentationTest1.cxx
   vtkCaptionWidgetTest1.cxx
   vtkConstrainedPointHandleRepresentationTest1.cxx
   vtkHoverWidgetTest1.cxx
+  vtkImplicitPlaneRepresentationTest1.cxx
+  vtkImplicitPlaneWidget2Test1.cxx
   vtkLineRepresentationTest1.cxx
   vtkLineWidget2Test1.cxx
+  vtkPointHandleRepresentation2DTest1.cxx
+  # vtkPointHandleRepresentation3DTest1.cxx disabled
   vtkPolyLineRepresentationTest1.cxx
   vtkPolyLineWidgetTest1.cxx
+  vtkResliceCursorRepresentationTest1.cxx
   vtkSeedRepresentationTest1.cxx
   vtkSeedWidgetTest1.cxx
+  # vtkSphereHandleRepresentationTest1.cxx disabled
   vtkSplineRepresentationTest1.cxx
   vtkSplineWidget2Test1.cxx
   vtkTextRepresentationTest1.cxx
@@ -97,9 +122,11 @@ vtk_add_test_cxx(vtkInteractionWidgetsCxxTests no_valid_tests
 vtk_add_test_cxx(vtkInteractionWidgetsCxxTests data_tests
   TestButtonWidget.cxx
   TestButtonWidgetMultipleViewports.cxx
+  TestButtonWidgetPlacement.cxx
   TestDijkstraGraphGeodesicPath.cxx
   TestLineWidget.cxx
   TestLineWidget2.cxx
+  TestMultiLineWidget.cxx
   TestOrientedGlyphContour.cxx
   TestPlaneWidget.cxx
   TestPointWidget.cxx
@@ -113,11 +140,9 @@ vtk_add_test_cxx(vtkInteractionWidgetsCxxTests data_tests
   TestImageTracerWidget.cxx
   )
 
-if(NOT VTK_OPENGL_HAS_OSMESA)
-  vtk_add_test_cxx(vtkInteractionWidgetsCxxTests ogl_tests
-    TestPickingManagerWidgets.cxx
-    )
-endif()
+vtk_add_test_cxx(vtkInteractionWidgetsCxxTests ogl_tests
+  TestPickingManagerWidgets.cxx
+  )
 
 set(all_tests
   ${tests}
@@ -126,30 +151,37 @@ set(all_tests
   ${ogl_tests}
   )
 vtk_test_cxx_executable(vtkInteractionWidgetsCxxTests all_tests
+  DISABLE_FLOATING_POINT_EXCEPTIONS
   RENDERING_FACTORY
   )
 
 # Allow local customization of timeout for this test.
 if(NOT VTK_TEST_TIMEOUT_TerrainPolylineEditor)
-  set(VTK_TEST_TIMEOUT_TerrainPolylineEditor 90)
+  set(VTK_TEST_TIMEOUT_TerrainPolylineEditor 350)
 endif()
-set_tests_properties(vtkInteractionWidgetsCxx-TerrainPolylineEditor
+set_tests_properties(VTK::InteractionWidgetsCxx-TerrainPolylineEditor
   PROPERTIES TIMEOUT ${VTK_TEST_TIMEOUT_TerrainPolylineEditor})
 
-if(NOT VTK_OPENGL_HAS_OSMESA)
-  # Allow local customization of timeout for this test.
-  if(NOT VTK_TEST_TIMEOUT_TestPickingManagerSeedWidget)
-    set(VTK_TEST_TIMEOUT_TestPickingManagerSeedWidget 60)
-  endif()
-  set_tests_properties(vtkInteractionWidgetsCxx-TestPickingManagerSeedWidget
-    PROPERTIES TIMEOUT ${VTK_TEST_TIMEOUT_TestPickingManagerSeedWidget})
+# Allow local customization of timeout for this test.
+if(NOT VTK_TEST_TIMEOUT_TestPickingManagerSeedWidget)
+  set(VTK_TEST_TIMEOUT_TestPickingManagerSeedWidget 400)
 endif()
+set_tests_properties(VTK::InteractionWidgetsCxx-TestPickingManagerSeedWidget
+  PROPERTIES TIMEOUT ${VTK_TEST_TIMEOUT_TestPickingManagerSeedWidget})
 
 # On some machines this test takes ~220 seconds to complete, allow for some
 # extra time
 if(NOT VTK_TEST_TIMEOUT_TestSphereHandleWidget)
   set(VTK_TEST_TIMEOUT_TestSphereHandleWidget 300)
 endif()
-set_tests_properties(vtkInteractionWidgetsCxx-TestSphereHandleWidget
+set_tests_properties(VTK::InteractionWidgetsCxx-TestSphereHandleWidget
     PROPERTIES TIMEOUT ${VTK_TEST_TIMEOUT_TestSphereHandleWidget}
+               RUN_SERIAL ON)
+
+# TestOrthoPlanes can take a long time
+if(NOT VTK_TEST_TIMEOUT_TestOrthoPlanes)
+  set(VTK_TEST_TIMEOUT_TestOrthoPlanes 300)
+endif()
+set_tests_properties(VTK::InteractionWidgetsCxx-TestOrthoPlanes
+    PROPERTIES TIMEOUT ${VTK_TEST_TIMEOUT_TestOrthoPlanes}
                RUN_SERIAL ON)

@@ -122,7 +122,7 @@ XdmfHeavyDataController::getDescriptor() const
   return "";
 }
 
-std::vector<unsigned int> 
+std::vector<unsigned int>
 XdmfHeavyDataController::getDimensions() const
 {
   return mDimensions;
@@ -339,6 +339,10 @@ int XdmfHeavyDataControllerGetType(XDMFHEAVYDATACONTROLLER * controller, int * s
   {
       return XDMF_ARRAY_TYPE_UINT32;
   }
+  else if (typeName == XdmfArrayType::UInt64()->getName())
+  {
+      return XDMF_ARRAY_TYPE_UINT64;
+  }
   else if (typeName == XdmfArrayType::Int8()->getName())
   {
       return XDMF_ARRAY_TYPE_INT8;
@@ -347,33 +351,21 @@ int XdmfHeavyDataControllerGetType(XDMFHEAVYDATACONTROLLER * controller, int * s
   {
       return XDMF_ARRAY_TYPE_INT16;
   }
-  else if (typeName == XdmfArrayType::Int32()->getName() || typeName == XdmfArrayType::Int64()->getName())
+  else if (typeName == XdmfArrayType::Int32()->getName())
   {
-    if (typePrecision == 4)
-    {
       return XDMF_ARRAY_TYPE_INT32;
-    }
-    else if (typePrecision == 8)
-    {
-      return XDMF_ARRAY_TYPE_INT64;
-    }
-    else
-    {
-    }
   }
-  else if (typeName == XdmfArrayType::Float32()->getName() || typeName == XdmfArrayType::Float64()->getName())
+  else if (typeName == XdmfArrayType::Int64()->getName())
   {
-    if (typePrecision == 4)
-    {
+      return XDMF_ARRAY_TYPE_INT64;
+  }
+  else if (typeName == XdmfArrayType::Float32()->getName())
+  {
       return XDMF_ARRAY_TYPE_FLOAT32;
-    }
-    else if (typePrecision == 8)
-    {
+  }
+  else if (typeName == XdmfArrayType::Float64()->getName())
+  {
       return XDMF_ARRAY_TYPE_FLOAT64;
-    }
-    else
-    {
-    }
   }
   else if (typeName == XdmfArrayType::String()->getName())
   {

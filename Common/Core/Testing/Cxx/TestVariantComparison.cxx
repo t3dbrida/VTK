@@ -1,26 +1,15 @@
-/*=========================================================================
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
-  Program:   Visualization Toolkit
-  Module:    TestVariantComparison.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-
-#include "vtkVariant.h"
 #include "vtkObject.h"
+#include "vtkVariant.h"
 
-#include <map>
 #include <cstdio>
+#include <map>
 
-int
-TestVariantComparison(int, char *[])
+#include <iostream>
+
+int TestVariantComparison(int, char*[])
 {
   signed char positiveChar = 100;
   signed char negativeChar = -100;
@@ -43,19 +32,19 @@ TestVariantComparison(int, char *[])
   // integers.
   unsigned char unsignedChar = 192;
   unsigned short unsignedShort = 49152;
-  unsigned int unsignedInt = (static_cast<unsigned int>(1)<<shiftAmountInt) * 3;
-  unsigned long unsignedLong = (static_cast<unsigned long>(1)<<shiftAmountLong) * 3;
+  unsigned int unsignedInt = (static_cast<unsigned int>(1) << shiftAmountInt) * 3;
+  unsigned long unsignedLong = (static_cast<unsigned long>(1) << shiftAmountLong) * 3;
   vtkTypeUInt64 unsigned64 = 3 * (static_cast<vtkTypeUInt64>(1) << shiftAmount64);
 
-  vtkStdString numberString("100000");
-  vtkStdString alphaString("ABCDEFG");
+  std::string numberString("100000");
+  std::string alphaString("ABCDEFG");
 
   float positiveFloat = 12345.678;
   float negativeFloat = -12345.678;
   double positiveDouble = 123456789.012345;
   double negativeDouble = -123456789.012345;
 
-  vtkObject *fooObject = vtkObject::New();
+  vtkObject* fooObject = vtkObject::New();
 
   vtkVariant invalidVariant;
 
@@ -93,11 +82,27 @@ TestVariantComparison(int, char *[])
   int errorCount = 0;
   int overallErrorCount = 0;
 
-#define CHECK_EXPRESSION_FALSE(expr) { if ((expr)) { ++errorCount; cerr << "TEST FAILED: " << #expr << " should have been false\n\n"; } }
+#define CHECK_EXPRESSION_FALSE(expr)                                                               \
+  do                                                                                               \
+  {                                                                                                \
+    if ((expr))                                                                                    \
+    {                                                                                              \
+      ++errorCount;                                                                                \
+      std::cerr << "TEST FAILED: " << #expr << " should have been false\n\n";                      \
+    }                                                                                              \
+  } while (false)
 
-#define CHECK_EXPRESSION_TRUE(expr) { if (!(expr)) { ++errorCount; cerr << "TEST FAILED: " << #expr << " should have been true\n\n"; } }
+#define CHECK_EXPRESSION_TRUE(expr)                                                                \
+  do                                                                                               \
+  {                                                                                                \
+    if (!(expr))                                                                                   \
+    {                                                                                              \
+      ++errorCount;                                                                                \
+      std::cerr << "TEST FAILED: " << #expr << " should have been true\n\n";                       \
+    }                                                                                              \
+  } while (false)
 
-  cerr << "Testing same-type comparisons... ";
+  std::cerr << "Testing same-type comparisons... ";
   CHECK_EXPRESSION_FALSE(positiveCharVariant < negativeCharVariant);
   CHECK_EXPRESSION_FALSE(unsignedCharVariant < positiveCharVariant);
   CHECK_EXPRESSION_FALSE(unsignedCharVariant < negativeCharVariant);
@@ -125,16 +130,16 @@ TestVariantComparison(int, char *[])
 
   if (errorCount == 0)
   {
-    cerr << "Test succeeded.\n";
+    std::cerr << "Test succeeded.\n";
   }
   else
   {
-    cerr << errorCount << " error(s) found!\n";
+    std::cerr << errorCount << " error(s) found!\n";
   }
   overallErrorCount += errorCount;
   errorCount = 0;
 
-  cerr << "Testing cross-type comparisons... ";
+  std::cerr << "Testing cross-type comparisons... ";
 
   CHECK_EXPRESSION_FALSE(positiveShortVariant < positiveCharVariant);
   CHECK_EXPRESSION_FALSE(positiveIntVariant < positiveCharVariant);
@@ -176,16 +181,16 @@ TestVariantComparison(int, char *[])
 
   if (errorCount == 0)
   {
-    cerr << "Test succeeded.\n";
+    std::cerr << "Test succeeded.\n";
   }
   else
   {
-    cerr << errorCount << " error(s) found!\n";
+    std::cerr << errorCount << " error(s) found!\n";
   }
   overallErrorCount += errorCount;
   errorCount = 0;
 
-  cerr << "Testing cross-type equality...";
+  std::cerr << "Testing cross-type equality...";
 
   char c = 100;
   short s = 100;
@@ -194,7 +199,7 @@ TestVariantComparison(int, char *[])
   vtkTypeInt64 i64 = 100;
   float f = 100;
   double d = 100;
-  vtkStdString str("100");
+  std::string str("100");
 
   CHECK_EXPRESSION_TRUE(vtkVariant(c) == vtkVariant(s));
   CHECK_EXPRESSION_TRUE(vtkVariant(c) == vtkVariant(i));
@@ -232,18 +237,18 @@ TestVariantComparison(int, char *[])
 
   if (errorCount == 0)
   {
-    cerr << " Test succeeded.\n";
+    std::cerr << " Test succeeded.\n";
   }
   else
   {
-    cerr << errorCount << " error(s) found!\n";
+    std::cerr << errorCount << " error(s) found!\n";
   }
   overallErrorCount += errorCount;
   errorCount = 0;
 
-  cerr << "Testing vtkVariant as STL map key... ";
+  std::cerr << "Testing vtkVariant as STL map key... ";
 
-  std::map<vtkVariant, vtkStdString> TestMap;
+  std::map<vtkVariant, std::string> TestMap;
 
   TestMap[vtkVariant(s)] = "short";
   TestMap[vtkVariant(i)] = "int";
@@ -259,20 +264,20 @@ TestVariantComparison(int, char *[])
 
   if (errorCount == 0)
   {
-    cerr << " Test succeeded.\n";
+    std::cerr << " Test succeeded.\n";
   }
   else
   {
-    cerr << errorCount << " error(s) found!\n";
+    std::cerr << errorCount << " error(s) found!\n";
   }
   overallErrorCount += errorCount;
   errorCount = 0;
 
-  cerr << "Testing vtkVariant as STL map key with strict weak ordering (fast comparator)...";
+  std::cerr << "Testing vtkVariant as STL map key with strict weak ordering (fast comparator)...";
 
   // This one should treat variants containing different types as
   // unequal.
-  std::map<vtkVariant, vtkStdString, vtkVariantStrictWeakOrder> TestMap2;
+  std::map<vtkVariant, std::string, vtkVariantStrictWeakOrder> TestMap2;
   TestMap2[vtkVariant()] = "invalid";
   TestMap2[vtkVariant(s)] = "short";
   TestMap2[vtkVariant(i)] = "int";
@@ -310,43 +315,42 @@ TestVariantComparison(int, char *[])
 
   if (errorCount == 0)
   {
-    cerr << " Test succeeded.\n";
+    std::cerr << " Test succeeded.\n";
   }
   else
   {
-    cerr << errorCount << " error(s) found!\n";
+    std::cerr << errorCount << " error(s) found!\n";
   }
   overallErrorCount += errorCount;
 
   if (overallErrorCount == 0)
   {
-    cerr << "All tests succeeded.\n";
+    std::cerr << "All tests succeeded.\n";
   }
   else
   {
-    cerr << "Some tests failed!  Overall error count: " << overallErrorCount
-         << "\n";
-    cerr << "Debug information:\n";
-    cerr << "CHAR(" << sizeof(char) << "): "
-         << "positive " << positiveChar << ", "
-         << "negative " << negativeChar << ", "
-         << "unsigned " << unsignedChar << "\n";
-    cerr << "SHORT(" << sizeof(short) << "): "
-         << "positive " << positiveShort << ", "
-         << "negative " << negativeShort << ", "
-         << "unsigned " << unsignedShort << "\n";
-    cerr << "INT(" << sizeof(int) << "): "
-         << "positive " << positiveInt << ", "
-         << "negative " << negativeInt << ", "
-         << "unsigned " << unsignedInt << "\n";
-    cerr << "LONG(" << sizeof(long) << "): "
-         << "positive " << positiveLong << ", "
-         << "negative " << negativeLong << ", "
-         << "unsigned " << unsignedLong << "\n";
-    cerr << "INT64(" << sizeof(vtkTypeInt64) << "): "
-         << "positive " << positive64 << ", "
-         << "negative " << negative64 << ", "
-         << "unsigned " << unsigned64 << "\n";
+    std::cerr << "Some tests failed!  Overall error count: " << overallErrorCount << "\n";
+    std::cerr << "Debug information:\n";
+    std::cerr << "CHAR(" << sizeof(char) << "): "
+              << "positive " << positiveChar << ", "
+              << "negative " << negativeChar << ", "
+              << "unsigned " << unsignedChar << "\n";
+    std::cerr << "SHORT(" << sizeof(short) << "): "
+              << "positive " << positiveShort << ", "
+              << "negative " << negativeShort << ", "
+              << "unsigned " << unsignedShort << "\n";
+    std::cerr << "INT(" << sizeof(int) << "): "
+              << "positive " << positiveInt << ", "
+              << "negative " << negativeInt << ", "
+              << "unsigned " << unsignedInt << "\n";
+    std::cerr << "LONG(" << sizeof(long) << "): "
+              << "positive " << positiveLong << ", "
+              << "negative " << negativeLong << ", "
+              << "unsigned " << unsignedLong << "\n";
+    std::cerr << "INT64(" << sizeof(vtkTypeInt64) << "): "
+              << "positive " << positive64 << ", "
+              << "negative " << negative64 << ", "
+              << "unsigned " << unsigned64 << "\n";
   }
 
   fooObject->Delete();

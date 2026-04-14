@@ -1,42 +1,32 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkDICOMImageReader.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkDICOMImageReader.h"
 
-#include "vtkDirectory.h"
 #include "vtkDataArray.h"
+#include "vtkDirectory.h"
+#include "vtkErrorCode.h"
+#include "vtkFileResourceStream.h"
 #include "vtkImageData.h"
 #include "vtkObjectFactory.h"
 #include "vtkPointData.h"
-#include "vtkErrorCode.h"
 
 #include <vtksys/SystemTools.hxx>
 
-#include <vector>
+#include <cmath>
 #include <string>
+#include <vector>
 
 #include "DICOMAppHelper.h"
 #include "DICOMParser.h"
 
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkDICOMImageReader);
 
 class vtkDICOMImageReaderVector : public std::vector<std::string>
 {
-
 };
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkDICOMImageReader::vtkDICOMImageReader()
 {
   this->Parser = new DICOMParser();
@@ -49,21 +39,21 @@ vtkDICOMImageReader::vtkDICOMImageReader()
   this->DICOMFileNames = new vtkDICOMImageReaderVector();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkDICOMImageReader::~vtkDICOMImageReader()
 {
   delete this->Parser;
   delete this->AppHelper;
   delete this->DICOMFileNames;
 
-  delete [] this->DirectoryName;
-  delete [] this->PatientName;
-  delete [] this->StudyUID;
-  delete [] this->StudyID;
-  delete [] this->TransferSyntaxUID;
+  delete[] this->DirectoryName;
+  delete[] this->PatientName;
+  delete[] this->StudyUID;
+  delete[] this->StudyID;
+  delete[] this->TransferSyntaxUID;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkDICOMImageReader::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os, indent);
@@ -73,7 +63,8 @@ void vtkDICOMImageReader::PrintSelf(ostream& os, vtkIndent indent)
   }
   else
   {
-    os << "DirectoryName : (nullptr)" << "\n";
+    os << "DirectoryName : (nullptr)"
+       << "\n";
   }
   if (this->FileName)
   {
@@ -81,58 +72,83 @@ void vtkDICOMImageReader::PrintSelf(ostream& os, vtkIndent indent)
   }
   else
   {
-    os << "FileName : (nullptr)" << "\n";
+    os << "FileName : (nullptr)"
+       << "\n";
   }
-
 }
 
-//----------------------------------------------------------------------------
-int vtkDICOMImageReader::CanReadFile(const char* fname)
+//------------------------------------------------------------------------------
+int vtkDICOMImageReader::CanReadFile(const char* filename)
 {
-  bool canOpen = this->Parser->OpenFile((const char*) fname);
-  if (!canOpen)
+  vtkNew<vtkFileResourceStream> stream;
+  if (!stream->Open(filename))
   {
-    vtkErrorMacro("DICOMParser couldn't open : " << fname);
     return 0;
   }
-  bool canRead = this->Parser->IsDICOMFile();
-  if (canRead)
-  {
-    return 1;
-  }
-  else
-  {
-    vtkWarningMacro("DICOMParser couldn't parse : " << fname);
-    return 0;
-  }
+  return this->CanReadFile(stream);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+int vtkDICOMImageReader::CanReadFile(vtkResourceStream* stream)
+{
+  if (!stream)
+  {
+    return 0;
+  }
+
+  stream->Seek(0, vtkResourceStream::SeekDirection::Begin);
+  auto streambuf = stream->ToStreambuf();
+
+  // Parser takes ownership of istream
+  std::istream* iStream = new std::istream(streambuf.get());
+  if (!this->Parser->OpenStream(iStream))
+  {
+    return 0;
+  }
+
+  bool canRead = this->Parser->IsDICOMFile();
+  this->Parser->CloseFile();
+  return canRead ? 1 : 0;
+}
+
+//------------------------------------------------------------------------------
 void vtkDICOMImageReader::ExecuteInformation()
 {
-  if (this->FileName == nullptr && this->DirectoryName == nullptr)
+  if (!this->GetStream() && this->FileName == nullptr && this->DirectoryName == nullptr)
   {
     return;
   }
 
+  const auto parseInformation = [this]()
+  {
+    this->DICOMFileNames->clear();
+    this->AppHelper->Clear();
+    this->AppHelper->RegisterCallbacks(this->Parser);
+    this->Parser->ReadHeader();
+    this->SetupOutputInformation(1);
+  };
+
+  if (this->GetStream())
+  {
+    this->Parser->ClearAllDICOMTagCallbacks();
+    this->Streambuf = this->GetStream()->ToStreambuf();
+
+    // Parser takes ownership of istream
+    std::istream* iStream = new std::istream(this->Streambuf.get());
+    this->Parser->OpenStream(iStream);
+    parseInformation();
+  }
   if (this->FileName)
   {
     vtksys::SystemTools::Stat_t fs;
     if (vtksys::SystemTools::Stat(this->FileName, &fs))
     {
-      vtkErrorMacro("Unable to open file " << this->FileName );
+      vtkErrorMacro("Unable to open file " << this->FileName);
       return;
     }
-
-    this->DICOMFileNames->clear();
-    this->AppHelper->Clear();
     this->Parser->ClearAllDICOMTagCallbacks();
-
     this->Parser->OpenFile(this->FileName);
-    this->AppHelper->RegisterCallbacks(this->Parser);
-
-    this->Parser->ReadHeader();
-    this->SetupOutputInformation(1);
+    parseInformation();
   }
   else if (this->DirectoryName)
   {
@@ -146,15 +162,14 @@ void vtkDICOMImageReader::ExecuteInformation()
     }
     vtkIdType numFiles = dir->GetNumberOfFiles();
 
-    vtkDebugMacro( << "There are " << numFiles << " files in the directory.");
+    vtkDebugMacro(<< "There are " << numFiles << " files in the directory.");
 
     this->DICOMFileNames->clear();
     this->AppHelper->Clear();
 
     for (vtkIdType i = 0; i < numFiles; i++)
     {
-      if (strcmp(dir->GetFile(i), ".") == 0 ||
-          strcmp(dir->GetFile(i), "..") == 0)
+      if (strcmp(dir->GetFile(i), ".") == 0 || strcmp(dir->GetFile(i), "..") == 0)
       {
         continue;
       }
@@ -167,23 +182,20 @@ void vtkDICOMImageReader::ExecuteInformation()
 
       if (val == 1)
       {
-        vtkDebugMacro( << "Adding " << fileString.c_str() << " to DICOMFileNames.");
+        vtkDebugMacro(<< "Adding " << fileString << " to DICOMFileNames.");
         this->DICOMFileNames->push_back(fileString);
       }
       else
       {
-        vtkDebugMacro( << fileString.c_str() << " - DICOMParser CanReadFile returned : " << val);
+        vtkDebugMacro(<< fileString << " - DICOMParser CanReadFile returned : " << val);
       }
-
     }
     std::vector<std::string>::iterator iter;
 
-    for (iter = this->DICOMFileNames->begin();
-         iter != this->DICOMFileNames->end();
-         ++iter)
+    for (iter = this->DICOMFileNames->begin(); iter != this->DICOMFileNames->end(); ++iter)
     {
       const char* fn = iter->c_str();
-      vtkDebugMacro( << "Trying : " << fn);
+      vtkDebugMacro(<< "Trying : " << fn);
 
       bool couldOpen = this->Parser->OpenFile(fn);
       if (!couldOpen)
@@ -199,49 +211,46 @@ void vtkDICOMImageReader::ExecuteInformation()
       this->Parser->ReadHeader();
       this->Parser->CloseFile();
 
-      vtkDebugMacro( << "File name : " << fn );
-      vtkDebugMacro( << "Slice number : " << this->AppHelper->GetSliceNumber());
+      vtkDebugMacro(<< "File name : " << fn);
+      vtkDebugMacro(<< "Slice number : " << this->AppHelper->GetSliceNumber());
     }
 
-    std::vector<std::pair<float, std::string> > sortedFiles;
+    std::vector<std::pair<float, std::string>> sortedFiles;
 
     this->AppHelper->GetImagePositionPatientFilenamePairs(sortedFiles, false);
     this->SetupOutputInformation(static_cast<int>(sortedFiles.size()));
 
-    //this->AppHelper->OutputSeries();
+    // this->AppHelper->OutputSeries();
 
     if (!sortedFiles.empty())
     {
       this->DICOMFileNames->clear();
-      std::vector<std::pair<float, std::string> >::iterator siter;
-      for (siter = sortedFiles.begin();
-           siter != sortedFiles.end();
-           ++siter)
+      std::vector<std::pair<float, std::string>>::iterator siter;
+      for (siter = sortedFiles.begin(); siter != sortedFiles.end(); ++siter)
       {
-        vtkDebugMacro(<< "Sorted filename : " << (*siter).second.c_str());
-        vtkDebugMacro(<< "Adding file " << (*siter).second.c_str() << " at slice : " << (*siter).first);
+        vtkDebugMacro(<< "Sorted filename : " << (*siter).second);
+        vtkDebugMacro(<< "Adding file " << (*siter).second << " at slice : " << (*siter).first);
         this->DICOMFileNames->push_back((*siter).second);
       }
     }
     else
     {
-      vtkErrorMacro( << "Couldn't get sorted files. Slices may be in wrong order!");
+      vtkErrorMacro(<< "Couldn't get sorted files. Slices may be in wrong order!");
     }
     dir->Delete();
   }
-
 }
 
-//----------------------------------------------------------------------------
-void vtkDICOMImageReader::ExecuteDataWithInformation(vtkDataObject *output,
-                                                     vtkInformation *outInfo)
+//------------------------------------------------------------------------------
+void vtkDICOMImageReader::ExecuteDataWithInformation(vtkDataObject* output, vtkInformation* outInfo)
 {
-  vtkImageData *data = this->AllocateOutputData(output, outInfo);
+  vtkImageData* data = this->AllocateOutputData(output, outInfo);
 
-  if (!this->FileName && this->DICOMFileNames->empty())
+  if (!this->GetStream() && !this->FileName && this->DICOMFileNames->empty())
   {
-    vtkErrorMacro( << "Either a filename was not specified or the specified directory does not contain any DICOM images.");
-    this->SetErrorCode( vtkErrorCode::NoFileNameError );
+    vtkErrorMacro(<< "Either a filename was not specified or the specified directory does not "
+                     "contain any DICOM images.");
+    this->SetErrorCode(vtkErrorCode::NoFileNameError);
     return;
   }
 
@@ -249,11 +258,8 @@ void vtkDICOMImageReader::ExecuteDataWithInformation(vtkDataObject *output,
 
   this->ComputeDataIncrements();
 
-  if (this->FileName)
+  const auto parseData = [this, data]() -> bool
   {
-    vtkDebugMacro( << "Single file : " << this->FileName);
-    this->Parser->ClearAllDICOMTagCallbacks();
-    this->Parser->OpenFile(this->FileName);
     this->AppHelper->Clear();
     this->AppHelper->RegisterCallbacks(this->Parser);
     this->AppHelper->RegisterPixelDataCallback(this->Parser);
@@ -265,37 +271,67 @@ void vtkDICOMImageReader::ExecuteDataWithInformation(vtkDataObject *output,
     unsigned long imageDataLength;
 
     this->AppHelper->GetImageData(imgData, dataType, imageDataLength);
-    if( !imageDataLength )
+    if (!imageDataLength)
     {
-      vtkErrorMacro( << "There was a problem retrieving data from: " << this->FileName );
-      this->SetErrorCode( vtkErrorCode::FileFormatError );
-      return;
+      data->GetPointData()->GetScalars()->Fill(0.0);
+      std::string uid = this->AppHelper->GetTransferSyntaxUID();
+      std::string info = this->AppHelper->TransferSyntaxUIDDescription(uid.c_str());
+
+      vtkErrorMacro(<< "Unable to get PixelData from stream which has TransferSyntaxUID=" << uid
+                    << " (" << info << ")");
+      this->SetErrorCode(vtkErrorCode::FileFormatError);
+      return false;
     }
 
     void* buffer = data->GetScalarPointer();
     if (buffer == nullptr)
     {
       vtkErrorMacro(<< "No memory allocated for image data!");
-      return;
+      return false;
     }
     // DICOM stores the upper left pixel as the first pixel in an
     // image. VTK stores the lower left pixel as the first pixel in
     // an image.  Need to flip the data.
     vtkIdType rowLength;
     rowLength = this->DataIncrements[1];
-    unsigned char *b = (unsigned char *)buffer;
-    unsigned char *iData = (unsigned char *)imgData;
+    unsigned char* b = (unsigned char*)buffer;
+    unsigned char* iData = (unsigned char*)imgData;
     iData += (imageDataLength - rowLength); // beginning of last row
-    for (int i=0; i < this->AppHelper->GetHeight(); ++i)
+    for (int i = 0; i < this->AppHelper->GetHeight(); ++i)
     {
       memcpy(b, iData, rowLength);
       b += rowLength;
       iData -= rowLength;
     }
+    return true;
+  };
+
+  if (this->GetStream())
+  {
+    vtkDebugMacro(<< "Reading Stream");
+    this->Parser->ClearAllDICOMTagCallbacks();
+
+    this->Streambuf = this->GetStream()->ToStreambuf();
+    std::istream* iStream = new std::istream(this->Streambuf.get());
+    this->Parser->OpenStream(iStream);
+    if (!parseData())
+    {
+      return;
+    }
+  }
+  else if (this->FileName)
+  {
+    vtkDebugMacro(<< "Single file : " << this->FileName);
+    this->Parser->ClearAllDICOMTagCallbacks();
+    this->Parser->OpenFile(this->FileName);
+    if (!parseData())
+    {
+      return;
+    }
   }
   else if (!this->DICOMFileNames->empty())
   {
-    vtkDebugMacro( << "Multiple files (" << static_cast<int>(this->DICOMFileNames->size()) << ")");
+    vtkDebugMacro(<< "Multiple files (" << static_cast<int>(this->DICOMFileNames->size()) << ")");
     this->Parser->ClearAllDICOMTagCallbacks();
     this->AppHelper->Clear();
     this->AppHelper->RegisterCallbacks(this->Parser);
@@ -313,14 +349,12 @@ void vtkDICOMImageReader::ExecuteDataWithInformation(vtkDataObject *output,
     int count = 0;
     vtkIdType numFiles = static_cast<int>(this->DICOMFileNames->size());
 
-    for (fiter = this->DICOMFileNames->begin();
-         fiter != this->DICOMFileNames->end();
-         ++fiter)
+    for (fiter = this->DICOMFileNames->begin(); fiter != this->DICOMFileNames->end(); ++fiter)
     {
       count++;
-      const char *file = fiter->c_str();
-      vtkDebugMacro( << "File : " << file );
-      this->Parser->OpenFile( file );
+      const char* file = fiter->c_str();
+      vtkDebugMacro(<< "File : " << file);
+      this->Parser->OpenFile(file);
       this->Parser->ReadHeader();
 
       void* imgData = nullptr;
@@ -328,10 +362,15 @@ void vtkDICOMImageReader::ExecuteDataWithInformation(vtkDataObject *output,
       unsigned long imageDataLengthInBytes;
 
       this->AppHelper->GetImageData(imgData, dataType, imageDataLengthInBytes);
-      if( !imageDataLengthInBytes )
+      if (!imageDataLengthInBytes)
       {
-        vtkErrorMacro( << "There was a problem retrieving data from: " << file );
-        this->SetErrorCode( vtkErrorCode::FileFormatError );
+        data->GetPointData()->GetScalars()->Fill(0.0);
+        std::string uid = this->AppHelper->GetTransferSyntaxUID();
+        std::string info = this->AppHelper->TransferSyntaxUIDDescription(uid.c_str());
+
+        vtkErrorMacro(<< "Unable to get PixelData from " << this->FileName
+                      << " which has TransferSyntaxUID=" << uid << " (" << info << ")");
+        this->SetErrorCode(vtkErrorCode::FileFormatError);
         return;
       }
 
@@ -340,28 +379,24 @@ void vtkDICOMImageReader::ExecuteDataWithInformation(vtkDataObject *output,
       // an image.  Need to flip the data.
       vtkIdType rowLength;
       rowLength = this->DataIncrements[1];
-      unsigned char *b = (unsigned char *)buffer;
-      unsigned char *iData = (unsigned char *)imgData;
+      unsigned char* b = (unsigned char*)buffer;
+      unsigned char* iData = (unsigned char*)imgData;
       iData += (imageDataLengthInBytes - rowLength); // beginning of last row
-      for (int i=0; i < this->AppHelper->GetHeight(); ++i)
+      for (int i = 0; i < this->AppHelper->GetHeight(); ++i)
       {
         memcpy(b, iData, rowLength);
         b += rowLength;
         iData -= rowLength;
       }
-      buffer = ((char*) buffer) + imageDataLengthInBytes;
+      buffer = ((char*)buffer) + imageDataLengthInBytes;
 
-      this->UpdateProgress(float(count)/float(numFiles));
-      int len = static_cast<int> (strlen((const char*) (*fiter).c_str()));
-      char* filename = new char[len+1];
-      strcpy(filename, (const char*) (*fiter).c_str());
-      this->SetProgressText(filename);
-      delete[] filename;
+      this->UpdateProgress(float(count) / float(numFiles));
+      this->SetProgressText(fiter->c_str());
     }
   }
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkDICOMImageReader::SetupOutputInformation(int num_slices)
 {
   int width = this->AppHelper->GetWidth();
@@ -406,26 +441,26 @@ void vtkDICOMImageReader::SetupOutputInformation(int num_slices)
   this->vtkImageReader2::ExecuteInformation();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkDICOMImageReader::SetDirectoryName(const char* dn)
 {
-  vtkDebugMacro(<< this->GetClassName() << " (" << this <<
-                "): setting DirectoryName to " << (dn ? dn : "(null)") );
-  if ( this->DirectoryName == nullptr && dn == nullptr)
+  vtkDebugMacro(<< this->GetClassName() << " (" << this << "): setting DirectoryName to "
+                << (dn ? dn : "(null)"));
+  if (this->DirectoryName == nullptr && dn == nullptr)
   {
     return;
   }
-  delete [] this->FileName;
+  delete[] this->FileName;
   this->FileName = nullptr;
-  if ( this->DirectoryName && dn && (!strcmp(this->DirectoryName,dn)))
+  if (this->DirectoryName && dn && (!strcmp(this->DirectoryName, dn)))
   {
     return;
   }
-  delete [] this->DirectoryName;
+  delete[] this->DirectoryName;
   if (dn)
   {
-    this->DirectoryName = new char[strlen(dn)+1];
-    strcpy(this->DirectoryName,dn);
+    this->DirectoryName = new char[strlen(dn) + 1];
+    strcpy(this->DirectoryName, dn);
   }
   else
   {
@@ -434,10 +469,10 @@ void vtkDICOMImageReader::SetDirectoryName(const char* dn)
   this->Modified();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 double* vtkDICOMImageReader::GetPixelSpacing()
 {
-  std::vector<std::pair<float, std::string> > sortedFiles;
+  std::vector<std::pair<float, std::string>> sortedFiles;
 
   this->AppHelper->GetImagePositionPatientFilenamePairs(sortedFiles, false);
 
@@ -447,8 +482,8 @@ double* vtkDICOMImageReader::GetPixelSpacing()
 
   if (sortedFiles.size() > 1)
   {
-    std::pair<float, std::string> p1 = sortedFiles[0];
-    std::pair<float, std::string> p2 = sortedFiles[1];
+    const std::pair<float, std::string>& p1 = sortedFiles[0];
+    const std::pair<float, std::string>& p2 = sortedFiles[1];
     this->DataSpacing[2] = fabs(p1.first - p2.first);
   }
   else
@@ -459,131 +494,131 @@ double* vtkDICOMImageReader::GetPixelSpacing()
   return this->DataSpacing;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkDICOMImageReader::GetWidth()
 {
   return this->AppHelper->GetWidth();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkDICOMImageReader::GetHeight()
 {
   return this->AppHelper->GetHeight();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 float* vtkDICOMImageReader::GetImagePositionPatient()
 {
   return this->AppHelper->GetImagePositionPatient();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 float* vtkDICOMImageReader::GetImageOrientationPatient()
 {
   return this->AppHelper->GetImageOrientationPatient();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkDICOMImageReader::GetBitsAllocated()
 {
   return this->AppHelper->GetBitsAllocated();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkDICOMImageReader::GetPixelRepresentation()
 {
   return this->AppHelper->GetPixelRepresentation();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkDICOMImageReader::GetNumberOfComponents()
 {
   return this->AppHelper->GetNumberOfComponents();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 const char* vtkDICOMImageReader::GetTransferSyntaxUID()
 {
   std::string tmp = this->AppHelper->GetTransferSyntaxUID();
 
-  delete [] this->TransferSyntaxUID;
-  this->TransferSyntaxUID = new char[tmp.length()+1];
+  delete[] this->TransferSyntaxUID;
+  this->TransferSyntaxUID = new char[tmp.length() + 1];
   strcpy(this->TransferSyntaxUID, tmp.c_str());
   this->TransferSyntaxUID[tmp.length()] = '\0';
 
   return this->TransferSyntaxUID;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 float vtkDICOMImageReader::GetRescaleSlope()
 {
   return this->AppHelper->GetRescaleSlope();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 float vtkDICOMImageReader::GetRescaleOffset()
 {
   return this->AppHelper->GetRescaleOffset();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 const char* vtkDICOMImageReader::GetPatientName()
 {
   std::string tmp = this->AppHelper->GetPatientName();
 
-  delete [] this->PatientName;
-  this->PatientName = new char[tmp.length()+1];
+  delete[] this->PatientName;
+  this->PatientName = new char[tmp.length() + 1];
   strcpy(this->PatientName, tmp.c_str());
   this->PatientName[tmp.length()] = '\0';
 
   return this->PatientName;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 const char* vtkDICOMImageReader::GetStudyUID()
 {
   std::string tmp = this->AppHelper->GetStudyUID();
 
-  delete [] this->StudyUID;
-  this->StudyUID = new char[tmp.length()+1];
+  delete[] this->StudyUID;
+  this->StudyUID = new char[tmp.length() + 1];
   strcpy(this->StudyUID, tmp.c_str());
   this->StudyUID[tmp.length()] = '\0';
 
   return this->StudyUID;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 const char* vtkDICOMImageReader::GetStudyID()
 {
   std::string tmp = this->AppHelper->GetStudyID();
 
-  delete [] this->StudyID;
-  this->StudyID = new char[tmp.length()+1];
+  delete[] this->StudyID;
+  this->StudyID = new char[tmp.length() + 1];
   strcpy(this->StudyID, tmp.c_str());
   this->StudyID[tmp.length()] = '\0';
 
   return this->StudyID;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 float vtkDICOMImageReader::GetGantryAngle()
 {
   return this->AppHelper->GetGantryAngle();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkDICOMImageReader::GetNumberOfDICOMFileNames()
 {
   return static_cast<int>(this->DICOMFileNames->size());
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 const char* vtkDICOMImageReader::GetDICOMFileName(int index)
 {
-  if(index >= 0 && index < this->GetNumberOfDICOMFileNames())
+  if (index >= 0 && index < this->GetNumberOfDICOMFileNames())
   {
     return (*this->DICOMFileNames)[index].c_str();
   }
   return nullptr;
 }
-
+VTK_ABI_NAMESPACE_END

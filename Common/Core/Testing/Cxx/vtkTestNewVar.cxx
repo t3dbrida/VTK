@@ -1,22 +1,12 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkTestNewVar.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "vtkTestNewVar.h"
 #include "vtkPoints2D.h"
 
 #include "vtkObjectFactory.h"
+
+#include <iostream>
 
 vtkStandardNewMacro(vtkTestNewVar);
 
@@ -31,12 +21,12 @@ vtkIdType vtkTestNewVar::GetPointsRefCount()
   return this->Points->GetReferenceCount();
 }
 
-vtkObject * vtkTestNewVar::GetPoints()
+vtkObject* vtkTestNewVar::GetPoints()
 {
   return this->Points.GetPointer();
 }
 
-vtkObject * vtkTestNewVar::GetPoints2()
+vtkObject* vtkTestNewVar::GetPoints2()
 {
   return this->Points;
 }
@@ -44,6 +34,6 @@ vtkObject * vtkTestNewVar::GetPoints2()
 void vtkTestNewVar::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os, indent);
-  os << indent << "Points: " << endl;
+  os << indent << "Points: " << std::endl;
   this->Points->PrintSelf(os, indent.GetNextIndent());
 }

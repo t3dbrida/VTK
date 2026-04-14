@@ -1,55 +1,14 @@
 /*
- * Copyright (c) 2005-2017 National Technology & Engineering Solutions
+ * Copyright(C) 1999-2021, 2024 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met:
- *
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *
- *     * Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following
- *       disclaimer in the documentation and/or other materials provided
- *       with the distribution.
- *
- *     * Neither the name of NTESS nor the names of its
- *       contributors may be used to endorse or promote products derived
- *       from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
+ * See packages/seacas/LICENSE for details
  */
-/*****************************************************************************
- *
- * exutils - exodus utilities
- *
- * entry conditions -
- *
- * exit conditions -
- *
- * revision history -
- *
- *
- *****************************************************************************/
 
 #include "exodusII.h"     // for ex_err, etc
-#include "exodusII_int.h" // for ex_file_item, EX_FATAL, etc
-#include "vtk_netcdf.h"       // for nc_inq_format, nc_type, etc
-#include <stdio.h>
-#include <stdlib.h> // for NULL, free, malloc
+#include "exodusII_int.h" // for exi_file_item, EX_FATAL, etc
+#include "stdbool.h"
 
 /*! \file
  * this file contains code needed to support the various floating point word
@@ -65,59 +24,98 @@
 
 #define NC_FLOAT_WORDSIZE 4
 
-static struct ex_file_item *file_list = NULL;
+static struct exi_file_item *file_list = NULL;
 
-struct ex_file_item *ex_find_file_item(int exoid)
+struct exi_file_item *exi_find_file_item(int exoid)
 {
   /* Find base filename in case exoid refers to a group */
-  int                  base_exoid = (unsigned)exoid & EX_FILE_ID_MASK;
-  struct ex_file_item *ptr        = file_list;
+  int                   base_exoid = (unsigned)exoid & EX_FILE_ID_MASK;
+  struct exi_file_item *ptr        = file_list;
   while (ptr) {
     if (ptr->file_id == base_exoid) {
       break;
     }
     ptr = ptr->next;
   }
-  return (ptr);
+  return ptr;
 }
 
-void ex_check_valid_file_id(int exoid, const char *func)
+#define EX__MAX_PATHLEN 8192
+int exi_check_multiple_open(const char *path, int mode, const char *func)
 {
-  int error = 0;
-  if (exoid <= 0) {
-    error = 1;
+  EX_FUNC_ENTER();
+  bool                  is_write = mode & EX_WRITE;
+  char                  tmp[EX__MAX_PATHLEN];
+  size_t                pathlen;
+  struct exi_file_item *ptr = file_list;
+  while (ptr) {
+    nc_inq_path(ptr->file_id, &pathlen, tmp);
+    /* If path is too long, assume it is ok... */
+    if (pathlen < EX__MAX_PATHLEN && strncmp(path, tmp, EX__MAX_PATHLEN) == 0) {
+      /* Found matching file.  See if any open for write */
+      if (ptr->is_write || is_write) {
+        char errmsg[MAX_ERR_LENGTH];
+        snprintf(errmsg, MAX_ERR_LENGTH,
+                 "ERROR: The file '%s' is open for both read and write."
+                 " File corruption or incorrect behavior can occur.\n",
+                 path);
+        ex_err(func, errmsg, EX_BADFILEID);
+#if defined BUILT_IN_SIERRA
+        EX_FUNC_LEAVE(EX_NOERR);
+#else
+        EX_FUNC_LEAVE(EX_FATAL);
+#endif
+      }
+    }
+    ptr = ptr->next;
   }
-#if !defined EXODUS_IN_SIERRA
+  EX_FUNC_LEAVE(EX_NOERR);
+}
+
+int exi_check_valid_file_id(int exoid, const char *func)
+{
+  bool error = false;
+  if (exoid <= 0) {
+    error = true;
+  }
+#if !defined BUILT_IN_SIERRA
   else {
-    struct ex_file_item *file = ex_find_file_item(exoid);
+    int                   rootid = exoid & EX_FILE_ID_MASK;
+    struct exi_file_item *file   = exi_find_file_item(rootid);
 
     if (!file) {
-      error = 1;
+      error = true;
     }
   }
 #endif
 
   if (error) {
-    ex_opts(EX_ABORT | EX_VERBOSE);
+    int old_opt = ex_opts(EX_VERBOSE);
+    if (old_opt & EX_ABORT) {
+      ex_opts(EX_VERBOSE | EX_ABORT);
+    }
+    int  rootid = exoid & EX_FILE_ID_MASK;
     char errmsg[MAX_ERR_LENGTH];
     snprintf(errmsg, MAX_ERR_LENGTH,
              "ERROR: In \"%s\", the file id %d was not obtained via a call "
              "to \"ex_open\" or \"ex_create\".\n\t\tIt does not refer to a "
              "valid open exodus file.\n\t\tAborting to avoid file "
              "corruption or data loss or other potential problems.",
-             func, exoid);
+             func, rootid);
     ex_err(__func__, errmsg, EX_BADFILEID);
+    ex_opts(old_opt);
+    return EX_FATAL;
   }
+  return EX_NOERR;
 }
 
-int ex_conv_ini(int exoid, int *comp_wordsize, int *io_wordsize, int file_wordsize,
-                int int64_status, int is_parallel, int is_mpiio, int is_pnetcdf)
+int exi_conv_init(int exoid, int *comp_wordsize, int *io_wordsize, int file_wordsize,
+                  int int64_status, bool is_parallel, bool is_hdf5, bool is_pnetcdf, bool is_write)
 {
-  char                 errmsg[MAX_ERR_LENGTH];
-  struct ex_file_item *new_file;
-  int                  filetype = 0;
+  char                  errmsg[MAX_ERR_LENGTH];
+  struct exi_file_item *new_file = NULL;
 
-  /*! ex_conv_ini() initializes the floating point conversion process.
+  /*! exi_conv_init() initializes the floating point conversion process.
    *
    * \param exoid         an integer uniquely identifying the file of interest.
    *
@@ -146,13 +144,14 @@ int ex_conv_ini(int exoid, int *comp_wordsize, int *io_wordsize, int file_wordsi
    * \param int64_status  the flags specifying how integer values should be
    *                      stored on the database and how they should be
    *                      passes through the api functions.
-   *                      See #FileVars for more information.
    *
    * \param is_parallel   1 if parallel file; 0 if serial
    *
-   * \param is_mpiio      1 if parallel netcdf-4 mode; 0 if not.
+   * \param is_hdf5       1 if parallel netcdf-4 mode; 0 if not.
    *
    * \param is_pnetcdf    1 if parallel PNetCDF file; 0 if not.
+   *
+   * \param is_write      1 if output file; 0 if readonly
    *
    * word size parameters are specified in bytes. valid values are 0, 4, and 8:
    */
@@ -160,11 +159,14 @@ int ex_conv_ini(int exoid, int *comp_wordsize, int *io_wordsize, int file_wordsi
   EX_FUNC_ENTER();
 
   /* check to make sure machine word sizes are sane */
-  if ((sizeof(float) != 4 && sizeof(float) != 8) || (sizeof(double) != 4 && sizeof(double) != 8)) {
-    snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: unsupported compute word size for file id: %d", exoid);
-    ex_err(__func__, errmsg, EX_BADPARAM);
-    EX_FUNC_LEAVE(EX_FATAL);
-  }
+/* If the following line causes a compile-time error, then there is a problem
+ * which will cause exodus to not work correctly on this platform.
+ *
+ * Contact Greg Sjaardema, gdsjaar@sandia.gov for assistance.
+ */
+#define CT_ASSERT(e) extern char(*ct_assert(void))[sizeof(char[1 - 2 * !(e)])]
+  CT_ASSERT((sizeof(float) == 4 || sizeof(float) == 8) &&
+            (sizeof(double) == 4 || sizeof(double) == 8));
 
   /* check to see if requested word sizes are valid */
   if (!*io_wordsize) {
@@ -178,7 +180,7 @@ int ex_conv_ini(int exoid, int *comp_wordsize, int *io_wordsize, int file_wordsi
 
   else if (*io_wordsize != 4 && *io_wordsize != 8) {
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: unsupported I/O word size for file id: %d", exoid);
-    ex_err(__func__, errmsg, EX_BADPARAM);
+    ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -188,14 +190,14 @@ int ex_conv_ini(int exoid, int *comp_wordsize, int *io_wordsize, int file_wordsi
              "ERROR: invalid I/O word size specified for existing file id: "
              "%d, Requested I/O word size overridden.",
              exoid);
-    ex_err(__func__, errmsg, EX_BADPARAM);
+    ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
   }
 
   if (!*comp_wordsize) {
     *comp_wordsize = sizeof(float);
   }
   else if (*comp_wordsize != 4 && *comp_wordsize != 8) {
-    ex_err(__func__, "ERROR: invalid compute wordsize specified", EX_BADPARAM);
+    ex_err_fn(exoid, __func__, "ERROR: invalid compute wordsize specified", EX_BADPARAM);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -207,7 +209,7 @@ int ex_conv_ini(int exoid, int *comp_wordsize, int *io_wordsize, int file_wordsi
                "Warning: invalid int64_status flag (%d) specified for "
                "existing file id: %d. Ignoring invalids",
                int64_status, exoid);
-      ex_err(__func__, errmsg, EX_BADPARAM);
+      ex_err_fn(exoid, __func__, errmsg, -EX_BADPARAM);
     }
     int64_status &= valid_int64;
   }
@@ -219,32 +221,40 @@ int ex_conv_ini(int exoid, int *comp_wordsize, int *io_wordsize, int file_wordsi
    *  3 -- netcdf4 classic  (NC_FORMAT_NETCDF4_CLASSIC -1)
    */
 
+  int filetype = 0;
   nc_inq_format(exoid, &filetype);
 
-  if (!(new_file = malloc(sizeof(struct ex_file_item)))) {
+  if (!(new_file = malloc(sizeof(struct exi_file_item)))) {
     snprintf(errmsg, MAX_ERR_LENGTH,
              "ERROR: failed to allocate memory for internal file "
              "structure storage file id %d",
              exoid);
-    ex_err(__func__, errmsg, EX_MEMFAIL);
+    ex_err_fn(exoid, __func__, errmsg, EX_MEMFAIL);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
-  new_file->file_id               = exoid;
+  new_file->file_id               = (unsigned)exoid & EX_FILE_ID_MASK;
   new_file->user_compute_wordsize = *comp_wordsize == 4 ? 0 : 1;
   new_file->int64_status          = int64_status;
-  new_file->maximum_name_length   = ex_default_max_name_length;
+  new_file->maximum_name_length   = exi_default_max_name_length;
   new_file->time_varid            = -1;
+  new_file->compression_algorithm = EX_COMPRESS_GZIP;
+  new_file->assembly_count        = 0;
+  new_file->blob_count            = 0;
   new_file->compression_level     = 0;
+  new_file->quantize_nsd          = 0;
   new_file->shuffle               = 0;
   new_file->file_type             = filetype - 1;
   new_file->is_parallel           = is_parallel;
-  new_file->is_mpiio              = is_mpiio;
+  new_file->is_hdf5               = is_hdf5;
   new_file->is_pnetcdf            = is_pnetcdf;
   new_file->has_nodes             = 1; /* default to yes in case not set */
   new_file->has_edges             = 1;
   new_file->has_faces             = 1;
   new_file->has_elems             = 1;
+  new_file->in_define_mode        = 0;
+  new_file->persist_define_mode   = 0;
+  new_file->is_write              = is_write;
 
   new_file->next = file_list;
   file_list      = new_file;
@@ -262,26 +272,26 @@ int ex_conv_ini(int exoid, int *comp_wordsize, int *io_wordsize, int file_wordsi
 /*............................................................................*/
 /*............................................................................*/
 
-/*! ex_conv_exit() takes the structure identified by "exoid" out of the linked
+/*! exi_conv_exit() takes the structure identified by "exoid" out of the linked
  * list which describes the files that ex_conv_array() knows how to convert.
  *
- * \note it is absolutely necessary for ex_conv_exit() to be called after
+ * \note it is absolutely necessary for exi_conv_exit() to be called after
  *       ncclose(), if the parameter used as "exoid" is the id returned from
  *       an ncopen() or nccreate() call, as netCDF reuses file ids!
  *       the best place to do this is ex_close(), which is where I did it.
  *
  * \param exoid  integer which uniquely identifies the file of interest.
  */
-void ex_conv_exit(int exoid)
+void exi_conv_exit(int exoid)
 {
+  struct exi_file_item *file = file_list;
+  struct exi_file_item *prev = NULL;
 
-  char                 errmsg[MAX_ERR_LENGTH];
-  struct ex_file_item *file = file_list;
-  struct ex_file_item *prev = NULL;
+  int root_id = (unsigned)exoid & EX_FILE_ID_MASK;
 
   EX_FUNC_ENTER();
   while (file) {
-    if (file->file_id == exoid) {
+    if (file->file_id == root_id) {
       break;
     }
 
@@ -290,8 +300,9 @@ void ex_conv_exit(int exoid)
   }
 
   if (!file) {
+    char errmsg[MAX_ERR_LENGTH];
     snprintf(errmsg, MAX_ERR_LENGTH, "Warning: failure to clear file id %d - not in list.", exoid);
-    ex_err(__func__, errmsg, EX_BADFILEID);
+    ex_err(__func__, errmsg, -EX_BADFILEID);
     EX_FUNC_VOID();
   }
 
@@ -311,45 +322,50 @@ void ex_conv_exit(int exoid)
 
 nc_type nc_flt_code(int exoid)
 {
-  /* nc_flt_code() returns either NC_FLOAT or NC_DOUBLE, based on the parameters
-   * with which ex_conv_ini() was called.  nc_flt_code() is used as the nc_type
+  /*!
+   * \ingroup Utilities
+   * nc_flt_code() returns either NC_FLOAT or NC_DOUBLE, based on the parameters
+   * with which exi_conv_init() was called.  nc_flt_code() is used as the nc_type
    * parameter on ncvardef() calls that define floating point variables.
    *
    * "exoid" is some integer which uniquely identifies the file of interest.
    */
   EX_FUNC_ENTER();
-  struct ex_file_item *file = ex_find_file_item(exoid);
+  struct exi_file_item *file = exi_find_file_item(exoid);
 
   if (!file) {
     char errmsg[MAX_ERR_LENGTH];
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: unknown file id %d for nc_flt_code().", exoid);
     ex_err(__func__, errmsg, EX_BADFILEID);
-    return ((nc_type)-1);
+    EX_FUNC_LEAVE((nc_type)-1);
   }
   EX_FUNC_LEAVE(file->netcdf_type_code);
 }
 
-int ex_int64_status(int exoid)
+unsigned ex_int64_status(int exoid)
 {
-  /* ex_int64_status() returns an int that can be tested
+  /*!
+   * \ingroup Utilities
+     ex_int64_status() returns an int that can be tested
      against the defines listed below to determine which, if any,
      'types' in the database are to be stored as int64 types and which, if any,
      types are passed/returned as int64 types in the API
 
-     Defines:
-     EX_MAPS_INT64_DB  All maps (id, order, ...) store int64_t values
-     EX_IDS_INT64_DB   All entity ids (sets, blocks, maps) are int64_t values
-     EX_BULK_INT64_DB
-     EX_ALL_INT64_DB   (EX_MAPS_INT64_DB|EX_IDS_INT64_DB|EX_BULK_INT64_DB)
-
-     EX_MAPS_INT64_API  All maps (id, order, ...) passed as int64_t values
-     EX_IDS_INT64_API   All entity ids (sets, blocks, maps) are passed as
-     int64_t values
-     EX_BULK_INT64_API
-     EX_ALL_INT64_API   (EX_MAPS_INT64_API|EX_IDS_INT64_API|EX_BULK_INT64_API)
+     | Defines: | |
+     |----------|-|
+     | #EX_MAPS_INT64_DB | All maps (id, order, ...) store int64_t values |
+     | #EX_IDS_INT64_DB  | All entity ids (sets, blocks, maps) are int64_t values |
+     | #EX_BULK_INT64_DB | All integer bulk data (local indices, counts, maps); not ids |
+     | #EX_ALL_INT64_DB  | (#EX_MAPS_INT64_DB \| #EX_IDS_INT64_DB \| #EX_BULK_INT64_DB) |
+     | #EX_MAPS_INT64_API| All maps (id, order, ...) passed as int64_t values |
+     | #EX_IDS_INT64_API | All entity ids (sets, blocks, maps) are passed as int64_t values |
+     | #EX_BULK_INT64_API| All integer bulk data (local indices, counts, maps); not ids|
+     | #EX_INQ_INT64_API | Integers passed to/from ex_inquire() are int64_t |
+     | #EX_ALL_INT64_API | (#EX_MAPS_INT64_API \| #EX_IDS_INT64_API \| #EX_BULK_INT64_API \|
+   #EX_INQ_INT64_API) |
   */
   EX_FUNC_ENTER();
-  struct ex_file_item *file = ex_find_file_item(exoid);
+  struct exi_file_item *file = exi_find_file_item(exoid);
 
   if (!file) {
     char errmsg[MAX_ERR_LENGTH];
@@ -362,24 +378,25 @@ int ex_int64_status(int exoid)
 
 int ex_set_int64_status(int exoid, int mode)
 {
-  /* ex_set_int64_status() sets the value of the INT64_API flags
-     which specify how integer types are passed/returned as int64 types in the
-     API
+  /*!
+    \ingroup Utilities
 
-     Mode can be one of:
-     0                  All are passed as int32_t values.
-     EX_MAPS_INT64_API  All maps (id, order, ...) passed as int64_t values
-     EX_IDS_INT64_API   All entity ids (sets, blocks, maps) are passed as
-     int64_t values
-     EX_BULK_INT64_API
-     EX_ALL_INT64_API   (EX_MAPS_INT64_API|EX_IDS_INT64_API|EX_BULK_INT64_API)
+     ex_set_int64_status() sets the value of the INT64_API flags which
+     specify how integer types are passed/returned as int64 types in
+     the API
+
+     | Mode can be one of: | |
+     |----------|-|
+     | 0                 | All integers are passed as int32_t values. |
+     | #EX_MAPS_INT64_API| All maps (id, order, ...) passed as int64_t values |
+     | #EX_IDS_INT64_API | All entity ids (sets, blocks, maps) are passed as int64_t values |
+     | #EX_BULK_INT64_API| All integer bulk data (local indices, counts, maps); not ids|
+     | #EX_INQ_INT64_API | Integers passed to/from ex_inquire() are int64_t |
+     | #EX_ALL_INT64_API | (#EX_MAPS_INT64_API \| #EX_IDS_INT64_API \| #EX_BULK_INT64_API \|
+    #EX_INQ_INT64_API) |
   */
-
-  int api_mode = 0;
-  int db_mode  = 0;
-
   EX_FUNC_ENTER();
-  struct ex_file_item *file = ex_find_file_item(exoid);
+  struct exi_file_item *file = exi_find_file_item(exoid);
 
   if (!file) {
     char errmsg[MAX_ERR_LENGTH];
@@ -389,17 +406,21 @@ int ex_set_int64_status(int exoid, int mode)
   }
 
   /* Strip of all non-INT64_API values */
-  api_mode = mode & EX_ALL_INT64_API;
-  db_mode  = file->int64_status & EX_ALL_INT64_DB;
+  int api_mode = mode & EX_ALL_INT64_API;
+  int db_mode  = file->int64_status & EX_ALL_INT64_DB;
 
   file->int64_status = api_mode | db_mode;
   EX_FUNC_LEAVE(file->int64_status);
 }
 
+/*!
+  \ingroup Utilities
+  \undoc
+*/
 int ex_set_option(int exoid, ex_option_type option, int option_value)
 {
   EX_FUNC_ENTER();
-  struct ex_file_item *file = ex_find_file_item(exoid);
+  struct exi_file_item *file = exi_find_file_item(exoid);
   if (!file) {
     char errmsg[MAX_ERR_LENGTH];
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: unknown file id %d for ex_set_option().", exoid);
@@ -409,22 +430,93 @@ int ex_set_option(int exoid, ex_option_type option, int option_value)
 
   switch (option) {
   case EX_OPT_MAX_NAME_LENGTH: file->maximum_name_length = option_value; break;
-  case EX_OPT_COMPRESSION_TYPE: /* Currently not used. GZip by default */ break;
+  case EX_OPT_COMPRESSION_TYPE: file->compression_algorithm = option_value; break;
   case EX_OPT_COMPRESSION_LEVEL: /* 0 (disabled/fastest) ... 9 (best/slowest) */
     /* Check whether file type supports compression... */
-    if (file->file_type == 2 || file->file_type == 3) {
+    if (file->is_hdf5) {
       int value = option_value;
-      if (value > 9) {
-        value = 9;
+      if (file->compression_algorithm == EX_COMPRESS_ZLIB) {
+        if (value > 9) {
+          value = 9;
+        }
+        if (value < 0) {
+          value = 0;
+        }
       }
-      if (value < 0) {
-        value = 0;
+      else if (file->compression_algorithm == EX_COMPRESS_SZIP) {
+        if (value % 2 != 0 || value < 4 || value > 32) {
+          char errmsg[MAX_ERR_LENGTH];
+          snprintf(errmsg, MAX_ERR_LENGTH,
+                   "ERROR: invalid value %d for SZIP Compression.  Must be even and 4 <= value <= "
+                   "32. Setting value to 4.",
+                   value);
+          ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
+          value = 4;
+        }
+      }
+      else if (file->compression_algorithm == EX_COMPRESS_ZSTD) {
+#if NC_HAS_ZSTD == 1
+        if (value < -131072 || value > 22) {
+          char errmsg[MAX_ERR_LENGTH];
+          snprintf(errmsg, MAX_ERR_LENGTH,
+                   "ERROR: invalid value %d for ZSTD Compression.  Must be between -131072 and 22. "
+                   "Setting value to 4",
+                   value);
+          ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
+          value = 4;
+        }
+#else
+        char errmsg[MAX_ERR_LENGTH];
+        snprintf(
+            errmsg, MAX_ERR_LENGTH,
+            "ERROR: Zstandard compression is not supported in this version of netCDF library.");
+        ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
+#endif
+      }
+      else if (file->compression_algorithm == EX_COMPRESS_BZ2) {
+#if NC_HAS_BZ2 == 1
+        if (value < 0 || value > 9) {
+          char errmsg[MAX_ERR_LENGTH];
+          snprintf(errmsg, MAX_ERR_LENGTH,
+                   "ERROR: invalid value %d for BZIP2 Compression.  Must be between 0 and 9 "
+                   "inclusive. Setting value to 1.",
+                   value);
+          ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
+          value = 1;
+        }
+#else
+        char errmsg[MAX_ERR_LENGTH];
+        snprintf(errmsg, MAX_ERR_LENGTH,
+                 "ERROR: Bzip2 compression is not supported in this version of netCDF library.");
+        ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
+#endif
       }
       file->compression_level = value;
     }
     else {
       file->compression_level = 0;
     }
+    break;
+  case EX_OPT_QUANTIZE_NSD:
+#if NC_HAS_QUANTIZE == 1
+    if (option_value > 15) {
+      char errmsg[MAX_ERR_LENGTH];
+      snprintf(errmsg, MAX_ERR_LENGTH,
+               "ERROR: invalid value %d for Quantize NSD.  Must be less than or equal to 15.  "
+               "Setting value to 15.",
+               option_value);
+      ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
+      option_value = 15;
+    }
+    file->quantize_nsd = option_value;
+#else
+  {
+    char errmsg[MAX_ERR_LENGTH];
+    snprintf(errmsg, MAX_ERR_LENGTH,
+             "ERROR: Quanitzation is not supported in this version of netCDF library.");
+    ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
+  }
+#endif
     break;
   case EX_OPT_COMPRESSION_SHUFFLE: /* 0 (disabled); 1 (enabled) */
     file->shuffle = option_value != 0 ? 1 : 0;
@@ -436,7 +528,7 @@ int ex_set_option(int exoid, ex_option_type option, int option_value)
   default: {
     char errmsg[MAX_ERR_LENGTH];
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: invalid option %d for ex_set_option().", (int)option);
-    ex_err(__func__, errmsg, EX_BADPARAM);
+    ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
     EX_FUNC_LEAVE(EX_FATAL);
   }
   }
@@ -444,35 +536,38 @@ int ex_set_option(int exoid, ex_option_type option, int option_value)
 }
 
 /*!
- * ex_comp_ws() returns 4 (i.e. sizeof(float)) or 8 (i.e. sizeof(double)),
+ * \ingroup Utilities
+ * exi_comp_ws() returns 4 (i.e. sizeof(float)) or 8 (i.e. sizeof(double)),
  * depending on the value of floating point word size used to initialize
  * the conversion facility for this file id (exoid).
  * \param exoid  integer which uniquely identifies the file of interest.
  */
-int ex_comp_ws(int exoid)
+int exi_comp_ws(int exoid)
 {
-  struct ex_file_item *file = ex_find_file_item(exoid);
+  struct exi_file_item *file = exi_find_file_item(exoid);
 
   if (!file) {
     char errmsg[MAX_ERR_LENGTH];
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: unknown file id %d", exoid);
     ex_err(__func__, errmsg, EX_BADFILEID);
-    return (EX_FATAL);
+    return EX_FATAL;
   }
   /* Stored as 0 for 4-byte; 1 for 8-byte */
-  return ((file->user_compute_wordsize + 1) * 4);
+  return (file->user_compute_wordsize + 1) * 4;
 }
 
-/*! ex_is_parallel() returns 1 (true) or 0 (false) depending on whether
+/*!
+ * \ingroup Utilities
+ * exi_is_parallel() returns 1 (true) or 0 (false) depending on whether
  * the file was opened in parallel or serial/file-per-processor mode.
  * Note that in this case parallel assumes the output of a single file,
  * not a parallel run using file-per-processor.
  * \param exoid  integer which uniquely identifies the file of interest.
  */
-int ex_is_parallel(int exoid)
+int exi_is_parallel(int exoid)
 {
   EX_FUNC_ENTER();
-  struct ex_file_item *file = ex_find_file_item(exoid);
+  struct exi_file_item *file = exi_find_file_item(exoid);
 
   if (!file) {
     char errmsg[MAX_ERR_LENGTH];
@@ -482,4 +577,36 @@ int ex_is_parallel(int exoid)
   }
   /* Stored as 1 for parallel, 0 for serial or file-per-processor */
   EX_FUNC_LEAVE(file->is_parallel);
+}
+
+/*!
+ * \ingroup Utilities
+ * \note
+ * Do not use this unless you know what you are doing and why you
+ * are doing it.  One use is if calling ex_get_partial_set() in a
+ * serial mode (proc 0 only) on a file opened in parallel.
+ * Make sure to reset the value to original value after done with
+ * special case...
+ *
+ * ex_set_parallel() sets the parallel setting for a file.
+ * returns 1 (true) or 0 (false) depending on the current setting.
+ * \param exoid  integer which uniquely identifies the file of interest.
+ * \param is_parallel 1 if parallel, 0 if serial.
+ */
+int ex_set_parallel(int exoid, int is_parallel)
+{
+  EX_FUNC_ENTER();
+  struct exi_file_item *file = exi_find_file_item(exoid);
+
+  if (!file) {
+    char errmsg[MAX_ERR_LENGTH];
+    snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: unknown file id %d", exoid);
+    ex_err(__func__, errmsg, EX_BADFILEID);
+    EX_FUNC_LEAVE(EX_FATAL);
+  }
+
+  int old_value     = file->is_parallel;
+  file->is_parallel = is_parallel;
+  /* Stored as 1 for parallel, 0 for serial or file-per-processor */
+  EX_FUNC_LEAVE(old_value);
 }

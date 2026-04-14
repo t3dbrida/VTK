@@ -1,19 +1,7 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    HierarchicalBoxPipeline.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 // This example demonstrates how hierarchical box (uniform rectilinear)
-// AMR datasets can be processed using the new vtkHierarchicalBoxDataSet class.
+// AMR datasets can be processed using the vtkOverlappingAMR class.
 //
 // The command line arguments are:
 // -I        => run in interactive mode; unless this is used, the program will
@@ -22,47 +10,43 @@
 
 #include "vtkCamera.h"
 #include "vtkCellDataToPointData.h"
+#include "vtkCompositeDataGeometryFilter.h"
 #include "vtkCompositeDataPipeline.h"
+#include "vtkCompositePolyDataMapper.h"
 #include "vtkContourFilter.h"
 #include "vtkDebugLeaks.h"
 #include "vtkExtractLevel.h"
-#include "vtkHierarchicalDataSetGeometryFilter.h"
 #include "vtkOutlineCornerFilter.h"
-#include "vtkHierarchicalPolyDataMapper.h"
 #include "vtkProperty.h"
-#include "vtkRenderer.h"
 #include "vtkRenderWindow.h"
 #include "vtkRenderWindowInteractor.h"
+#include "vtkRenderer.h"
 #include "vtkShrinkPolyData.h"
 #include "vtkTestUtilities.h"
-#include "vtkXMLHierarchicalBoxDataReader.h"
+#include "vtkXMLUniformGridAMRReader.h"
 
 int main(int argc, char* argv[])
 {
   // Standard rendering classes
-  vtkRenderer *ren = vtkRenderer::New();
+  vtkRenderer* ren = vtkRenderer::New();
   vtkCamera* cam = ren->GetActiveCamera();
   cam->SetPosition(-5.1828, 5.89733, 8.97969);
   cam->SetFocalPoint(14.6491, -2.08677, -8.92362);
   cam->SetViewUp(0.210794, 0.95813, -0.193784);
 
-  vtkRenderWindow *renWin = vtkRenderWindow::New();
+  vtkRenderWindow* renWin = vtkRenderWindow::New();
   renWin->AddRenderer(ren);
-  vtkRenderWindowInteractor *iren = vtkRenderWindowInteractor::New();
+  vtkRenderWindowInteractor* iren = vtkRenderWindowInteractor::New();
   iren->SetRenderWindow(renWin);
 
-  char* cfname =
-    vtkTestUtilities::ExpandDataFileName(argc, argv,
-                                         "Data/chombo3d/chombo3d.vtm");
+  char* cfname = vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/chombo3d/chombo3d.vtm");
 
-  vtkXMLHierarchicalBoxDataReader* reader =
-    vtkXMLHierarchicalBoxDataReader::New();
+  vtkXMLUniformGridAMRReader* reader = vtkXMLUniformGridAMRReader::New();
   reader->SetFileName(cfname);
   delete[] cfname;
 
   // geometry filter
-  vtkHierarchicalDataSetGeometryFilter* geom =
-    vtkHierarchicalDataSetGeometryFilter::New();
+  vtkCompositeDataGeometryFilter* geom = vtkCompositeDataGeometryFilter::New();
   geom->SetInputConnection(0, reader->GetOutputPort(0));
 
   vtkShrinkPolyData* shrink = vtkShrinkPolyData::New();
@@ -70,7 +54,7 @@ int main(int argc, char* argv[])
   shrink->SetInputConnection(0, geom->GetOutputPort(0));
 
   // Rendering objects
-  vtkHierarchicalPolyDataMapper* shMapper = vtkHierarchicalPolyDataMapper::New();
+  vtkCompositePolyDataMapper* shMapper = vtkCompositePolyDataMapper::New();
   shMapper->SetInputConnection(0, shrink->GetOutputPort(0));
   vtkActor* shActor = vtkActor::New();
   shActor->SetMapper(shMapper);
@@ -87,7 +71,7 @@ int main(int argc, char* argv[])
   // Rendering objects
   // This one is actually just a vtkPolyData so it doesn't need a hierarchical
   // mapper, but we use this one to test hierarchical mapper with polydata input
-  vtkHierarchicalPolyDataMapper* ocMapper = vtkHierarchicalPolyDataMapper::New();
+  vtkCompositePolyDataMapper* ocMapper = vtkCompositePolyDataMapper::New();
   ocMapper->SetInputConnection(0, ocf->GetOutputPort(0));
   vtkActor* ocActor = vtkActor::New();
   ocActor->SetMapper(ocMapper);
@@ -111,20 +95,18 @@ int main(int argc, char* argv[])
   pipeline->Delete();
   contour->SetInputConnection(0, c2p->GetOutputPort(0));
   contour->SetValue(0, -0.013);
-  contour->SetInputArrayToProcess(
-    0,0,0,vtkDataObject::FIELD_ASSOCIATION_POINTS,"phi");
+  contour->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, "phi");
 
   // Rendering objects
-  vtkHierarchicalPolyDataMapper* contMapper =
-    vtkHierarchicalPolyDataMapper::New();
+  vtkCompositePolyDataMapper* contMapper = vtkCompositePolyDataMapper::New();
   contMapper->SetInputConnection(0, contour->GetOutputPort(0));
   vtkActor* contActor = vtkActor::New();
   contActor->SetMapper(contMapper);
   contActor->GetProperty()->SetColor(1, 0, 0);
   ren->AddActor(contActor);
 
-  ren->SetBackground(1,1,1);
-  renWin->SetSize(300,300);
+  ren->SetBackground(1, 1, 1);
+  renWin->SetSize(300, 300);
   ren->ResetCamera();
   iren->Start();
 

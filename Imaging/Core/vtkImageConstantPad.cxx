@@ -1,51 +1,47 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkImageConstantPad.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkImageConstantPad.h"
 
-#include "vtkObjectFactory.h"
+#include "vtkDoubleArray.h"
 #include "vtkImageData.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
+#include "vtkObjectFactory.h"
 #include "vtkStreamingDemandDrivenPipeline.h"
 
+VTK_ABI_NAMESPACE_BEGIN
+//------------------------------------------------------------------------------
 vtkStandardNewMacro(vtkImageConstantPad);
 
+//------------------------------------------------------------------------------
+vtkCxxSetObjectMacro(vtkImageConstantPad, ComponentConstants, vtkDoubleArray);
+
 //----------------------------------------------------------------------------
-// Constructor sets default values
 vtkImageConstantPad::vtkImageConstantPad()
 {
   this->Constant = 0.0;
+  this->ComponentConstants = nullptr;
 }
 
+//------------------------------------------------------------------------------
+vtkImageConstantPad::~vtkImageConstantPad()
+{
+  this->SetComponentConstants(nullptr);
+}
 
-
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // This templated function executes the filter for any type of data.
 template <class T>
-void vtkImageConstantPadExecute(vtkImageConstantPad *self,
-                                vtkImageData *inData, T *inPtr,
-                                vtkImageData *outData, T *outPtr,
-                                int outExt[6], int inExt[6], int id)
+void vtkImageConstantPadExecute(vtkImageConstantPad* self, vtkImageData* inData, T* inPtr,
+  vtkImageData* outData, T* outPtr, int outExt[6], int inExt[6], int id)
 {
   int idxC, idxX, idxY, idxZ;
   int maxC, maxX, maxY, maxZ;
   vtkIdType inIncX, inIncY, inIncZ;
   vtkIdType outIncX, outIncY, outIncZ;
-  T constant;
+  const T constant = static_cast<T>(self->GetConstant());
+  vtkDoubleArray* componentConstants = self->GetComponentConstants();
   int inMinX, inMaxX, inMaxC;
-  constant = static_cast<T>(self->GetConstant());
   int state0, state1, state2, state3;
   unsigned long count = 0;
   unsigned long target;
@@ -58,8 +54,11 @@ void vtkImageConstantPadExecute(vtkImageConstantPad *self,
   inMaxC = inData->GetNumberOfScalarComponents();
   inMinX = inExt[0] - outExt[0];
   inMaxX = inExt[1] - outExt[0];
-  target = static_cast<unsigned long>((maxZ+1)*(maxY+1)/50.0);
+  target = static_cast<unsigned long>((maxZ + 1) * (maxY + 1) / 50.0);
   target++;
+
+  const bool useComponentConstants =
+    componentConstants && componentConstants->GetNumberOfValues() == maxC;
 
   // Get increments to march through data
   inData->GetContinuousIncrements(inExt, inIncX, inIncY, inIncZ);
@@ -73,9 +72,9 @@ void vtkImageConstantPadExecute(vtkImageConstantPad *self,
     {
       if (!id)
       {
-        if (!(count%target))
+        if (!(count % target))
         {
-          self->UpdateProgress(count/(50.0*target));
+          self->UpdateProgress(count / (50.0 * target));
         }
         count++;
       }
@@ -109,7 +108,7 @@ void vtkImageConstantPadExecute(vtkImageConstantPad *self,
             state0 = (state1 || idxC >= inMaxC);
             if (state0)
             {
-              *outPtr = constant;
+              *outPtr = useComponentConstants ? componentConstants->GetValue(idxC) : constant;
             }
             else
             {
@@ -134,60 +133,50 @@ void vtkImageConstantPadExecute(vtkImageConstantPad *self,
   }
 }
 
-
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // This method is passed a input and output data, and executes the filter
 // algorithm to fill the output from the input.
 // It just executes a switch statement to call the correct function for
 // the datas data types.
-void vtkImageConstantPad::ThreadedRequestData(
-  vtkInformation * vtkNotUsed( request ),
-  vtkInformationVector** inputVector,
-  vtkInformationVector * vtkNotUsed( outputVector ),
-  vtkImageData ***inData,
-  vtkImageData **outData,
-  int outExt[6], int id)
+void vtkImageConstantPad::ThreadedRequestData(vtkInformation* vtkNotUsed(request),
+  vtkInformationVector** inputVector, vtkInformationVector* vtkNotUsed(outputVector),
+  vtkImageData*** inData, vtkImageData** outData, int outExt[6], int id)
 {
-  void *outPtr = outData[0]->GetScalarPointerForExtent(outExt);
+  void* outPtr = outData[0]->GetScalarPointerForExtent(outExt);
 
   // this filter expects that input is the same type as output.
   if (inData[0][0]->GetScalarType() != outData[0]->GetScalarType())
   {
-    vtkErrorMacro(<< "Execute: input ScalarType, "
-                  << inData[0][0]->GetScalarType()
-                  << ", must match out ScalarType "
-                  << outData[0]->GetScalarType());
+    vtkErrorMacro(<< "Execute: input ScalarType, " << inData[0][0]->GetScalarType()
+                  << ", must match out ScalarType " << outData[0]->GetScalarType());
     return;
   }
 
   // get the whole extent
   int wExt[6];
-  vtkInformation *inInfo = inputVector[0]->GetInformationObject(0);
-  inInfo->Get(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT(),wExt);
+  vtkInformation* inInfo = inputVector[0]->GetInformationObject(0);
+  inInfo->Get(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT(), wExt);
 
   // need to get the correct pointer for the input data
   int inExt[6];
-  this->ComputeInputUpdateExtent(inExt,outExt,wExt);
-  void *inPtr = inData[0][0]->GetScalarPointerForExtent(inExt);
+  this->ComputeInputUpdateExtent(inExt, outExt, wExt);
+  void* inPtr = inData[0][0]->GetScalarPointerForExtent(inExt);
 
   switch (inData[0][0]->GetScalarType())
   {
-    vtkTemplateMacro(
-      vtkImageConstantPadExecute(this,
-                                 inData[0][0], static_cast<VTK_TT *>(inPtr),
-                                 outData[0], static_cast<VTK_TT *>(outPtr),
-                                 outExt, inExt, id));
+    vtkTemplateMacro(vtkImageConstantPadExecute(this, inData[0][0], static_cast<VTK_TT*>(inPtr),
+      outData[0], static_cast<VTK_TT*>(outPtr), outExt, inExt, id));
     default:
       vtkErrorMacro(<< "Execute: Unknown input ScalarType");
       return;
   }
 }
 
+//------------------------------------------------------------------------------
 void vtkImageConstantPad::PrintSelf(ostream& os, vtkIndent indent)
 {
-  this->Superclass::PrintSelf(os,indent);
+  this->Superclass::PrintSelf(os, indent);
 
   os << indent << "Constant: " << this->Constant << "\n";
-
 }
-
+VTK_ABI_NAMESPACE_END

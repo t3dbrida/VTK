@@ -1,39 +1,28 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestGPURayCastGradientOpacityLight.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 // Tests gradient opacity TF support when combined with vtkLightKit.
 
 #include "vtkCamera.h"
 #include "vtkColorTransferFunction.h"
 #include "vtkGPUVolumeRayCastMapper.h"
 #include "vtkInteractorStyleTrackballCamera.h"
+#include "vtkLightKit.h"
 #include "vtkMetaImageReader.h"
 #include "vtkNew.h"
 #include "vtkPiecewiseFunction.h"
 #include "vtkRegressionTestImage.h"
-#include "vtkRenderer.h"
 #include "vtkRenderWindow.h"
 #include "vtkRenderWindowInteractor.h"
+#include "vtkRenderer.h"
 #include "vtkTestUtilities.h"
 #include "vtkVolume.h"
 #include "vtkVolumeProperty.h"
-#include "vtkLightKit.h"
 
+#include <iostream>
 
 int TestGPURayCastGradientOpacityLight(int argc, char* argv[])
 {
-  cout << "CTEST_FULL_OUTPUT (Avoid ctest truncation of output)" << endl;
+  std::cout << "CTEST_FULL_OUTPUT (Avoid ctest truncation of output)" << std::endl;
 
   vtkNew<vtkRenderWindow> renWin;
   renWin->SetSize(400, 401);
@@ -54,13 +43,12 @@ int TestGPURayCastGradientOpacityLight(int argc, char* argv[])
   iren->SetInteractorStyle(style);
 
   // Load data
-  char* fname = vtkTestUtilities::ExpandDataFileName(argc, argv,
-   "Data/HeadMRVolume.mhd");
+  char* fname = vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/HeadMRVolume.mhd");
 
   vtkNew<vtkMetaImageReader> reader;
   reader->SetFileName(fname);
   reader->Update();
-  delete [] fname;
+  delete[] fname;
 
   vtkNew<vtkGPUVolumeRayCastMapper> mapper;
   mapper->SetInputConnection(reader->GetOutputPort());
@@ -103,6 +91,5 @@ int TestGPURayCastGradientOpacityLight(int argc, char* argv[])
     iren->Start();
   }
 
-  return !((retVal == vtkTesting::PASSED) ||
-           (retVal == vtkTesting::DO_INTERACTOR));
+  return !((retVal == vtkTesting::PASSED) || (retVal == vtkTesting::DO_INTERACTOR));
 }

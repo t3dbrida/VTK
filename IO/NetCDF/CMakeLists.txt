@@ -1,11 +1,16 @@
-set(Module_SRCS
-  vtkMPASReader.cxx
-  vtkNetCDFCAMReader.cxx
-  vtkNetCDFCFReader.cxx
-  vtkNetCDFPOPReader.cxx
-  vtkNetCDFReader.cxx
-  vtkSLACParticleReader.cxx
-  vtkSLACReader.cxx
-  )
+set(classes
+  vtkMPASReader
+  vtkNetCDFAccessor
+  vtkXArrayAccessor
+  vtkNetCDFCAMReader
+  vtkNetCDFCFReader
+  vtkNetCDFCFWriter
+  vtkNetCDFPOPReader
+  vtkNetCDFReader
+  vtkNetCDFUGRIDReader
+  vtkSLACParticleReader
+  vtkSLACReader)
 
-vtk_module_library(vtkIONetCDF ${Module_SRCS})
+vtk_module_add_module(VTK::IONetCDF
+  CLASSES ${classes})
+vtk_add_test_mangling(VTK::IONetCDF)

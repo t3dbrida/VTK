@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkPolyDataAlgorithm.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkContinuousScatterplot.h"
 
 #include "vtkCell.h"
@@ -38,13 +26,16 @@
 #include "vtkTriangleFilter.h"
 #include "vtkUnstructuredGrid.h"
 
+#include <iostream>
+
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkContinuousScatterplot);
 
 // Data structure to store the fragment faces.
 // Each face of the fragment can be represented using a vtkIdList.
-typedef std::vector<vtkSmartPointer<vtkIdList> >* Polytope;
+typedef std::vector<vtkSmartPointer<vtkIdList>>* Polytope;
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkContinuousScatterplot::vtkContinuousScatterplot()
 {
   // value for floating comparison. Suppose two floating values a and b:
@@ -62,36 +53,36 @@ vtkContinuousScatterplot::vtkContinuousScatterplot()
   output->Delete();
   this->Fields[0] = this->Fields[1] = nullptr;
 }
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkContinuousScatterplot::SetField1(const char* nm, vtkIdType xRes)
 {
   this->Fields[0] = nm;
   this->ResX = xRes;
 }
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkContinuousScatterplot::SetField2(const char* nm, vtkIdType yRes)
 {
   this->Fields[1] = nm;
   this->ResY = yRes;
 }
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkContinuousScatterplot::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os, indent);
 }
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkContinuousScatterplot::FillInputPortInformation(int, vtkInformation* info)
 {
   info->Set(vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkUnstructuredGrid");
   return 1;
 }
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkContinuousScatterplot::FillOutputPortInformation(int, vtkInformation* info)
 {
   info->Set(vtkDataObject::DATA_TYPE_NAME(), "vtkImageData");
   return 1;
 }
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkContinuousScatterplot::RequestData(
   vtkInformation*, vtkInformationVector** inputVector, vtkInformationVector* outputVector)
 {
@@ -151,7 +142,7 @@ int vtkContinuousScatterplot::RequestData(
     // Collect field ranges for later use.
     fieldInterval[0] = array->GetRange()[1] - array->GetRange()[0];
     // Interval between cutting planes in this field.
-    fragWidth[0] = (float)fieldInterval[0] / this->ResX;
+    fragWidth[0] = fieldInterval[0] / this->ResX;
   }
   else
   {
@@ -167,7 +158,7 @@ int vtkContinuousScatterplot::RequestData(
     // The range interval of the field.
     fieldInterval[1] = array->GetRange()[1] - array->GetRange()[0];
     // Interval between cutting planes in this field.
-    fragWidth[1] = (float)fieldInterval[1] / this->ResY;
+    fragWidth[1] = fieldInterval[1] / this->ResY;
   }
   else
   {
@@ -176,7 +167,7 @@ int vtkContinuousScatterplot::RequestData(
   }
 
   // Divide the tetrahedron into four faces. The index of each face.
-  const int tetTemplate[4][3] = { { 0, 1, 2 }, { 0, 1, 3 }, { 0, 2, 3 }, { 1, 2, 3 } };
+  constexpr int tetTemplate[4][3] = { { 0, 1, 2 }, { 0, 1, 3 }, { 0, 2, 3 }, { 1, 2, 3 } };
 
   // fragments of current cell: each cell is placed into the inputQ,
   // then fresh fragments from current slice put into outputQ.
@@ -227,7 +218,7 @@ int vtkContinuousScatterplot::RequestData(
   // working: collect the residual faces for the next iteration of subdivision.
   Polytope fragment = nullptr, residual = nullptr, working = nullptr;
 
-  // structure for storing the current framgent vertices in each cell face.
+  // structure for storing the current fragment vertices in each cell face.
   vtkSmartPointer<vtkIdList> fragmentFace = nullptr;
   // structure for storing the vertices which are not belonging to the current
   // fragment in each cell face.
@@ -319,8 +310,8 @@ int vtkContinuousScatterplot::RequestData(
   // of fragments for the first field and resY number of fragments for the second field.
   // In total, there will be maximal resX * resY number of new points in each edge.
   int estOutputPointSize = this->ResX * this->ResY * 4;
-  // Allocate the memory for the framgent points.
-  newPoints->Allocate(estOutputPointSize);
+  // Allocate the memory for the fragment points.
+  newPoints->Reserve(estOutputPointSize);
 
   // main loop ...
   // For each tetrahedron in a grid
@@ -350,9 +341,9 @@ int vtkContinuousScatterplot::RequestData(
 
     // initialise data structure containing the scalar values of the whole fragment.
     fragScalar->Initialize();
-    fragScalar->Allocate(this->ResX * this->ResY);
-    // two components are needed to store the bivariate fields of the framgent.
+    // two components are needed to store the bivariate fields of the fragment.
     fragScalar->SetNumberOfComponents(2);
+    fragScalar->ReserveTuples(this->ResX * this->ResY);
 
     // Initialise the scalar values in this tetrahedral cell.
     for (vtkIdType cellIndex = 0; cellIndex < cell->GetNumberOfIds(); cellIndex++)
@@ -365,7 +356,7 @@ int vtkContinuousScatterplot::RequestData(
         cellIndex, 0, inPD->GetArray(this->Fields[1])->GetComponent(pointId, 0));
     }
 
-    // The scalar values of the framgent points are based on the interpolation of the
+    // The scalar values of the fragment points are based on the interpolation of the
     // point data of the tetrahedral cell (tetraPD).
     for (vtkIdType cellPDIndex = 0; cellPDIndex < tetraPD->GetNumberOfTuples(); cellPDIndex++)
     {
@@ -373,10 +364,10 @@ int vtkContinuousScatterplot::RequestData(
     }
 
     /*
-    cout << "ARRAY SUMMARY:\n" << endl;
+    std::cout << "ARRAY SUMMARY:\n" << endl;
     for (int i = 0; i < tetraPD->GetNumberOfTuples(); i++)
     {
-    cout << i << "\t" << inPD->GetArray(this->Fields[0])->GetComponent(i,0)
+    std::cout << i << "\t" << inPD->GetArray(this->Fields[0])->GetComponent(i,0)
               << "\t" << inPD->GetArray(this->Fields[1])->GetComponent(i,0)
               << "\t" << newPointsPD->GetArray(0)->GetComponent(i,0)
               << "\t" << newPointsPD->GetArray(1)->GetComponent(i,0) << endl;
@@ -387,8 +378,8 @@ int vtkContinuousScatterplot::RequestData(
     // Get the next cell from input, and place into the working queue.
     // We place into outputQ as each field takes the output of the
     // last step as its input, swapping queues BEFORE processing.
-    // OutputQ : a list of faces of the output framgent
-    Polytope ptp = new std::vector<vtkSmartPointer<vtkIdList> >();
+    // OutputQ : a list of faces of the output fragment
+    Polytope ptp = new std::vector<vtkSmartPointer<vtkIdList>>();
     outputQ.push_back(ptp);
 
     // min and max range value of the current cell
@@ -431,30 +422,24 @@ int vtkContinuousScatterplot::RequestData(
       minCell = maxField;
       maxCell = minField;
 
-      ////cout << "tet " << tetraIndex << ", field " << fieldNr << ", pnr: " <<
-      ///newPointsPD->GetNumberOfTuples() << endl;
-      ////cout << "min/max init: " << minCell << ", " << maxCell << endl;
+      ////std::cout << "tet " << tetraIndex << ", field " << fieldNr << ", pnr: " <<
+      /// newPointsPD->GetNumberOfTuples() << endl;
+      ////std::cout << "min/max init: " << minCell << ", " << maxCell << endl;
 
       // obtain the minimal and maximal scalar values of the cell.
       for (int pnr = 0; pnr < newPointsPD->GetNumberOfTuples(); pnr++)
       {
         double fval = newPointsPD->GetArray((int)fieldNr)->GetComponent(pnr, 0);
 
-        ////cout << "    fval: " << fval << endl;
-        if (maxCell < fval)
-        {
-          maxCell = fval;
-        }
-        if (minCell > fval)
-        {
-          minCell = fval;
-        }
+        ////std::cout << "    fval: " << fval << endl;
+        maxCell = std::max<double>(maxCell, fval);
+        minCell = std::min<double>(minCell, fval);
       }
 
-      ////cout << "D"  << endl;
-      ////cout << "Cell min/max: " << minCell << " " << maxCell << endl;
-      ////cout << "field min/max[0] " << minField << " " << maxField << endl;
-      ////cout << "field widths " << fragWidth[0] << " " << fragWidth[1] << endl;
+      ////std::cout << "D"  << endl;
+      ////std::cout << "Cell min/max: " << minCell << " " << maxCell << endl;
+      ////std::cout << "field min/max[0] " << minField << " " << maxField << endl;
+      ////std::cout << "field widths " << fragWidth[0] << " " << fragWidth[1] << endl;
 
       // in each field, the smallest threshold of cutting plane to start with.
       // since each field is sliced uniformly, in other words, the interval between
@@ -487,17 +472,17 @@ int vtkContinuousScatterplot::RequestData(
         // the threshold is increased by one fragmentWidth
         for (double threshold = initThreshold; threshold < maxCell; threshold += fragWidth[fieldNr])
         {
-          // Initialise framgent face structure for the current cutting plane.
+          // Initialise fragment face structure for the current cutting plane.
           delete fragment;
           delete residual;
-          fragment = new std::vector<vtkSmartPointer<vtkIdList> >();
-          residual = new std::vector<vtkSmartPointer<vtkIdList> >();
+          fragment = new std::vector<vtkSmartPointer<vtkIdList>>();
+          residual = new std::vector<vtkSmartPointer<vtkIdList>>();
 
           // Create the new cutting plane.
           cut = vtkSmartPointer<vtkIdList>::New();
 
           // Effectively, we start processing a new cell at this point.
-          for (std::vector<vtkSmartPointer<vtkIdList> >::iterator faceIt = working->begin();
+          for (std::vector<vtkSmartPointer<vtkIdList>>::iterator faceIt = working->begin();
                faceIt != working->end(); ++faceIt)
           {
             fragmentFace = vtkSmartPointer<vtkIdList>::New();
@@ -509,8 +494,7 @@ int vtkContinuousScatterplot::RequestData(
             // get the previous point id in the face
             prevPointId = (*faceIt)->GetId(nrFaceIds - 1);
             // the scalar value of the previous point in the face
-            prevScalar = newPointsPD->GetArray(
-              (int)fieldNr)->GetComponent(prevPointId, 0);
+            prevScalar = newPointsPD->GetArray((int)fieldNr)->GetComponent(prevPointId, 0);
 
             // Walk around the edge, comparing the range values between the current
             // cutting plane and the edge end points. Classify the each end point of the
@@ -525,10 +509,10 @@ int vtkContinuousScatterplot::RequestData(
               // get the current point Id in the face
               thisPointId = (*faceIt)->GetId(i);
               // get scalar value of the current point
-              thisScalar = newPointsPD->GetArray(
-                (int)fieldNr)->GetComponent(thisPointId, 0);
+              thisScalar = newPointsPD->GetArray((int)fieldNr)->GetComponent(thisPointId, 0);
 
-              ////cout <<  ">>> " << thisPointId << " " << thisScalar << " " << prevPointId << " "
+              ////std::cout <<  ">>> " << thisPointId << " " << thisScalar << " " << prevPointId <<
+              ///" "
               ///<< prevScalar << endl;
 
               // zero bitweise or to any value equals that value
@@ -669,7 +653,7 @@ int vtkContinuousScatterplot::RequestData(
           // We cannot guarantee that points in the cut-list are ordered wrt
           // polygon boundary, so we recompute an order by effectively working
           // the convex hull.
-          // The cut-list is added to the framgent and residual array.
+          // The cut-list is added to the fragment and residual array.
           if (cut->GetNumberOfIds() > 2)
           {
             nrPoints = cut->GetNumberOfIds();
@@ -729,7 +713,7 @@ int vtkContinuousScatterplot::RequestData(
           // ------------------------------------------------------
           if (fragment->size() > 3)
           {
-            // add the current framgent to the outpuQ structure.
+            // add the current fragment to the outpuQ structure.
             outputQ.push_back(fragment);
             fragment = nullptr;
             // set threshold at which this fragment was created
@@ -797,7 +781,7 @@ int vtkContinuousScatterplot::RequestData(
             working->pop_back();
           }
 
-          if(working)
+          if (working)
           {
             delete working;
             working = nullptr;
@@ -810,18 +794,18 @@ int vtkContinuousScatterplot::RequestData(
     // OUTPUT PHASE: ----------------------------------------------
     // Output generated fragments into main output dataset.
     // ------------------------------------------------------------
-    // For each output framgent, we compute its geometric volume and aggregate over
+    // For each output fragment, we compute its geometric volume and aggregate over
     // the cells.
     for (size_t co = 0; co < outputQ.size(); co++)
     {
       // The current fragment needs to be converted to a polygonal mesh.
       // Array for recording the vertices of the polygonal mesh.
       polyhedra->Initialize();
-      polyhedra->Allocate((vtkIdType)outputQ[co]->size());
+      polyhedra->AllocateEstimate(static_cast<vtkIdType>(outputQ[co]->size()), 1);
 
       // for each face of the fragment
       vtkSmartPointer<vtkIdList> poly = vtkSmartPointer<vtkIdList>::New();
-      for (std::vector<vtkSmartPointer<vtkIdList> >::iterator fc = outputQ[co]->begin();
+      for (std::vector<vtkSmartPointer<vtkIdList>>::iterator fc = outputQ[co]->begin();
            fc != outputQ[co]->end(); ++fc)
       {
         poly->Reset();
@@ -860,8 +844,9 @@ int vtkContinuousScatterplot::RequestData(
       binIndexSecond = (int)(this->ResY - 1) *
         (fragRangeValue[1] - inPD->GetArray(this->Fields[1])->GetRange()[0]) / fieldInterval[1];
 
-      ////cout << "biF: " << binIndexFirst << "\tbiS: " << binIndexSecond << "\t" << fragVolume <<
-      ///endl;
+      ////std::cout << "biF: " << binIndexFirst << "\tbiS: " << binIndexSecond << "\t" << fragVolume
+      ///<<
+      /// endl;
 
       // aggregate the fragment volumes in each bin
       if (binIndexFirst >= 0 && binIndexFirst < this->ResX && binIndexSecond >= 0 &&
@@ -871,10 +856,7 @@ int vtkContinuousScatterplot::RequestData(
       }
 
       // finding the largest volume in a bin.
-      if (imageBin[binIndexFirst][binIndexSecond] > maxBinSize)
-      {
-        maxBinSize = imageBin[binIndexFirst][binIndexSecond];
-      }
+      maxBinSize = std::max(imageBin[binIndexFirst][binIndexSecond], maxBinSize);
 
       // Clear faces from current polytope in output queue.
       while (!outputQ[co]->empty())
@@ -904,7 +886,6 @@ int vtkContinuousScatterplot::RequestData(
     delete residual;
     residual = nullptr;
   }
-
 
   // Create the output image data.
   output->SetExtent(0, this->ResX - 1, 0, this->ResY - 1, 0, 0);
@@ -949,3 +930,4 @@ int vtkContinuousScatterplot::RequestData(
 
   return 1;
 }
+VTK_ABI_NAMESPACE_END

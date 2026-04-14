@@ -1,61 +1,48 @@
-/*=========================================================================
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
-  Program:   Visualization Toolkit
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-
-#include "vtkTestUtilities.h"
 #include "vtkRegressionTestImage.h"
+#include "vtkTestUtilities.h"
 
 #include "vtkActor.h"
 #include "vtkCamera.h"
-#include "vtkMolecule.h"
 #include "vtkLight.h"
+#include "vtkMolecule.h"
 #include "vtkMoleculeMapper.h"
 #include "vtkNew.h"
-#include "vtkProperty.h"
-#include "vtkRenderWindowInteractor.h"
-#include "vtkRenderWindow.h"
-#include "vtkRenderer.h"
 #include "vtkPDBReader.h"
 #include "vtkPlaneSource.h"
 #include "vtkPolyDataMapper.h"
+#include "vtkProperty.h"
+#include "vtkRenderWindow.h"
+#include "vtkRenderWindowInteractor.h"
+#include "vtkRenderer.h"
 
-#include "vtkTimerLog.h"
-#include "vtkCamera.h"
+#include <iostream>
 
-int TestPDBBallAndStickTranslucent(int argc, char *argv[])
+int TestPDBBallAndStickTranslucent(int argc, char* argv[])
 {
-  char* fileName =
-    vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/caffeine.pdb");
+  char* fileName = vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/caffeine.pdb");
 
   // read protein from pdb
   vtkNew<vtkPDBReader> reader;
   reader->SetFileName(fileName);
   reader->Update();
 
-  delete [] fileName;
+  delete[] fileName;
 
   vtkNew<vtkMoleculeMapper> molmapper;
   molmapper->SetInputConnection(reader->GetOutputPort(1));
 
-  cerr << "Class: " << molmapper->GetClassName() << endl;
-  cerr << "Atoms: " << molmapper->GetInput()->GetNumberOfAtoms() << endl;
-  cerr << "Bonds: " << molmapper->GetInput()->GetNumberOfBonds() << endl;
+  std::cerr << "Class: " << molmapper->GetClassName() << std::endl;
+  std::cerr << "Atoms: " << molmapper->GetInput()->GetNumberOfAtoms() << std::endl;
+  std::cerr << "Bonds: " << molmapper->GetInput()->GetNumberOfBonds() << std::endl;
 
   molmapper->UseBallAndStickSettings();
 
   vtkNew<vtkActor> actor;
   actor->SetMapper(molmapper);
-  actor->GetProperty()->SetOpacity(0.1);
+  actor->GetProperty()->SetOpacity(0.4);
 
   vtkNew<vtkRenderer> ren;
   vtkNew<vtkRenderWindow> win;
@@ -68,22 +55,22 @@ int TestPDBBallAndStickTranslucent(int argc, char *argv[])
   win->SetSize(450, 450);
 
   vtkNew<vtkLight> light1;
-  light1->SetFocalPoint(0,0,0);
-  light1->SetPosition(0,1,0.2);
-  light1->SetColor(0.95,0.97,1.0);
+  light1->SetFocalPoint(0, 0, 0);
+  light1->SetPosition(0, 1, 0.2);
+  light1->SetColor(0.95, 0.97, 1.0);
   light1->SetIntensity(0.8);
   ren->AddLight(light1);
 
   vtkNew<vtkLight> light2;
-  light2->SetFocalPoint(0,0,0);
-  light2->SetPosition(1.0,1.0,1.0);
-  light2->SetColor(1.0,0.8,0.7);
+  light2->SetFocalPoint(0, 0, 0);
+  light2->SetPosition(1.0, 1.0, 1.0);
+  light2->SetColor(1.0, 0.8, 0.7);
   light2->SetIntensity(0.3);
   ren->AddLight(light2);
 
-  ren->GetActiveCamera()->SetPosition(0,0,1);
-  ren->GetActiveCamera()->SetFocalPoint(0,0,0);
-  ren->GetActiveCamera()->SetViewUp(0,1,0);
+  ren->GetActiveCamera()->SetPosition(0, 0, 1);
+  ren->GetActiveCamera()->SetFocalPoint(0, 0, 0);
+  ren->GetActiveCamera()->SetViewUp(0, 1, 0);
   ren->ResetCamera();
   ren->GetActiveCamera()->Zoom(3.0);
 

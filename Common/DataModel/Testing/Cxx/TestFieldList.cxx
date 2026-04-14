@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkDataSetAttributes.h"
 #include "vtkDoubleArray.h"
 #include "vtkIntArray.h"
@@ -5,6 +7,8 @@
 #include "vtkSmartPointer.h"
 
 #include <string>
+
+#include <iostream>
 
 namespace
 {
@@ -20,14 +24,18 @@ vtkSmartPointer<T> CreateArray(const char* aname, int num_comps, vtkIdType numTu
 }
 
 #define EXPECT_THAT(v, m)                                                                          \
-  if ((v) != (m))                                                                                  \
+  do                                                                                               \
   {                                                                                                \
-    cerr << "FAILED at line " << __LINE__ << ": \n     " << #v << " must match " << #m << endl;    \
-    return EXIT_FAILURE;                                                                           \
-  }
+    if ((v) != (m))                                                                                \
+    {                                                                                              \
+      std::cerr << "FAILED at line " << __LINE__ << ": \n     " << #v << " must match " << #m      \
+                << std::endl;                                                                      \
+      return EXIT_FAILURE;                                                                         \
+    }                                                                                              \
+  } while (false)
 }
 
-int TestFieldList(int, char* [])
+int TestFieldList(int, char*[])
 {
 
   {
@@ -71,7 +79,7 @@ int TestFieldList(int, char* [])
     EXPECT_THAT(output->GetScalars() != nullptr, true);
 
     // just to increase coverage.
-    fl.PrintSelf(cout, vtkIndent());
+    fl.PrintSelf(std::cout, vtkIndent());
   }
 
   {

@@ -1,11 +1,10 @@
-/* Copyright 2009, UCAR/Unidata and OPeNDAP, Inc.
+/* Copyright 2018, UCAR/Unidata and OPeNDAP, Inc.
    See the COPYRIGHT file for more information. */
 
 #ifndef NCBYTES_H
 #define NCBYTES_H 1
 
 #include "vtk_netcdf_mangle.h"
-#include "ncexternl.h"
 
 typedef struct NCbytes {
   int nonextendible; /* 1 => fail if an attempt is made to extend this buffer*/
@@ -13,6 +12,8 @@ typedef struct NCbytes {
   unsigned long length;
   char* content;
 } NCbytes;
+
+#include "ncexternl.h"
 
 #if defined(_CPLUSPLUS_) || defined(__CPLUSPLUS__) || defined(__CPLUSPLUS)
 extern "C" {
@@ -49,7 +50,7 @@ EXTERNL int ncbytesremove(NCbytes*,unsigned long);
 EXTERNL int ncbytescat(NCbytes*,const char*);
 
 /* Set the contents of the buffer; mark the buffer as non-extendible */
-EXTERNL int ncbytessetcontents(NCbytes*, char*, unsigned long);
+EXTERNL int ncbytessetcontents(NCbytes*, void*, unsigned long);
 
 /* Following are always "in-lined"*/
 #define ncbyteslength(bb) ((bb)!=NULL?(bb)->length:0)
@@ -58,6 +59,7 @@ EXTERNL int ncbytessetcontents(NCbytes*, char*, unsigned long);
 #define ncbytesextend(bb,len) ncbytessetalloc((bb),(len)+(bb->alloc))
 #define ncbytesclear(bb) ((bb)!=NULL?(bb)->length=0:0)
 #define ncbytesavail(bb,n) ((bb)!=NULL?((bb)->alloc - (bb)->length) >= (n):0)
+#define ncbytesextendible(bb) ((bb)!=NULL?((bb)->nonextendible?0:1):0)
 
 #if defined(_CPLUSPLUS_) || defined(__CPLUSPLUS__) || defined(__CPLUSPLUS)
 }

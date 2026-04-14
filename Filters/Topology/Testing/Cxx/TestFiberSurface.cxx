@@ -1,18 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkPolyDataAlgorithm.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 // PURPOSE: FiberSurface test cases output generator (new vtkFiberSurface filter)
 
@@ -20,19 +7,18 @@
 #include <sstream>
 #include <string>
 
-#include "vtkFiberSurface.h"
-#include "vtkTestUtilities.h"
-#include "vtkActor.h"
-#include "vtkCellArray.h"
 #include "vtkCleanPolyData.h"
-#include "vtkFloatArray.h"
-#include "vtkPolyData.h"
+#include "vtkFiberSurface.h"
 #include "vtkPolyData.h"
 #include "vtkPolyDataReader.h"
 #include "vtkPolyDataWriter.h"
 #include "vtkSmartPointer.h"
+#include "vtkStringFormatter.h"
+#include "vtkTestUtilities.h"
 #include "vtkUnstructuredGrid.h"
 #include "vtkUnstructuredGridReader.h"
+
+#include <iostream>
 
 int TestFiberSurface(int argc, char* argv[])
 {
@@ -41,10 +27,8 @@ int TestFiberSurface(int argc, char* argv[])
   /************** Input File paths using vtkTestUtilities ****************/
   const char* inputDataFiles[3] = { vtkTestUtilities::ExpandDataFileName(
                                       argc, argv, "Data/FiberSurface/one_cube.vtk"),
-    vtkTestUtilities::ExpandDataFileName(argc, argv,
-                                      "Data/FiberSurface/one_cube_both_forking.vtk"),
-    vtkTestUtilities::ExpandDataFileName(argc, argv,
-                                      "Data/FiberSurface/one_cube_closed.vtk") };
+    vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/FiberSurface/one_cube_both_forking.vtk"),
+    vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/FiberSurface/one_cube_closed.vtk") };
 
   /************** FSCP File paths using vtkTestUtilities ****************/
   const char* inputFSCPFiles[15] = { vtkTestUtilities::ExpandDataFileName(
@@ -66,6 +50,7 @@ int TestFiberSurface(int argc, char* argv[])
   /**********************************************/
 
   /********************* Desired output arrays *********************/
+  // NOLINTNEXTLINE(bugprone-suspicious-missing-comma)
   std::string dataToCompare[15] = { "0.779,0.000,0.000,0.659,0.000,0.341,1.000,0.000,0.624,1.000,0."
                                     "797,0.000,0.659,0.659,1.000,1.000,1.000,0.203,1.000,0.376,1."
                                     "000,0.779,1.000,1.000",
@@ -125,7 +110,7 @@ int TestFiberSurface(int argc, char* argv[])
   /************** output to error file ****************/
   /****************************************************/
 
-  printf("FiberSurface test cases");
+  vtk::print("FiberSurface test cases");
   /****************************************************/
 
   for (int i = 0; i < 3; i++) // loop for three input files
@@ -191,38 +176,37 @@ int TestFiberSurface(int argc, char* argv[])
       /**********************************************/
       /*********** comparing the results ************/
 
-      if (strcmp(outputString.c_str(), dataToCompare[cmpIndex].c_str()) != 0)
+      if (outputString != dataToCompare[cmpIndex])
       {
         pass = false;
         { // writing to file
-          printf("\n\n/**************************************/");
-          printf("\n/********Test Unsuccessful*************/");
-          printf("\nInput  Data: %s", (std::string(inputDataFiles[i]).substr(6, 31)).c_str());
-          printf(
-            "\nInput  FSCP: %s", (std::string(inputFSCPFiles[cmpIndex]).substr(6, 30)).c_str());
-          printf("\nString to compare: %s", dataToCompare[cmpIndex].c_str());
-          printf("\nOutput String     : %s", outputString.c_str());
-          printf("\n/**************************************/");
+          vtk::print("\n\n/**************************************/");
+          vtk::print("\n/********Test Unsuccessful*************/");
+          vtk::print("\nInput  Data: {:s}", (std::string(inputDataFiles[i]).substr(6, 31)));
+          vtk::print("\nInput  FSCP: {:s}", (std::string(inputFSCPFiles[cmpIndex]).substr(6, 30)));
+          vtk::print("\nString to compare: {:s}", dataToCompare[cmpIndex]);
+          vtk::print("\nOutput String     : {:s}", outputString);
+          vtk::print("\n/**************************************/");
         } // end of writing
       }
       cmpIndex++;
     } // end for
   }   // end for
 
-  for (int i = 0; i <  15; ++i)
+  for (int i = 0; i < 15; ++i)
   {
-    delete [] inputFSCPFiles[i];
+    delete[] inputFSCPFiles[i];
   }
-  delete [] inputDataFiles[0];
-  delete [] inputDataFiles[1];
-  delete [] inputDataFiles[2];
+  delete[] inputDataFiles[0];
+  delete[] inputDataFiles[1];
+  delete[] inputDataFiles[2];
 
   if (pass)
   {
-    cout << "\nTest Successful!!!" << endl;
+    std::cout << "\nTest Successful!!!" << std::endl;
     return EXIT_SUCCESS;
   }
 
-  cout << "\nTest Unsuccessful." << endl;
+  std::cout << "\nTest Unsuccessful." << std::endl;
   return EXIT_FAILURE;
 }

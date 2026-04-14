@@ -1,12 +1,7 @@
-if(VTK_USE_GLSL_SHADERS)
-  set(glsl_tests
-    TestGLSLShader.py,NO_VALID
-    )
-endif()
-
 vtk_add_test_python(
   ImageActor.py
   ImageActorStressed.py
+  ImageSliceMapper.py
   NoLightGeneration.py
   PolyDataMapperAllPolygons.py
   PolyDataMapperAllWireframe.py
@@ -17,6 +12,7 @@ vtk_add_test_python(
   TestParallelCoordinates.py
   TestRotate.py
   TestTransformInterpolator.py
+  TestWorldVsPhysicalActors.py
   TransformConcatenation.py
   TransformCoverage.py
   TransformImageData.py
@@ -43,7 +39,7 @@ vtk_add_test_python(
   TestTransformCoordinateSystems.py
   TestWindowToImageTransparency.py
   TexturedSphere.py
-  cells.py,NO_RT
+  cells.py
 #  TestScalarMaterialMode.py
   pickCompositeData.py,NO_RT
   pickCompositeData2.py,NO_RT

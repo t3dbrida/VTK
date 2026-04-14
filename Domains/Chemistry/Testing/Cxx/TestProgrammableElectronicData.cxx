@@ -1,33 +1,25 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "vtkImageData.h"
 #include "vtkMolecule.h"
 #include "vtkNew.h"
 #include "vtkProgrammableElectronicData.h"
 
-#define CHECK_MO(num) \
-  if (ed->GetMO(num) != mo##num) \
-  {   \
-    cerr << "MO number " << (num) << " has changed since being set: " \
-         << "Expected @" << mo##num \
-         << ", got @" << ed->GetMO(num) << ".\n"; \
-    return EXIT_FAILURE;  \
-  }
+#include <iostream>
 
+#define CHECK_MO(num)                                                                              \
+  do                                                                                               \
+  {                                                                                                \
+    if (ed->GetMO(num) != mo##num)                                                                 \
+    {                                                                                              \
+      std::cerr << "MO number " << (num) << " has changed since being set: "                       \
+                << "Expected @" << mo##num << ", got @" << ed->GetMO(num) << ".\n";                \
+      return EXIT_FAILURE;                                                                         \
+    }                                                                                              \
+  } while (false)
 
-int TestProgrammableElectronicData(int, char *[])
+int TestProgrammableElectronicData(int, char*[])
 {
   vtkNew<vtkMolecule> mol;
   vtkNew<vtkProgrammableElectronicData> ed;
@@ -63,7 +55,7 @@ int TestProgrammableElectronicData(int, char *[])
 
   if (ed->GetElectronDensity() != density)
   {
-    cerr << "Electron density has changed since being set.";
+    std::cerr << "Electron density has changed since being set.";
     return EXIT_FAILURE;
   }
 

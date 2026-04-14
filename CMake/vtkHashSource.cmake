@@ -1,26 +1,24 @@
-#[==[.md
-# vtkHashSource
+#[==[
+@file vtkHashSource.cmake
 
-This module contains the `vtk_hash_source` function which may be used to
+This module contains the @ref vtk_hash_source function which may be used to
 generate a hash from a file and place that in a generated header.
 #]==]
 
 set(_vtkHashSource_script_file "${CMAKE_CURRENT_LIST_FILE}")
 
-include(CMakeParseArguments)
-
-#[==[.md
-# `vtk_hash_source`
+#[==[
+@brief Generate a header containing the hash of a file
 
 Add a rule to turn a file into a MD5 hash and place that in a C string.
 
-```
+~~~
 vtk_hash_source(
   INPUT          <input>
   [NAME          <name>]
   [ALGORITHM     <algorithm>]
   [HEADER_OUTPUT <header>])
-```
+~~~
 
 The only required variable is `INPUT`.
 
@@ -35,11 +33,10 @@ The only required variable is `INPUT`.
   * `HEADER_OUTPUT`: the variable to store the generated header path.
 #]==]
 function (vtk_hash_source)
-  cmake_parse_arguments(_vtk_hash_source
+  cmake_parse_arguments(PARSE_ARGV 0 _vtk_hash_source
     ""
     "INPUT;NAME;ALGORITHM;HEADER_OUTPUT"
-    ""
-    ${ARGN})
+    "")
 
   if (_vtk_hash_source_UNPARSED_ARGUMENTS)
     message(FATAL_ERROR
@@ -73,6 +70,12 @@ function (vtk_hash_source)
   set(_vtk_hash_source_header
     "${CMAKE_CURRENT_BINARY_DIR}/${_vtk_hash_source_NAME}.h")
 
+  set(_vtk_hash_source_depends_args)
+  if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.27")
+    list(APPEND _vtk_hash_source_depends_args
+      DEPENDS_EXPLICIT_ONLY)
+  endif ()
+
   add_custom_command(
     OUTPUT  "${_vtk_hash_source_header}"
     DEPENDS "${_vtkHashSource_script_file}"
@@ -83,7 +86,8 @@ function (vtk_hash_source)
             "-Doutput_name=${_vtk_hash_source_NAME}"
             "-Dalgorithm=${_vtk_hash_source_ALGORITHM}"
             "-D_vtk_hash_source_run=ON"
-            -P "${_vtkHashSource_script_file}")
+            -P "${_vtkHashSource_script_file}"
+    ${_vtk_hash_source_depends_args})
 
   if (DEFINED _vtk_hash_source_HEADER_OUTPUT)
     set("${_vtk_hash_source_HEADER_OUTPUT}"
@@ -92,7 +96,7 @@ function (vtk_hash_source)
   endif ()
 endfunction()
 
-if (_vtk_hash_source_run)
+if (_vtk_hash_source_run AND CMAKE_SCRIPT_MODE_FILE)
   file(${algorithm} "${input_file}" file_hash)
   file(WRITE "${output_file}"
     "#ifndef ${output_name}\n #define ${output_name} \"${file_hash}\"\n#endif\n")

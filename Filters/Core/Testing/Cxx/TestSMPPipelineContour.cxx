@@ -1,35 +1,25 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestCutter.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-#include "vtkNew.h"
-#include "vtkRTAnalyticSource.h"
-#include "vtkPolyData.h"
-#include "vtkTimerLog.h"
-#include "vtkSMPTools.h"
-#include "vtkXMLMultiBlockDataWriter.h"
-#include "vtkMultiBlockDataSet.h"
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkCompositeDataIterator.h"
 #include "vtkExtentTranslator.h"
-#include "vtkSMPThreadLocalObject.h"
 #include "vtkImageData.h"
-#include "vtkThreadedCompositeDataPipeline.h"
-#include "vtkSynchronizedTemplates3D.h"
+#include "vtkMultiBlockDataSet.h"
+#include "vtkNew.h"
+#include "vtkPolyData.h"
+#include "vtkRTAnalyticSource.h"
+#include "vtkSMPThreadLocalObject.h"
+#include "vtkSMPTools.h"
 #include "vtkSmartPointer.h"
+#include "vtkSynchronizedTemplates3D.h"
+#include "vtkThreadedCompositeDataPipeline.h"
+#include "vtkTimerLog.h"
+#include "vtkXMLMultiBlockDataWriter.h"
 
-const int EXTENT = 100;
-static int WholeExtent[] = {-EXTENT, EXTENT, -EXTENT, EXTENT, -EXTENT, EXTENT};
-const int NUMBER_OF_PIECES = 50;
+#include <iostream>
+
+constexpr int EXTENT = 100;
+static int WholeExtent[] = { -EXTENT, EXTENT, -EXTENT, EXTENT, -EXTENT, EXTENT };
+constexpr int NUMBER_OF_PIECES = 50;
 static vtkImageData* Pieces[NUMBER_OF_PIECES];
 
 class vtkCreateImageData
@@ -48,16 +38,11 @@ public:
   {
     vtkRTAnalyticSource*& source = this->ImageSources.Local();
 
-    for (vtkIdType i=begin; i<end; i++)
+    for (vtkIdType i = begin; i < end; i++)
     {
       int extent[6];
-      this->Translator->PieceToExtentThreadSafe(i,
-                                                NUMBER_OF_PIECES,
-                                                0,
-                                                WholeExtent,
-                                                extent,
-                                                vtkExtentTranslator::BLOCK_MODE,
-                                                0);
+      this->Translator->PieceToExtentThreadSafe(
+        i, NUMBER_OF_PIECES, 0, WholeExtent, extent, vtkExtentTranslator::BLOCK_MODE, 0);
       source->UpdateExtent(extent);
       vtkImageData* piece = vtkImageData::New();
       piece->ShallowCopy(source->GetOutput());
@@ -65,12 +50,10 @@ public:
     }
   }
 
-  void Reduce()
-  {
-  }
+  void Reduce() {}
 };
 
-int TestSMPPipelineContour(int, char *[])
+int TestSMPPipelineContour(int, char*[])
 {
   vtkSMPTools::Initialize(2);
 
@@ -81,10 +64,10 @@ int TestSMPPipelineContour(int, char *[])
   vtkSMPTools::For(0, NUMBER_OF_PIECES, cid);
   tl->StopTimer();
 
-  cout << "Creation time: " << tl->GetElapsedTime() << endl;
+  std::cout << "Creation time: " << tl->GetElapsedTime() << std::endl;
 
   vtkNew<vtkMultiBlockDataSet> mbds;
-  for (int i=0; i<NUMBER_OF_PIECES; i++)
+  for (int i = 0; i < NUMBER_OF_PIECES; i++)
   {
     mbds->SetBlock(i, Pieces[i]);
     Pieces[i]->Delete();
@@ -101,20 +84,20 @@ int TestSMPPipelineContour(int, char *[])
   cf->Update();
   tl->StopTimer();
 
-  cout << "Execution time: " << tl->GetElapsedTime() << endl;
+  std::cout << "Execution time: " << tl->GetElapsedTime() << std::endl;
 
   vtkIdType numCells = 0;
   vtkSmartPointer<vtkCompositeDataIterator> iter;
   iter.TakeReference(static_cast<vtkCompositeDataSet*>(cf->GetOutputDataObject(0))->NewIterator());
   iter->InitTraversal();
-  while(!iter->IsDoneWithTraversal())
+  while (!iter->IsDoneWithTraversal())
   {
     vtkPolyData* piece = static_cast<vtkPolyData*>(iter->GetCurrentDataObject());
     numCells += piece->GetNumberOfCells();
     iter->GoToNextItem();
   }
 
-  cout << "Total num. cells: " << numCells << endl;
+  std::cout << "Total num. cells: " << numCells << std::endl;
 
   vtkNew<vtkRTAnalyticSource> rt;
   rt->SetWholeExtent(-EXTENT, EXTENT, -EXTENT, EXTENT, -EXTENT, EXTENT);
@@ -129,16 +112,15 @@ int TestSMPPipelineContour(int, char *[])
   st->Update();
   tl->StopTimer();
 
-  cout << "Serial execution time: " << tl->GetElapsedTime() << endl;
+  std::cout << "Serial execution time: " << tl->GetElapsedTime() << std::endl;
 
-  cout << "Serial num. cells: " << st->GetOutput()->GetNumberOfCells() << endl;
+  std::cout << "Serial num. cells: " << st->GetOutput()->GetNumberOfCells() << std::endl;
 
   if (st->GetOutput()->GetNumberOfCells() != numCells)
   {
-    cout << "Number of cells did not match." << endl;
+    std::cout << "Number of cells did not match." << std::endl;
     return EXIT_FAILURE;
   }
-
 
 #if 0
   vtkNew<vtkXMLMultiBlockDataWriter> writer;

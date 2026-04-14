@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestOBJPolyDataWriter.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include <vtkActor.h>
 #include <vtkJPEGReader.h>
@@ -27,10 +15,12 @@
 #include <vtkRenderWindow.h>
 #include <vtkRenderWindowInteractor.h>
 #include <vtkRenderer.h>
+#include <vtkStringFormatter.h>
 #include <vtkTestUtilities.h>
 #include <vtkTexture.h>
 #include <vtkTexturedSphereSource.h>
 
+#include <iostream>
 #include <string>
 
 int TestOBJPolyDataWriter(int argc, char* argv[])
@@ -40,15 +30,14 @@ int TestOBJPolyDataWriter(int argc, char* argv[])
   sphereSource->SetPhiResolution(16);
 
   vtkNew<vtkJPEGReader> textReader;
-  char *fname =
-    vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/NE2_ps_bath_small.jpg");
+  char* fname = vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/NE2_ps_bath_small.jpg");
   textReader->SetFileName(fname);
-  delete [] fname;
+  delete[] fname;
 
-  char *tname =
+  char* tname =
     vtkTestUtilities::GetArgOrEnvOrDefault("-T", argc, argv, "VTK_TEMP_DIR", "Testing/Temporary");
   std::string tmpDir(tname);
-  delete [] tname;
+  delete[] tname;
   std::string filename = tmpDir + "/TestOBJPolyDataWriter_write.obj";
 
   vtkNew<vtkOBJWriter> writer;
@@ -67,7 +56,7 @@ int TestOBJPolyDataWriter(int argc, char* argv[])
 
   if (polyInput->GetNumberOfPoints() != polyOutput->GetNumberOfPoints())
   {
-    cerr << "PolyData do not have the same number of points.\n";
+    std::cerr << "PolyData do not have the same number of points.\n";
     return EXIT_FAILURE;
   }
 
@@ -81,11 +70,14 @@ int TestOBJPolyDataWriter(int argc, char* argv[])
   if (!positionsInput || !positionsOutput || !normalsInput || !normalsOutput || !tcoordsInput ||
     !tcoordsOutput)
   {
-    cerr << "One of the arrays is null.\n";
+    std::cerr << "One of the arrays is null.\n";
     return EXIT_FAILURE;
   }
 
   // check values
+  int numberOfDifferentPoints = 0;
+  int numberOfDifferentNormals = 0;
+  int numberOfDifferentTCoords = 0;
   for (vtkIdType i = 0; i < polyInput->GetNumberOfPoints(); i++)
   {
     double pi[3], po[3];
@@ -93,36 +85,41 @@ int TestOBJPolyDataWriter(int argc, char* argv[])
     // check positions
     positionsInput->GetTuple(i, pi);
     positionsOutput->GetTuple(i, po);
-    if (vtkMath::Distance2BetweenPoints(pi, po) > 1e-4)
+    if (vtkMath::Distance2BetweenPoints(pi, po) > 0.0)
     {
-      cerr << "One point is different.\n";
-      cerr << "Input: " << pi[0] << " " << pi[1] << " " << pi[2] << "\n";
-      cerr << "Output: " << po[0] << " " << po[1] << " " << po[2] << "\n";
-      return EXIT_FAILURE;
+      std::cerr << "Point is different.\n";
+      std::cerr << vtk::format("  Input:  {} {} {}\n", pi[0], pi[1], pi[2]);
+      std::cerr << vtk::format("  Output: {} {} {}\n", po[0], po[1], po[2]);
+      numberOfDifferentPoints++;
     }
 
     // check normals
     normalsInput->GetTuple(i, pi);
     normalsOutput->GetTuple(i, po);
-    if (vtkMath::AngleBetweenVectors(pi, po) > 1e-6)
+    if (vtkMath::AngleBetweenVectors(pi, po) > 0)
     {
-      cerr << "One normal is different:\n";
-      cerr << "Input: " << pi[0] << " " << pi[1] << " " << pi[2] << "\n";
-      cerr << "Output: " << po[0] << " " << po[1] << " " << po[2] << "\n";
-      return EXIT_FAILURE;
+      std::cerr << "Normal is different:\n";
+      std::cerr << vtk::format("  Input:  {} {} {}\n", pi[0], pi[1], pi[2]);
+      std::cerr << vtk::format("  Output: {} {} {}\n", po[0], po[1], po[2]);
+      numberOfDifferentNormals++;
     }
 
     // check texture coords
     tcoordsInput->GetTuple(i, pi);
     tcoordsOutput->GetTuple(i, po);
     pi[2] = po[2] = 0.0;
-    if (vtkMath::Distance2BetweenPoints(pi, po) > 1e-4)
+    if (vtkMath::Distance2BetweenPoints(pi, po) > 0.0)
     {
-      cerr << "One texture coord is different:\n";
-      cerr << "Input: " << pi[0] << " " << pi[1] << "\n";
-      cerr << "Output: " << po[0] << " " << po[1] << "\n";
-      return EXIT_FAILURE;
+      std::cerr << "Texture coord is different:\n";
+      std::cerr << vtk::format("  Input:  {} {} {}\n", pi[0], pi[1], pi[2]);
+      std::cerr << vtk::format("  Output: {} {} {}\n", po[0], po[1], po[2]);
+      numberOfDifferentTCoords++;
     }
+  }
+  if (numberOfDifferentPoints != 0 || numberOfDifferentNormals != 0 ||
+    numberOfDifferentTCoords != 0)
+  {
+    return EXIT_FAILURE;
   }
 
   vtkNew<vtkPolyDataMapper> mapper;

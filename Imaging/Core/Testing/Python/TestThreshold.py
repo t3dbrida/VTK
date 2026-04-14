@@ -1,29 +1,25 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-'''
-=========================================================================
 
-  Program:   Visualization Toolkit
-  Module:    TestNamedColorsIntegration.py
 
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================
-'''
-
-import vtk
-import vtk.test.Testing
-from vtk.util.misc import vtkGetDataRoot
+from vtkmodules.vtkIOImage import vtkImageReader
+from vtkmodules.vtkImagingCore import vtkImageBinaryThreshold
+from vtkmodules.vtkRenderingCore import (
+    vtkActor2D,
+    vtkImageMapper,
+    vtkRenderWindow,
+    vtkRenderWindowInteractor,
+    vtkRenderer,
+)
+import vtkmodules.vtkInteractionStyle
+import vtkmodules.vtkRenderingFreeType
+import vtkmodules.vtkRenderingOpenGL2
+import vtkmodules.test.Testing
+from vtkmodules.util.misc import vtkGetDataRoot
 VTK_DATA_ROOT = vtkGetDataRoot()
 
-class TestThreshold(vtk.test.Testing.vtkTest):
+class TestThreshold(vtkmodules.test.Testing.vtkTest):
 
     def testThreshold(self):
 
@@ -31,10 +27,10 @@ class TestThreshold(vtk.test.Testing.vtkTest):
 
         # Image pipeline
 
-        renWin = vtk.vtkRenderWindow()
+        renWin = vtkRenderWindow()
         renWin.SetSize(192, 256)
 
-        reader = vtk.vtkImageReader()
+        reader = vtkImageReader()
         reader.ReleaseDataFlagOff()
         reader.SetDataByteOrderToLittleEndian()
         reader.SetDataExtent(0, 63, 0, 63, 1, 93)
@@ -46,7 +42,9 @@ class TestThreshold(vtk.test.Testing.vtkTest):
                         "Short", "UnsignedShort", "Double", "Float", "Double", "Float"]
         replacein = ["ReplaceInOn", "ReplaceInOff"]
         replaceout = ["ReplaceOutOn", "ReplaceOutOff"]
-        thresholds = ["ThresholdByLower(800)", "ThresholdByUpper(1200)", "ThresholdBetween(800, 1200)"]
+        threshold_modes = [vtkImageBinaryThreshold.THRESHOLD_LOWER, vtkImageBinaryThreshold.THRESHOLD_UPPER, vtkImageBinaryThreshold.THRESHOLD_BETWEEN]
+        lower_thresholds = [None, 1200, 800]
+        upper_thresholds = [800, None, 1200]
 
         thresh = list()
         map = list()
@@ -56,18 +54,22 @@ class TestThreshold(vtk.test.Testing.vtkTest):
         k = 0
         for rin in replacein:
             for rout in replaceout:
-                for t in thresholds:
+                for i in range(len(threshold_modes)):
 
-                    thresh.append(vtk.vtkImageThreshold())
+                    thresh.append(vtkImageBinaryThreshold())
                     thresh[k].SetInValue(2000)
                     thresh[k].SetOutValue(0)
                     eval('thresh[k].' + rin + '()')
                     eval('thresh[k].' + rout + '()')
                     thresh[k].SetInputConnection(reader.GetOutputPort())
-                    eval('thresh[k].' + t)
+                    thresh[k].SetThresholdFunction(threshold_modes[i])
+                    if lower_thresholds[i]:
+                        thresh[k].SetLowerThreshold(lower_thresholds[i])
+                    if upper_thresholds[i]:
+                        thresh[k].SetUpperThreshold(upper_thresholds[i])
                     eval('thresh[k].SetOutputScalarTypeTo' + outputtype[k] + '()')
 
-                    map.append(vtk.vtkImageMapper())
+                    map.append(vtkImageMapper())
                     map[k].SetInputConnection(thresh[k].GetOutputPort())
                     if k < 3:
                         map[k].SetColorWindow(255)
@@ -76,11 +78,11 @@ class TestThreshold(vtk.test.Testing.vtkTest):
                         map[k].SetColorWindow(2000)
                         map[k].SetColorLevel(1000)
 
-                    act.append(vtk.vtkActor2D())
+                    act.append(vtkActor2D())
                     act[k].SetMapper(map[k])
 
-                    ren.append(vtk.vtkRenderer())
-                    ren[k].AddActor2D(act[k])
+                    ren.append(vtkRenderer())
+                    ren[k].AddViewProp(act[k])
 
                     renWin.AddRenderer(ren[k])
 
@@ -101,13 +103,13 @@ class TestThreshold(vtk.test.Testing.vtkTest):
 
         # render and interact with data
 
-        iRen = vtk.vtkRenderWindowInteractor()
+        iRen = vtkRenderWindowInteractor()
         iRen.SetRenderWindow(renWin);
         renWin.Render()
 
         img_file = "TestThreshold.png"
-        vtk.test.Testing.compareImage(iRen.GetRenderWindow(), vtk.test.Testing.getAbsImagePath(img_file), threshold=25)
-        vtk.test.Testing.interact()
+        vtkmodules.test.Testing.compareImage(iRen.GetRenderWindow(), vtkmodules.test.Testing.getAbsImagePath(img_file))
+        vtkmodules.test.Testing.interact()
 
 if __name__ == "__main__":
-     vtk.test.Testing.main([(TestThreshold, 'test')])
+     vtkmodules.test.Testing.main([(TestThreshold, 'test')])

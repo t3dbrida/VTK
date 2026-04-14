@@ -1,5 +1,5 @@
 # This file contains macros that are used by VTK to generate the list of
-# default arrays used by the vtkArrayDispatch system.
+# default and implicit arrays used by the vtkArrayDispatch system.
 #
 # There are a number of CMake variables that control the final array list. At
 # the high level, the following options enable/disable predefined categories of
@@ -11,27 +11,41 @@
 # - VTK_DISPATCH_SOA_ARRAYS (default: OFF)
 #   Include vtkSOADataArrayTemplate<ValueType> for the basic types supported
 #   by VTK.
-# - VTK_DISPATCH_TYPED_ARRAYS (default: OFF)
-#   Include vtkTypedDataArray<ValueType> for the basic types supported
-#   by VTK. This enables the old-style in-situ vtkMappedDataArray subclasses
-#   to be used.
+#
+# - VTK_DISPATCH_AFFINE_ARRAYS (default: OFF)
+#   Include vtkAffineArray<ValueType> for the basic types supported
+#   by VTK.
+# - VTK_DISPATCH_CONSTANT_ARRAYS (default: OFF)
+#   Include vtkConstantArray<ValueType> for the basic types supported
+#   by VTK.
+# - VTK_DISPATCH_STRIDED_ARRAYS (default: OFF)
+#   Include vtkStridedArray<ValueType> for the basic types supported
+#   by VTK.
+# - VTK_DISPATCH_STRUCTURED_POINT_ARRAYS (default: ON)
+#   Include vtkStructuredPointArray<ValueType> for the basic types supported
+#   by VTK. This should probably not be turned off.
 #
 # At a lower level, specific arrays can be added to the list individually in
 # two ways:
 #
 # For templated classes, set the following variables:
 # - vtkArrayDispatch_containers:
+# - vtkArrayDispatchImplicit_containers:
 #   List of template class names.
 # - vtkArrayDispatch_[template class name]_types:
+# - vtkArrayDispatchImplicit_[template class name]_types:
 #   For the specified template class, add an entry to the array list that
 #   instantiates the container for each type listed here.
 # - vtkArrayDispatch_[template class name]_header
+# - vtkArrayDispatchImplicit_[template class name]_header
 #   Specifies the header file to include for the specified template class.
 #
 # Both templated and non-templated arrays can be added using these variables:
 # - vtkArrayDispatch_extra_arrays:
+# - vtkArrayDispatchImplicit_extra_arrays:
 #   List of arrays to add to the list.
 # - vtkArrayDispatch_extra_headers:
+# - vtkArrayDispatchImplicit_extra_headers:
 #   List of headers to include.
 #
 ################################ Example #######################################
@@ -46,6 +60,13 @@
 #   -DvtkArrayDispatch_MyCustomArray2_types="int;unsigned char"
 #   -DvtkArrayDispatch_extra_headers="ExtraHeader1.h;ExtraHeader2.h"
 #   -DvtkArrayDispatch_extra_arrays="ExtraArray1;ExtraArray2<float>;ExtraArray2<char>"
+#   -DvtkArrayDispatchImplicit_containers="MyCustomArray1;MyCustomArray2"
+#   -DvtkArrayDispatchImplicit_MyCustomArray1_header="MyCustomArray1.h"
+#   -DvtkArrayDispatchImplicit_MyCustomArray1_types="float;double"
+#   -DvtkArrayDispatchImplicit_MyCustomArray2_header="MyCustomArray2.h"
+#   -DvtkArrayDispatchImplicit_MyCustomArray2_types="int;unsigned char"
+#   -DvtkArrayDispatchImplicit_extra_headers="ExtraHeader1.h;ExtraHeader2.h"
+#   -DvtkArrayDispatchImplicit_extra_arrays="ExtraArray1;ExtraArray2<float>;ExtraArray2<char>"
 #
 # Generated header:
 #
@@ -62,7 +83,7 @@
 # namespace vtkArrayDispatch {
 #
 # typedef vtkTypeList::Unique<
-#   vtkTypeList_Create_21(
+#   vtkTypeList::Create<
 #     MyCustomArray1<float>,
 #     MyCustomArray1<double>,
 #     MyCustomArray2<int>,
@@ -84,130 +105,198 @@
 #     ExtraArray1,
 #     ExtraArray2<float>,
 #     ExtraArray2<char>
-#   )
+#   >
 # >::Result Arrays;
+#
+# typedef vtkTypeList::Unique<
+#   vtkTypeListvtkTypeList::Create<
+#     MyCustomArray1<float>,
+#     MyCustomArray1<double>,
+#     MyCustomArray2<int>,
+#     MyCustomArray2<unsigned char>,
+#     ExtraArray1,
+#     ExtraArray2<float>,
+#     ExtraArray2<char>
+#   >
+# >::Result ReadOnlyArrays;
+#
+# typedef vtkTypeList::Unique< vtkTypeList::TypeList<Arrays, ReadOnlyArrays> >::Result AllArrays;
+#
+# VTK_ABI_NAMESPACE_END
 #
 # } // end namespace vtkArrayDispatch
 #
 # #endif // vtkArrayDispatchArrayList_h
 #
 
+# get vtk_numeric_types
+include(vtkTypeLists)
+
 # Populate the environment so that vtk_array_dispatch_generate_array_header will
 # create the array TypeList with all known array types.
 macro(vtkArrayDispatch_default_array_setup)
 
-# The default set of scalar types:
-set(vtkArrayDispatch_all_types
-  "char"
-  "double"
-  "float"
-  "int"
-  "long"
-  "long long"
-  "short"
-  "signed char"
-  "unsigned char"
-  "unsigned int"
-  "unsigned long"
-  "unsigned long long"
-  "unsigned short"
-  "vtkIdType"
-)
+  # Helper macro to create array dispatch entries
+  macro(_vtkCreateArrayDispatch var class types)
+    if (${var})
+      list(APPEND vtkArrayDispatch_containers "${class}")
+      set("vtkArrayDispatch_${class}_header" "${class}.h")
+      set("vtkArrayDispatch_${class}_types" "${types}")
+    endif ()
+  endmacro()
 
-# For each container, define a header and a list of types:
-if (VTK_DISPATCH_AOS_ARRAYS)
-  list(APPEND vtkArrayDispatch_containers vtkAOSDataArrayTemplate)
-  set(vtkArrayDispatch_vtkAOSDataArrayTemplate_header vtkAOSDataArrayTemplate.h)
-  set(vtkArrayDispatch_vtkAOSDataArrayTemplate_types
-    ${vtkArrayDispatch_all_types}
-  )
-endif()
+  # Set up regular arrays
+  _vtkCreateArrayDispatch(VTK_DISPATCH_AOS_ARRAYS "vtkAOSDataArrayTemplate" "${vtk_numeric_types}")
+  _vtkCreateArrayDispatch(VTK_DISPATCH_SOA_ARRAYS "vtkSOADataArrayTemplate" "${vtk_numeric_types}")
 
-if (VTK_DISPATCH_SOA_ARRAYS)
-  list(APPEND vtkArrayDispatch_containers vtkSOADataArrayTemplate)
-  set(vtkArrayDispatch_vtkSOADataArrayTemplate_header vtkSOADataArrayTemplate.h)
-  set(vtkArrayDispatch_vtkSOADataArrayTemplate_types
-    ${vtkArrayDispatch_all_types}
-  )
-endif()
+  # Helper macro for implicit arrays
+  macro(_vtkCreateArrayDispatchImplicit var class types)
+    if (${var})
+      list(APPEND vtkArrayDispatchImplicit_containers "${class}")
+      set("vtkArrayDispatchImplicit_${class}_header" "${class}.h")
+      set("vtkArrayDispatchImplicit_${class}_types" "${types}")
+    endif ()
+  endmacro()
 
-if (VTK_DISPATCH_TYPED_ARRAYS)
-  list(APPEND vtkArrayDispatch_containers vtkTypedDataArray)
-  set(vtkArrayDispatch_vtkTypedDataArray_header vtkTypedDataArray.h)
-  set(vtkArrayDispatch_vtkTypedDataArray_types
-    ${vtkArrayDispatch_all_types}
-  )
-endif()
+  # Set up implicit arrays
+  _vtkCreateArrayDispatchImplicit(VTK_DISPATCH_AFFINE_ARRAYS "vtkAffineArray" "${vtk_numeric_types}")
+  _vtkCreateArrayDispatchImplicit(VTK_DISPATCH_CONSTANT_ARRAYS "vtkConstantArray" "${vtk_numeric_types}")
+  _vtkCreateArrayDispatchImplicit(VTK_DISPATCH_STRIDED_ARRAYS "vtkStridedArray" "${vtk_numeric_types}")
+  _vtkCreateArrayDispatchImplicit(VTK_DISPATCH_STRUCTURED_POINT_ARRAYS "vtkStructuredPointArray" "${vtk_numeric_types}")
 
 endmacro()
-
-# Concatenates a list of strings into a single string, since string(CONCAT ...)
-# is not currently available for VTK's cmake version.
-# Internal method.
-function(CollapseString input output)
-  set(temp "")
-  foreach(line ${input})
-    set(temp ${temp}${line})
-  endforeach()
-  set(${output} "${temp}" PARENT_SCOPE)
-endfunction()
 
 # Create a header that declares the vtkArrayDispatch::Arrays TypeList.
 macro(vtkArrayDispatch_generate_array_header result)
 
-set(vtkAD_headers vtkTypeList.h)
-set(vtkAD_arrays)
-foreach(container ${vtkArrayDispatch_containers})
-  list(APPEND vtkAD_headers ${vtkArrayDispatch_${container}_header})
-  foreach(value_type ${vtkArrayDispatch_${container}_types})
-    list(APPEND vtkAD_arrays "${container}<${value_type}>")
-  endforeach()
-endforeach()
+  # Initialize
+  set(vtkAD_headers "vtkTypeList.h")
 
-# Include externally specified headers/arrays:
-list(APPEND vtkAD_headers ${vtkArrayDispatch_extra_headers})
-list(APPEND vtkAD_arrays ${vtkArrayDispatch_extra_arrays})
+  # Create separate lists for each regular array type
+  set(vtkAD_aos_arrays)
+  set(vtkAD_soa_arrays)
+  set(vtkAD_extra_arrays)
+  # Process regular arrays
+  foreach (container IN LISTS vtkArrayDispatch_containers)
+    list(APPEND vtkAD_headers "${vtkArrayDispatch_${container}_header}")
+    foreach (value_type IN LISTS "vtkArrayDispatch_${container}_types")
+      if (container STREQUAL "vtkAOSDataArrayTemplate")
+        list(APPEND vtkAD_aos_arrays "${container}<${value_type}>")
+      elseif (container STREQUAL "vtkSOADataArrayTemplate")
+        list(APPEND vtkAD_soa_arrays "${container}<${value_type}>")
+      else ()
+        list(APPEND vtkAD_extra_arrays "${container}<${value_type}>")
+      endif ()
+    endforeach ()
+  endforeach ()
 
-set(temp
-  "// This file is autogenerated by vtkCreateArrayDispatchArrayList.cmake.\n"
-  "// Do not edit this file. Your changes will not be saved.\n"
-  "\n"
-  "#ifndef vtkArrayDispatchArrayList_h\n"
-  "#define vtkArrayDispatchArrayList_h\n"
-  "\n"
-)
+  # Create separate lists for each implicit array type
+  set(vtkAD_affine_arrays)
+  set(vtkAD_constant_arrays)
+  set(vtkAD_strided_arrays)
+  set(vtkAD_structured_point_arrays)
+  set(vtkAD_implicit_extra_arrays)
+  # Process implicit arrays
+  foreach (container IN LISTS vtkArrayDispatchImplicit_containers)
+    list(APPEND vtkAD_headers "${vtkArrayDispatchImplicit_${container}_header}")
+    foreach (value_type IN LISTS "vtkArrayDispatchImplicit_${container}_types")
+      if (container STREQUAL "vtkAffineArray")
+        list(APPEND vtkAD_affine_arrays "${container}<${value_type}>")
+      elseif (container STREQUAL "vtkConstantArray")
+        list(APPEND vtkAD_constant_arrays "${container}<${value_type}>")
+      elseif (container STREQUAL "vtkStridedArray")
+        list(APPEND vtkAD_strided_arrays "${container}<${value_type}>")
+      elseif (container STREQUAL "vtkStructuredPointArray")
+        list(APPEND vtkAD_structured_point_arrays "${container}<${value_type}>")
+      else ()
+        list(APPEND vtkAD_implicit_extra_arrays "${container}<${value_type}>")
+      endif ()
+    endforeach ()
+  endforeach ()
 
-foreach(header ${vtkAD_headers})
-  list(APPEND temp "#include \"${header}\"\n")
-endforeach()
+  # Include externally specified headers/arrays:
+  list(APPEND vtkAD_headers ${vtkArrayDispatch_extra_headers})
+  list(APPEND vtkAD_extra_arrays ${vtkArrayDispatch_extra_arrays})
+  list(APPEND vtkAD_headers ${vtkArrayDispatchImplicit_extra_headers})
+  list(APPEND vtkAD_implicit_extra_arrays ${vtkArrayDispatchImplicit_extra_arrays})
 
-list(LENGTH vtkAD_arrays vtkAD_numArrays)
+  # Start building the header content
+  set(temp
+    "// This file is autogenerated by vtkCreateArrayDispatchImplicitList.cmake.\n"
+    "// Do not edit this file. Your changes will not be saved.\n"
+    "\n"
+    "#ifndef vtkArrayDispatchArrayList_h\n"
+    "#define vtkArrayDispatchArrayList_h\n"
+    "\n"
+  )
 
-list(APPEND temp
-  "\n"
-  "namespace vtkArrayDispatch {\n"
-  "\n"
-  "typedef vtkTypeList::Unique<\n"
-  "  vtkTypeList_Create_${vtkAD_numArrays}(\n"
-)
+  # Add includes
+  foreach (header IN LISTS vtkAD_headers)
+    list(APPEND temp "#include \"${header}\"\n")
+  endforeach ()
 
-foreach(array ${vtkAD_arrays})
-  list(APPEND temp "    ${array},\n")
-endforeach()
+  list(APPEND temp
+    "\n"
+    "namespace vtkArrayDispatch {\n"
+    "VTK_ABI_NAMESPACE_BEGIN\n"
+    "\n"
+  )
 
-# Remove the final comma from the array list:
-CollapseString("${temp}" temp)
-string(REGEX REPLACE ",\n$" "\n" temp "${temp}")
+  # Helper macro to generate typedef for an array category
+  macro(_vtkGenerateTypeList list_name type_name)
+    list(APPEND temp
+      "using ${type_name} = vtkTypeList::Unique<vtkTypeList::Create<"
+    )
+    set(vtkAD_sep "")
+    foreach (array IN LISTS ${list_name})
+      list(APPEND temp "${vtkAD_sep}\n    ${array}")
+      set(vtkAD_sep ",")
+    endforeach ()
+    list(APPEND temp
+      "\n>>::Result\;\n\n"
+    )
+  endmacro()
 
-list(APPEND temp
-  "  )\n"
-  ">::Result Arrays\;\n"
-  "\n"
-  "} // end namespace vtkArrayDispatch\n"
-  "\n"
-  "#endif // vtkArrayDispatchArrayList_h\n"
-)
+  # Generate individual array type lists
+  _vtkGenerateTypeList(vtkAD_aos_arrays "AOSArrays")
+  _vtkGenerateTypeList(vtkAD_soa_arrays "SOAArrays")
+  _vtkGenerateTypeList(vtkAD_extra_arrays "ExtraArrays")
 
-CollapseString("${temp}" ${result})
+  # Combine all mutable arrays
+  list(APPEND temp
+    "using Arrays = vtkTypeList::Append<\n"
+    "  AOSArrays,\n"
+    "  SOAArrays,\n"
+    "  ExtraArrays\n"
+    ">::Result\;\n\n"
+  )
 
+  _vtkGenerateTypeList(vtkAD_affine_arrays "AffineArrays")
+  _vtkGenerateTypeList(vtkAD_constant_arrays "ConstantArrays")
+  _vtkGenerateTypeList(vtkAD_strided_arrays "StridedArrays")
+  _vtkGenerateTypeList(vtkAD_structured_point_arrays "StructuredPointArrays")
+  _vtkGenerateTypeList(vtkAD_implicit_extra_arrays "ImplicitExtraArrays")
+
+  # Combine all read-only arrays
+  list(APPEND temp
+    "using ReadOnlyArrays = vtkTypeList::Append<\n"
+    "  AffineArrays,\n"
+    "  ConstantArrays,\n"
+    "  StridedArrays,\n"
+    "  StructuredPointArrays,\n"
+    "  ImplicitExtraArrays\n"
+    ">::Result\;\n\n"
+  )
+
+  # Combine all arrays
+  list(APPEND temp
+    "using AllArrays = vtkTypeList::Append<Arrays, ReadOnlyArrays>::Result\;\n"
+    "\n"
+    "VTK_ABI_NAMESPACE_END\n"
+    "\n"
+    "} // end namespace vtkArrayDispatch\n"
+    "#endif // vtkArrayDispatchArrayList_h\n"
+  )
+
+  string(CONCAT ${result} ${temp})
 endmacro()

@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkVolumeProperty.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 /**
  * @class   vtkVolumeProperty
@@ -55,50 +43,31 @@
 #ifndef vtkVolumeProperty_h
 #define vtkVolumeProperty_h
 
-#include <vector>
-
-#include "vtkNew.h" // Needed for vtkNew
-#include "vtkRenderingCoreModule.h" // For export macro
+#include "vtkImplicitFunction.h" // For vtkImplicitFunction
+#include "vtkNew.h"              // Needed for vtkNew
 #include "vtkObject.h"
-#include "vtkSmartPointer.h"
+#include "vtkRenderingCoreModule.h" // For export macro
+#include "vtkSmartPointer.h"        // Needed for vtkSmartPointer
+#include "vtkWrappingHints.h"       // For VTK_MARSHALAUTO
 
-#include <vtkVector.h>
+// STL includes
+#include <set>           // For labelmap labels set
+#include <unordered_map> // For labelmap transfer function maps
 
+VTK_ABI_NAMESPACE_BEGIN
 class vtkColorTransferFunction;
 class vtkContourValues;
 class vtkImageData;
 class vtkPiecewiseFunction;
 class vtkTimeStamp;
 
-class VTKRENDERINGCORE_EXPORT vtkVolumeProperty : public vtkObject
+class VTKRENDERINGCORE_EXPORT VTK_MARSHALAUTO vtkVolumeProperty : public vtkObject
 {
 public:
-  struct BitRegion
-  {
-    vtkSmartPointer<vtkImageData> mask;
-
-    std::vector<vtkVector4<float>> colors;
-  };
-
-  struct BoxMask
-  {
-      double origin[3],
-             axisX[3],
-             axisY[3],
-             axisZ[3];
-  };
-
-  struct CylinderMask
-  {
-      double center[3],
-             axis[3],
-             radius;
-  };
-
-  static vtkVolumeProperty *New();
+  static vtkVolumeProperty* New();
   vtkTypeMacro(vtkVolumeProperty, vtkObject);
   void PrintSelf(ostream& os, vtkIndent indent) override;
-  void DeepCopy(vtkVolumeProperty *p);
+  void DeepCopy(vtkVolumeProperty* p);
 
   /**
    * Get the modified time for this object (or the properties registered
@@ -106,7 +75,7 @@ public:
    */
   vtkMTimeType GetMTime() override;
 
-  //@{
+  ///@{
   /**
    * Does the data have independent components, or do some define color
    * only? If IndependentComponents is On (the default) then each component
@@ -131,40 +100,36 @@ public:
   vtkSetClampMacro(IndependentComponents, vtkTypeBool, 0, 1);
   vtkGetMacro(IndependentComponents, vtkTypeBool);
   vtkBooleanMacro(IndependentComponents, vtkTypeBool);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Set the interpolation type for sampling a volume. Initial value is
    * VTK_NEAREST_INTERPOLATION.
    */
-  vtkSetClampMacro(InterpolationType, int,
-    VTK_NEAREST_INTERPOLATION, VTK_LINEAR_INTERPOLATION);
+  vtkSetClampMacro(InterpolationType, int, VTK_NEAREST_INTERPOLATION, VTK_LINEAR_INTERPOLATION);
   vtkGetMacro(InterpolationType, int);
-  void SetInterpolationTypeToNearest()
-    { this->SetInterpolationType(VTK_NEAREST_INTERPOLATION); }
-  void SetInterpolationTypeToLinear()
-    { this->SetInterpolationType(VTK_LINEAR_INTERPOLATION); }
-  const char *GetInterpolationTypeAsString(void);
-  //@}
+  void SetInterpolationTypeToNearest() { this->SetInterpolationType(VTK_NEAREST_INTERPOLATION); }
+  void SetInterpolationTypeToLinear() { this->SetInterpolationType(VTK_LINEAR_INTERPOLATION); }
+  const char* GetInterpolationTypeAsString();
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Set/Get the scalar component weights.
    * Clamped between the range of (0.0, 1.0)
    */
   virtual void SetComponentWeight(int index, double value);
   virtual double GetComponentWeight(int index);
-  //@}
+  ///@}
 
   /**
    * Set the color of a volume to a gray level transfer function
    * for the component indicated by index. This will set the
    * color channels for this component to 1.
    */
-  void SetColor(int index, vtkPiecewiseFunction *function);
-  void SetColor(vtkPiecewiseFunction *function)
-    { this->SetColor(0, function); }
+  void SetColor(int index, vtkPiecewiseFunction* function);
+  void SetColor(vtkPiecewiseFunction* function) { this->SetColor(0, function); }
 
   /**
    * Set the color of a volume to an RGB transfer function
@@ -172,54 +137,77 @@ public:
    * color channels for this component to 3.
    * This will also recompute the color channels
    */
-  void SetColor(int index, vtkColorTransferFunction *function);
-  void SetColor(vtkColorTransferFunction *function)
-    { this->SetColor(0, function); }
+  void SetColor(int index, vtkColorTransferFunction* function);
+  void SetColor(vtkColorTransferFunction* function) { this->SetColor(0, function); }
 
   /**
    * Get the number of color channels in the transfer function
    * for the given component.
    */
   int GetColorChannels(int index);
-  int GetColorChannels()
-    { return this->GetColorChannels(0); }
+  int GetColorChannels() { return this->GetColorChannels(0); }
 
   /**
    * Get the gray transfer function.
    * If no transfer function has been set for this component, a default one
    * is created and returned.
    */
-  vtkPiecewiseFunction *GetGrayTransferFunction(int index);
-  vtkPiecewiseFunction *GetGrayTransferFunction()
-    { return this->GetGrayTransferFunction(0); }
+  vtkPiecewiseFunction* GetGrayTransferFunction(int index);
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
+  vtkPiecewiseFunction* GetGrayTransferFunction() { return this->GetGrayTransferFunction(0); }
+  void SetGrayTransferFunction(int index, vtkPiecewiseFunction* function)
+  {
+    SetColor(index, function);
+  }
+  int GetNumberOfGrayTransferFunctions() { return VTK_MAX_VRCOMP; }
 
   /**
    * Get the RGB transfer function for the given component.
    * If no transfer function has been set for this component, a default one
    * is created and returned.
    */
-  vtkColorTransferFunction *GetRGBTransferFunction(int index);
-  vtkColorTransferFunction *GetRGBTransferFunction()
-    { return this->GetRGBTransferFunction(0); }
+  vtkColorTransferFunction* GetRGBTransferFunction(int index);
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
+  vtkColorTransferFunction* GetRGBTransferFunction() { return this->GetRGBTransferFunction(0); }
+  void SetRGBTransferFunction(int index, vtkColorTransferFunction* function)
+  {
+    SetColor(index, function);
+  }
+  int GetNumberOfRGBTransferFunctions() { return VTK_MAX_VRCOMP; }
 
   /**
    * Set the opacity of a volume to an opacity transfer function based
    * on scalar value for the component indicated by index.
    */
-  void SetScalarOpacity(int index, vtkPiecewiseFunction *function);
-  void SetScalarOpacity(vtkPiecewiseFunction *function)
-    { this->SetScalarOpacity(0, function); }
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
+  void SetScalarOpacity(int index, vtkPiecewiseFunction* function);
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
+  void SetScalarOpacity(vtkPiecewiseFunction* function) { this->SetScalarOpacity(0, function); }
 
   /**
    * Get the scalar opacity transfer function for the given component.
    * If no transfer function has been set for this component, a default one
    * is created and returned.
    */
-  vtkPiecewiseFunction *GetScalarOpacity(int index);
-  vtkPiecewiseFunction *GetScalarOpacity()
-    { return this->GetScalarOpacity(0); }
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
+  vtkPiecewiseFunction* GetScalarOpacity(int index);
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
+  vtkPiecewiseFunction* GetScalarOpacity() { return this->GetScalarOpacity(0); }
 
-  //@{
+  ///@{
+  /**
+   * Get/Set the scalar opacity transfer function for the given component.
+   * If no transfer function has been set for this component, returns `nullptr`.
+   */
+  void SetScalarOpacityFunction(int index, vtkPiecewiseFunction* function)
+  {
+    SetScalarOpacity(index, function);
+  };
+  vtkPiecewiseFunction* GetScalarOpacityFunction(int index) { return this->ScalarOpacity[index]; }
+  int GetNumberOfScalarOpacityFunctions() { return VTK_MAX_VRCOMP; }
+  ///@}
+
+  ///@{
   /**
    * Set/Get the unit distance on which the scalar opacity transfer function
    * is defined. By default this is 1.0, meaning that over a distance of
@@ -227,23 +215,40 @@ public:
    * This is adjusted for the actual sampling distance during rendering.
    */
   void SetScalarOpacityUnitDistance(int index, double distance);
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
   void SetScalarOpacityUnitDistance(double distance)
-    { this->SetScalarOpacityUnitDistance(0, distance); }
+  {
+    this->SetScalarOpacityUnitDistance(0, distance);
+  }
   double GetScalarOpacityUnitDistance(int index);
-  double GetScalarOpacityUnitDistance()
-    { return this->GetScalarOpacityUnitDistance(0); }
-  //@}
-
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
+  double GetScalarOpacityUnitDistance() { return this->GetScalarOpacityUnitDistance(0); }
+  ///@}
 
   /**
    * Set the opacity of a volume to an opacity transfer function based
    * on gradient magnitude for the given component.
    */
-  void SetGradientOpacity(int index, vtkPiecewiseFunction *function);
-  void SetGradientOpacity(vtkPiecewiseFunction *function)
-    { this->SetGradientOpacity(0, function); }
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
+  void SetGradientOpacity(int index, vtkPiecewiseFunction* function);
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
+  void SetGradientOpacity(vtkPiecewiseFunction* function) { this->SetGradientOpacity(0, function); }
 
-  //@{
+  ///@{
+  /**
+   * Set/Get the gradient magnitude opacity transfer function for
+   * the given component.
+   * If no transfer function has been set for this component, returns `nullptr`.
+   */
+  void SetGradientOpacityFunction(int index, vtkPiecewiseFunction* function)
+  {
+    this->SetGradientOpacity(index, function);
+  }
+  vtkPiecewiseFunction* GetGradientOpacityFunction(int index) { return GradientOpacity[index]; }
+  int GetNumberOfGradientOpacityFunctions() { return VTK_MAX_VRCOMP; }
+  ///@}
+
+  ///@{
   /**
    * Set/Get a 2D transfer function. Volume mappers interpret the x-axis of
    * of this transfer function as scalar value and the y-axis as gradient
@@ -251,16 +256,13 @@ public:
    * for a salar value of X and a gradient magnitude of Y.
    */
   void SetTransferFunction2D(int index, vtkImageData* function);
-  void SetTransferFunction2D(vtkImageData* function)
-  {
-    this->SetTransferFunction2D(0, function);
-  };
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
+  void SetTransferFunction2D(vtkImageData* function) { this->SetTransferFunction2D(0, function); }
 
   vtkImageData* GetTransferFunction2D(int index);
-  vtkImageData* GetTransferFunction2D()
-  {
-    return this->GetTransferFunction2D(0);
-  };
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
+  vtkImageData* GetTransferFunction2D() { return this->GetTransferFunction2D(0); }
+  int GetNumberOfTransferFunction2Ds() { return VTK_MAX_VRCOMP; }
 
   /**
    * Color-opacity transfer function mode. TF_1D is its default value.
@@ -275,9 +277,11 @@ public:
     TF_2D
   };
 
-  vtkSetClampMacro(TransferFunctionMode, int, 0, 1)
-  vtkGetMacro(TransferFunctionMode, int)
-  //@}
+  vtkSetClampMacro(TransferFunctionMode, int, 0, 1);
+  vtkGetMacro(TransferFunctionMode, int);
+  void SetTransferFunctionModeTo1D() { this->SetTransferFunctionMode(TF_1D); }
+  void SetTransferFunctionModeTo2D() { this->SetTransferFunctionMode(TF_2D); }
+  ///@}
 
   /**
    * Get the gradient magnitude opacity transfer function for
@@ -287,11 +291,12 @@ public:
    * This default function is always returned if DisableGradientOpacity is On
    * for that component.
    */
-  vtkPiecewiseFunction *GetGradientOpacity(int index);
-  vtkPiecewiseFunction *GetGradientOpacity()
-    { return this->GetGradientOpacity(0); }
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
+  vtkPiecewiseFunction* GetGradientOpacity(int index);
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
+  vtkPiecewiseFunction* GetGradientOpacity() { return this->GetGradientOpacity(0); }
 
-  //@{
+  ///@{
   /**
    * Enable/Disable the gradient opacity function for the given component.
    * If set to true, any call to GetGradientOpacity() will return a default
@@ -300,23 +305,18 @@ public:
    * GetStoredGradientOpacity().
    */
   virtual void SetDisableGradientOpacity(int index, int value);
-  virtual void SetDisableGradientOpacity(int value)
-    { this->SetDisableGradientOpacity(0, value); }
-  virtual void DisableGradientOpacityOn(int index )
-    { this->SetDisableGradientOpacity(index, 1); }
-  virtual void DisableGradientOpacityOn()
-    { this->DisableGradientOpacityOn(0); }
-  virtual void DisableGradientOpacityOff(int index)
-    { this->SetDisableGradientOpacity(index, 0); }
-  virtual void DisableGradientOpacityOff()
-    { this->DisableGradientOpacityOff(0); }
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
+  virtual void SetDisableGradientOpacity(int value) { this->SetDisableGradientOpacity(0, value); }
+  virtual void DisableGradientOpacityOn(int index) { this->SetDisableGradientOpacity(index, 1); }
+  virtual void DisableGradientOpacityOn() { this->DisableGradientOpacityOn(0); }
+  virtual void DisableGradientOpacityOff(int index) { this->SetDisableGradientOpacity(index, 0); }
+  virtual void DisableGradientOpacityOff() { this->DisableGradientOpacityOff(0); }
   virtual int GetDisableGradientOpacity(int index);
-  virtual int GetDisableGradientOpacity()
-    { return this->GetDisableGradientOpacity(0); }
-  vtkPiecewiseFunction *GetStoredGradientOpacity(int index);
-  vtkPiecewiseFunction *GetStoredGradientOpacity()
-    { return this->GetStoredGradientOpacity(0); }
-  //@}
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
+  virtual int GetDisableGradientOpacity() { return this->GetDisableGradientOpacity(0); }
+  vtkPiecewiseFunction* GetStoredGradientOpacity(int index);
+  vtkPiecewiseFunction* GetStoredGradientOpacity() { return this->GetStoredGradientOpacity(0); }
+  ///@}
 
   /**
    * Check whether or not we have the gradient opacity. Checking
@@ -324,26 +324,24 @@ public:
    * will not work as in the former case,  GetDisableGradientOpacity returns
    * false by default and in the later case, a default gradient opacity will be created.
    */
-  bool HasGradientOpacity(int index = 0) {
-    switch(this->TransferFunctionMode) {
-      case TF_1D: return (this->GradientOpacity[index] != nullptr);
-      case TF_2D: return true;
+  bool HasGradientOpacity(int index = 0)
+  {
+    switch (this->TransferFunctionMode)
+    {
+      case TF_1D:
+        return (this->GradientOpacity[index] != nullptr);
+      case TF_2D:
+        return true;
     }
     return false;
   }
 
-  void SetOpacity(int index, double value);
-  void SetOpacity(double value)
-  {
-      this->SetOpacity(0, value);
-  }
-  double GetOpacity(int index);
-  double GetOpacity()
-  {
-      return this->GetOpacity(0);
-  }
+  /*
+   * Check whether or not we have label map gradient opacity functions.
+   */
+  bool HasLabelGradientOpacity() { return !this->LabelGradientOpacity.empty(); }
 
-  //@{
+  ///@{
   /**
    * Set/Get the shading of a volume. If shading is turned off, then
    * the mapper for the volume will not perform shading calculations.
@@ -365,72 +363,81 @@ public:
    * \sa vtkVolumeMapper::BlendModes
    */
   void SetShade(int index, int value);
-  void SetShade(int value)
-    { this->SetShade(0,value); }
+  void SetShade(int value) { this->SetShade(0, value); }
   int GetShade(int index);
-  int GetShade()
-    { return this->GetShade(0); }
+  int GetShade() { return this->GetShade(0); }
   void ShadeOn(int index);
-  void ShadeOn()
-    { this->ShadeOn(0); }
+  void ShadeOn() { this->ShadeOn(0); }
   void ShadeOff(int index);
-  void ShadeOff()
-    { this->ShadeOff(0); }
-  //@}
+  void ShadeOff() { this->ShadeOff(0); }
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Set/Get the ambient lighting coefficient.
    */
   void SetAmbient(int index, double value);
-  void SetAmbient(double value)
-    { this->SetAmbient(0, value); }
+  void SetAmbient(double value) { this->SetAmbient(0, value); }
   double GetAmbient(int index);
-  double GetAmbient()
-    { return this->GetAmbient(0); }
-  //@}
+  double GetAmbient() { return this->GetAmbient(0); }
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Set/Get the diffuse lighting coefficient.
    */
   void SetDiffuse(int index, double value);
-  void SetDiffuse(double value)
-    { this->SetDiffuse(0, value); }
+  void SetDiffuse(double value) { this->SetDiffuse(0, value); }
   double GetDiffuse(int index);
-  double GetDiffuse()
-    { return this->GetDiffuse(0); }
-  //@}
+  double GetDiffuse() { return this->GetDiffuse(0); }
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Set/Get the specular lighting coefficient.
    */
   void SetSpecular(int index, double value);
-  void SetSpecular(double value)
-    { this->SetSpecular(0, value); }
+  void SetSpecular(double value) { this->SetSpecular(0, value); }
   double GetSpecular(int index);
-  double GetSpecular()
-    { return this->GetSpecular(0); }
-  //@}
+  double GetSpecular() { return this->GetSpecular(0); }
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Set/Get the specular power.
    */
   void SetSpecularPower(int index, double value);
-  void SetSpecularPower(double value)
-    { this->SetSpecularPower(0, value); }
+  void SetSpecularPower(double value) { this->SetSpecularPower(0, value); }
   double GetSpecularPower(int index);
-  double GetSpecularPower()
-    { return this->GetSpecularPower(0); }
-  //@}
+  double GetSpecularPower() { return this->GetSpecularPower(0); }
+  ///@}
 
   /**
    * Get contour values for isosurface blending mode.
    * Do not affect other blending modes.
    */
   vtkContourValues* GetIsoSurfaceValues();
+
+  ///@{
+  /**
+   * Get/Set the function used for slicing.
+   * Currently, only vtkPlane is supported.
+   */
+  vtkSetSmartPointerMacro(SliceFunction, vtkImplicitFunction);
+  vtkGetSmartPointerMacro(SliceFunction, vtkImplicitFunction);
+  ///@}
+
+  ///@{
+  /**
+   * Get/Set the volume's scattering anisotropy.
+   * The model used is Henyey-Greenstein. The value should
+   * be between -1.0 (back-scattering) and 1.0 (forward-scattering),
+   * so the default value of 0.0 corresponds to an isotropic
+   * volume. For now, it is only used in vtkGPUVolumeRayCastMapper.
+   */
+  vtkSetClampMacro(ScatteringAnisotropy, float, -1.0, 1.0);
+  vtkGetMacro(ScatteringAnisotropy, float);
+  ///@}
 
   /**
    * WARNING: INTERNAL METHOD - NOT INTENDED FOR GENERAL USE
@@ -446,34 +453,30 @@ public:
    * Get the time that the gradient opacity transfer function was set
    */
   vtkTimeStamp GetGradientOpacityMTime(int index);
-  vtkTimeStamp GetGradientOpacityMTime()
-    { return this->GetGradientOpacityMTime(0); }
+  vtkTimeStamp GetGradientOpacityMTime() { return this->GetGradientOpacityMTime(0); }
 
   /**
    * WARNING: INTERNAL METHOD - NOT INTENDED FOR GENERAL USE
    * Get the time that the scalar opacity transfer function was set.
    */
   vtkTimeStamp GetScalarOpacityMTime(int index);
-  vtkTimeStamp GetScalarOpacityMTime()
-    { return this->GetScalarOpacityMTime(0); }
+  vtkTimeStamp GetScalarOpacityMTime() { return this->GetScalarOpacityMTime(0); }
 
   /**
    * WARNING: INTERNAL METHOD - NOT INTENDED FOR GENERAL USE
    * Get the time that the RGBTransferFunction was set
    */
   vtkTimeStamp GetRGBTransferFunctionMTime(int index);
-  vtkTimeStamp GetRGBTransferFunctionMTime()
-    { return this->GetRGBTransferFunctionMTime(0); }
+  vtkTimeStamp GetRGBTransferFunctionMTime() { return this->GetRGBTransferFunctionMTime(0); }
 
   /**
    * WARNING: INTERNAL METHOD - NOT INTENDED FOR GENERAL USE
    * Get the time that the GrayTransferFunction was set
    */
   vtkTimeStamp GetGrayTransferFunctionMTime(int index);
-  vtkTimeStamp GetGrayTransferFunctionMTime()
-    { return this->GetGrayTransferFunctionMTime(0); }
+  vtkTimeStamp GetGrayTransferFunctionMTime() { return this->GetGrayTransferFunctionMTime(0); }
 
-  //@{
+  ///@{
   /**
    * Set/Get whether to use a fixed intensity value for voxels in the clipped
    * space for gradient calculations. When UseClippedVoxelIntensity is
@@ -486,9 +489,9 @@ public:
   vtkSetMacro(UseClippedVoxelIntensity, int);
   vtkGetMacro(UseClippedVoxelIntensity, int);
   vtkBooleanMacro(UseClippedVoxelIntensity, int);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Set/Get the intensity value for voxels in the clipped space for gradient
    * computations (for shading and gradient based opacity modulation).
@@ -500,68 +503,61 @@ public:
    */
   vtkSetMacro(ClippedVoxelIntensity, double);
   vtkGetMacro(ClippedVoxelIntensity, double);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
-   * Set/Get scaling of gradient for shading.
-   * By default this is set to 0.0, (1.0/65535.0) (basically always apply),
-   * reasonable seems something like 0.1/0.4.
-   * If gradient is lower  than Min, shading is not applied and voxel color is assigned directly
-   * If gradient is higher than Max, shading is fully applied.
-   * If between, shading is partially applied.
-   * Motivation is to get rid of noise caused by very small gradients.
+   * Set/Get the color transfer function for a label in the label map.
    */
-  void SetShadingGradientScale(int index, double minThreshold, double maxThreshold)
-  {
-    ShadingGradientScaleMin[index] = minThreshold;
-    ShadingGradientScaleMax[index] = maxThreshold;
-  }
-  void SetShadingGradientScale(double minThreshold, double maxThreshold)
-  {
-     this->SetShadingGradientScale(0, minThreshold, maxThreshold);
-  }
-  double GetShadingGradientScaleMin(int index = 0)
-  {
-      return ShadingGradientScaleMin[index];
-  }
-  double GetShadingGradientScaleMax(int index = 0)
-  {
-      return ShadingGradientScaleMax[index];
-  }
-  //@}
+  void SetLabelColor(int label, vtkColorTransferFunction* function);
+  vtkColorTransferFunction* GetLabelColor(int label);
+  ///@}
 
-  //@{
+  ///@{
   /**
-   * Set/Get box mask.
+   * Set/Get the opacity transfer function for a label in the label map.
    */
-  void SetBoxMask(const struct BoxMask& boxMask);
-  const struct BoxMask& GetBoxMask() const noexcept
-  {
-      return this->BoxMask;
-  }
-  //@}
+  void SetLabelScalarOpacity(int label, vtkPiecewiseFunction* function);
+  vtkPiecewiseFunction* GetLabelScalarOpacity(int label);
+  ///@}
 
-  const struct CylinderMask& GetCylinderMask() const
-  {
-      return this->CylinderMask;
-  }
-  void SetCylinderMask(const struct CylinderMask& cylinderMask);
+  ///@{
+  /**
+   * Set/Get the gradient opacity function for a label in the label map.
+   */
+  void SetLabelGradientOpacity(int label, vtkPiecewiseFunction* function);
+  vtkPiecewiseFunction* GetLabelGradientOpacity(int label);
+  ///@}
 
-  const struct BitRegion& GetBitRegion() const
-  {
-      return this->BitRegion;
-  }
-  void SetBitRegion(const struct BitRegion& bitRegion) noexcept;
+  /**
+   * WARNING: INTERNAL METHOD - NOT INTENDED FOR GENERAL USE
+   * Get the time that label color transfer functions were set
+   */
+  vtkGetMacro(LabelColorMTime, vtkTimeStamp);
 
-  vtkSetMacro(BitRegionLightFocus, double);
-  vtkGetMacro(BitRegionLightFocus, double);
+  /**
+   * WARNING: INTERNAL METHOD - NOT INTENDED FOR GENERAL USE
+   * Get the time that label scalar opacity transfer functions were set
+   */
+  vtkGetMacro(LabelScalarOpacityMTime, vtkTimeStamp);
 
-  vtkSetMacro(BitRegionValD, double);
-  vtkGetMacro(BitRegionValD, double);
+  /**
+   * WARNING: INTERNAL METHOD - NOT INTENDED FOR GENERAL USE
+   * Get the time that label gradient opacity transfer functions were set
+   */
+  vtkGetMacro(LabelGradientOpacityMTime, vtkTimeStamp);
 
-  vtkSetMacro(BitRegionValxD, double);
-  vtkGetMacro(BitRegionValxD, double);
+  /**
+   * Get the number of labels that are provided with transfer functions using
+   * either SetLabelColor, SetLabelScalarOpacity or SetLabelGradientOpacity.
+   */
+  std::size_t GetNumberOfLabels();
+
+  /**
+   * WARNING: INTERNAL METHOD - NOT INTENDED FOR GENERAL USE
+   * Get access to the internal set that keeps track of labels
+   */
+  std::set<int> GetLabelMapLabels();
 
 protected:
   vtkVolumeProperty();
@@ -572,10 +568,7 @@ protected:
    * Get the time when the TransferFunction2D was set.
    */
   vtkTimeStamp GetTransferFunction2DMTime(int index);
-  vtkTimeStamp GetTransferFunction2DMTime()
-  {
-    return this->GetTransferFunction2DMTime(0);
-  }
+  vtkTimeStamp GetTransferFunction2DMTime() { return this->GetTransferFunction2DMTime(0); }
 
   virtual void CreateDefaultGradientOpacity(int index);
 
@@ -584,29 +577,34 @@ protected:
 
   int InterpolationType;
 
+  float ScatteringAnisotropy = 0.0;
+
   int ColorChannels[VTK_MAX_VRCOMP];
 
-  vtkPiecewiseFunction *GrayTransferFunction[VTK_MAX_VRCOMP];
+  vtkPiecewiseFunction* GrayTransferFunction[VTK_MAX_VRCOMP];
   vtkTimeStamp GrayTransferFunctionMTime[VTK_MAX_VRCOMP];
 
-  vtkColorTransferFunction *RGBTransferFunction[VTK_MAX_VRCOMP];
+  vtkColorTransferFunction* RGBTransferFunction[VTK_MAX_VRCOMP];
   vtkTimeStamp RGBTransferFunctionMTime[VTK_MAX_VRCOMP];
 
-  vtkPiecewiseFunction *ScalarOpacity[VTK_MAX_VRCOMP];
+  vtkPiecewiseFunction* ScalarOpacity[VTK_MAX_VRCOMP];
   vtkTimeStamp ScalarOpacityMTime[VTK_MAX_VRCOMP];
   double ScalarOpacityUnitDistance[VTK_MAX_VRCOMP];
 
-  vtkPiecewiseFunction *GradientOpacity[VTK_MAX_VRCOMP];
+  vtkPiecewiseFunction* GradientOpacity[VTK_MAX_VRCOMP];
   vtkTimeStamp GradientOpacityMTime[VTK_MAX_VRCOMP];
 
-  vtkPiecewiseFunction *DefaultGradientOpacity[VTK_MAX_VRCOMP];
+  vtkPiecewiseFunction* DefaultGradientOpacity[VTK_MAX_VRCOMP];
   int DisableGradientOpacity[VTK_MAX_VRCOMP];
 
   int TransferFunctionMode;
   vtkImageData* TransferFunction2D[VTK_MAX_VRCOMP];
   vtkTimeStamp TransferFunction2DMTime[VTK_MAX_VRCOMP];
 
-  double Opacity[VTK_MAX_VRCOMP];
+  vtkTimeStamp LabelColorMTime;
+  vtkTimeStamp LabelScalarOpacityMTime;
+  vtkTimeStamp LabelGradientOpacityMTime;
+
   int Shade[VTK_MAX_VRCOMP];
   double Ambient[VTK_MAX_VRCOMP];
   double Diffuse[VTK_MAX_VRCOMP];
@@ -621,29 +619,28 @@ protected:
    */
   vtkNew<vtkContourValues> IsoSurfaceValues;
 
-  double ShadingGradientScaleMin[VTK_MAX_VRCOMP];
-  double ShadingGradientScaleMax[VTK_MAX_VRCOMP];
+  /**
+   * Function used for slice
+   */
+  vtkSmartPointer<vtkImplicitFunction> SliceFunction;
 
-  struct BoxMask BoxMask;
-
-  struct CylinderMask CylinderMask;
-
-  struct BitRegion BitRegion;
-
-  float BitRegionLightFocus;
-  float BitRegionValD;
-  float BitRegionValxD;
+  /**
+   * Label map transfer functions
+   */
+  std::unordered_map<int, vtkColorTransferFunction*> LabelColor;
+  std::unordered_map<int, vtkPiecewiseFunction*> LabelScalarOpacity;
+  std::unordered_map<int, vtkPiecewiseFunction*> LabelGradientOpacity;
+  std::set<int> LabelMapLabels;
 
 private:
   vtkVolumeProperty(const vtkVolumeProperty&) = delete;
   void operator=(const vtkVolumeProperty&) = delete;
 };
 
-//@{
 /**
  * Return the interpolation type as a descriptive character string.
  */
-inline const char *vtkVolumeProperty::GetInterpolationTypeAsString(void)
+inline const char* vtkVolumeProperty::GetInterpolationTypeAsString()
 {
   if (this->InterpolationType == VTK_NEAREST_INTERPOLATION)
   {
@@ -655,6 +652,6 @@ inline const char *vtkVolumeProperty::GetInterpolationTypeAsString(void)
   }
   return "Unknown";
 }
-//@}
 
+VTK_ABI_NAMESPACE_END
 #endif

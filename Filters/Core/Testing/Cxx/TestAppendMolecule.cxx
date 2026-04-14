@@ -1,33 +1,27 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestAppendMolecule.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "vtkDataSetAttributes.h"
 #include "vtkDoubleArray.h"
 #include "vtkMolecule.h"
 #include "vtkMoleculeAppend.h"
 #include "vtkNew.h"
+#include "vtkStringArray.h"
 #include "vtkUnsignedCharArray.h"
 #include "vtkUnsignedShortArray.h"
 
+#include <iostream>
+
 #define CheckNumbers(name, first, second)                                                          \
-  if (first != second)                                                                             \
+  do                                                                                               \
   {                                                                                                \
-    cerr << "Error : wrong number of " << #name << ". Got " << first << " but expects " << second  \
-         << endl;                                                                                  \
-    return EXIT_FAILURE;                                                                           \
-  }
+    if (first != second)                                                                           \
+    {                                                                                              \
+      std::cerr << "Error : wrong number of " << #name << ". Got " << first << " but expects "     \
+                << second << std::endl;                                                            \
+      return EXIT_FAILURE;                                                                         \
+    }                                                                                              \
+  } while (false)
 
 // Used to creates different atoms and data for each molecule
 static int NB_OF_MOL = 0;
@@ -41,29 +35,35 @@ void InitSimpleMolecule(vtkMolecule* molecule)
   molecule->AppendBond(h1, h2, 1);
 }
 
-void AddAtomData(vtkMolecule* molecule, vtkIdType size)
+void AddAtomData(vtkMolecule* molecule)
 {
   vtkNew<vtkDoubleArray> data;
   data->SetName("Data");
   data->SetNumberOfComponents(1);
+  vtkIdType size = molecule->GetNumberOfAtoms();
   for (vtkIdType i = 0; i < size; i++)
   {
     data->InsertNextValue(NB_OF_MOL * 1.01);
   }
   molecule->GetAtomData()->AddArray(data);
+
+  vtkNew<vtkStringArray> stringData;
+  stringData->SetName("StringData");
+  size = molecule->GetNumberOfBonds();
+  for (vtkIdType i = 0; i < size; i++)
+  {
+    stringData->InsertNextValue("string");
+  }
+  molecule->GetBondData()->AddArray(stringData);
 }
 
-int CheckMolecule(vtkMolecule* molecule,
-  int nbAtoms,
-  int nbBonds,
-  int nbArrays,
-  vtkDoubleArray* values,
-  int nbGhostAtoms,
-  int nbGhostBonds)
+int CheckMolecule(vtkMolecule* molecule, int nbAtoms, int nbBonds, int nbOfAtomArrays,
+  int nbOfBondArrays, vtkDoubleArray* values, int nbGhostAtoms, int nbGhostBonds)
 {
   CheckNumbers("atoms", molecule->GetNumberOfAtoms(), nbAtoms);
   CheckNumbers("bonds", molecule->GetNumberOfBonds(), nbBonds);
-  CheckNumbers("atom data arrays", molecule->GetAtomData()->GetNumberOfArrays(), nbArrays);
+  CheckNumbers("atom data arrays", molecule->GetAtomData()->GetNumberOfArrays(), nbOfAtomArrays);
+  CheckNumbers("bond data arrays", molecule->GetBondData()->GetNumberOfArrays(), nbOfBondArrays);
 
   vtkDataArray* resultData = molecule->GetAtomData()->GetArray("Data");
   if (!resultData)
@@ -113,7 +113,7 @@ int CheckMolecule(vtkMolecule* molecule,
   return EXIT_SUCCESS;
 }
 
-int TestAppendMolecule(int, char* [])
+int TestAppendMolecule(int, char*[])
 {
   // --------------------------------------------------------------------------
   // Simple test : 2 molecules, no data
@@ -148,13 +148,13 @@ int TestAppendMolecule(int, char* [])
   // INIT
   vtkNew<vtkMolecule> fullMolecule1;
   InitSimpleMolecule(fullMolecule1);
-  AddAtomData(fullMolecule1, 2);
+  AddAtomData(fullMolecule1);
   vtkNew<vtkMolecule> fullMolecule2;
   InitSimpleMolecule(fullMolecule2);
-  AddAtomData(fullMolecule2, 3);
+  AddAtomData(fullMolecule2);
   vtkNew<vtkMolecule> fullMolecule3;
   InitSimpleMolecule(fullMolecule3);
-  AddAtomData(fullMolecule3, 3);
+  AddAtomData(fullMolecule3);
 
   // duplicate first atom of molecule 2 to be ghost in molecule 3, and vice versa.
   vtkAtom firstAtom2 = fullMolecule2->GetAtom(0);
@@ -163,10 +163,12 @@ int TestAppendMolecule(int, char* [])
   vtkAtom ghostAtom2 =
     fullMolecule2->AppendAtom(firstAtom3.GetAtomicNumber(), firstAtom3.GetPosition());
   vtkBond ghostBond2 = fullMolecule2->AppendBond(firstAtom2, ghostAtom2, 1);
+  AddAtomData(fullMolecule2);
 
   vtkAtom ghostAtom3 =
     fullMolecule3->AppendAtom(firstAtom2.GetAtomicNumber(), firstAtom2.GetPosition());
   vtkBond ghostBond3 = fullMolecule3->AppendBond(firstAtom3, ghostAtom3, 1);
+  AddAtomData(fullMolecule3);
 
   // set ghost flag on relevant atoms and bonds.
   fullMolecule1->AllocateAtomGhostArray();
@@ -196,6 +198,7 @@ int TestAppendMolecule(int, char* [])
   int nbOfExpectedAtoms = fullMolecule1->GetNumberOfAtoms() + fullMolecule2->GetNumberOfAtoms();
   int nbOfExpectedBonds = fullMolecule1->GetNumberOfBonds() + fullMolecule2->GetNumberOfBonds();
   int nbOfExpectedArrays = fullMolecule1->GetAtomData()->GetNumberOfArrays();
+  int nbOfExpectedBondArrays = fullMolecule1->GetBondData()->GetNumberOfArrays();
   vtkNew<vtkDoubleArray> expectedResultValues;
   expectedResultValues->InsertNextValue(
     fullMolecule1->GetAtomData()->GetArray("Data")->GetTuple1(0));
@@ -208,13 +211,8 @@ int TestAppendMolecule(int, char* [])
   expectedResultValues->InsertNextValue(
     fullMolecule2->GetAtomData()->GetArray("Data")->GetTuple1(2));
 
-  int res = CheckMolecule(resultFullMolecule,
-    nbOfExpectedAtoms,
-    nbOfExpectedBonds,
-    nbOfExpectedArrays,
-    expectedResultValues,
-    1,
-    1);
+  int res = CheckMolecule(resultFullMolecule, nbOfExpectedAtoms, nbOfExpectedBonds,
+    nbOfExpectedArrays, nbOfExpectedBondArrays, expectedResultValues, 1, 1);
   if (res == EXIT_FAILURE)
   {
     return EXIT_FAILURE;
@@ -234,6 +232,7 @@ int TestAppendMolecule(int, char* [])
   nbOfExpectedBonds = fullMolecule1->GetNumberOfBonds() + fullMolecule2->GetNumberOfBonds() +
     fullMolecule3->GetNumberOfBonds();
   nbOfExpectedArrays = fullMolecule1->GetAtomData()->GetNumberOfArrays();
+  nbOfExpectedBondArrays = fullMolecule1->GetBondData()->GetNumberOfArrays();
 
   // Result contains data of non ghost atom.
   expectedResultValues->InsertNextValue(
@@ -243,13 +242,8 @@ int TestAppendMolecule(int, char* [])
   expectedResultValues->InsertNextValue(
     fullMolecule3->GetAtomData()->GetArray("Data")->GetTuple1(2));
 
-  res = CheckMolecule(resultFullMolecule,
-    nbOfExpectedAtoms,
-    nbOfExpectedBonds,
-    nbOfExpectedArrays,
-    expectedResultValues,
-    2,
-    2);
+  res = CheckMolecule(resultFullMolecule, nbOfExpectedAtoms, nbOfExpectedBonds, nbOfExpectedArrays,
+    nbOfExpectedBondArrays, expectedResultValues, 2, 2);
   if (res == EXIT_FAILURE)
   {
     return EXIT_FAILURE;
@@ -267,17 +261,12 @@ int TestAppendMolecule(int, char* [])
   // the ghost bond is not duplicated in output.
   nbOfExpectedBonds = fullMolecule1->GetNumberOfBonds() + fullMolecule2->GetNumberOfBonds() +
     fullMolecule3->GetNumberOfBonds() - 1;
-  expectedResultValues->Resize(nbOfExpectedAtoms);
+  expectedResultValues->ReserveTuples(nbOfExpectedAtoms);
   expectedResultValues->InsertValue(
     4, fullMolecule3->GetAtomData()->GetArray("Data")->GetTuple1(0));
   expectedResultValues->InsertValue(
     4, fullMolecule3->GetAtomData()->GetArray("Data")->GetTuple1(1));
 
-  return CheckMolecule(resultFullMolecule,
-    nbOfExpectedAtoms,
-    nbOfExpectedBonds,
-    nbOfExpectedArrays,
-    expectedResultValues,
-    0,
-    0);
+  return CheckMolecule(resultFullMolecule, nbOfExpectedAtoms, nbOfExpectedBonds, nbOfExpectedArrays,
+    nbOfExpectedBondArrays, expectedResultValues, 0, 0);
 }

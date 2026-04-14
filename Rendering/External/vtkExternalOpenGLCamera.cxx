@@ -1,143 +1,29 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkExternalOpenGLCamera.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkExternalOpenGLCamera.h"
 
 #include "vtkMatrix4x4.h"
 #include "vtkObjectFactory.h"
 #include "vtkOpenGLError.h"
-#include "vtkOpenGL.h"
 #include "vtkOpenGLRenderWindow.h"
 #include "vtkOpenGLState.h"
-#include "vtkOutputWindow.h"
 #include "vtkPerspectiveTransform.h"
 #include "vtkRenderer.h"
 #include "vtkTransform.h"
 
 #include <cmath>
 
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkExternalOpenGLCamera);
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkExternalOpenGLCamera::vtkExternalOpenGLCamera()
 {
   this->UserProvidedViewTransform = false;
 }
 
-//----------------------------------------------------------------------------
-// Implement base class method.
-void vtkExternalOpenGLCamera::Render(vtkRenderer *ren)
-{
-  vtkOpenGLClearErrorMacro();
-
-  int  lowerLeft[2];
-  int usize, vsize;
-
-  vtkOpenGLRenderWindow *win = vtkOpenGLRenderWindow::SafeDownCast(ren->GetRenderWindow());
-  vtkOpenGLState *ostate = win->GetState();
-
-  // find out if we should stereo render
-  this->Stereo = (ren->GetRenderWindow())->GetStereoRender();
-  ren->GetTiledSizeAndOrigin(&usize, &vsize, lowerLeft, lowerLeft+1);
-
-  // Take the window position into account
-  for (int i = 0; i < 2; ++i)
-  {
-    lowerLeft[i] = lowerLeft[i] + ren->GetRenderWindow()->GetPosition()[i];
-  }
-
-  // if were on a stereo renderer draw to special parts of screen
-  if (this->Stereo)
-  {
-    switch ((ren->GetRenderWindow())->GetStereoType())
-    {
-      case VTK_STEREO_CRYSTAL_EYES:
-        if (this->LeftEye)
-        {
-          if (ren->GetRenderWindow()->GetDoubleBuffer())
-          {
-            glDrawBuffer(static_cast<GLenum>(win->GetBackLeftBuffer()));
-            glReadBuffer(static_cast<GLenum>(win->GetBackLeftBuffer()));
-          }
-          else
-          {
-            glDrawBuffer(static_cast<GLenum>(win->GetFrontLeftBuffer()));
-            glReadBuffer(static_cast<GLenum>(win->GetFrontLeftBuffer()));
-          }
-        }
-        else
-        {
-           if (ren->GetRenderWindow()->GetDoubleBuffer())
-           {
-            glDrawBuffer(static_cast<GLenum>(win->GetBackRightBuffer()));
-            glReadBuffer(static_cast<GLenum>(win->GetBackRightBuffer()));
-           }
-          else
-          {
-            glDrawBuffer(static_cast<GLenum>(win->GetFrontRightBuffer()));
-            glReadBuffer(static_cast<GLenum>(win->GetFrontRightBuffer()));
-          }
-        }
-        break;
-      case VTK_STEREO_LEFT:
-        this->LeftEye = 1;
-        break;
-      case VTK_STEREO_RIGHT:
-        this->LeftEye = 0;
-        break;
-      default:
-        break;
-    }
-  }
-  else
-  {
-    if (ren->GetRenderWindow()->GetDoubleBuffer())
-    {
-      glDrawBuffer(static_cast<GLenum>(win->GetBackBuffer()));
-
-      // Reading back buffer means back left. see OpenGL spec.
-      // because one can write to two buffers at a time but can only read from
-      // one buffer at a time.
-      glReadBuffer(static_cast<GLenum>(win->GetBackBuffer()));
-    }
-    else
-    {
-      glDrawBuffer(static_cast<GLenum>(win->GetFrontBuffer()));
-
-      // Reading front buffer means front left. see OpenGL spec.
-      // because one can write to two buffers at a time but can only read from
-      // one buffer at a time.
-      glReadBuffer(static_cast<GLenum>(win->GetFrontBuffer()));
-    }
-  }
-
-  ostate->vtkglViewport(lowerLeft[0], lowerLeft[1], usize, vsize);
-  ostate->vtkglEnable(GL_SCISSOR_TEST);
-  ostate->vtkglScissor(lowerLeft[0], lowerLeft[1], usize, vsize);
-
-  if ((ren->GetRenderWindow())->GetErase() && ren->GetErase()
-      && !ren->GetIsPicking())
-  {
-    ren->Clear();
-  }
-
-  vtkOpenGLCheckErrorMacro("failed after Render");
-}
-
-//----------------------------------------------------------------------------
-void vtkExternalOpenGLCamera::SetViewTransformMatrix(
-  const double elements[16])
+//------------------------------------------------------------------------------
+void vtkExternalOpenGLCamera::SetViewTransformMatrix(const double elements[16])
 {
   if (!elements)
   {
@@ -150,12 +36,37 @@ void vtkExternalOpenGLCamera::SetViewTransformMatrix(
   this->ViewTransform->SetMatrix(matrix);
   this->ModelViewTransform->SetMatrix(matrix);
   this->UserProvidedViewTransform = true;
+
+  // Synchronize camera viewUp
+  matrix->Invert();
+  double viewUp[4] = { 0.0, 1.0, 0.0, 0.0 }, newViewUp[4];
+  matrix->MultiplyPoint(viewUp, newViewUp);
+  vtkMath::Normalize(newViewUp);
+  this->SetViewUp(newViewUp);
+
+  // Synchronize camera position
+  double position[4] = { 0.0, 0.0, 0.0, 1.0 }, newPosition[4];
+  matrix->MultiplyPoint(position, newPosition);
+
+  if (newPosition[3] != 0.0)
+  {
+    newPosition[0] /= newPosition[3];
+    newPosition[1] /= newPosition[3];
+    newPosition[2] /= newPosition[3];
+    newPosition[3] = 1.0;
+  }
+  this->SetPosition(newPosition);
+
+  // Synchronize focal point
+  double focalPoint[4] = { 0.0, 0.0, -1.0, 1.0 }, newFocalPoint[4];
+  matrix->MultiplyPoint(focalPoint, newFocalPoint);
+  this->SetFocalPoint(newFocalPoint);
+
   matrix->Delete();
 }
 
-//----------------------------------------------------------------------------
-void vtkExternalOpenGLCamera::SetProjectionTransformMatrix(
-  const double elements[16])
+//------------------------------------------------------------------------------
+void vtkExternalOpenGLCamera::SetProjectionTransformMatrix(const double elements[16])
 {
   if (!elements)
   {
@@ -171,7 +82,7 @@ void vtkExternalOpenGLCamera::SetProjectionTransformMatrix(
   matrix->Delete();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkExternalOpenGLCamera::ComputeViewTransform()
 {
   if (this->UserProvidedViewTransform)
@@ -185,8 +96,9 @@ void vtkExternalOpenGLCamera::ComputeViewTransform()
   }
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkExternalOpenGLCamera::PrintSelf(ostream& os, vtkIndent indent)
 {
-  this->Superclass::PrintSelf(os,indent);
+  this->Superclass::PrintSelf(os, indent);
 }
+VTK_ABI_NAMESPACE_END

@@ -1,45 +1,36 @@
-/*=========================================================================
-
-  Program: Visualization Toolkit
-  Module: vtkProStarReader.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE. See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "vtkProStarReader.h"
-#include "vtkUnstructuredGrid.h"
+
+#include "vtkCellArray.h"
+#include "vtkCellData.h"
 #include "vtkErrorCode.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
-#include "vtkObjectFactory.h"
-
-#include "vtkPoints.h"
-#include "vtkCellArray.h"
-#include "vtkCellData.h"
 #include "vtkIntArray.h"
+#include "vtkObjectFactory.h"
+#include "vtkPoints.h"
+#include "vtkStringScanner.h"
+#include "vtkUnstructuredGrid.h"
 
-#include <cctype>
+#include <vtksys/SystemTools.hxx>
+
 #include <cstring>
+#include <map>
 #include <sstream>
 #include <string>
-#include <map>
 #include <vector>
-#include <utility>
 
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkProStarReader);
 
 // Internal Classes/Structures
 struct vtkProStarReader::idMapping : public std::map<vtkIdType, vtkIdType>
-{};
+{
+};
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkProStarReader::vtkProStarReader()
 {
   this->FileName = nullptr;
@@ -48,17 +39,15 @@ vtkProStarReader::vtkProStarReader()
   this->SetNumberOfInputPorts(0);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkProStarReader::~vtkProStarReader()
 {
-  delete [] this->FileName;
+  delete[] this->FileName;
 }
 
-//----------------------------------------------------------------------------
-int vtkProStarReader::RequestData(
-  vtkInformation *vtkNotUsed(request),
-  vtkInformationVector **vtkNotUsed(inputVector),
-  vtkInformationVector *outputVector)
+//------------------------------------------------------------------------------
+int vtkProStarReader::RequestData(vtkInformation* vtkNotUsed(request),
+  vtkInformationVector** vtkNotUsed(inputVector), vtkInformationVector* outputVector)
 {
   if (!this->FileName)
   {
@@ -68,11 +57,11 @@ int vtkProStarReader::RequestData(
   }
 
   // get the info object
-  vtkInformation *outInfo = outputVector->GetInformationObject(0);
+  vtkInformation* outInfo = outputVector->GetInformationObject(0);
 
   // get the output
-  vtkUnstructuredGrid *output = vtkUnstructuredGrid::SafeDownCast(
-    outInfo->Get(vtkDataObject::DATA_OBJECT()));
+  vtkUnstructuredGrid* output =
+    vtkUnstructuredGrid::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
 
   if (this->FileName)
   {
@@ -87,20 +76,17 @@ int vtkProStarReader::RequestData(
   return 1;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkProStarReader::PrintSelf(ostream& os, vtkIndent indent)
 {
-  this->Superclass::PrintSelf(os,indent);
-  os << indent << "File Name: "
-     << (this->FileName ? this->FileName : "(none)") << endl;
+  this->Superclass::PrintSelf(os, indent);
+  os << indent << "File Name: " << (this->FileName ? this->FileName : "(none)") << endl;
   os << indent << "ScaleFactor: " << this->ScaleFactor << endl;
 }
 
-//----------------------------------------------------------------------------
-int vtkProStarReader::RequestInformation(
-  vtkInformation *vtkNotUsed(request),
-  vtkInformationVector **vtkNotUsed(inputVector),
-  vtkInformationVector *vtkNotUsed(outputVector))
+//------------------------------------------------------------------------------
+int vtkProStarReader::RequestInformation(vtkInformation* vtkNotUsed(request),
+  vtkInformationVector** vtkNotUsed(inputVector), vtkInformationVector* vtkNotUsed(outputVector))
 {
   if (!this->FileName)
   {
@@ -112,30 +98,23 @@ int vtkProStarReader::RequestInformation(
   return 1;
 }
 
-//----------------------------------------------------------------------------
-FILE* vtkProStarReader::OpenFile(const char *ext)
+//------------------------------------------------------------------------------
+FILE* vtkProStarReader::OpenFile(const char* ext)
 {
   std::string fullName = this->FileName;
-  const char *dot = strrchr(this->FileName, '.');
+  const char* dot = strrchr(this->FileName, '.');
 
-  if
-    (
-        dot != nullptr
-     && (
-            strcmp(dot, ".cel") == 0
-         || strcmp(dot, ".vrt") == 0
-         || strcmp(dot, ".inp") == 0
-        )
-    )
+  if (dot != nullptr &&
+    (strcmp(dot, ".cel") == 0 || strcmp(dot, ".vrt") == 0 || strcmp(dot, ".inp") == 0))
   {
     fullName.resize(dot - this->FileName);
   }
 
   fullName += ext;
-  FILE *in = fopen(fullName.c_str(), "r");
+  FILE* in = vtksys::SystemTools::Fopen(fullName, "r");
   if (in == nullptr)
   {
-    vtkErrorMacro(<<"Error opening file: " << fullName);
+    vtkErrorMacro(<< "Error opening file: " << fullName);
     this->SetErrorCode(vtkErrorCode::CannotOpenFileError);
   }
 
@@ -155,39 +134,36 @@ Body:
 <vertexId> <x> <y> <z> [newline]
 
 \*---------------------------------------------------------------------------*/
-bool vtkProStarReader::ReadVrtFile(vtkUnstructuredGrid *output,
-                                   idMapping& mapPointId)
+bool vtkProStarReader::ReadVrtFile(vtkUnstructuredGrid* output, idMapping& mapPointId)
 {
   mapPointId.clear();
-  FILE *in = this->OpenFile(".vrt");
+  FILE* in = this->OpenFile(".vrt");
   if (in == nullptr)
   {
     return false;
   }
 
-  const int MAX_LINE = 1024;
+  constexpr int MAX_LINE = 1024;
   char rawLine[MAX_LINE];
 
-  int lineLabel, errorCount = 0;
-  if (
-         fgets(rawLine, MAX_LINE, in) != nullptr
-      && strncmp(rawLine, "PROSTAR_VERTEX", 14) == 0
-      && fgets(rawLine, MAX_LINE, in) != nullptr
-      && sscanf(rawLine, "%d", &lineLabel) == 1
-      && lineLabel >= 4000
-     )
+  int errorCount = 0;
+  vtk::scan_result_type<std::string_view, int> resultLabel;
+  if (fgets(rawLine, MAX_LINE, in) != nullptr && strncmp(rawLine, "PROSTAR_VERTEX", 14) == 0 &&
+    fgets(rawLine, MAX_LINE, in) != nullptr &&
+    ((resultLabel = vtk::scan_int<int>(std::string_view(rawLine)))) && resultLabel->value() >= 4000)
   {
-    vtkDebugMacro(<<"Got PROSTAR_VERTEX header");
+    vtkDebugMacro(<< "Got PROSTAR_VERTEX header");
   }
   else
   {
-    vtkErrorMacro(<<"Error reading header for PROSTAR_VERTEX file");
+    vtkErrorMacro(<< "Error reading header for PROSTAR_VERTEX file");
     ++errorCount;
   }
+  int lineLabel = resultLabel->value();
 
-  vtkPoints *points = vtkPoints::New();
+  vtkPoints* points = vtkPoints::New();
   // don't know the number of points a priori -- just pick some number
-  points->Allocate(10000,20000);
+  points->Reserve(10000);
 
   int lineNr = 2;
   float xyz[3];
@@ -196,8 +172,11 @@ bool vtkProStarReader::ReadVrtFile(vtkUnstructuredGrid *output,
   while (!errorCount && fgets(rawLine, MAX_LINE, in) != nullptr)
   {
     ++lineNr;
-    if (sscanf(rawLine, "%d %f %f %f", &lineLabel, xyz, xyz+1, xyz+2) == 4)
+    auto result =
+      vtk::scan<int, float, float, float>(std::string_view(rawLine), "{:d} {:f} {:f} {:f}");
+    if (result)
     {
+      std::tie(lineLabel, xyz[0], xyz[1], xyz[2]) = result->values();
       xyz[0] *= this->ScaleFactor;
       xyz[1] *= this->ScaleFactor;
       xyz[2] *= this->ScaleFactor;
@@ -209,7 +188,7 @@ bool vtkProStarReader::ReadVrtFile(vtkUnstructuredGrid *output,
     }
     else
     {
-      vtkErrorMacro(<<"Error reading point at line " << lineNr);
+      vtkErrorMacro(<< "Error reading point at line " << lineNr);
       ++errorCount;
     }
   }
@@ -218,7 +197,7 @@ bool vtkProStarReader::ReadVrtFile(vtkUnstructuredGrid *output,
   output->SetPoints(points);
   points->Delete();
 
-  vtkDebugMacro(<<"Read points: " << lineNr << " errors: " << errorCount);
+  vtkDebugMacro(<< "Read points: " << lineNr << " errors: " << errorCount);
 
   fclose(in);
   return errorCount == 0;
@@ -262,43 +241,39 @@ For polyhedral, <nLabels> includes an index table comprising beg/end pairs
 for each cell face.
 
 \*---------------------------------------------------------------------------*/
-bool vtkProStarReader::ReadCelFile(vtkUnstructuredGrid *output,
-                                   const idMapping& mapPointId)
+bool vtkProStarReader::ReadCelFile(vtkUnstructuredGrid* output, const idMapping& mapPointId)
 {
-  FILE *in = this->OpenFile(".cel");
+  FILE* in = this->OpenFile(".cel");
   if (in == nullptr)
   {
     return false;
   }
 
-  const int MAX_LINE = 1024;
+  constexpr int MAX_LINE = 1024;
   char rawLine[MAX_LINE];
 
-  int lineLabel, errorCount = 0;
-  if (
-         fgets(rawLine, MAX_LINE, in) != nullptr
-      && strncmp(rawLine, "PROSTAR_CELL", 12) == 0
-      && fgets(rawLine, MAX_LINE, in) != nullptr
-      && sscanf(rawLine, "%d", &lineLabel) == 1
-      && lineLabel >= 4000
-     )
+  int errorCount = 0;
+  vtk::scan_result_type<std::string_view, int> resultLabel;
+  if (fgets(rawLine, MAX_LINE, in) != nullptr && strncmp(rawLine, "PROSTAR_CELL", 12) == 0 &&
+    fgets(rawLine, MAX_LINE, in) != nullptr &&
+    ((resultLabel = vtk::scan_int<int>(std::string_view(rawLine)))) && resultLabel->value() >= 4000)
   {
-    vtkDebugMacro(<<"Got PROSTAR_CELL header");
+    vtkDebugMacro(<< "Got PROSTAR_CELL header");
   }
   else
   {
-    vtkErrorMacro(<<"Error reading header for PROSTAR_CELL file");
+    vtkErrorMacro(<< "Error reading header for PROSTAR_CELL file");
     ++errorCount;
   }
+  int lineLabel = resultLabel->value();
 
   // don't know the number of cells a priori -- just pick some number
-  output->Allocate(10000,20000);
+  output->Allocate(10000, 20000);
 
   // add a cellTableId array
-  vtkIntArray *cellTableId = vtkIntArray::New();
-  cellTableId->Allocate(10000,20000);
+  vtkIntArray* cellTableId = vtkIntArray::New();
+  cellTableId->ReserveValues(10000);
   cellTableId->SetName("cellTableId");
-
 
   int shapeId, nLabels, tableId, typeId;
   std::vector<vtkIdType> starLabels;
@@ -309,7 +284,6 @@ bool vtkProStarReader::ReadCelFile(vtkUnstructuredGrid *output,
   std::vector<vtkIdType> faceStream;
   faceStream.reserve(256);
 
-
   // use string buffer for easier parsing
   std::istringstream strbuf;
 
@@ -317,8 +291,11 @@ bool vtkProStarReader::ReadCelFile(vtkUnstructuredGrid *output,
   while (!errorCount && fgets(rawLine, MAX_LINE, in) != nullptr)
   {
     ++lineNr;
-    if (sscanf(rawLine, "%d %d %d %d %d", &lineLabel, &shapeId, &nLabels, &tableId, &typeId) == 5)
+    auto result =
+      vtk::scan<int, int, int, int, int>(std::string_view(rawLine), "{:d} {:d} {:d} {:d} {:d}");
+    if (result)
     {
+      std::tie(lineLabel, shapeId, nLabels, tableId, typeId) = result->values();
       starLabels.clear();
       starLabels.reserve(nLabels);
 
@@ -337,7 +314,7 @@ bool vtkProStarReader::ReadCelFile(vtkUnstructuredGrid *output,
           }
           else
           {
-            vtkErrorMacro(<<"Error reading PROSTAR_CELL file at line "<<lineNr);
+            vtkErrorMacro(<< "Error reading PROSTAR_CELL file at line " << lineNr);
             ++errorCount;
           }
         }
@@ -361,7 +338,7 @@ bool vtkProStarReader::ReadCelFile(vtkUnstructuredGrid *output,
         {
           // traverse beg/end indices
           const int beg = starLabels[faceI];
-          const int end = starLabels[faceI+1];
+          const int end = starLabels[faceI + 1];
 
           // number of points for this face
           faceStream.push_back(end - beg);
@@ -373,13 +350,13 @@ bool vtkProStarReader::ReadCelFile(vtkUnstructuredGrid *output,
           }
         }
 
-        output->InsertNextCell(VTK_POLYHEDRON, nFaces, &(faceStream[0]));
+        output->InsertNextCell(VTK_POLYHEDRON, nFaces, faceStream.data());
         cellTableId->InsertNextValue(tableId);
       }
       else
       {
         // map orig vertex id -> point label
-        for (int i=0; i < nLabels; ++i)
+        for (int i = 0; i < nLabels; ++i)
         {
           starLabels[i] = mapPointId.find(starLabels[i])->second;
         }
@@ -388,64 +365,65 @@ bool vtkProStarReader::ReadCelFile(vtkUnstructuredGrid *output,
         {
           // 0-D
           case starcdPoint:
-          output->InsertNextCell(VTK_VERTEX, 1, &(starLabels[0]));
-          cellTableId->InsertNextValue(tableId);
-          break;
+            output->InsertNextCell(VTK_VERTEX, 1, starLabels.data());
+            cellTableId->InsertNextValue(tableId);
+            break;
 
           // 1-D
           case starcdLine:
-          output->InsertNextCell(VTK_LINE, 2, &(starLabels[0]));
-          cellTableId->InsertNextValue(tableId);
-          break;
+            output->InsertNextCell(VTK_LINE, 2, starLabels.data());
+            cellTableId->InsertNextValue(tableId);
+            break;
 
           // 2-D
           case starcdShell:
-          switch (nLabels)
-          {
-            case 3:
-            output->InsertNextCell(VTK_TRIANGLE, 3, &(starLabels[0]));
+            switch (nLabels)
+            {
+              case 3:
+                output->InsertNextCell(VTK_TRIANGLE, 3, starLabels.data());
+                break;
+              case 4:
+                output->InsertNextCell(VTK_QUAD, 4, starLabels.data());
+                break;
+              default:
+                output->InsertNextCell(VTK_POLYGON, nLabels, starLabels.data());
+                break;
+            }
+            cellTableId->InsertNextValue(tableId);
             break;
-            case 4:
-            output->InsertNextCell(VTK_QUAD, 4, &(starLabels[0]));
-            break;
-            default:
-            output->InsertNextCell(VTK_POLYGON, nLabels, &(starLabels[0]));
-            break;
-          }
-          cellTableId->InsertNextValue(tableId);
-          break;
 
           // 3-D
           case starcdHex:
-          output->InsertNextCell(VTK_HEXAHEDRON, 8, &(starLabels[0]));
-          cellTableId->InsertNextValue(tableId);
-          break;
+            output->InsertNextCell(VTK_HEXAHEDRON, 8, starLabels.data());
+            cellTableId->InsertNextValue(tableId);
+            break;
 
           case starcdPrism:
-          // the VTK definition has outwards normals for the triangles!!
-          std::swap(starLabels[1], starLabels[2]);
-          std::swap(starLabels[4], starLabels[5]);
-          output->InsertNextCell(VTK_WEDGE, 6, &(starLabels[0]));
-          cellTableId->InsertNextValue(tableId);
-          break;
+            // the VTK definition has outwards normals for the triangles!!
+            std::swap(starLabels[1], starLabels[2]);
+            std::swap(starLabels[4], starLabels[5]);
+            output->InsertNextCell(VTK_WEDGE, 6, starLabels.data());
+            cellTableId->InsertNextValue(tableId);
+            break;
 
           case starcdTet:
-          output->InsertNextCell(VTK_TETRA, 4, &(starLabels[0]));
-          cellTableId->InsertNextValue(tableId);
-          break;
+            output->InsertNextCell(VTK_TETRA, 4, starLabels.data());
+            cellTableId->InsertNextValue(tableId);
+            break;
 
           case starcdPyr:
-          output->InsertNextCell(VTK_PYRAMID, 5, &(starLabels[0]));
-          cellTableId->InsertNextValue(tableId);
-          break;
+            output->InsertNextCell(VTK_PYRAMID, 5, starLabels.data());
+            cellTableId->InsertNextValue(tableId);
+            break;
 
-          default: break;
+          default:
+            break;
         }
       }
     }
     else
     {
-      vtkErrorMacro(<<"Error reading cell at line " << lineNr);
+      vtkErrorMacro(<< "Error reading cell at line " << lineNr);
       ++errorCount;
     }
   }
@@ -461,8 +439,9 @@ bool vtkProStarReader::ReadCelFile(vtkUnstructuredGrid *output,
   }
   cellTableId->Delete();
 
-  vtkDebugMacro(<<"Read cells: " << lineNr << " errors: " << errorCount);
+  vtkDebugMacro(<< "Read cells: " << lineNr << " errors: " << errorCount);
 
   fclose(in);
   return errorCount == 0;
 }
+VTK_ABI_NAMESPACE_END

@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkExternalLight.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkExternalLight
  * @brief   a virtual light object for tweaking existing lights
@@ -44,20 +32,22 @@
  *    exLight->SetLightIndex(GL_LIGHT0); // GL_LIGHT0 identifies the external light
  *    exLight->SetDiffuseColor(1.0, 0.0, 0.0); // Changing diffuse color
  *    vtkNew<ExternalVTKWidget> exWidget;
- *    vtkExternalOpenGLRenderer* ren = vtkExternalOpenGLRenderer::SafeDownCast(exWidget->AddRenderer());
+ *    vtkExternalOpenGLRenderer* ren =
+ * vtkExternalOpenGLRenderer::SafeDownCast(exWidget->AddRenderer());
  *    ren->AddExternalLight(exLight.GetPointer());
  * \endcode
  *
  * @sa
  * vtkExternalOpenGLRenderer \ref ExternalVTKWidget
-*/
+ */
 
 #ifndef vtkExternalLight_h
 #define vtkExternalLight_h
 
-#include "vtkRenderingExternalModule.h" // For export macro
 #include "vtkLight.h"
+#include "vtkRenderingExternalModule.h" // For export macro
 
+VTK_ABI_NAMESPACE_BEGIN
 class VTKRENDERINGEXTERNAL_EXPORT vtkExternalLight : public vtkLight
 {
 public:
@@ -73,15 +63,15 @@ public:
    * TransformMatrix is NULL. The light index is GL_LIGHT0, which means the
    * existing light with index GL_LIGHT0 will be affected by this light.
    */
-  static vtkExternalLight *New();
+  static vtkExternalLight* New();
 
   enum ReplaceModes
   {
-    INDIVIDUAL_PARAMS   = 0, // default
-    ALL_PARAMS          = 1
+    INDIVIDUAL_PARAMS = 0, // default
+    ALL_PARAMS = 1
   };
 
-  //@{
+  ///@{
   /**
    * Set/Get light index
    * This should be the OpenGL light identifier. (e.g.: GL_LIGHT0)
@@ -89,9 +79,9 @@ public:
    */
   vtkSetMacro(LightIndex, int);
   vtkGetMacro(LightIndex, int);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Set/Get replace mode
    * This determines how this ExternalLight will be used to tweak parameters on
@@ -107,32 +97,37 @@ public:
    */
   vtkSetMacro(ReplaceMode, int);
   vtkGetMacro(ReplaceMode, int);
-  //@}
+  ///@}
 
   /**
    * Override Set method to keep a record of changed value
    */
   void SetPosition(double, double, double) override;
+  using Superclass::SetPosition;
 
   /**
    * Override Set method to keep a record of changed value
    */
   void SetFocalPoint(double, double, double) override;
+  using Superclass::SetFocalPoint;
 
   /**
    * Override Set method to keep a record of changed value
    */
   void SetAmbientColor(double, double, double) override;
+  using Superclass::SetAmbientColor;
 
   /**
    * Override Set method to keep a record of changed value
    */
   void SetDiffuseColor(double, double, double) override;
+  using Superclass::SetDiffuseColor;
 
   /**
    * Override Set method to keep a record of changed value
    */
   void SetSpecularColor(double, double, double) override;
+  using Superclass::SetSpecularColor;
 
   /**
    * Override Set method to keep a record of changed value
@@ -148,6 +143,7 @@ public:
    * Override Set method to keep a record of changed value
    */
   void SetAttenuationValues(double, double, double) override;
+  using Superclass::SetAttenuationValues;
 
   /**
    * Override Set method to keep a record of changed value
@@ -157,77 +153,77 @@ public:
   /**
    * Override Set method to keep a record of changed value
    */
-  void SetPositional(int) override;
+  void SetPositional(vtkTypeBool) override;
 
-  //@{
+  ///@{
   /**
    * Check whether value set by user
    */
   vtkGetMacro(PositionSet, bool);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Check whether value set by user
    */
   vtkGetMacro(FocalPointSet, bool);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Check whether value set by user
    */
   vtkGetMacro(AmbientColorSet, bool);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Check whether value set by user
    */
   vtkGetMacro(DiffuseColorSet, bool);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Check whether value set by user
    */
   vtkGetMacro(SpecularColorSet, bool);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Check whether value set by user
    */
   vtkGetMacro(IntensitySet, bool);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Check whether value set by user
    */
   vtkGetMacro(ConeAngleSet, bool);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Check whether value set by user
    */
   vtkGetMacro(AttenuationValuesSet, bool);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Check whether value set by user
    */
   vtkGetMacro(ExponentSet, bool);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Check whether value set by user
    */
   vtkGetMacro(PositionalSet, bool);
-  //@}
+  ///@}
 
 protected:
   vtkExternalLight();
@@ -252,4 +248,5 @@ private:
   void operator=(const vtkExternalLight&) = delete;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif // vtkExternalLight_h

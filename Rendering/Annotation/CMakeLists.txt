@@ -1,31 +1,49 @@
-set(Module_SRCS
-  vtkAnnotatedCubeActor.cxx
-  vtkArcPlotter.cxx
-  vtkAxesActor.cxx
-  vtkAxisActor2D.cxx
-  vtkAxisActor.cxx
-  vtkAxisFollower.cxx
-  vtkBarChartActor.cxx
-  vtkCaptionActor2D.cxx
-  vtkConvexHull2D.cxx
-  vtkCornerAnnotation.cxx
-  vtkCubeAxesActor2D.cxx
-  vtkCubeAxesActor.cxx
-  vtkGraphAnnotationLayersFilter.cxx
-  vtkLeaderActor2D.cxx
-  vtkLegendBoxActor.cxx
-  vtkLegendScaleActor.cxx
-  vtkParallelCoordinatesActor.cxx
-  vtkPieChartActor.cxx
-  vtkPolarAxesActor.cxx
-  vtkProp3DAxisFollower.cxx
-  vtkScalarBarActor.cxx
-  vtkSpiderPlotActor.cxx
-  vtkXYPlotActor.cxx
-  )
+set(classes
+  vtkAnnotatedCubeActor
+  vtkArcPlotter
+  vtkAxesActor
+  vtkAxisActor
+  vtkAxisActor2D
+  vtkAxisFollower
+  vtkBarChartActor
+  vtkCaptionActor2D
+  vtkConvexHull2D
+  vtkCornerAnnotation
+  vtkCubeAxesActor
+  vtkCubeAxesActor2D
+  vtkGraphAnnotationLayersFilter
+  vtkLeaderActor2D
+  vtkLegendBoxActor
+  vtkLegendScaleActor
+  vtkParallelCoordinatesActor
+  vtkPieChartActor
+  vtkPolarAxesActor
+  vtkPolarAxesActor2D
+  vtkProp3DAxisFollower
+  vtkRadialGridActor2D
+  vtkScalarBarActor
+  vtkSpiderPlotActor
+  vtkXYPlotActor)
 
-set(${vtk-module}_HDRS
-  vtkScalarBarActorInternal.h
-  )
+set(private_classes
+"Private/vtkArcGridActorInternal"
+"Private/vtkAxisGridActorInternal"
+"Private/vtkFollowerTextPropertyAdaptor"
+"Private/vtkTextActorInterfaceInternal")
 
-vtk_module_library(vtkRenderingAnnotation ${Module_SRCS})
+set(nowrap_headers
+  vtkScalarBarActorInternal.h)
+
+# Hand written (de)serialization routines
+set(serialization_helper_sources)
+if (VTK_WRAP_SERIALIZATION)
+  list(APPEND serialization_helper_sources
+    vtkXYPlotActorSerDesHelper.cxx)
+endif ()
+
+vtk_module_add_module(VTK::RenderingAnnotation
+  CLASSES ${classes}
+  PRIVATE_CLASSES ${private_classes}
+  SOURCES ${serialization_helper_sources}
+  NOWRAP_HEADERS ${nowrap_headers})
+vtk_add_test_mangling(VTK::RenderingAnnotation)

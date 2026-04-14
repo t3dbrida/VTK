@@ -1,5 +1,6 @@
 vtk_add_test_cxx(vtkFiltersHybridCxxTests tests
   TemporalStatistics.cxx
+  TestHyperTreeGridAdaptiveDataSetSurfaceFilterDecimation.cxx,NO_VALID
   TestHyperTreeGridBinary2DAdaptiveDataSetSurfaceFilter.cxx
   TestHyperTreeGridBinary2DAdaptiveDataSetSurfaceFilterMaterial.cxx
   TestHyperTreeGridTernary3DAdaptiveDataSetSurfaceFilter.cxx
@@ -8,13 +9,19 @@ vtk_add_test_cxx(vtkFiltersHybridCxxTests tests
   TestBSplineTransform.cxx
   TestDepthSortPolyData.cxx
   TestForceTime.cxx
+  TestGenerateTimeSteps.cxx,NO_VALID
   TestPolyDataSilhouette.cxx
   TestProcrustesAlignmentFilter.cxx,NO_VALID
   TestTemporalArrayOperatorFilter.cxx,NO_VALID
   TestTemporalCacheSimple.cxx,NO_VALID
   TestTemporalCacheTemporal.cxx,NO_VALID
+  TestTemporalCacheMemkind.cxx,NO_VALID
+  TestTemporalCacheUndefinedTimeStep.cxx
   TestTemporalFractal.cxx
+  TestTemporalInterpolator.cxx,NO_SERDES
+  TestTemporalInterpolatorFactorMode.cxx,NO_SERDES
   )
 vtk_test_cxx_executable(vtkFiltersHybridCxxTests tests
+  DISABLE_FLOATING_POINT_EXCEPTIONS
   RENDERING_FACTORY
   )

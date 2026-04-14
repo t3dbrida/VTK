@@ -1,17 +1,5 @@
-/*==============================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestDataArrayAPI.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-==============================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "vtkDataArray.h"
 
@@ -19,7 +7,6 @@
 #include "vtkAOSDataArrayTemplate.h"
 #include "vtkArrayDispatch.h"
 #include "vtkArrayIterator.h"
-#include "vtkConfigure.h"
 #include "vtkDoubleArray.h"
 #include "vtkIdList.h"
 #include "vtkIdTypeArray.h"
@@ -58,7 +45,7 @@
 // This test has three main components:
 // - Entry point: TestDataArrayAPI_[ARRAYNAME]()
 // - Unit test caller: ExerciseDataArray(). Templated on value and array types.
-//   Calls individual unit test functions to excerise the array methods.
+//   Calls individual unit test functions to exercise the array methods.
 //   Add new unit test calls here. Note that the ExerciseGetRange runner has
 //   been split out to fix compilation on less robust compilers that struggle
 //   with the heavy templating (known issue on llvm-gcc 4.2.1).
@@ -161,26 +148,23 @@ vtkSmartPointer<vtkDataArray> CreateDataArray()
 
 //------------------------vtkAbstactArray API-----------------------------------
 
-// vtkTypeBool Allocate(vtkIdType numValues, vtkIdType ext=1000)
-// Sets MaxId == -1
+// vtkTypeBool ReserveValues(vtkIdType numValues, vtkIdType ext=1000)
 // Sets Size >= numValues
-// If numValues == 0, delete the array.
-// ext is not used.
 // Result is 1/0 for success/failure.
 template <typename ScalarT, typename ArrayT>
-int Test_int_Allocate_numValues_ext()
+int Test_int_ReserveValues_numValues_ext()
 {
-  DataArrayAPIInit("vtkTypeBool Allocate(vtkIdType numValues, vtkIdType ext)");
+  DataArrayAPIInit("vtkTypeBool ReserveValues(vtkIdType numValues, vtkIdType ext)");
   DataArrayAPICreateTestArray(array);
 
-  int success = array->Allocate(0);
+  int success = array->ReserveValues(0);
   DataArrayAPIAssert(success, "Allocation failed.");
   DataArrayAPIAssert(array->GetSize() == 0,
                      "Invalid Size (" << array->GetSize() << ").");
   DataArrayAPIAssert(array->GetMaxId() == -1,
                      "Invalid MaxId (" << array->GetMaxId() << ").");
 
-  success = array->Allocate(100);
+  success = array->ReserveValues(100);
   DataArrayAPIAssert(success, "Allocation failed.");
   DataArrayAPIAssert(array->GetSize() >= 100,
                      "Invalid Size (" << array->GetSize() << ").");
@@ -192,7 +176,7 @@ int Test_int_Allocate_numValues_ext()
   DataArrayAPIAssert(array->GetMaxId() == 49,
                      "Invalid MaxId (" << array->GetMaxId() << ").");
 
-  success = array->Allocate(0);
+  success = array->ReserveValues(0);
   DataArrayAPIAssert(success, "Allocation failed.");
   DataArrayAPIAssert(array->GetSize() == 0,
                      "Invalid Size (" << array->GetSize() << ").");
@@ -913,6 +897,7 @@ int Test_voidPtr_GetVoidPointer()
         vtksys::SystemTools::GetEnv("VTK_SILENCE_GET_VOID_POINTER_WARNINGS");
     vtksys::SystemTools::PutEnv("VTK_SILENCE_GET_VOID_POINTER_WARNINGS=1");
 
+    // NOLINTNEXTLINE(bugprone-unsafe-functions)
     ScalarT *ptr = static_cast<ScalarT*>(source->GetVoidPointer(t * comps));
 
     // Restore state:
@@ -1001,7 +986,7 @@ struct CheckShallowCopy
 #endif
 
 // void ShallowCopy(vtkDataArray *other)
-// Shallow copies AOS/SOA arrays if and only if arrays are the same type,
+// Shallow copies AOS/SOA/ScaleSOA arrays if and only if arrays are the same type,
 // otherwise deep copies.
 // Test copying into and from the target array type.
 // Allocates memory as needed.
@@ -1381,28 +1366,28 @@ int Test_void_InterpolateTuple_i_id1_source1_id2_source2_t()
   DataArrayAPIFinish();
 }
 
-// vtkTypeBool Resize(vtkIdType numTuples)
+// vtkTypeBool ReserveTuples(vtkIdType numTuples)
 // Preserve data
 // Return 1 on success, 0 otherwise
 template <typename ScalarT, typename ArrayT>
-int Test_int_Resize_numTuples()
+int Test_int_ReserveTuples_numTuples()
 {
-  DataArrayAPIInit("vtkTypeBool Resize(vtkIdType numTuples)");
+  DataArrayAPIInit("vtkTypeBool ReserveTuples(vtkIdType numTuples)");
   DataArrayAPICreateTestArray(array);
   int comps = 5;
   vtkIdType tuples = 0;
   array->SetNumberOfComponents(comps);
 
-  int success = array->Resize(tuples);
-  DataArrayAPIAssert(success, "Resize failed.");
+  int success = array->ReserveTuples(tuples);
+  DataArrayAPIAssert(success, "ReserveTuples failed.");
   DataArrayAPIAssert(array->GetSize() == tuples * comps,
                      "Invalid Size (" << array->GetSize() << ").");
   DataArrayAPIAssert(array->GetMaxId() == -1,
                      "Invalid MaxId (" << array->GetMaxId() << ").");
 
   tuples = 100;
-  success = array->Resize(tuples);
-  DataArrayAPIAssert(success, "Resize failed.");
+  success = array->ReserveTuples(tuples);
+  DataArrayAPIAssert(success, "ReserveTuples failed.");
   // May be larger than requested for size increases:
   DataArrayAPIAssert(array->GetSize() >= tuples * comps,
                      "Invalid Size (" << array->GetSize() << ").");
@@ -1428,8 +1413,8 @@ int Test_int_Resize_numTuples()
 
   // resize larger
   tuples = 200;
-  success = array->Resize(tuples);
-  DataArrayAPIAssert(success, "Resize failed.");
+  success = array->ReserveTuples(tuples);
+  DataArrayAPIAssert(success, "ReserveTuples failed.");
   // May be larger than requested for size increases:
   DataArrayAPIAssert(array->GetSize() >= tuples * comps,
                      "Invalid Size (" << array->GetSize() << ").");
@@ -1453,8 +1438,8 @@ int Test_int_Resize_numTuples()
 
   // resize smaller
   filledTuples = tuples = 50;
-  success = array->Resize(tuples);
-  DataArrayAPIAssert(success, "Resize failed.");
+  success = array->ReserveTuples(tuples);
+  DataArrayAPIAssert(success, "ReserveTuples failed.");
   // Both Size and MaxId should be truncated to the exact new size.
   DataArrayAPIAssert(array->GetSize() == tuples * comps,
                      "Invalid Size (" << array->GetSize() << ").");
@@ -1477,8 +1462,8 @@ int Test_int_Resize_numTuples()
 
   // Set to zero, should delete array
   filledTuples = tuples = 0;
-  success = array->Resize(tuples);
-  DataArrayAPIAssert(success, "Resize failed.");
+  success = array->ReserveTuples(tuples);
+  DataArrayAPIAssert(success, "ReserveTuples failed.");
   DataArrayAPIAssert(array->GetSize() == 0,
                      "Invalid Size (" << array->GetSize() << ").");
   DataArrayAPIAssert(array->GetMaxId() == -1,
@@ -1522,48 +1507,6 @@ int Test_void_Reset()
   DataArrayAPIFinish();
 }
 
-// void ExportToVoidPointer(void *out_ptr)
-template <typename ScalarT, typename ArrayT>
-int Test_void_ExportToVoidPointer_voidPtr()
-{
-  DataArrayAPIInit("void ExportToVoidPointer(void *out_ptr)");
-
-  DataArrayAPICreateTestArray(source);
-
-  // Initialize source array:
-  vtkIdType comps = 5;
-  vtkIdType tuples = 10;
-  source->SetNumberOfComponents(comps);
-  source->SetNumberOfTuples(tuples);
-  for (vtkIdType t = 0; t < tuples; ++t)
-  {
-    std::vector<ScalarT> tuple;
-    for (int c = 0; c < comps; ++c)
-    {
-      tuple.push_back(static_cast<ScalarT>(((t * comps) + c) % 17));
-    }
-    source->SetTypedTuple(t, &tuple[0]);
-  }
-
-  std::vector<ScalarT> buffer(comps * tuples);
-  source->ExportToVoidPointer(static_cast<void*>(&buffer[0]));
-
-  // Verify:
-  for (vtkIdType t = 0; t < tuples; ++t)
-  {
-    for (int c = 0; c < comps; ++c)
-    {
-      ScalarT test = buffer[t * comps + c];
-      ScalarT ref = static_cast<ScalarT>(((t * comps) + c) % 17);
-      DataArrayAPIAssert(test == ref,
-                         "Data mismatch at tuple " << t << " component " << c
-                          << ": Expected " << ref << ", got " << test << ".");
-    }
-  }
-
-  DataArrayAPIFinish();
-}
-
 // unsigned long GetActualMemorySize()
 // Returns size in kibibytes (1024 bytes) for MaxId + 1 elements of ValueType.
 template <typename ScalarT, typename ArrayT>
@@ -1601,47 +1544,6 @@ int Test_int_IsNumeric()
   {
     DataArrayAPIError("IsNumeric() is false.");
   }
-
-  DataArrayAPIFinish();
-}
-
-// vtkArrayIterator* NewIterator()
-// Just test that the returned iterator is non-nullptr and the data types match.
-template <typename ScalarT, typename ArrayT>
-int Test_vtkArrayIteratorPtr_NewIterator()
-{
-  DataArrayAPIInit("vtkArrayIterator* NewIterator()");
-
-  DataArrayAPICreateTestArray(source);
-
-  // Silence the void pointer warnings for these calls. The
-  // vtkArrayIteratorTemplate implementation relies on GetVoidPointer.
-  const char *oldWarning =
-      vtksys::SystemTools::GetEnv("VTK_SILENCE_GET_VOID_POINTER_WARNINGS");
-  vtksys::SystemTools::PutEnv("VTK_SILENCE_GET_VOID_POINTER_WARNINGS=1");
-
-  vtkArrayIterator *iter = source->NewIterator();
-
-  // Restore state:
-  if (oldWarning)
-  {
-    std::ostringstream envArg;
-    envArg << "VTK_SILENCE_GET_VOID_POINTER_WARNINGS=" << oldWarning;
-    vtksys::SystemTools::PutEnv(envArg.str());
-  }
-  else
-  {
-    vtksys::SystemTools::UnPutEnv("VTK_SILENCE_GET_VOID_POINTER_WARNINGS");
-  }
-
-  DataArrayAPIAssert(iter != nullptr,
-                     "NewIterator() returns nullptr.");
-
-  int iterDataType = iter->GetDataType();
-  iter->Delete();
-
-  DataArrayAPIAssert(iterDataType == source->GetDataType(),
-                     "Iterator datatype does not match array.");
 
   DataArrayAPIFinish();
 }
@@ -2128,183 +2030,6 @@ int Test_void_FillComponent_j_c()
         DataArrayAPIError("Data mismatch at tuple " << i << ", component " << j
                           << ": Expected '" << (((j + 1) * j) % 17)
                           << "', got '" << tuple[j] << "'.");
-      }
-    }
-  }
-
-  DataArrayAPIFinish();
-}
-
-// void* WriteVoidPointer(vtkIdType id, vtkIdType number)
-// Ensure that there are at least (id + number) values allocated in the array.
-// Update MaxId to ensure that any new values are marked as in-use.
-// Return a void pointer to the value at index id.
-// TODO This couldn't really work with the new vtkGenericDataArray stuff.
-// Deprecate?
-template <typename ScalarT, typename ArrayT>
-int Test_voidptr_WriteVoidPointer_id_number()
-{
-  DataArrayAPIInit("void* WriteVoidPointer(vtkIdType id, vtkIdType number)");
-
-  // Skip SoA arrays, as they do not allow this:
-  if (typeid(ArrayT) == typeid(vtkSOADataArrayTemplate<ScalarT>))
-  {
-    std::cerr << "Skipping WriteVoidPointer for "
-              << "vtkSOADataArrayTemplate<" << vtkTypeTraits<ScalarT>::Name()
-              << ">.\n";
-    DataArrayAPIFinish();
-  }
-
-  DataArrayAPICreateTestArray(source);
-
-  // Initialize source array:
-  vtkIdType comps = 9;
-  vtkIdType tuples = 10;
-  vtkIdType values = comps * tuples;
-  source->SetNumberOfComponents(comps);
-
-  // Fill the array by writing to the returned void pointer. Trying various
-  // write lengths that aren't just multiples of the tuple size.
-  vtkIdType pos = 0;
-  int writeLength = 1;
-  while (true)
-  {
-    if (pos + writeLength > values)
-    {
-      writeLength = values - pos;
-    }
-    if (writeLength <= 0)
-    {
-      break;
-    }
-
-    void *voidPtr = source->WriteVoidPointer(pos, writeLength);
-
-    // Verify that conditions are met:
-    if (source->GetMaxId() != pos + writeLength - 1)
-    {
-      DataArrayAPIError("MaxId was not incremented to account for write length."
-                        " MaxId is: " << source->GetMaxId() << ", expected: "
-                        << (pos + writeLength - 1) << ".");
-    }
-    if (source->GetSize() < pos + writeLength)
-    {
-      DataArrayAPIError("Size was not increased to account for write length. "
-                        "Size is: " << source->GetSize() << ", expected: "
-                        << (pos + writeLength) << ".");
-    }
-
-    // Cast the pointer and write to it:
-    ScalarT *ptr = static_cast<ScalarT*>(voidPtr);
-    for (int i = 0; i < writeLength; ++i)
-    {
-      ptr[i] = static_cast<ScalarT>(((pos + 1) * pos) % 17);
-      ++pos;
-    }
-    writeLength += 1;
-  }
-
-  // Test the returned tuples:
-  vtkIdType v = 0;
-  std::vector<double> tuple(comps);
-  for (vtkIdType i = 0; i < tuples; ++i)
-  {
-    source->GetTuple(i, &tuple[0]);
-    for (int j = 0; j < comps; ++j)
-    {
-      if (tuple[j] != static_cast<double>(((v + 1) * v) % 17))
-      {
-        DataArrayAPIError("Data mismatch at tuple " << i << ", component " << j
-                          << ": Expected '" << (((v + 1) * v) % 17)
-                          << "', got '" << tuple[j] << "'.");
-      }
-      ++v;
-    }
-  }
-
-  DataArrayAPIFinish();
-}
-
-// void CreateDefaultLookupTable()
-// GetLookupTable should be non-nullptr after calling.
-template <typename ScalarT, typename ArrayT>
-int Test_void_CreateDefaultLookupTable()
-{
-  DataArrayAPIInit("void CreateDefaultLookupTable()");
-
-  DataArrayAPICreateTestArray(source);
-
-  source->CreateDefaultLookupTable();
-  if (source->GetLookupTable() == nullptr)
-  {
-    DataArrayAPIError("Lookup table was not created.");
-  }
-
-  DataArrayAPIFinish();
-}
-
-//  double   GetTuple1 (vtkIdType i)
-//  double * GetTuple2 (vtkIdType i)
-//  double * GetTuple3 (vtkIdType i)
-//  double * GetTuple4 (vtkIdType i)
-//  double * GetTuple6 (vtkIdType i)
-//  double * GetTuple9 (vtkIdType i)
-// Returns the ith tuple.
-template <typename ScalarT, typename ArrayT, int N>
-int Test_doubleptr_GetTupleN_i()
-{
-  std::ostringstream sigBuilder;
-  sigBuilder << "double" << ((N == 1) ? "" : "*") << " GetTuple" << N
-             << "(vtkIdType i)";
-  DataArrayAPIInit(sigBuilder.str());
-
-  DataArrayAPICreateTestArray(source);
-
-  // Initialize source array:
-  vtkIdType comps = N;
-  vtkIdType tuples = 10;
-  source->SetNumberOfComponents(comps);
-  source->SetNumberOfTuples(tuples);
-  for (vtkIdType i = 0; i < comps * tuples; ++i)
-  {
-    source->SetValue(i, static_cast<ScalarT>(i % 17));
-  }
-
-  // Validate API:
-  for (vtkIdType t = 0; t < tuples; ++t)
-  {
-    std::vector<double> tuple(N);
-    switch(N)
-    {
-      case 1:
-        tuple[0] = source->GetTuple1(t);
-        break;
-#define vtkDataArrayAPIGetTupleNCase(_N) \
-      case _N: \
-      { \
-        double *tmpPtr = source->GetTuple##_N(t); \
-        std::copy(tmpPtr, tmpPtr + (_N), tuple.begin()); \
-      } \
-        break
-      vtkDataArrayAPIGetTupleNCase(2);
-      vtkDataArrayAPIGetTupleNCase(3);
-      vtkDataArrayAPIGetTupleNCase(4);
-      vtkDataArrayAPIGetTupleNCase(6);
-      vtkDataArrayAPIGetTupleNCase(9);
-#undef vtkDataArrayAPIGetTupleNCase
-      default:
-        DataArrayAPIError("Unrecognized tuple size: GetTuple" << N << "().");
-    }
-
-    for (int c = 0; c < comps; ++c)
-    {
-      double test = tuple[c];
-      double ref = static_cast<double>((t * comps + c) % 17);
-      if (test != ref)
-      {
-        DataArrayAPIError("Incorrect value returned for tuple " << t
-                          << "component " << c << ": Got " << test
-                          << ", expected " << ref << ".");
       }
     }
   }
@@ -3065,7 +2790,7 @@ int ExerciseDataArray()
   int errors = 0;
 
   // vtkAbstractArray API:
-  errors += Test_int_Allocate_numValues_ext<ScalarT, ArrayT>();
+  errors += Test_int_ReserveValues_numValues_ext<ScalarT, ArrayT>();
   errors += Test_void_Initialize<ScalarT, ArrayT>();
   errors += Test_int_GetDataType<ScalarT, ArrayT>();
   errors += Test_int_GetDataTypeSize<ScalarT, ArrayT>();
@@ -3112,12 +2837,10 @@ int ExerciseDataArray()
   errors += Test_void_DeepCopy_array<ScalarT, ArrayT, vtkDataArray, unsigned short>();
   errors += Test_void_InterpolateTuple_i_indices_source_weights<ScalarT, ArrayT>();
   errors += Test_void_InterpolateTuple_i_id1_source1_id2_source2_t<ScalarT, ArrayT>();
-  errors += Test_int_Resize_numTuples<ScalarT, ArrayT>();
+  errors += Test_int_ReserveTuples_numTuples<ScalarT, ArrayT>();
   errors += Test_void_Reset<ScalarT, ArrayT>();
-  errors += Test_void_ExportToVoidPointer_voidPtr<ScalarT, ArrayT>();
   errors += Test_ulong_GetActualMemorySize<ScalarT, ArrayT>();
   errors += Test_int_IsNumeric<ScalarT, ArrayT>();
-  errors += Test_vtkArrayIteratorPtr_NewIterator<ScalarT, ArrayT>();
   errors += Test_vtkIdType_GetDataSize<ScalarT, ArrayT>();
   errors += Test_LookupValue_allSigs<ScalarT, ArrayT>();
   errors += Test_vtkVariant_GetVariantValue_valueIdx<ScalarT, ArrayT>();
@@ -3130,7 +2853,6 @@ int ExerciseDataArray()
   errors += Test_double_GetComponent_i_j<ScalarT, ArrayT>();
   errors += Test_void_SetComponent_i_j_c<ScalarT, ArrayT>();
   errors += Test_void_InsertComponent_i_j_c<ScalarT, ArrayT>();
-  errors += Test_voidptr_WriteVoidPointer_id_number<ScalarT, ArrayT>();
   errors += Test_void_CreateDefaultLookupTable<ScalarT, ArrayT>();
   errors += Test_void_ShallowCopy_array<ScalarT, ArrayT, vtkAOSDataArrayTemplate<char> >();
   errors += Test_void_ShallowCopy_array<ScalarT, ArrayT, vtkAOSDataArrayTemplate<float> >();

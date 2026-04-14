@@ -1,9 +1,10 @@
 /*
-Copyright (c) 1998-2017 University Corporation for Atmospheric Research/Unidata
-See LICENSE.txt for license information.
+Copyright (c) 1998-2018 University Corporation for Atmospheric Research/Unidata
+See COPYRIGHT for license information.
 */
 
 #include "config.h"
+#include <stddef.h>
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
@@ -13,290 +14,497 @@ See LICENSE.txt for license information.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "nc.h"
-#include "nclog.h"
+#include <assert.h>
+
+#include "netcdf.h"
 #include "ncbytes.h"
+#include "ncuri.h"
 #include "ncrc.h"
+#include "nclog.h"
+#include "ncauth.h"
+#include "ncpathmgr.h"
+#include "nc4internal.h"
+#include "ncs3sdk.h"
+#include "ncdispatch.h"
+
+#undef NOREAD
+
+#undef DRCDEBUG
+#undef LEXDEBUG
+#undef PARSEDEBUG
 
 #define RTAG ']'
 #define LTAG '['
 
-#define TRIMCHARS " \t\r\n"
+#undef MEMCHECK
+#define MEMCHECK(x) if((x)==NULL) {goto nomem;} else {}
 
-static char* ENVRCLIST[] = {"DAPRCFILE","NETCDFRCFILE",NULL};
-static char* RCFILELIST[] = {".netcdfrc",".daprc", ".dodsrc",NULL};
+/* Forward */
+static int NC_rcload(void);
+static char* rcreadline(char** nextlinep);
+static void rctrim(char* text);
+static void rcorder(NClist* rc);
+static int rccompile(const char* path);
+static int rcequal(NCRCentry* e1, NCRCentry* e2);
+static int rclocatepos(const char* key, const char* hostport, const char* urlpath);
+static struct NCRCentry* rclocate(const char* key, const char* hostport, const char* urlpath);
+static int rcsearch(const char* prefix, const char* rcname, char** pathp);
+static void rcfreeentries(NClist* rc);
+static void rcfreeentry(NCRCentry* t);
+#ifdef DRCDEBUG
+static void storedump(char* msg, NClist* entrys);
+#endif
 
-/*Forward*/
-static int rcreadline(FILE* f, NCbytes*);
-static void rctrim(NCbytes* text);
-static void storedump(char* msg, NCTripleStore*);
-static int rc_compile(const char* path);
-static const NCTriple* rc_locate(NCTripleStore* rc, char* key, char* tag);
-static int rc_search(const char* prefix, const char* rcfile, char** pathp);
-static int copycat(char* dst, size_t size, size_t n, ...);
+/* Define default rc files and aliases, also defines load order*/
+static const char* rcfilenames[] = {".ncrc", ".daprc", ".dodsrc", NULL};
+
+static int NCRCinitialized = 0;
 
 /**************************************************/
+/* User API */
 
-static int ncrc_ignore = 0;
-static int ncrc_loaded = 0;
-static char* ncrc_home = NULL;
-static NCTripleStore ncrc_store;
+/**
+The most common case is to get the most general value for a key,
+where most general means that the urlpath and hostport are null
+So this function returns the value associated with the key
+where the .rc entry has the simple form "key=value".
+If that entry is not found, then return NULL.
 
-/**************************************************/
+@param key table entry key field
+@param  table entry key field
+@return value matching the key -- caller frees
+@return NULL if no entry of the form key=value exists
+*/
+char*
+nc_rc_get(const char* key)
+{
+    NCglobalstate* ncg = NULL;
+    char* value = NULL;
 
-/* read and compile the rc file, if any */
+    if(!NC_initialized) nc_initialize();
+
+    ncg = NC_getglobalstate();
+    assert(ncg != NULL && ncg->rcinfo != NULL && ncg->rcinfo->entries != NULL);
+    if(ncg->rcinfo->ignore) goto done;
+    value = NC_rclookup(key,NULL,NULL);
+done:
+    value = nulldup(value);   
+    return value;
+}
+
+/**
+Set simple key=value in .rc table.
+Will overwrite any existing value.
+
+@param key
+@param value 
+@return NC_NOERR if success
+@return NC_EINVAL if fail
+*/
 int
-ncrc_load(const char* filename)
+nc_rc_set(const char* key, const char* value)
 {
     int stat = NC_NOERR;
-    char* path = NULL;
+    NCglobalstate* ncg = NULL;
 
-    if(ncrc_ignore) {
-        nclog(NCLOGDBG,"No runtime configuration file specified; continuing");
-	goto done;
-    }
-    if(ncrc_loaded) return NC_NOERR;
+    if(!NC_initialized) nc_initialize();
 
-    /* locate the configuration files in the following order:
-       1. specified by argument
-       2. set by any ENVRCLIST env variable
-       3. '.'
-       4. $HOME
-    */
-    if(filename != NULL) /* always use this */
-	path = strdup(filename);
-    if(path == NULL) {
-	char** p;
-	for(p=ENVRCLIST;*p;p++) {
-	    const char* value = getenv(*p);
-            if(value != NULL && strlen(value) > 0) {
-		path = strdup(value);
-		break;
-	    }
-	}
-    }
-    if(path == NULL) {
-	char** rcname;
-	for(rcname=RCFILELIST;*rcname;rcname++) {
-	    stat = rc_search(".",*rcname,&path);
-    	    if(stat != NC_NOERR || path != NULL) break;
-	    stat = rc_search(ncrc_home,*rcname,&path);
-    	    if(stat != NC_NOERR || path != NULL) break;
-	}
-	if(stat != NC_NOERR) goto done;
-    }
-    if(path == NULL) {
-        nclog(NCLOGDBG,"Cannot find runtime configuration file; continuing");
-	goto done;
-    }
-    nclog(NCLOGDBG,"RC files: %s\n", path);
-    if(rc_compile(path) == 0) {
-	nclog(NCLOGERR, "Error parsing %s\n",path);
-	stat = NC_NOERR;
-    }
+    ncg = NC_getglobalstate();
+    assert(ncg != NULL && ncg->rcinfo != NULL && ncg->rcinfo->entries != NULL);
+    if(ncg->rcinfo->ignore) goto done;;
+    stat = NC_rcfile_insert(key,NULL,NULL,value);
 done:
-    ncrc_loaded = 1; /* even if not exists */
-    if(path != NULL)
-	free(path);
     return stat;
 }
 
+/**************************************************/
+/* External Entry Points */
+
+/*
+Initialize defaults and load:
+* .ncrc
+* .dodsrc
+* ${HOME}/.aws/config
+* ${HOME}/.aws/credentials
+
+For debugging support, it is possible
+to change where the code looks for the .aws directory.
+This is set by the environment variable NC_TEST_AWS_DIR.
+
+*/
+
 void
-ncrc_reset(NCTripleStore* store)
+ncrc_initialize(void)
 {
-    int i;
-    if(store->triples == NULL) return;
-    for(i=0;i<nclistlength(store->triples);i++) {
-	NCTriple* triple = (NCTriple*)nclistget(store->triples,i);
-	if(triple == NULL) continue;
-	if(triple->tag != NULL) free(triple->tag);
-	if(triple->key != NULL) free(triple->key);
-	if(triple->value != NULL) free(triple->value);
-	free(triple);
+    int stat = NC_NOERR;
+    NCglobalstate* ncg = NULL;
+
+    if(NCRCinitialized) return;
+    NCRCinitialized = 1; /* prevent recursion */
+
+    ncg = NC_getglobalstate();
+
+#ifndef NOREAD
+    /* Load entrys */
+    if((stat = NC_rcload())) {
+        nclog(NCLOGWARN,".rc loading failed");
     }
-    nclistfree(store->triples);
-    store->triples = NULL;
+    /* Load .aws/config &/ credentials */
+    if((stat = NC_aws_load_credentials(ncg))) {
+        nclog(NCLOGWARN,"AWS config file not loaded");
+    }
+#endif
 }
 
-char*
-ncrc_lookup(NCTripleStore* store, char* key, char* tag)
+static void
+ncrc_setrchome(void)
 {
-    const NCTriple* triple = rc_locate(store, key, tag);
-    if(triple != NULL && ncdebug > 2) {
-	fprintf(stderr,"lookup %s: [%s]%s = %s\n",tag,triple->tag,triple->key,triple->value);
-    }
-    return (triple == NULL ? NULL : triple->value);
+    const char* tmp = NULL;
+    NCglobalstate* ncg = NC_getglobalstate();
+    assert(ncg && ncg->home);
+    if(ncg->rcinfo->rchome) return;
+    tmp = getenv(NCRCENVHOME);
+    if(tmp == NULL || strlen(tmp) == 0)
+	tmp = ncg->home;
+    ncg->rcinfo->rchome = strdup(tmp);
+#ifdef DRCDEBUG
+    fprintf(stderr,"ncrc_setrchome: %s\n",ncg->rcinfo->rchome);
+#endif
 }
 
-static const NCTriple*
-rc_locate(NCTripleStore* rc, char* key, char* tag)
+void
+NC_rcclear(NCRCinfo* info)
 {
-    int i,found;
+    if(info == NULL) return;
+    nullfree(info->rcfile);
+    nullfree(info->rchome);
+    rcfreeentries(info->entries);
+    NC_s3freeprofilelist(info->s3profiles);
 
-    if(ncrc_ignore || !ncrc_loaded || rc->triples == NULL)
-	return NULL;
-    if(key == NULL || rc == NULL) return NULL;
-
-    if(tag == NULL) tag = "";
-    /* Assume that the triple store has been properly sorted */
-    for(found=0,i=0;i<nclistlength(rc->triples);i++) {
-	NCTriple* triple = (NCTriple*)nclistget(rc->triples,i);
-        size_t taglen = strlen(triple->tag);
-        int t;
-        if(strcmp(key,triple->key) != 0) continue; /* keys do not match */
-        /* If the triple entry has no tag, then use it
-           (because we have checked all other cases)*/
-        if(taglen == 0) {found=1;break;}
-        /* do tag match */
-        t = strcmp(tag,triple->tag);
-        if(t ==  0) return triple;
-    }
-    return NULL;
 }
 
+static void
+rcfreeentry(NCRCentry* t)
+{
+	nullfree(t->host);
+	nullfree(t->urlpath);
+	nullfree(t->key);
+	nullfree(t->value);
+	free(t);
+}
+
+static void
+rcfreeentries(NClist* rc)
+{
+    size_t i;
+    for(i=0;i<nclistlength(rc);i++) {
+	NCRCentry* t = (NCRCentry*)nclistget(rc,i);
+	rcfreeentry(t);
+    }
+    nclistfree(rc);
+}
+
+/* locate, read and compile the rc files, if any */
 static int
-rcreadline(FILE* f, NCbytes* buf)
+NC_rcload(void)
 {
-    int c;
-    ncbytesclear(buf);
-    for(;;) {
-        c = getc(f);
-        if(c < 0) break; /* eof */
-        if(c == '\n') break; /* eol */
-	ncbytesappend(buf,c);
+    size_t i;
+    int ret = NC_NOERR;
+    char* path = NULL;
+    NCglobalstate* globalstate = NULL;
+    NClist* rcfileorder = nclistnew();
+
+    if(!NCRCinitialized) ncrc_initialize();
+    globalstate = NC_getglobalstate();
+
+    if(globalstate->rcinfo->ignore) {
+        nclog(NCLOGNOTE,".rc file loading suppressed");
+	goto done;
     }
-    ncbytesnull(buf);
-    return 1;
+    if(globalstate->rcinfo->loaded) goto done;
+
+    /* locate the configuration files in order of use:
+       1. Specified by NCRCENV_RC environment variable.
+       2. If NCRCENV_RC is not set then merge the set of rc files in this order:
+	  1. $HOME/.ncrc
+	  2. $HOME/.dodsrc
+	  3. $CWD/.ncrc
+	  4. $CWD/.dodsrc
+	  Entries in later files override any of the earlier files
+    */
+    if(globalstate->rcinfo->rcfile != NULL) { /* always use this */
+	nclistpush(rcfileorder,strdup(globalstate->rcinfo->rcfile));
+    } else {
+	const char** rcname;
+	const char* dirnames[3];
+	const char** dir;
+
+        /* Make sure rcinfo.rchome is defined */
+	ncrc_setrchome();
+	dirnames[0] = globalstate->rcinfo->rchome;
+	dirnames[1] = globalstate->cwd;
+	dirnames[2] = NULL;
+
+        for(dir=dirnames;*dir;dir++) {
+	    for(rcname=rcfilenames;*rcname;rcname++) {
+	        ret = rcsearch(*dir,*rcname,&path);
+		if(ret == NC_NOERR && path != NULL)
+		    nclistpush(rcfileorder,path);
+		path = NULL;
+	    }
+	}
+    }
+    for(i=0;i<nclistlength(rcfileorder);i++) {
+	path = (char*)nclistget(rcfileorder,i);
+	if((ret=rccompile(path))) {
+	    nclog(NCLOGWARN, "Error parsing %s\n",path);
+	    ret = NC_NOERR; /* ignore it */
+	    goto done;
+	}
+    }
+
+done:
+    globalstate->rcinfo->loaded = 1; /* even if not exists */
+    nclistfreeall(rcfileorder);
+    return (ret);
+}
+
+/**
+ * Locate a entry by property key.
+ * If duplicate keys, first takes precedence.
+ * @param key to lookup
+ * @param hostport to use for lookup
+ * @param urlpath to use for lookup
+ * @return the value of the key or NULL if not found.
+ */
+char*
+NC_rclookup(const char* key, const char* hostport, const char* urlpath)
+{
+    struct NCRCentry* entry = NULL;
+    if(!NCRCinitialized) ncrc_initialize();
+    entry = rclocate(key,hostport,urlpath);
+    return (entry == NULL ? NULL : entry->value);
+}
+
+/**
+ * Locate a entry by property key and uri.
+ * If duplicate keys, first takes precedence.
+ */
+char*
+NC_rclookupx(NCURI* uri, const char* key)
+{
+    char* hostport = NULL;
+    char* result = NULL;
+
+    hostport = NC_combinehostport(uri);
+    result = NC_rclookup(key,hostport,uri->path);
+    nullfree(hostport);
+    return result;
+}
+
+#if 0
+/*!
+Set the absolute path to use for the rc file.
+WARNING: this MUST be called before any other
+call in order for this to take effect.
+
+\param[in] rcfile The path to use. If NULL then do not use any rcfile.
+
+\retval OC_NOERR if the request succeeded.
+\retval OC_ERCFILE if the file failed to load
+*/
+
+int
+NC_set_rcfile(const char* rcfile)
+{
+    int stat = NC_NOERR;
+    FILE* f = NULL;
+    NCglobalstate* globalstate = NC_getglobalstate();
+
+    if(rcfile != NULL && strlen(rcfile) == 0)
+	rcfile = NULL;
+    f = NCfopen(rcfile,"r");
+    if(f == NULL) {
+	stat = NC_ERCFILE;
+        goto done;
+    }
+    fclose(f);
+    nullfree(globalstate->rcinfo->rcfile);
+    globalstate->rcinfo->rcfile = strdup(rcfile);
+    /* Clear globalstate->rcinfo */
+    NC_rcclear(&globalstate->rcinfo);
+    /* (re) load the rcfile and esp the entriestore*/
+    stat = NC_rcload();
+done:
+    return stat;
+}
+#endif
+
+/**************************************************/
+/* RC processing functions */
+
+static char*
+rcreadline(char** nextlinep)
+{
+    char* line;
+    char* p;
+
+    line = (p = *nextlinep);
+    if(*p == '\0') return NULL; /*signal done*/
+    for(;*p;p++) {
+	if(*p == '\r' && p[1] == '\n') *p = '\0';
+	else if(*p == '\n') break;
+    }
+    *p++ = '\0'; /* null terminate line; overwrite newline */
+    *nextlinep = p;
+    return line;
 }
 
 /* Trim TRIMCHARS from both ends of text; */
 static void
-rctrim(NCbytes* buf)
+rctrim(char* text)
 {
-    if(nclistlength(buf) == 0) return;
-    for(;;) {
-	int c = ncbytesget(buf,0);
-        if(strchr(TRIMCHARS,c) == NULL) break; /* hit non-trim char */
-	ncbytesremove(buf,0);
+    char* p;
+    char* q;
+    size_t len = 0;
+
+    if(text == NULL || *text == '\0') return;
+
+    len = strlen(text);
+
+    /* elide upto first non-trimchar */
+    for(q=text,p=text;*p;p++) {
+	if(*p != ' ' && *p != '\t' && *p != '\r') {*q++ = *p;}
     }
-    int pos = ncbyteslength(buf) - 1;
-    while(pos >= 0) {
-	int c = ncbytesget(buf,pos);
-        if(strchr(TRIMCHARS,c) == NULL) break; /* hit non-trim char */
-	ncbytesremove(buf,pos);
-	pos--;
+    len = strlen(p);
+    /* locate last non-trimchar */
+    if(len > 0) {
+        for(size_t i = len; i-->0;) {
+	    p = &text[i];
+	    if(*p != ' ' && *p != '\t' && *p != '\r') {break;}
+	    *p = '\0'; /* elide trailing trimchars */
+        }
     }
 }
 
-/* insertion sort the triplestore based on tag */
+/* Order the entries: those with urls must be first,
+   but otherwise relative order does not matter.
+*/
 static void
-sorttriplestore(NCTripleStore* store)
+rcorder(NClist* rc)
 {
-    int i, nsorted, len;
-    NCTriple** content = NULL;
-
-    if(store == NULL) return; /* nothing to sort */
-    len = nclistlength(store->triples);
-    if(len <= 1) return; /* nothing to sort */
-    if(ncdebug > 2)
-        storedump("initial:",store);
-    content = (NCTriple**)nclistdup(store->triples);
-    nclistclear(store->triples);
-    nsorted = 0;
-    while(nsorted < len) {
-        int largest;
-        /* locate first non killed entry */
-        for(largest=0;largest<len;largest++) {
-            if(content[largest]->key[0] != '\0') break;
-        }
-        for(i=0;i<len;i++) {
-            if(content[i]->key[0] != '\0') { /* avoid empty slots */
-                int lexorder = strcmp(content[i]->tag,content[largest]->tag);
-                int leni = strlen(content[i]->tag);
-                int lenlarge = strlen(content[largest]->tag);
-                /* this defines the ordering */
-                if(leni == 0 && lenlarge == 0)
-		    continue; /* if no tags, then leave in order */
-                if(leni != 0 && lenlarge == 0)
-		    largest = i;
-                else if(lexorder > 0)
-		    largest = i;
-            }
-        }
-        /* Move the largest entry */
-	nclistpush(store->triples,content[largest]);
-        content[largest]->key[0] = '\0'; /* kill entry */
-        nsorted++;
-        if(ncdebug > 2)
-	    storedump("pass:",store);
+    size_t i;
+    size_t len = nclistlength(rc);
+    NClist* tmprc = NULL;
+    if(rc == NULL || len == 0) return;
+    tmprc = nclistnew();
+    /* Two passes: 1) pull entries with host */
+    for(i=0;i<len;i++) {
+        NCRCentry* ti = nclistget(rc,i);
+	if(ti->host == NULL) continue;
+	nclistpush(tmprc,ti);
     }
-    free(content);
-    if(ncdebug > 1)
-        storedump("final .rc order:",store);
+    /* pass 2 pull entries without host*/
+    for(i=0;i<len;i++) {
+        NCRCentry* ti = nclistget(rc,i);
+	if(ti->host != NULL) continue;
+	nclistpush(tmprc,ti);
+    }
+    /* Move tmp to rc */
+    nclistsetlength(rc,0);
+    for(i=0;i<len;i++) {
+        NCRCentry* ti = nclistget(tmprc,i);
+	nclistpush(rc,ti);
+    }
+#ifdef DRCDEBUG
+    storedump("reorder:",rc);
+#endif
+    nclistfree(tmprc);
 }
 
-/* Create a triple store from a file */
+/* Merge a entry store from a file*/
 static int
-rc_compile(const char* path)
+rccompile(const char* filepath)
 {
-    FILE *in_file = NULL;
-    int linecount = 0;
-    NCbytes* buf;
-    NCTripleStore* rc;
+    int ret = NC_NOERR;
+    NClist* rc = NULL;
+    char* contents = NULL;
+    NCbytes* tmp = ncbytesnew();
+    NCURI* uri = NULL;
+    char* nextline = NULL;
+    NCglobalstate* globalstate = NC_getglobalstate();
+    NCS3INFO s3;
 
-    rc = &ncrc_store;
-    memset(rc,0,sizeof(NCTripleStore));
-    rc->triples = nclistnew();
+    memset(&s3,0,sizeof(s3));
 
-    in_file = fopen(path, "r"); /* Open the file to read it */
-    if (in_file == NULL) {
-        nclog(NCLOGERR, "Could not open configuration file: %s",path);
-        return NC_EPERM;
+    if((ret=NC_readfile(filepath,tmp))) {
+        nclog(NCLOGWARN, "Could not open configuration file: %s",filepath);
+	goto done;
     }
-
-    buf =  ncbytesnew();
+    contents = ncbytesextract(tmp);
+    if(contents == NULL) contents = strdup("");
+    /* Either reuse or create new  */
+    rc = globalstate->rcinfo->entries;
+    if(rc == NULL) {
+        rc = nclistnew();
+        globalstate->rcinfo->entries = rc;
+    }
+    nextline = contents;
     for(;;) {
-        int c;
-	int pos;
 	char* line;
-	size_t len,count;
-	char* value;
+	char* key = NULL;
+        char* value = NULL;
+        char* host = NULL;
+        char* urlpath = NULL;
+	size_t llen;
+        NCRCentry* entry;
 
-        if(!rcreadline(in_file,buf)) break;
-        linecount++;
-        rctrim(buf);  /* trim leading and trailing blanks */
-        len = ncbyteslength(buf);
-	line = ncbytescontents(buf);
-
-	if(len == 0) continue;
-        if(line[0] == '#') continue; /* check for comment */
-
-        /* setup */
-	NCTriple* triple = (NCTriple*)calloc(1,sizeof(NCTriple));
-	if(triple == NULL) {
-            nclog(NCLOGERR, "Out of memory reading rc file: %s",path);
-	    goto done;
-	}	
-        nclistpush(rc->triples,triple);
-	c = line[0];
-        if(c == LTAG) {
-	    int i;
-	    for(i=0;i<len;i++) {
-		if(line[i] != RTAG) break;
+	line = rcreadline(&nextline);
+	if(line == NULL) break; /* done */
+        rctrim(line);  /* trim leading and trailing blanks */
+        if(line[0] == '#') continue; /* comment */
+	if((llen=strlen(line)) == 0) continue; /* empty line */
+	if(line[0] == LTAG) {
+	    char* url = ++line;
+            char* rtag = strchr(line,RTAG);
+            if(rtag == NULL) {
+                nclog(NCLOGERR, "Malformed [url] in %s entry: %s",filepath,line);
+		continue;
+            }
+            line = rtag + 1;
+            *rtag = '\0';
+            /* compile the url and pull out the host, port, and path */
+            if(uri) ncurifree(uri);
+            if(ncuriparse(url,&uri)) {
+                nclog(NCLOGERR, "Malformed [url] in %s entry: %s",filepath,line);
+		continue;
+            }
+	    if(NC_iss3(uri,NULL)) {
+	         NCURI* newuri = NULL;
+	        /* Rebuild the url to S3 "path" format */
+		NC_s3clear(&s3);
+	        if((ret = NC_s3urlrebuild(uri,&s3,&newuri))) goto done;
+		ncurifree(uri);
+		uri = newuri;
+		newuri = NULL;
 	    }
-	    if(i == len) {/* RTAG is missing */
-		nclog(NCLOGERR, "Line has missing %c: %s",RTAG,line);
-	        goto done;
-	    }
-	    count = (i - 1);
-	    if(count > 0) {
-		triple->tag = (char*)malloc(count+1);
-		if(triple->tag == NULL) {goto done;}
-		memcpy(triple->tag,&line[1],count);
-	    }
-	    memmove(line,&line[count]+1,count+2); /* remove [...] */
+	    /* Get the host+port */
+            ncbytesclear(tmp);
+            ncbytescat(tmp,uri->host);
+            if(uri->port != NULL) {
+		ncbytesappend(tmp,':');
+                ncbytescat(tmp,uri->port);
+            }
+            ncbytesnull(tmp);
+            host = ncbytesextract(tmp);
+	    if(strlen(host)==0) /* nullify host */
+		{free(host); host = NULL;}
+	    /* Get the url path part */
+	    urlpath = uri->path;
+	    if(urlpath && strlen(urlpath)==0) urlpath = NULL; /* nullify */
 	}
         /* split off key and value */
+        key=line;
         value = strchr(line, '=');
         if(value == NULL)
             value = line + strlen(line);
@@ -304,121 +512,241 @@ rc_compile(const char* path)
             *value = '\0';
             value++;
         }
-	triple->key = strdup(line);
-	if(*value == '\0')
-	    triple->value = strdup("1");	    
-	else
-	    triple->value = strdup(value);
+	/* See if key already exists */
+	entry = rclocate(key,host,urlpath);
+	if(entry == NULL) {
+	    entry = (NCRCentry*)calloc(1,sizeof(NCRCentry));
+	    if(entry == NULL) {ret = NC_ENOMEM; goto done;}
+	    nclistpush(rc,entry);
+	    entry->host = host; host = NULL;
+	    entry->urlpath = nulldup(urlpath);
+    	    entry->key = nulldup(key);
+            rctrim(entry->host);
+            rctrim(entry->urlpath);
+            rctrim(entry->key);
+	}
+	nullfree(entry->value);
+        entry->value = nulldup(value);
+        rctrim(entry->value);
+
+#ifdef DRCDEBUG
+	fprintf(stderr,"rc: host=%s urlpath=%s key=%s value=%s\n",
+		(entry->host != NULL ? entry->host : "<null>"),
+		(entry->urlpath != NULL ? entry->urlpath : "<null>"),
+		entry->key,entry->value);
+#endif
+	entry = NULL;
     }
+#ifdef DRCDEBUG
+    fprintf(stderr,"reorder.path=%s\n",filepath);
+#endif
+    rcorder(rc);
+
 done:
-    fclose(in_file);
-    sorttriplestore(rc);
+    NC_s3clear(&s3);
+    if(contents) free(contents);
+    ncurifree(uri);
+    ncbytesfree(tmp);
+    return (ret);
+}
+
+/**
+Encapsulate equality comparison: return 1|0
+*/
+static int
+rcequal(NCRCentry* e1, NCRCentry* e2)
+{
+    int nulltest;
+    if(e1->key == NULL || e2->key == NULL) return 0;
+    if(strcmp(e1->key,e2->key) != 0) return 0;
+    /* test hostport; take NULL into account*/
+    nulltest = 0;
+    if(e1->host == NULL) nulltest |= 1;
+    if(e2->host == NULL) nulltest |= 2;
+    /* Use host to decide if entry applies */
+    switch (nulltest) {
+    case 0: if(strcmp(e1->host,e2->host) != 0) {return 0;}  break;
+    case 1: break;    /* .rc->host == NULL && candidate->host != NULL */
+    case 2: return 0; /* .rc->host != NULL && candidate->host == NULL */
+    case 3: break;    /* .rc->host == NULL && candidate->host == NULL */
+    default: return 0;
+    }
+    /* test urlpath take NULL into account*/
+    nulltest = 0;
+    if(e1->urlpath == NULL) nulltest |= 1;
+    if(e2->urlpath == NULL) nulltest |= 2;
+    switch (nulltest) {
+    case 0: if(strcmp(e1->urlpath,e2->urlpath) != 0) {return 0;} break;
+    case 1: break;    /* .rc->urlpath == NULL && candidate->urlpath != NULL */
+    case 2: return 0; /* .rc->urlpath != NULL && candidate->urlpath == NULL */
+    case 3: break;    /* .rc->urlpath == NULL && candidate->urlpath == NULL */
+    default: return 0;
+    }
     return 1;
 }
 
+/**
+ * (Internal) Locate a entry by property key and host+port (may be null) and urlpath (may be null)
+ * If duplicate keys, first takes precedence.
+ */
+static int
+rclocatepos(const char* key, const char* hostport, const char* urlpath)
+{
+    size_t i;
+    NCglobalstate* globalstate = NC_getglobalstate();
+    struct NCRCinfo* info = globalstate->rcinfo;
+    NCRCentry* entry = NULL;
+    NCRCentry candidate;
+    NClist* rc = info->entries;
+
+    if(info->ignore) return -1;
+
+    candidate.key = (char*)key;
+    candidate.value = (char*)NULL;
+    candidate.host = (char*)hostport;
+    candidate.urlpath = (char*)urlpath;
+
+    for(i=0;i<nclistlength(rc);i++) {
+      entry = (NCRCentry*)nclistget(rc,i);
+      if(rcequal(entry,&candidate)) return (int)i;
+    }
+    return -1;
+}
+
+/**
+ * (Internal) Locate a entry by property key and host+port (may be null or "").
+ * If duplicate keys, first takes precedence.
+ */
+static struct NCRCentry*
+rclocate(const char* key, const char* hostport, const char* urlpath)
+{
+    int pos;
+    NCglobalstate* globalstate = NC_getglobalstate();
+    struct NCRCinfo* info = globalstate->rcinfo;
+
+    if(globalstate->rcinfo->ignore) return NULL;
+    if(key == NULL || info == NULL) return NULL;
+    pos = rclocatepos(key,hostport,urlpath);
+    if(pos < 0) return NULL;
+    return NC_rcfile_ith(info,(size_t)pos);
+}
+
+/**
+ * Locate rc file by searching in directory prefix.
+ */
+static
+int
+rcsearch(const char* prefix, const char* rcname, char** pathp)
+{
+    char* path = NULL;
+    FILE* f = NULL;
+    size_t plen = (prefix?strlen(prefix):0);
+    size_t rclen = strlen(rcname);
+    int ret = NC_NOERR;
+
+    size_t pathlen = plen+rclen+1+1; /*+1 for '/' +1 for nul */
+    path = (char*)malloc(pathlen); /* +1 for nul*/
+    if(path == NULL) {ret = NC_ENOMEM;	goto done;}
+    snprintf(path, pathlen, "%s/%s", prefix, rcname);
+    /* see if file is readable */
+    f = NCfopen(path,"r");
+    if(f != NULL)
+        nclog(NCLOGNOTE, "Found rc file=%s",path);
+done:
+    if(f == NULL || ret != NC_NOERR) {
+	nullfree(path);
+	path = NULL;
+    }
+    if(f != NULL)
+      fclose(f);
+    if(pathp != NULL)
+      *pathp = path;
+    else {
+      nullfree(path);
+      path = NULL;
+    }
+    errno = 0; /* silently ignore errors */
+    return (ret);
+}
+
+int
+NC_rcfile_insert(const char* key, const char* hostport, const char* urlpath, const char* value)
+{
+    int ret = NC_NOERR;
+    /* See if this key already defined */
+    struct NCRCentry* entry = NULL;
+    NCglobalstate* globalstate = NULL;
+    NClist* rc = NULL;
+
+    if(!NCRCinitialized) ncrc_initialize();
+
+    if(key == NULL || value == NULL)
+        {ret = NC_EINVAL; goto done;}
+
+    globalstate = NC_getglobalstate();
+    rc = globalstate->rcinfo->entries;
+
+    if(rc == NULL) {
+	rc = nclistnew();
+        globalstate->rcinfo->entries = rc;
+	if(rc == NULL) {ret = NC_ENOMEM; goto done;}
+    }
+    entry = rclocate(key,hostport,urlpath);
+    if(entry == NULL) {
+	entry = (NCRCentry*)calloc(1,sizeof(NCRCentry));
+	if(entry == NULL) {ret = NC_ENOMEM; goto done;}
+	entry->key = strdup(key);
+	entry->value = NULL;
+        rctrim(entry->key);
+        entry->host = nulldup(hostport);
+        rctrim(entry->host);
+        entry->urlpath = nulldup(urlpath);
+        rctrim(entry->urlpath);
+	nclistpush(rc,entry);
+    }
+    if(entry->value != NULL) free(entry->value);
+    entry->value = strdup(value);
+    rctrim(entry->value);
+#ifdef DRCDEBUG
+    storedump("NC_rcfile_insert",rc);
+#endif    
+done:
+    return ret;
+}
+
+/* Obtain the count of number of entries */
+size_t
+NC_rcfile_length(NCRCinfo* info)
+{
+    return nclistlength(info->entries);
+}
+
+/* Obtain the ith entry; return NULL if out of range */
+NCRCentry*
+NC_rcfile_ith(NCRCinfo* info, size_t i)
+{
+    if(i >= nclistlength(info->entries))
+	return NULL;
+    return (NCRCentry*)nclistget(info->entries,i);
+}
 
 
+#ifdef DRCDEBUG
 static void
-storedump(char* msg, NCTripleStore* rc)
+storedump(char* msg, NClist* entries)
 {
     int i;
 
     if(msg != NULL) fprintf(stderr,"%s\n",msg);
-    if(rc == NULL || nclistlength(rc->triples) == 0) {
+    if(entries == NULL || nclistlength(entries)==0) {
         fprintf(stderr,"<EMPTY>\n");
         return;
     }
-    for(i=0;i<nclistlength(rc->triples);i++) {
-	NCTriple* triple = (NCTriple*)nclistget(rc->triples,i);
-	if(triple->tag == NULL)
-	    fprintf(stderr,"[%s]",triple->tag);
-        fprintf(stderr,"%s=%s\n",triple->key,triple->value);
+    for(i=0;i<nclistlength(entries);i++) {
+	NCRCentry* t = (NCRCentry*)nclistget(entries,i);
+        fprintf(stderr,"\t%s\t%s\t%s\n",
+                ((t->host == NULL || strlen(t->host)==0)?"--":t->host),t->key,t->value);
     }
     fflush(stderr);
 }
-
-static int
-rc_search(const char* prefix, const char* rcname, char** pathp)
-{
-    char* path = NULL;
-    FILE* f = NULL;
-    int plen = strlen(prefix);
-    int rclen = strlen(rcname);
-    int stat = NC_NOERR;
-
-    size_t pathlen = plen+rclen+1+1; /*+1 for '/' +1 for nul*/
-    path = (char*)malloc(pathlen);
-    if(path == NULL) {
-	stat = NC_ENOMEM;
-	goto done;
-    }
-    if(!copycat(path,pathlen,3,prefix,"/",rcname)) {
-        stat = NC_ENOMEM;
-	goto done;
-    }
-    /* see if file is readable */
-    f = fopen(path,"r");
-    if(f != NULL)
-        nclog(NCLOGDBG, "Found rc file=%s",path);
-done:
-    if(f == NULL || stat != NC_NOERR) {
-	if(path != NULL)
-	    free(path);
-	path = NULL;
-    }
-    if(f != NULL)
-	fclose(f);
-    if(pathp != NULL)
-	*pathp = path;
-    return stat;
-}
-
-/*
-Instead of using snprintf to concatenate
-multiple strings into a given target,
-provide a direct concatenator.
-So, this function concats the n argument strings
-and overwrites the contents of dst.
-Care is taken to never overrun the available
-space (the size parameter).
-Note that size is assumed to include the null
-terminator and that in the event of overrun,
-the string will have a null at dst[size-1].
-Return 0 if overrun, 1 otherwise.
-*/
-static int
-copycat(char* dst, size_t size, size_t n, ...)
-{
-    va_list args;
-    size_t avail = size - 1;
-    int i; 
-    int status = 1; /* assume ok */
-    char* p = dst;
-
-    if(n == 0) {
-	if(size > 0)
-	    dst[0] = '\0';
-	return (size > 0 ? 1: 0);
-    }
-	
-    va_start(args,n);
-    for(i=0;i<n;i++) {
-	char* q = va_arg(args, char*);
-	for(;;) {
-	    int c = *q++;
-	    if(c == '\0') break;
-	    if(avail == 0) {status = 0; goto done;}
-	    *p++ = c;
-	    avail--;
-	}
-    }
-    /* make sure we null terminate;
-       note that since avail was size-1, there
-       will always be room
-    */
-    *p = '\0';    
-
-done:
-    va_end(args);
-    return status;    
-}
+#endif

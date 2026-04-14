@@ -1,22 +1,6 @@
-/*=========================================================================
-
-Program:   Visualization Toolkit
-Module:    vtkOrderStatistics.h
-
-Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-All rights reserved.
-See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-This software is distributed WITHOUT ANY WARRANTY; without even
-the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-/*-------------------------------------------------------------------------
-  Copyright 2011 Sandia Corporation.
-  Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-  the U.S. Government retains certain rights in this software.
-  -------------------------------------------------------------------------*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-FileCopyrightText: Copyright 2011 Sandia Corporation
+// SPDX-License-Identifier: LicenseRef-BSD-3-Clause-Sandia-USGov
 /**
  * @class   vtkOrderStatistics
  * @brief   A class for univariate order statistics
@@ -38,7 +22,7 @@ PURPOSE.  See the above copyright notice for more information.
  * Thanks to Philippe Pebay and David Thompson from Sandia National Laboratories
  * for implementing this class.
  * Updated by Philippe Pebay, Kitware SAS 2012
-*/
+ */
 
 #ifndef vtkOrderStatistics_h
 #define vtkOrderStatistics_h
@@ -46,7 +30,8 @@ PURPOSE.  See the above copyright notice for more information.
 #include "vtkFiltersStatisticsModule.h" // For export macro
 #include "vtkStatisticsAlgorithm.h"
 
-class vtkMultiBlockDataSet;
+VTK_ABI_NAMESPACE_BEGIN
+class vtkStatisticalModel;
 class vtkStringArray;
 class vtkTable;
 class vtkVariant;
@@ -58,68 +43,76 @@ public:
   void PrintSelf(ostream& os, vtkIndent indent) override;
   static vtkOrderStatistics* New();
 
+  /// Order statistics requests are univariate.
+  int GetMaximumNumberOfColumnsPerRequest() const override { return 1; }
+
   /**
    * The type of quantile definition.
    */
-  enum QuantileDefinitionType {
-    InverseCDF              = 0, // Identical to method 1 of R
+  enum QuantileDefinitionType
+  {
+    InverseCDF = 0,              // Identical to method 1 of R
     InverseCDFAveragedSteps = 1, // Identical to method 2 of R, ignored for non-numeric types
-    NearestObservation      = 2  // Identical to method 3 of R
+    NearestObservation = 2       // Identical to method 3 of R
   };
 
-  //@{
+  ///@{
   /**
    * Set/Get the number of quantiles (with uniform spacing).
    */
-  vtkSetMacro( NumberOfIntervals, vtkIdType );
-  vtkGetMacro( NumberOfIntervals, vtkIdType );
-  //@}
+  vtkSetMacro(NumberOfIntervals, vtkIdType);
+  vtkGetMacro(NumberOfIntervals, vtkIdType);
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Set the quantile definition.
    */
-  vtkSetMacro( QuantileDefinition, QuantileDefinitionType );
-  void SetQuantileDefinition ( int );
-  //@}
+  vtkSetMacro(QuantileDefinition, QuantileDefinitionType);
+  void SetQuantileDefinition(int);
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Set/Get whether quantization will be allowed to enforce maximum histogram size.
    */
-  vtkSetMacro( Quantize, bool );
-  vtkGetMacro( Quantize, bool );
-  //@}
+  vtkSetMacro(Quantize, bool);
+  vtkGetMacro(Quantize, bool);
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Set/Get the maximum histogram size.
    * This maximum size is enforced only when Quantize is TRUE.
    */
-  vtkSetMacro( MaximumHistogramSize, vtkIdType );
-  vtkGetMacro( MaximumHistogramSize, vtkIdType );
-  //@}
+  vtkSetMacro(MaximumHistogramSize, vtkIdType);
+  vtkGetMacro(MaximumHistogramSize, vtkIdType);
+  ///@}
 
   /**
    * Get the quantile definition.
    */
-  vtkIdType GetQuantileDefinition() { return static_cast<vtkIdType>( this->QuantileDefinition ); }
+  vtkIdType GetQuantileDefinition() { return static_cast<vtkIdType>(this->QuantileDefinition); }
 
   /**
    * A convenience method (in particular for access from other applications) to
    * set parameter values.
    * Return true if setting of requested parameter name was executed, false otherwise.
    */
-  bool SetParameter( const char* parameter,
-                     int index,
-                     vtkVariant value ) override;
+  bool SetParameter(const char* parameter, int index, vtkVariant value) override;
 
   /**
    * Given a collection of models, calculate aggregate model
    * NB: not implemented
    */
-  void Aggregate( vtkDataObjectCollection*,
-                          vtkMultiBlockDataSet* ) override { return; };
+  bool Aggregate(vtkDataObjectCollection*, vtkStatisticalModel*) override { return false; }
+
+  /// Provide a string that can be used to recreate an instance of this algorithm.
+  void AppendAlgorithmParameters(std::string& algorithmParameters) const override;
+
+  /// Implement the inverse of AppendAlgorithmParameters(): given parameters, update this algorithm.
+  std::size_t ConsumeNextAlgorithmParameter(
+    vtkStringToken parameterName, const std::string& algorithmParameters) override;
 
 protected:
   vtkOrderStatistics();
@@ -128,37 +121,31 @@ protected:
   /**
    * Execute the calculations required by the Learn option.
    */
-  void Learn( vtkTable*,
-              vtkTable*,
-              vtkMultiBlockDataSet* ) override;
+  void Learn(vtkTable*, vtkTable*, vtkStatisticalModel*) override;
 
   /**
    * Execute the calculations required by the Derive option.
    */
-  void Derive( vtkMultiBlockDataSet* ) override;
+  void Derive(vtkStatisticalModel*) override;
 
   /**
    * Execute the calculations required by the Test option.
    */
-  void Test( vtkTable*,
-             vtkMultiBlockDataSet*,
-             vtkTable* ) override;
+  void Test(vtkTable*, vtkStatisticalModel*, vtkTable*) override;
 
   /**
    * Execute the calculations required by the Assess option.
    */
-  void Assess( vtkTable* inData,
-               vtkMultiBlockDataSet* inMeta,
-               vtkTable* outData ) override
-  { this->Superclass::Assess( inData, inMeta, outData, 1 ); }
+  void Assess(vtkTable* inData, vtkStatisticalModel* inMeta, vtkTable* outData) override
+  {
+    this->Superclass::Assess(inData, inMeta, outData, 1);
+  }
 
   /**
    * Provide the appropriate assessment functor.
    */
-  void SelectAssessFunctor( vtkTable* outData,
-                            vtkDataObject* inMeta,
-                            vtkStringArray* rowNames,
-                            AssessFunctor*& dfunc ) override;
+  void SelectAssessFunctor(vtkTable* outData, vtkDataObject* inMeta, vtkStringArray* rowNames,
+    AssessFunctor*& dfunc) override;
 
   vtkIdType NumberOfIntervals;
   QuantileDefinitionType QuantileDefinition;
@@ -170,4 +157,5 @@ private:
   void operator=(const vtkOrderStatistics&) = delete;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

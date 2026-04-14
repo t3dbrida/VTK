@@ -1,20 +1,9 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkInteractorStyleRubberBandPick.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkInteractorStyleRubberBandPick
- * @brief   Like TrackBallCamera, but this can pick props underneath a rubber band selection rectangle.
+ * @brief   Like TrackBallCamera, but this can pick props underneath a rubber band selection
+ * rectangle.
  *
  *
  * This interactor style allows the user to draw a rectangle in the render
@@ -27,26 +16,30 @@
  *
  * @sa
  * vtkAreaPicker
-*/
+ */
 
 #ifndef vtkInteractorStyleRubberBandPick_h
 #define vtkInteractorStyleRubberBandPick_h
 
 #include "vtkInteractionStyleModule.h" // For export macro
 #include "vtkInteractorStyleTrackballCamera.h"
+#include "vtkWrappingHints.h" // For VTK_MARSHALAUTO
 
+VTK_ABI_NAMESPACE_BEGIN
 class vtkUnsignedCharArray;
 
-class VTKINTERACTIONSTYLE_EXPORT vtkInteractorStyleRubberBandPick : public vtkInteractorStyleTrackballCamera
+class VTKINTERACTIONSTYLE_EXPORT VTK_MARSHALAUTO vtkInteractorStyleRubberBandPick
+  : public vtkInteractorStyleTrackballCamera
 {
 public:
-  static vtkInteractorStyleRubberBandPick *New();
+  static vtkInteractorStyleRubberBandPick* New();
   vtkTypeMacro(vtkInteractorStyleRubberBandPick, vtkInteractorStyleTrackballCamera);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
   void StartSelect();
+  void StopSelect();
 
-  //@{
+  ///@{
   /**
    * Event bindings
    */
@@ -54,7 +47,7 @@ public:
   void OnLeftButtonDown() override;
   void OnLeftButtonUp() override;
   void OnChar() override;
-  //@}
+  ///@}
 
 protected:
   vtkInteractorStyleRubberBandPick();
@@ -68,7 +61,7 @@ protected:
 
   int Moving;
 
-  vtkUnsignedCharArray *PixelArray;
+  vtkUnsignedCharArray* PixelArray;
 
   int CurrentMode;
 
@@ -77,4 +70,5 @@ private:
   void operator=(const vtkInteractorStyleRubberBandPick&) = delete;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

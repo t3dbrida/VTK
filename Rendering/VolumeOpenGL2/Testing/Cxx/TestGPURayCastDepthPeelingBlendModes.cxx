@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestGPURayCastBlendModes.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even
-  the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-  PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 /**
  * Tests support for blend modes with translucent geometry (similar to
@@ -39,11 +27,12 @@
 #include "vtkRenderWindowInteractor.h"
 #include "vtkRenderer.h"
 #include "vtkSphereSource.h"
-#include "vtkTestingObjectFactory.h"
 #include "vtkVolume.h"
 #include "vtkVolumeProperty.h"
 
-int TestGPURayCastDepthPeelingBlendModes(int argc, char *argv[])
+#include <iostream>
+
+int TestGPURayCastDepthPeelingBlendModes(int argc, char* argv[])
 {
   // Volume peeling is only supported through the dual depth peeling algorithm.
   // If the current system only supports the legacy peeler, skip this test:
@@ -54,12 +43,12 @@ int TestGPURayCastDepthPeelingBlendModes(int argc, char *argv[])
   vtkNew<vtkRenderer> ren;
   renWin->Render(); // Create the context
   renWin->AddRenderer(ren);
-  vtkOpenGLRenderer *oglRen = vtkOpenGLRenderer::SafeDownCast(ren);
+  vtkOpenGLRenderer* oglRen = vtkOpenGLRenderer::SafeDownCast(ren);
   assert(oglRen); // This test should only be enabled for OGL2 backend.
   // This will print details about why depth peeling is unsupported:
-  oglRen->SetDebug(1);
+  oglRen->SetDebug(true);
   bool supported = oglRen->IsDualDepthPeelingSupported();
-  oglRen->SetDebug(0);
+  oglRen->SetDebug(false);
   if (!supported)
   {
     std::cerr << "Skipping test; volume peeling not supported.\n";
@@ -67,10 +56,10 @@ int TestGPURayCastDepthPeelingBlendModes(int argc, char *argv[])
   }
   renWin->RemoveRenderer(ren);
 
-  cout << "CTEST_FULL_OUTPUT (Avoid ctest truncation of output)" << endl;
+  std::cout << "CTEST_FULL_OUTPUT (Avoid ctest truncation of output)" << std::endl;
 
-  int dims[3] = {100, 100, 100};
-  int boundary[3] = {10, 10, 10};
+  int dims[3] = { 100, 100, 100 };
+  int boundary[3] = { 10, 10, 10 };
 
   // Create a vtkImageData with two components
   vtkNew<vtkImageData> image;
@@ -79,8 +68,7 @@ int TestGPURayCastDepthPeelingBlendModes(int argc, char *argv[])
 
   // Fill the first half rectangular parallelopiped along X with the
   // first component values and the second half with second component values
-  unsigned char * ptr =
-    static_cast<unsigned char *> (image->GetScalarPointer(0, 0, 0));
+  unsigned char* ptr = static_cast<unsigned char*>(image->GetScalarPointer(0, 0, 0));
 
   for (int z = 0; z < dims[2]; ++z)
   {
@@ -89,8 +77,8 @@ int TestGPURayCastDepthPeelingBlendModes(int argc, char *argv[])
       for (int x = 0; x < dims[0]; ++x)
       {
         if ((z < boundary[2] || z > (dims[2] - boundary[2] - 1)) ||
-            (y < boundary[1] || y > (dims[1] - boundary[1] - 1)) ||
-            (x < boundary[0] || x > (dims[0] - boundary[0] - 1)))
+          (y < boundary[1] || y > (dims[1] - boundary[1] - 1)) ||
+          (x < boundary[0] || x > (dims[0] - boundary[0] - 1)))
         {
           *ptr++ = 255;
         }

@@ -1,7 +1,7 @@
 /*! \file
   Functions for VLEN Types
 
-  Copyright 2011 University Corporation for Atmospheric
+  Copyright 2018 University Corporation for Atmospheric
   Research/Unidata. See \ref copyright file for more info. */
 
 #include "ncdispatch.h"
@@ -13,51 +13,54 @@
 
 /** 
 \ingroup user_types 
-Free memory in a VLEN object. 
+Free an array of vlens given the number of elements and an array. 
 
-When you read VLEN type the library will actually allocate the storage
-space for the data. This storage space must be freed, so pass the
-pointer back to this function, when you're done with the data, and it
-will free the vlen memory.
+When you read an array of VLEN typed instances, the library will allocate
+the storage space for the data in each VLEN in the array (but not the array itself).
+That VLEN data must be freed eventually, so pass the pointer to the array plus
+the number of elements in the array to this function when you're done with
+the data, and it will free the all the VLEN instances.
+The caller is still responsible for free'ing the array itself,
+if it was dynamically allocated.
 
-The function nc_free_vlens() is more useful than this function,
-because it can free an array of VLEN objects.
+WARNING: this function only works if the basetype of the vlen type
+is fixed size. This means it is an atomic type except NC_STRING,
+or an NC_ENUM, or and NC_OPAQUE, or an NC_COMPOUND where all
+the fields of the compound type are themselves fixed size.
+
+If you have a more complex VLEN base-type, then it is better to call
+the "nc_reclaim_data" function.
+
+\param nelems number of elements in the array.
+\param vlens pointer to the vlen object.
+
+\returns ::NC_NOERR No error.
+*/ 
+int
+nc_free_vlens(size_t nelems, nc_vlen_t vlens[])
+{
+   int ret;
+   size_t i;
+
+   for(i = 0; i < nelems; i++) 
+      if ((ret = nc_free_vlen(&vlens[i])))
+	 return ret;
+
+   return NC_NOERR;
+}
+
+/** 
+\ingroup user_types 
+Free memory in a single VLEN object. 
+This function is equivalent to calling *nc_free_vlens* with nelems == 1.
 
 \param vl pointer to the vlen object.
-
 \returns ::NC_NOERR No error.
 */
 int
 nc_free_vlen(nc_vlen_t *vl)
 {
    free(vl->p);
-   return NC_NOERR;
-}
-
-/** 
-\ingroup user_types 
-Free an array of vlens given the number of elements and an array. 
-
-When you read VLEN type the library will actually allocate the storage
-space for the data. This storage space must be freed, so pass the
-pointer back to this function, when you're done with the data, and it
-will free the vlen memory.
-
-\param len number of elements in the array.
-\param vlens pointer to the vlen object.
-
-\returns ::NC_NOERR No error.
-*/ 
-int
-nc_free_vlens(size_t len, nc_vlen_t vlens[])
-{
-   int ret;
-   size_t i;
-
-   for(i = 0; i < len; i++) 
-      if ((ret = nc_free_vlen(&vlens[i])))
-	 return ret;
-
    return NC_NOERR;
 }
 
@@ -134,7 +137,7 @@ Fortran APIs.
 \param ncid \ref ncid
 \param typeid1 Typeid of the VLEN.
 \param vlen_element Pointer to the element of the VLEN.
-\param len Lenth of the VLEN element.
+\param len Length of the VLEN element.
 \param data VLEN data.
 
 \returns ::NC_NOERR No error.
@@ -163,7 +166,7 @@ Fortran APIs.
 \param ncid \ref ncid
 \param typeid1 Typeid of the VLEN.
 \param vlen_element Pointer to the element of the VLEN.
-\param len Lenth of the VLEN element.
+\param len Length of the VLEN element.
 \param data VLEN data.
 
 \returns ::NC_NOERR No error.

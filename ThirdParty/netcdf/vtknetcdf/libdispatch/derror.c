@@ -3,25 +3,24 @@ Error messages and library version.
 
 These functions return the library version, and error messages.
 
-Copyright 2010 University Corporation for Atmospheric
+Copyright 2018 University Corporation for Atmospheric
 Research/Unidata. See COPYRIGHT file for more info.
 */
 
+#include "config.h"
 #include "ncdispatch.h"
 #ifdef USE_PNETCDF
 #include <pnetcdf.h>  /* for ncmpi_strerror() */
 #endif
 
-/* Tell the user the version of netCDF. */
+/** @internal The version string for the library, used by
+ * nc_inq_libvers(). */
 static const char nc_libvers[] = PACKAGE_VERSION " of "__DATE__" "__TIME__" $";
 
 /**
-\defgroup lib_version Library Version
-  Functions related to querying the library version.
+Return the library version.
 
-  Return the library version.
-
-  \returns short string that contains the version information for the
+\returns short string that contains the version information for the
 library.
  */
 const char *
@@ -118,20 +117,20 @@ const char *nc_strerror(int ncerr1)
       case NC_EINVALCOORDS:
 	 return "NetCDF: Index exceeds dimension bound";
       case NC_EMAXDIMS:
-	 return "NetCDF: NC_MAX_DIMS exceeded";
+	 return "NetCDF: NC_MAX_DIMS exceeded"; /* not enforced after 4.5.0 */
       case NC_ENAMEINUSE:
 	 return "NetCDF: String match to name in use";
       case NC_ENOTATT:
 	 return "NetCDF: Attribute not found";
       case NC_EMAXATTS:
-	 return "NetCDF: NC_MAX_ATTRS exceeded";
+	 return "NetCDF: NC_MAX_ATTRS exceeded"; /* not enforced after 4.5.0 */
       case NC_EBADTYPE:
 	 return "NetCDF: Not a valid data type or _FillValue type mismatch";
       case NC_EBADDIM:
 	 return "NetCDF: Invalid dimension ID or name";
       case NC_EUNLIMPOS:
 	 return "NetCDF: NC_UNLIMITED in the wrong index";
-      case NC_EMAXVARS:	 return "NetCDF: NC_MAX_VARS exceeded";
+      case NC_EMAXVARS:	 return "NetCDF: NC_MAX_VARS exceeded"; /* not enforced after 4.5.0 */
       case NC_ENOTVAR:
 	 return "NetCDF: Variable not found";
       case NC_EGLOBAL:
@@ -173,15 +172,15 @@ const char *nc_strerror(int ncerr1)
       case NC_EIO:
 	 return "NetCDF: I/O failure";
       case NC_ENODATA:
-	 return "NetCDF: Variable has no data in DAP request";
+	 return "NetCDF: Variable has no data";
       case NC_EDAPSVC:
 	 return "NetCDF: DAP server error";
       case NC_EDAS:
 	 return "NetCDF: Malformed or inaccessible DAP DAS";
       case NC_EDDS:
-	 return "NetCDF: Malformed or inaccessible DAP DDS";
+	 return "NetCDF: Malformed or inaccessible DAP2 DDS or DAP4 DMR response";
       case NC_EDATADDS:
-	 return "NetCDF: Malformed or inaccessible DAP DATADDS";
+	 return "NetCDF: Malformed or inaccessible DAP2 DATADDS or DAP4 DAP response";
       case NC_EDAPURL:
 	 return "NetCDF: Malformed URL";
       case NC_EDAPCONSTRAINT:
@@ -194,10 +193,12 @@ const char *nc_strerror(int ncerr1)
 	 return "NetCDF: Authorization failure";
       case NC_ENOTFOUND:
 	 return "NetCDF: file not found";
-      case NC_ECANTEXTEND:
-	return "NetCDF: Attempt to extend dataset during NC_INDEPENDENT I/O operation. Use nc_var_par_access to set mode NC_COLLECTIVE before extending variable.";
       case NC_ECANTREMOVE:
 	 return "NetCDF: cannot delete file";
+      case NC_EINTERNAL:
+	 return "NetCDF: internal library error; Please contact Unidata support";
+      case NC_EPNETCDF:
+	 return "NetCDF: PnetCDF error";
       case NC_EHDFERR:
 	 return "NetCDF: HDF error";
       case NC_ECANTREAD:
@@ -217,7 +218,7 @@ const char *nc_strerror(int ncerr1)
       case NC_ENOCOMPOUND:
 	 return "NetCDF: Can't create HDF5 compound type";
       case NC_EATTEXISTS:
-	 return "NetCDF: Attempt to create attribute that alread exists";
+	 return "NetCDF: Attempt to create attribute that already exists";
       case NC_ENOTNC4:
 	 return "NetCDF: Attempting netcdf-4 operation on netcdf-3 file";
       case NC_ESTRICTNC3:
@@ -245,7 +246,7 @@ const char *nc_strerror(int ncerr1)
       case NC_ELATEDEF:
 	 return "NetCDF: Attempt to define var properties, like deflate, after enddef.";
       case NC_EDIMSCALE:
-	 return "NetCDF: Probem with HDF5 dimscales.";
+	 return "NetCDF: Problem with HDF5 dimscales.";
       case NC_ENOGRP:
 	 return "NetCDF: No group found.";
       case NC_ESTORAGE:
@@ -257,7 +258,32 @@ const char *nc_strerror(int ncerr1)
 	    "when netCDF was built.";
       case NC_EDISKLESS:
 	 return "NetCDF: Error in using diskless access";
-      default:
+      case NC_EFILTER:
+	 return "NetCDF: Filter error: bad id or parameters or duplicate filter";
+      case NC_ENOFILTER:
+	 return "NetCDF: Filter error: undefined filter encountered";
+      case NC_ECANTEXTEND:
+	return "NetCDF: Attempt to extend dataset during NC_INDEPENDENT I/O operation. Use nc_var_par_access to set mode NC_COLLECTIVE before extending variable.";
+      case NC_EMPI: return "NetCDF: MPI operation failed.";
+      case NC_ERCFILE:
+	return "NetCDF: RC File Failure.";
+      case NC_ENULLPAD:
+       return "NetCDF: File fails strict Null-Byte Header check.";
+      case NC_EINMEMORY:
+       return "NetCDF: In-memory File operation failed.";
+      case NC_ENCZARR:
+	 return "NetCDF: NCZarr error";
+      case NC_ES3:
+	 return "NetCDF: S3 error";
+      case NC_EEMPTY:
+	 return "NetCDF: Attempt to read empty NCZarr map key";
+      case NC_EOBJECT:
+	 return "NetCDF: Some object exists when it should not";
+      case NC_ENOOBJECT:
+	 return "NetCDF: Some object not found";
+      case NC_EPLUGIN:
+	 return "NetCDF: Unclassified failure in accessing a dynamically loaded plugin";
+     default:
 #ifdef USE_PNETCDF
         /* The behavior of ncmpi_strerror here is to return
            NULL, not a string.  This causes problems in (at least)

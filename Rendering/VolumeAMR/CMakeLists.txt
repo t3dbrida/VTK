@@ -1,5 +1,6 @@
-set(Module_SRCS
-  vtkAMRVolumeMapper.cxx
-  )
+set(classes
+  vtkAMRVolumeMapper)
 
-vtk_module_library(vtkRenderingVolumeAMR ${Module_SRCS})
+vtk_module_add_module(VTK::RenderingVolumeAMR
+  CLASSES ${classes})
+vtk_add_test_mangling(VTK::RenderingVolumeAMR)

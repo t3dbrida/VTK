@@ -1,8 +1,10 @@
-set(Module_SRCS
-  vtkCellQuality.cxx
-  vtkCellSizeFilter.cxx
-  vtkMatrixMathFilter.cxx
-  vtkMeshQuality.cxx
-  )
+set(classes
+  vtkBoundaryMeshQuality
+  vtkCellQuality
+  vtkCellSizeFilter
+  vtkMatrixMathFilter
+  vtkMeshQuality)
 
-vtk_module_library(vtkFiltersVerdict ${Module_SRCS})
+vtk_module_add_module(VTK::FiltersVerdict
+  CLASSES ${classes})
+vtk_add_test_mangling(VTK::FiltersVerdict)

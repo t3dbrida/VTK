@@ -13,12 +13,11 @@ git config alias.stage-push '!sh -c "echo '"${stage_disabled}"'"' &&
 git config alias.stage-branch '!sh -c "echo '"${stage_disabled}"'"' &&
 git config alias.stage-merge '!sh -c "echo '"${stage_disabled}"'"' &&
 
-# Gerrit aliases
-gerrit_disabled="VTK no longer uses Gerrit. Please use GitLab." &&
-git config alias.gerrit-push '!sh -c "echo '"${gerrit_disabled}"'"' &&
-
 # Alias to push the current topic branch to GitLab
 git config alias.gitlab-push '!bash Utilities/GitSetup/git-gitlab-push' &&
 git config alias.gitlab-sync '!bash Utilities/GitSetup/git-gitlab-sync' &&
+
+# Alias to fetch a gitlab MR as a local topic branch
+git config alias.fetch-mr '!bash Utilities/GitSetup/git-fetch-mr' &&
 
 true

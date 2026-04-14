@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkLightsPass.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkLightsPass
  * @brief   Implement the lights render pass.
@@ -24,30 +12,32 @@
  *
  * @sa
  * vtkRenderPass
-*/
+ */
 
 #ifndef vtkLightsPass_h
 #define vtkLightsPass_h
 
-#include "vtkRenderingOpenGL2Module.h" // For export macro
 #include "vtkRenderPass.h"
+#include "vtkRenderingOpenGL2Module.h" // For export macro
+#include "vtkWrappingHints.h"          // For VTK_MARSHALAUTO
 
+VTK_ABI_NAMESPACE_BEGIN
 class vtkOpenGLRenderWindow;
 
-class VTKRENDERINGOPENGL2_EXPORT vtkLightsPass : public vtkRenderPass
+class VTKRENDERINGOPENGL2_EXPORT VTK_MARSHALAUTO vtkLightsPass : public vtkRenderPass
 {
 public:
-  static vtkLightsPass *New();
-  vtkTypeMacro(vtkLightsPass,vtkRenderPass);
+  static vtkLightsPass* New();
+  vtkTypeMacro(vtkLightsPass, vtkRenderPass);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
   /**
    * Perform rendering according to a render state \p s.
    * \pre s_exists: s!=0
    */
-  void Render(const vtkRenderState *s) override;
+  void Render(const vtkRenderState* s) override;
 
- protected:
+protected:
   /**
    * Default constructor.
    */
@@ -58,9 +48,10 @@ public:
    */
   ~vtkLightsPass() override;
 
- private:
+private:
   vtkLightsPass(const vtkLightsPass&) = delete;
   void operator=(const vtkLightsPass&) = delete;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

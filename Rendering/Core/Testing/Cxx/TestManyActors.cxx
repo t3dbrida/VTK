@@ -1,16 +1,20 @@
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "vtkActor.h"
 #include "vtkCommand.h"
 #include "vtkCullerCollection.h"
 #include "vtkInteractorStyleTrackballCamera.h"
-#include "vtkMath.h"
 #include "vtkPolyDataMapper.h"
-#include "vtkRenderer.h"
 #include "vtkRenderWindow.h"
 #include "vtkRenderWindowInteractor.h"
+#include "vtkRenderer.h"
 #include "vtkSmartPointer.h"
 #include "vtkSphereSource.h"
+#include "vtkStringScanner.h"
 #include "vtkTimerLog.h"
+
+#include <iostream>
 
 int TestManyActors(int argc, char* argv[])
 {
@@ -24,9 +28,7 @@ int TestManyActors(int argc, char* argv[])
       interact = true;
       continue;
     }
-    if (!strcmp(argv[i], "-T") ||
-        !strcmp(argv[i], "-V") ||
-        !strcmp(argv[i], "-D"))
+    if (!strcmp(argv[i], "-T") || !strcmp(argv[i], "-V") || !strcmp(argv[i], "-D"))
     {
       ++i;
       continue;
@@ -34,27 +36,24 @@ int TestManyActors(int argc, char* argv[])
     if (!strcmp(argv[i], "-N"))
     {
       ++i;
-      numActors = atoi(argv[i]);
+      VTK_FROM_CHARS_IF_ERROR_RETURN(argv[i], numActors, EXIT_FAILURE);
       continue;
     }
     if (!strcmp(argv[i], "-R"))
     {
       ++i;
-      numRenders = atoi(argv[i]);
+      VTK_FROM_CHARS_IF_ERROR_RETURN(argv[i], numRenders, EXIT_FAILURE);
       continue;
     }
-    cerr << argv[0] << " options:" << endl;
-    cerr << " -N: Number of actors" << endl;
+    std::cerr << argv[0] << " options:" << std::endl;
+    std::cerr << " -N: Number of actors" << std::endl;
   }
-  vtkSmartPointer<vtkSphereSource> source =
-    vtkSmartPointer<vtkSphereSource>::New();
+  vtkSmartPointer<vtkSphereSource> source = vtkSmartPointer<vtkSphereSource>::New();
   source->Update();
-  vtkSmartPointer<vtkRenderer> ren =
-    vtkSmartPointer<vtkRenderer>::New();
-  long side1 = std::lround(pow(static_cast<double>(numActors), 1.0/3.0));
-  long side2 = std::lround(sqrt(numActors/static_cast<double>(side1)));
-  long side3 = static_cast<long>(
-    ceil(static_cast<double>(numActors)/side1/side2));
+  vtkSmartPointer<vtkRenderer> ren = vtkSmartPointer<vtkRenderer>::New();
+  long side1 = std::lround(pow(static_cast<double>(numActors), 1.0 / 3.0));
+  long side2 = std::lround(sqrt(numActors / static_cast<double>(side1)));
+  long side3 = static_cast<long>(ceil(static_cast<double>(numActors) / side1 / side2));
   int actorId = 0;
   for (long i = 0; i < side1; ++i)
   {
@@ -62,11 +61,9 @@ int TestManyActors(int argc, char* argv[])
     {
       for (long k = 0; k < side3; ++k)
       {
-        vtkSmartPointer<vtkPolyDataMapper> mapper =
-          vtkSmartPointer<vtkPolyDataMapper>::New();
+        vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
         mapper->StaticOn();
-        vtkSmartPointer<vtkActor> actor =
-          vtkSmartPointer<vtkActor>::New();
+        vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
         mapper->SetInputConnection(source->GetOutputPort());
         mapper->StaticOn();
         actor->SetMapper(mapper);
@@ -88,8 +85,7 @@ int TestManyActors(int argc, char* argv[])
       break;
     }
   }
-  vtkSmartPointer<vtkRenderWindow> win =
-    vtkSmartPointer<vtkRenderWindow>::New();
+  vtkSmartPointer<vtkRenderWindow> win = vtkSmartPointer<vtkRenderWindow>::New();
   vtkSmartPointer<vtkRenderWindowInteractor> iren =
     vtkSmartPointer<vtkRenderWindowInteractor>::New();
   vtkSmartPointer<vtkInteractorStyleTrackballCamera> style =
@@ -100,8 +96,8 @@ int TestManyActors(int argc, char* argv[])
   win->SetInteractor(iren);
   iren->SetInteractorStyle(style);
 
-  cerr << "number of actors: " << numActors << endl;
-  cerr << "number of renders: " << numRenders << endl;
+  std::cerr << "number of actors: " << numActors << std::endl;
+  std::cerr << "number of renders: " << numRenders << std::endl;
 
   vtkSmartPointer<vtkTimerLog> timer = vtkSmartPointer<vtkTimerLog>::New();
   timer->StartTimer();
@@ -110,7 +106,7 @@ int TestManyActors(int argc, char* argv[])
   iren->InvokeEvent(vtkCommand::LeftButtonPressEvent, nullptr);
   timer->StopTimer();
   double firstRender = timer->GetElapsedTime();
-  cerr << "first render time: " << firstRender << endl;
+  std::cerr << "first render time: " << firstRender << std::endl;
 
   timer->StartTimer();
   for (int i = 0; i < numRenders; ++i)
@@ -121,8 +117,8 @@ int TestManyActors(int argc, char* argv[])
   iren->InvokeEvent(vtkCommand::LeftButtonReleaseEvent, nullptr);
   timer->StopTimer();
   double elapsed = timer->GetElapsedTime();
-  cerr << "interactive render time: " << elapsed / numRenders << endl;
-  cerr << "render time per actor: " << elapsed / numRenders / numActors << endl;
+  std::cerr << "interactive render time: " << elapsed / numRenders << std::endl;
+  std::cerr << "render time per actor: " << elapsed / numRenders / numActors << std::endl;
 
   if (interact)
   {

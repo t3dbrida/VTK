@@ -1,36 +1,9 @@
 /*
- * Copyright (c) 2005-2017 National Technology & Engineering Solutions
+ * Copyright(C) 1999-2022, 2024 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met:
- *
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *
- *     * Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following
- *       disclaimer in the documentation and/or other materials provided
- *       with the distribution.
- *
- *     * Neither the name of NTESS nor the names of its
- *       contributors may be used to endorse or promote products derived
- *       from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
+ * See packages/seacas/LICENSE for details
  */
 /*****************************************************************************
  *
@@ -53,11 +26,6 @@
 
 #include "exodusII.h"     // for ex_err, etc
 #include "exodusII_int.h" // for EX_FATAL, etc
-#include "vtk_netcdf.h"       // for NC_NOERR, nc_inq_dimid, etc
-#include <inttypes.h>     // for PRId64
-#include <stddef.h>       // for size_t
-#include <stdio.h>
-#include <sys/types.h> // for int64_t
 
 /*!
  * writes a map; this is a vector of integers of length number of mesh
@@ -67,7 +35,7 @@ int ex_put_partial_num_map(int exoid, ex_entity_type map_type, ex_entity_id map_
                            int64_t ent_start, int64_t ent_count, const void_int *map)
 {
   int         status;
-  int         dimid, varid, map_ndx, map_exists;
+  int         dimid, varid, map_exists;
   size_t      start[1];
   size_t      num_maps, num_mobj, count[1];
   int         cur_num_maps;
@@ -78,7 +46,9 @@ int ex_put_partial_num_map(int exoid, ex_entity_type map_type, ex_entity_id map_
   const char *vmap;
 
   EX_FUNC_ENTER();
-  ex_check_valid_file_id(exoid, __func__);
+  if (exi_check_valid_file_id(exoid, __func__) == EX_FATAL) {
+    EX_FUNC_LEAVE(EX_FATAL);
+  }
 
   switch (map_type) {
   case EX_NODE_MAP:
@@ -104,7 +74,7 @@ int ex_put_partial_num_map(int exoid, ex_entity_type map_type, ex_entity_id map_
   default:
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: Bad map type (%d) specified for file id %d", map_type,
              exoid);
-    ex_err(__func__, errmsg, EX_BADPARAM);
+    ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -117,12 +87,18 @@ int ex_put_partial_num_map(int exoid, ex_entity_type map_type, ex_entity_id map_
   if ((status = nc_inq_dimid(exoid, dnummaps, &dimid)) != NC_NOERR) {
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: no %ss specified in file id %d",
              ex_name_of_object(map_type), exoid);
-    ex_err(__func__, errmsg, status);
+    ex_err_fn(exoid, __func__, errmsg, status);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
+  /* If the `map_id` is negative, then that specifies a specific location for that map */
+  bool id_is_index = map_id < 0;
+  if (id_is_index) {
+    map_id = -map_id;
+  }
+
   /* Check for duplicate map id entry */
-  status = ex_id_lkup(exoid, map_type, map_id);
+  status = exi_id_lkup(exoid, map_type, map_id);
   if (status == -EX_LOOKUPFAIL) { /* did not find the map id */
     map_exists = 0;               /* Map is being defined */
   }
@@ -136,30 +112,34 @@ int ex_put_partial_num_map(int exoid, ex_entity_type map_type, ex_entity_id map_
     if ((status = nc_inq_dimlen(exoid, dimid, &num_maps)) != NC_NOERR) {
       snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to get number of %ss in file id %d",
                ex_name_of_object(map_type), exoid);
-      ex_err(__func__, errmsg, status);
+      ex_err_fn(exoid, __func__, errmsg, status);
       EX_FUNC_LEAVE(EX_FATAL);
     }
 
     /* Keep track of the total number of maps defined using a
        counter stored in a linked list keyed by exoid.  NOTE:
-       ex_get_file_item is used to find the number of element maps for a
+       exi_get_file_item is used to find the number of element maps for a
        specific file and returns that value.
     */
-    cur_num_maps = ex_get_file_item(exoid, ex_get_counter_list(map_type));
+    cur_num_maps = exi_get_file_item(exoid, exi_get_counter_list(map_type));
     if (cur_num_maps >= (int)num_maps) {
       snprintf(errmsg, MAX_ERR_LENGTH,
-               "ERROR: exceeded number of %ss (%" ST_ZU ") specified in file id %d",
+               "ERROR: exceeded number of %ss (%zu) specified in file id %d",
                ex_name_of_object(map_type), num_maps, exoid);
-      ex_err(__func__, errmsg, EX_BADPARAM);
+      ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
       EX_FUNC_LEAVE(EX_FATAL);
     }
 
-    /*   NOTE: ex_inc_file_item  is used to find the number of element maps
+    /*   NOTE: exi_inc_file_item  is used to find the number of element maps
          for a specific file and returns that value incremented. */
-    cur_num_maps = ex_inc_file_item(exoid, ex_get_counter_list(map_type));
+    cur_num_maps = exi_inc_file_item(exoid, exi_get_counter_list(map_type));
+
+    if (id_is_index) {
+      cur_num_maps = map_id - 1;
+    }
   }
   else {
-    map_ndx      = ex_id_lkup(exoid, map_type, map_id);
+    int map_ndx  = exi_id_lkup(exoid, map_type, map_id);
     cur_num_maps = map_ndx - 1;
   }
 
@@ -167,32 +147,36 @@ int ex_put_partial_num_map(int exoid, ex_entity_type map_type, ex_entity_id map_
   if ((status = nc_inq_dimid(exoid, dnumentries, &dimid)) != NC_NOERR) {
     snprintf(errmsg, MAX_ERR_LENGTH,
              "ERROR: couldn't determine number of mesh objects in file id %d", exoid);
-    ex_err(__func__, errmsg, status);
+    ex_err_fn(exoid, __func__, errmsg, status);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
   if ((status = nc_inq_dimlen(exoid, dimid, &num_mobj)) != NC_NOERR) {
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to get number of mesh objects in file id %d",
              exoid);
-    ex_err(__func__, errmsg, status);
+    ex_err_fn(exoid, __func__, errmsg, status);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
   /* Check input parameters for a valid range of numbers */
-  if (ent_start <= 0 || ent_start > num_mobj) {
+  if (ent_count == 0) {
+    ent_start = 0;
+  }
+
+  if (ent_start < 0 || ent_start > (int64_t)num_mobj) {
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: start count is invalid in file id %d", exoid);
-    ex_err(__func__, errmsg, EX_BADPARAM);
+    ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
     EX_FUNC_LEAVE(EX_FATAL);
   }
   if (ent_count < 0) {
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: Invalid count value in file id %d", exoid);
-    ex_err(__func__, errmsg, EX_BADPARAM);
+    ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
     EX_FUNC_LEAVE(EX_FATAL);
   }
-  if (ent_start + ent_count - 1 > num_mobj) {
+  if (ent_count > 0 && (ent_start + ent_count - 1 > (int64_t)num_mobj)) {
     snprintf(errmsg, MAX_ERR_LENGTH,
              "ERROR: start+count-1 is larger than mesh object count in file id %d", exoid);
-    ex_err(__func__, errmsg, EX_BADPARAM);
+    ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -202,7 +186,7 @@ int ex_put_partial_num_map(int exoid, ex_entity_type map_type, ex_entity_id map_
   if ((status = nc_inq_varid(exoid, vmapids, &varid)) == -1) {
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to locate %s ids in file id %d",
              ex_name_of_object(map_type), exoid);
-    ex_err(__func__, errmsg, status);
+    ex_err_fn(exoid, __func__, errmsg, status);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -213,7 +197,7 @@ int ex_put_partial_num_map(int exoid, ex_entity_type map_type, ex_entity_id map_
       if ((status = nc_put_var1_longlong(exoid, varid, start, (long long *)&map_id)) != NC_NOERR) {
         snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to store %s id %" PRId64 " in file id %d",
                  ex_name_of_object(map_type), map_id, exoid);
-        ex_err(__func__, errmsg, status);
+        ex_err_fn(exoid, __func__, errmsg, status);
         EX_FUNC_LEAVE(EX_FATAL);
       }
     }
@@ -227,7 +211,7 @@ int ex_put_partial_num_map(int exoid, ex_entity_type map_type, ex_entity_id map_
   default:
     snprintf(errmsg, MAX_ERR_LENGTH,
              "Internal ERROR: unrecognized map type in switch: %d in file id %d", map_type, exoid);
-    ex_err(__func__, errmsg, EX_BADPARAM);
+    ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -235,7 +219,7 @@ int ex_put_partial_num_map(int exoid, ex_entity_type map_type, ex_entity_id map_
   if ((status = nc_inq_varid(exoid, vmap, &varid)) != NC_NOERR) {
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to locate %s %" PRId64 " in file id %d",
              ex_name_of_object(map_type), map_id, exoid);
-    ex_err(__func__, errmsg, status);
+    ex_err_fn(exoid, __func__, errmsg, status);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -257,7 +241,7 @@ int ex_put_partial_num_map(int exoid, ex_entity_type map_type, ex_entity_id map_
   if (status != NC_NOERR) {
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to store %s in file id %d",
              ex_name_of_object(map_type), exoid);
-    ex_err(__func__, errmsg, status);
+    ex_err_fn(exoid, __func__, errmsg, status);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 

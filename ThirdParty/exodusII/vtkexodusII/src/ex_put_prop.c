@@ -1,45 +1,14 @@
 /*
- * Copyright (c) 2005-2017 National Technology & Engineering Solutions
+ * Copyright(C) 1999-2020 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met:
- *
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *
- *     * Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following
- *       disclaimer in the documentation and/or other materials provided
- *       with the distribution.
- *
- *     * Neither the name of NTESS nor the names of its
- *       contributors may be used to endorse or promote products derived
- *       from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
+ * See packages/seacas/LICENSE for details
  */
 
 #include "exodusII.h"     // for ex_err, etc
-#include "exodusII_int.h" // for EX_FATAL, ex_id_lkup, etc
-#include "vtk_netcdf.h"       // for NC_NOERR, nc_set_fill, etc
-#include <inttypes.h>     // for PRId64
-#include <stddef.h>       // for size_t
-#include <stdio.h>
-#include <string.h> // for memset, strcmp, etc
+#include "exodusII_int.h" // for EX_FATAL, exi_id_lkup, etc
+#include <stdbool.h>
 
 /*!
 
@@ -48,8 +17,7 @@ a single element block, node set, or side set. Although it is not
 necessary to invoke ex_put_prop_names(), since ex_put_prop() will
 allocate space within the data file if it hasn't been previously
 allocated, it is more efficient to use ex_put_prop_names() if there is
-more than one property to store. \see Efficiency for a discussion of
-efficiency issues.
+more than one property to store.
 
 It should be noted that the interpretation of the values of the
 integers stored as properties is left to the application code. In
@@ -87,20 +55,20 @@ stored.
                       Maximum length of this string is \p MAX_STR_LENGTH .
 \param[in] value      The value of the property.
 
-| ex_entity_type | description               |
+| #ex_entity_type | description               |
 | -------------- | ------------------------- |
-|  EX_NODE_SET   |  Node Set entity type     |
-|  EX_EDGE_BLOCK |  Edge Block entity type   |
-|  EX_EDGE_SET   |  Edge Set entity type     |
-|  EX_FACE_BLOCK |  Face Block entity type   |
-|  EX_FACE_SET   |  Face Set entity type     |
-|  EX_ELEM_BLOCK |  Element Block entity type|
-|  EX_ELEM_SET   |  Element Set entity type  |
-|  EX_SIDE_SET   |  Side Set entity type     |
-|  EX_ELEM_MAP   |  Element Map entity type  |
-|  EX_NODE_MAP   |  Node Map entity type     |
-|  EX_EDGE_MAP   |  Edge Map entity type     |
-|  EX_FACE_MAP   |  Face Map entity type     |
+|  #EX_NODE_SET   |  Node Set entity type     |
+|  #EX_EDGE_BLOCK |  Edge Block entity type   |
+|  #EX_EDGE_SET   |  Edge Set entity type     |
+|  #EX_FACE_BLOCK |  Face Block entity type   |
+|  #EX_FACE_SET   |  Face Set entity type     |
+|  #EX_ELEM_BLOCK |  Element Block entity type|
+|  #EX_ELEM_SET   |  Element Set entity type  |
+|  #EX_SIDE_SET   |  Side Set entity type     |
+|  #EX_ELEM_MAP   |  Element Map entity type  |
+|  #EX_NODE_MAP   |  Node Map entity type     |
+|  #EX_EDGE_MAP   |  Edge Map entity type     |
+|  #EX_FACE_MAP   |  Face Map entity type     |
 
 For an example of code to write out an object property, refer to the
 description for ex_put_prop_names().
@@ -112,20 +80,22 @@ int ex_put_prop(int exoid, ex_entity_type obj_type, ex_entity_id obj_id, const c
   int       status;
   int       oldfill = 0;
   int       temp;
-  int       found = EX_FALSE;
+  bool      found = false;
   int       num_props, i, dimid, propid, dims[1];
   int       int_type;
   size_t    start[1];
   size_t    prop_name_len, name_length;
-  char *    name;
+  char     *name;
   char      tmpstr[MAX_STR_LENGTH + 1];
-  char *    dim_name;
+  char     *dim_name;
   long long vals[1];
 
   char errmsg[MAX_ERR_LENGTH];
 
   EX_FUNC_ENTER();
-  ex_check_valid_file_id(exoid, __func__);
+  if (exi_check_valid_file_id(exoid, __func__) == EX_FATAL) {
+    EX_FUNC_LEAVE(EX_FATAL);
+  }
 
   /* check if property has already been created */
 
@@ -150,14 +120,14 @@ int ex_put_prop(int exoid, ex_entity_type obj_type, ex_entity_id obj_id, const c
       default:
         snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: object type %d not supported; file id %d",
                  obj_type, exoid);
-        ex_err(__func__, errmsg, EX_BADPARAM);
+        ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
         EX_FUNC_LEAVE(EX_FATAL);
       }
 
       if ((status = nc_inq_varid(exoid, name, &propid)) != NC_NOERR) {
         snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to get property array id in file id %d",
                  exoid);
-        ex_err(__func__, errmsg, status);
+        ex_err_fn(exoid, __func__, errmsg, status);
         EX_FUNC_LEAVE(EX_FATAL);
       }
 
@@ -165,12 +135,12 @@ int ex_put_prop(int exoid, ex_entity_type obj_type, ex_entity_id obj_id, const c
       memset(tmpstr, 0, MAX_STR_LENGTH + 1);
       if ((status = nc_get_att_text(exoid, propid, ATT_PROP_NAME, tmpstr)) != NC_NOERR) {
         snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to get property name in file id %d", exoid);
-        ex_err(__func__, errmsg, status);
+        ex_err_fn(exoid, __func__, errmsg, status);
         EX_FUNC_LEAVE(EX_FATAL);
       }
 
       if (strcmp(tmpstr, prop_name) == 0) {
-        found = EX_TRUE;
+        found = true;
         break;
       }
     }
@@ -182,9 +152,9 @@ int ex_put_prop(int exoid, ex_entity_type obj_type, ex_entity_id obj_id, const c
     name_length = ex_inquire_int(exoid, EX_INQ_DB_MAX_ALLOWED_NAME_LENGTH) + 1;
 
     /* put netcdf file into define mode  */
-    if ((status = nc_redef(exoid)) != NC_NOERR) {
+    if ((status = exi_redef(exoid, __func__)) != NC_NOERR) {
       snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to place file id %d into define mode", exoid);
-      ex_err(__func__, errmsg, status);
+      ex_err_fn(exoid, __func__, errmsg, status);
       EX_FUNC_LEAVE(EX_FATAL);
     }
 
@@ -243,7 +213,7 @@ int ex_put_prop(int exoid, ex_entity_type obj_type, ex_entity_id obj_id, const c
     default:
       snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: object type %d not supported; file id %d", obj_type,
                exoid);
-      ex_err(__func__, errmsg, EX_BADPARAM);
+      ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
       goto error_ret; /* Exit define mode and return */
     }
 
@@ -251,7 +221,7 @@ int ex_put_prop(int exoid, ex_entity_type obj_type, ex_entity_id obj_id, const c
     if ((status = nc_inq_dimid(exoid, dim_name, &dimid)) != NC_NOERR) {
       snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to locate number of objects in file id %d",
                exoid);
-      ex_err(__func__, errmsg, status);
+      ex_err_fn(exoid, __func__, errmsg, status);
       goto error_ret; /* Exit define mode and return */
     }
 
@@ -266,17 +236,18 @@ int ex_put_prop(int exoid, ex_entity_type obj_type, ex_entity_id obj_id, const c
     if ((status = nc_def_var(exoid, name, int_type, 1, dims, &propid)) != NC_NOERR) {
       snprintf(errmsg, MAX_ERR_LENGTH,
                "ERROR: failed to create property array variable in file id %d", exoid);
-      ex_err(__func__, errmsg, status);
+      ex_err_fn(exoid, __func__, errmsg, status);
       goto error_ret; /* Exit define mode and return */
     }
 
     vals[0] = 0; /* fill value */
     /*   create attribute to cause variable to fill with zeros per routine spec
      */
-    if ((status = nc_put_att_longlong(exoid, propid, _FillValue, int_type, 1, vals)) != NC_NOERR) {
+    if ((status = nc_put_att_longlong(exoid, propid, NC_FillValue, int_type, 1, vals)) !=
+        NC_NOERR) {
       snprintf(errmsg, MAX_ERR_LENGTH,
                "ERROR: failed to create property name fill attribute in file id %d", exoid);
-      ex_err(__func__, errmsg, status);
+      ex_err_fn(exoid, __func__, errmsg, status);
       goto error_ret; /* Exit define mode and return */
     }
 
@@ -295,16 +266,14 @@ int ex_put_prop(int exoid, ex_entity_type obj_type, ex_entity_id obj_id, const c
                                   (void *)prop_name)) != NC_NOERR) {
       snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to store property name %s in file id %d",
                prop_name, exoid);
-      ex_err(__func__, errmsg, status);
+      ex_err_fn(exoid, __func__, errmsg, status);
       goto error_ret; /* Exit define mode and return */
     }
 
-    ex_update_max_name_length(exoid, prop_name_len - 1);
+    exi_update_max_name_length(exoid, prop_name_len - 1);
 
     /* leave define mode  */
-    if ((status = nc_enddef(exoid)) != NC_NOERR) {
-      snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to leave define mode in file id %d", exoid);
-      ex_err(__func__, errmsg, status);
+    if ((status = exi_leavedef(exoid, __func__)) != NC_NOERR) {
       EX_FUNC_LEAVE(EX_FATAL);
     }
 
@@ -312,22 +281,22 @@ int ex_put_prop(int exoid, ex_entity_type obj_type, ex_entity_id obj_id, const c
   }
 
   /* find index into property array using obj_id; put value in property */
-  /* array at proper index; ex_id_lkup returns an index that is 1-based,*/
+  /* array at proper index; exi_id_lkup returns an index that is 1-based,*/
   /* but netcdf expects 0-based arrays so subtract 1                    */
 
   /* special case: property name ID - check for duplicate ID assignment */
   if (strcmp("ID", prop_name) == 0) {
-    int indx = ex_id_lkup(exoid, obj_type, value);
+    int indx = exi_id_lkup(exoid, obj_type, value);
     if (indx != -EX_LOOKUPFAIL) { /* found the id */
       snprintf(errmsg, MAX_ERR_LENGTH,
                "Warning: attempt to assign duplicate %s ID %" PRId64 " in file id %d",
                ex_name_of_object(obj_type), value, exoid);
-      ex_err(__func__, errmsg, EX_DUPLICATEID);
+      ex_err_fn(exoid, __func__, errmsg, EX_DUPLICATEID);
       EX_FUNC_LEAVE(EX_WARN);
     }
   }
 
-  status = ex_id_lkup(exoid, obj_type, obj_id);
+  status = exi_id_lkup(exoid, obj_type, obj_id);
   if (status > 0) {
     start[0] = status - 1;
   }
@@ -339,13 +308,13 @@ int ex_put_prop(int exoid, ex_entity_type obj_type, ex_entity_id obj_id, const c
         snprintf(errmsg, MAX_ERR_LENGTH,
                  "Warning: no properties allowed for NULL %s id %" PRId64 " in file id %d",
                  ex_name_of_object(obj_type), obj_id, exoid);
-        ex_err(__func__, errmsg, EX_NULLENTITY);
+        ex_err_fn(exoid, __func__, errmsg, EX_NULLENTITY);
         EX_FUNC_LEAVE(EX_WARN);
       }
       snprintf(errmsg, MAX_ERR_LENGTH,
                "ERROR: failed to find value %" PRId64 " in %s property array in file id %d", obj_id,
                ex_name_of_object(obj_type), exoid);
-      ex_err(__func__, errmsg, status);
+      ex_err_fn(exoid, __func__, errmsg, status);
       EX_FUNC_LEAVE(EX_FATAL);
     }
   }
@@ -356,7 +325,7 @@ int ex_put_prop(int exoid, ex_entity_type obj_type, ex_entity_id obj_id, const c
 
   if (status != NC_NOERR) {
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to store property value in file id %d", exoid);
-    ex_err(__func__, errmsg, status);
+    ex_err_fn(exoid, __func__, errmsg, status);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -366,9 +335,6 @@ int ex_put_prop(int exoid, ex_entity_type obj_type, ex_entity_id obj_id, const c
 error_ret:
   nc_set_fill(exoid, oldfill, &temp); /* default: nofill */
 
-  if ((status = nc_enddef(exoid)) != NC_NOERR) { /* exit define mode */
-    snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to complete definition for file id %d", exoid);
-    ex_err(__func__, errmsg, status);
-  }
+  exi_leavedef(exoid, __func__);
   EX_FUNC_LEAVE(EX_FATAL);
 }

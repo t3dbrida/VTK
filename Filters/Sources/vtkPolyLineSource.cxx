@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkPolyLineSource.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkPolyLineSource.h"
 
 #include "vtkCellArray.h"
@@ -21,119 +9,28 @@
 #include "vtkObjectFactory.h"
 #include "vtkSmartPointer.h"
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkPolyLineSource);
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkPolyLineSource::vtkPolyLineSource()
 {
-  this->Points = nullptr;
   this->Closed = 0;
-
-  this->SetNumberOfInputPorts(0);
 }
 
-//----------------------------------------------------------------------------
-vtkPolyLineSource::~vtkPolyLineSource()
-{
-  if (this->Points)
-  {
-    this->Points->Delete();
-  }
-}
+//------------------------------------------------------------------------------
+vtkPolyLineSource::~vtkPolyLineSource() = default;
 
-//----------------------------------------------------------------------------
-void vtkPolyLineSource::SetNumberOfPoints(vtkIdType numPoints)
-{
-  if (!this->Points)
-  {
-    vtkPoints* pts = vtkPoints::New(VTK_DOUBLE);
-    this->SetPoints(pts);
-    this->Points = pts;
-    pts->Delete();
-  }
-
-  if (numPoints != this->GetNumberOfPoints())
-  {
-    this->Points->SetNumberOfPoints(numPoints);
-    this->Modified();
-  }
-}
-
-//----------------------------------------------------------------------------
-vtkIdType vtkPolyLineSource::GetNumberOfPoints()
-{
-  if (this->Points)
-  {
-    return this->Points->GetNumberOfPoints();
-  }
-
-  return 0;
-}
-
-//----------------------------------------------------------------------------
-void vtkPolyLineSource::Resize(vtkIdType numPoints)
-{
-  if (!this->Points)
-  {
-    this->SetNumberOfPoints(numPoints);
-  }
-
-  if (numPoints != this->GetNumberOfPoints())
-  {
-    this->Points->Resize(numPoints);
-    this->Modified();
-  }
-}
-
-//----------------------------------------------------------------------------
-void vtkPolyLineSource::SetPoint(vtkIdType id, double x, double y, double z)
-{
-  if (!this->Points)
-  {
-    return;
-  }
-
-  if (id >= this->Points->GetNumberOfPoints())
-  {
-    vtkErrorMacro(<< "point id " << id << " is larger than the number of points");
-    return;
-  }
-
-  this->Points->SetPoint(id, x, y, z);
-  this->Modified();
-}
-
-//----------------------------------------------------------------------------
-void vtkPolyLineSource::SetPoints(vtkPoints* points)
-{
-  if ( points != this->Points )
-  {
-    if ( this->Points != nullptr )
-    {
-      this->Points->Delete();
-    }
-    this->Points = points;
-    if ( this->Points != nullptr )
-    {
-      this->Points->Register(this);
-    }
-    this->Modified();
-  }
-}
-
-//----------------------------------------------------------------------------
-int vtkPolyLineSource::RequestData(
-  vtkInformation *vtkNotUsed(request),
-  vtkInformationVector **vtkNotUsed(inputVector),
-  vtkInformationVector *outputVector)
+//------------------------------------------------------------------------------
+int vtkPolyLineSource::RequestData(vtkInformation* vtkNotUsed(request),
+  vtkInformationVector** vtkNotUsed(inputVector), vtkInformationVector* outputVector)
 {
   // get the info object
-  vtkInformation *outInfo = outputVector->GetInformationObject(0);
+  vtkInformation* outInfo = outputVector->GetInformationObject(0);
 
   // get the output
-  vtkPolyData *output = vtkPolyData::SafeDownCast(
-    outInfo->Get(vtkDataObject::DATA_OBJECT()));
+  vtkPolyData* output = vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
 
   vtkIdType numPoints = this->GetNumberOfPoints();
   vtkSmartPointer<vtkIdList> pointIds = vtkSmartPointer<vtkIdList>::New();
@@ -156,11 +53,11 @@ int vtkPolyLineSource::RequestData(
   return 1;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkPolyLineSource::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os, indent);
 
-  os << indent << "Points: " << this->Points << "\n";
   os << indent << "Closed: " << this->Closed << "\n";
 }
+VTK_ABI_NAMESPACE_END

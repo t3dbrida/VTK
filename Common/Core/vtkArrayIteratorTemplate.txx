@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkArrayIteratorTemplate.txx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #ifndef vtkArrayIteratorTemplate_txx
 #define vtkArrayIteratorTemplate_txx
 
@@ -21,6 +9,7 @@
 #include "vtkObjectFactory.h"
 
 //-----------------------------------------------------------------------------
+VTK_ABI_NAMESPACE_BEGIN
 template <class T>
 vtkArrayIteratorTemplate<T>* vtkArrayIteratorTemplate<T>::New()
 {
@@ -54,13 +43,14 @@ void vtkArrayIteratorTemplate<T>::Initialize(vtkAbstractArray* a)
   this->Pointer = nullptr;
   if (this->Array)
   {
+    // NOLINTNEXTLINE(bugprone-unsafe-functions)
     this->Pointer = static_cast<T*>(this->Array->GetVoidPointer(0));
   }
 }
 
 //-----------------------------------------------------------------------------
 template <class T>
-vtkIdType vtkArrayIteratorTemplate<T>::GetNumberOfTuples()
+vtkIdType vtkArrayIteratorTemplate<T>::GetNumberOfTuples() const
 {
   if (this->Array)
   {
@@ -71,7 +61,7 @@ vtkIdType vtkArrayIteratorTemplate<T>::GetNumberOfTuples()
 
 //-----------------------------------------------------------------------------
 template <class T>
-vtkIdType vtkArrayIteratorTemplate<T>::GetNumberOfValues()
+vtkIdType vtkArrayIteratorTemplate<T>::GetNumberOfValues() const
 {
   if (this->Array)
   {
@@ -82,7 +72,7 @@ vtkIdType vtkArrayIteratorTemplate<T>::GetNumberOfValues()
 
 //-----------------------------------------------------------------------------
 template <class T>
-int vtkArrayIteratorTemplate<T>::GetNumberOfComponents()
+int vtkArrayIteratorTemplate<T>::GetNumberOfComponents() const
 {
   if (this->Array)
   {
@@ -100,14 +90,14 @@ T* vtkArrayIteratorTemplate<T>::GetTuple(vtkIdType id)
 
 //-----------------------------------------------------------------------------
 template <class T>
-int vtkArrayIteratorTemplate<T>::GetDataType()
+int vtkArrayIteratorTemplate<T>::GetDataType() const
 {
   return this->Array->GetDataType();
 }
 
 //-----------------------------------------------------------------------------
 template <class T>
-int vtkArrayIteratorTemplate<T>::GetDataTypeSize()
+int vtkArrayIteratorTemplate<T>::GetDataTypeSize() const
 {
   return this->Array->GetDataTypeSize();
 }
@@ -117,7 +107,7 @@ template <class T>
 void vtkArrayIteratorTemplate<T>::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os, indent);
-  os << indent << "Array: " ;
+  os << indent << "Array: ";
   if (this->Array)
   {
     os << "\n";
@@ -125,9 +115,10 @@ void vtkArrayIteratorTemplate<T>::PrintSelf(ostream& os, vtkIndent indent)
   }
   else
   {
-    os << "(none)" << "\n";
+    os << "(none)"
+       << "\n";
   }
 }
 
+VTK_ABI_NAMESPACE_END
 #endif
-

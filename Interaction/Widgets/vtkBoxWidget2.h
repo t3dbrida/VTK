@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkBoxWidget2.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkBoxWidget2
  * @brief   3D widget for manipulating a box
@@ -88,43 +76,47 @@
  *
  * @sa
  * vtkBoxRepresentation vtkBoxWidget
-*/
+ */
 
 #ifndef vtkBoxWidget2_h
 #define vtkBoxWidget2_h
 
-#include "vtkInteractionWidgetsModule.h" // For export macro
 #include "vtkAbstractWidget.h"
+#include "vtkBoxRepresentation.h"
+#include "vtkInteractionWidgetsModule.h" // For export macro
+#include "vtkWrappingHints.h"            // For VTK_MARSHALAUTO
 
+VTK_ABI_NAMESPACE_BEGIN
 class vtkBoxRepresentation;
 class vtkHandleWidget;
 
-
-class VTKINTERACTIONWIDGETS_EXPORT vtkBoxWidget2 : public vtkAbstractWidget
+class VTKINTERACTIONWIDGETS_EXPORT VTK_MARSHALAUTO vtkBoxWidget2 : public vtkAbstractWidget
 {
 public:
   /**
    * Instantiate the object.
    */
-  static vtkBoxWidget2 *New();
+  static vtkBoxWidget2* New();
 
-  //@{
+  ///@{
   /**
    * Standard class methods for type information and printing.
    */
-  vtkTypeMacro(vtkBoxWidget2,vtkAbstractWidget);
+  vtkTypeMacro(vtkBoxWidget2, vtkAbstractWidget);
   void PrintSelf(ostream& os, vtkIndent indent) override;
-  //@}
+  ///@}
 
   /**
    * Specify an instance of vtkWidgetRepresentation used to represent this
    * widget in the scene. Note that the representation is a subclass of vtkProp
    * so it can be added to the renderer independent of the widget.
    */
-  void SetRepresentation(vtkBoxRepresentation *r)
-    {this->Superclass::SetWidgetRepresentation(reinterpret_cast<vtkWidgetRepresentation*>(r));}
+  void SetRepresentation(vtkBoxRepresentation* r)
+  {
+    this->Superclass::SetWidgetRepresentation(reinterpret_cast<vtkWidgetRepresentation*>(r));
+  }
 
-  //@{
+  ///@{
   /**
    * Control the behavior of the widget (i.e., how it processes
    * events). Translation, rotation, scaling and face movement can all be enabled and
@@ -133,19 +125,19 @@ public:
    * scaling of the widget one face (axis) at a time (default through grabbing
    * one of the representation spherical handles).
    */
-  vtkSetMacro(TranslationEnabled,vtkTypeBool);
-  vtkGetMacro(TranslationEnabled,vtkTypeBool);
-  vtkBooleanMacro(TranslationEnabled,vtkTypeBool);
-  vtkSetMacro(ScalingEnabled,vtkTypeBool);
-  vtkGetMacro(ScalingEnabled,vtkTypeBool);
-  vtkBooleanMacro(ScalingEnabled,vtkTypeBool);
-  vtkSetMacro(RotationEnabled,vtkTypeBool);
-  vtkGetMacro(RotationEnabled,vtkTypeBool);
-  vtkBooleanMacro(RotationEnabled,vtkTypeBool);
-  vtkSetMacro(MoveFacesEnabled,vtkTypeBool);
-  vtkGetMacro(MoveFacesEnabled,vtkTypeBool);
-  vtkBooleanMacro(MoveFacesEnabled,vtkTypeBool);
-  //@}
+  vtkSetMacro(TranslationEnabled, vtkTypeBool);
+  vtkGetMacro(TranslationEnabled, vtkTypeBool);
+  vtkBooleanMacro(TranslationEnabled, vtkTypeBool);
+  vtkSetMacro(ScalingEnabled, vtkTypeBool);
+  vtkGetMacro(ScalingEnabled, vtkTypeBool);
+  vtkBooleanMacro(ScalingEnabled, vtkTypeBool);
+  vtkSetMacro(RotationEnabled, vtkTypeBool);
+  vtkGetMacro(RotationEnabled, vtkTypeBool);
+  vtkBooleanMacro(RotationEnabled, vtkTypeBool);
+  vtkSetMacro(MoveFacesEnabled, vtkTypeBool);
+  vtkGetMacro(MoveFacesEnabled, vtkTypeBool);
+  vtkBooleanMacro(MoveFacesEnabled, vtkTypeBool);
+  ///@}
 
   /**
    * Create the default widget representation if one is not set. By default,
@@ -153,13 +145,37 @@ public:
    */
   void CreateDefaultRepresentation() override;
 
+  /**
+   * Override superclasses' SetEnabled() method because the line
+   * widget must enable its internal handle widgets.
+   */
+  void SetEnabled(int enabling) override;
+
+  ///@{
+  /**
+   * Get/Set the rotation mode of the box.
+   *
+   * Default is vtkBoxRepresentation::ROTATE_FREE.
+   */
+  void SetRotationAxisMode(int mode);
+  int GetRotationAxisMode();
+  void SetRotationAxisModeToFree() { this->SetRotationAxisMode(vtkBoxRepresentation::ROTATE_FREE); }
+  void SetRotationAxisModeToX() { this->SetRotationAxisMode(vtkBoxRepresentation::ROTATE_X); }
+  void SetRotationAxisModeToY() { this->SetRotationAxisMode(vtkBoxRepresentation::ROTATE_Y); }
+  void SetRotationAxisModeToZ() { this->SetRotationAxisMode(vtkBoxRepresentation::ROTATE_Z); }
+  ///@}
+
 protected:
   vtkBoxWidget2();
   ~vtkBoxWidget2() override;
 
   // Manage the state of the widget
   int WidgetState;
-  enum _WidgetState {Start=0,Active};
+  enum WidgetStateType
+  {
+    Start = 0,
+    Active
+  };
 
   // These methods handle events
   static void SelectAction(vtkAbstractWidget*);
@@ -172,15 +188,19 @@ protected:
   static void MoveAction3D(vtkAbstractWidget*);
   static void StepAction3D(vtkAbstractWidget*);
 
-
   // Control whether scaling, rotation, and translation are supported
   vtkTypeBool TranslationEnabled;
   vtkTypeBool ScalingEnabled;
   vtkTypeBool RotationEnabled;
   vtkTypeBool MoveFacesEnabled;
+
+  vtkCallbackCommand* KeyEventCallbackCommand;
+  static void ProcessKeyEvents(vtkObject*, unsigned long, void*, void*);
+
 private:
   vtkBoxWidget2(const vtkBoxWidget2&) = delete;
   void operator=(const vtkBoxWidget2&) = delete;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

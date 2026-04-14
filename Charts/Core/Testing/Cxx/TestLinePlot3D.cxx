@@ -1,39 +1,27 @@
-/*=========================================================================
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
-  Program:   Visualization Toolkit
-  Module:    TestLinePlot3D.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-
-#include "vtkRenderWindow.h"
-#include "vtkSmartPointer.h"
 #include "vtkChartXYZ.h"
+#include "vtkContextScene.h"
+#include "vtkContextView.h"
+#include "vtkFloatArray.h"
+#include "vtkNew.h"
 #include "vtkPen.h"
 #include "vtkPlotLine3D.h"
-#include "vtkTable.h"
-#include "vtkFloatArray.h"
-#include "vtkContextView.h"
-#include "vtkContextScene.h"
+#include "vtkRenderWindow.h"
 #include "vtkRenderWindowInteractor.h"
-#include "vtkNew.h"
+#include "vtkSmartPointer.h"
+#include "vtkTable.h"
 
 // Plot the solution to the Lorenz attractor.
 // http://en.wikipedia.org/wiki/Lorenz_system
 namespace
 {
-void lorenz(const float * varX, float * varXDerivative)
+void lorenz(const float* varX, float* varXDerivative)
 {
-  const float sigma = 10.f;
-  const float rho = 28.f;
-  const float beta = 2.66666666666f;
+  constexpr float sigma = 10.f;
+  constexpr float rho = 28.f;
+  constexpr float beta = 2.66666666666f;
 
   varXDerivative[0] = sigma * (varX[1] - varX[0]);
   varXDerivative[1] = varX[0] * (rho - varX[2]) - varX[1];
@@ -41,8 +29,8 @@ void lorenz(const float * varX, float * varXDerivative)
 }
 } // end anonymous namespace
 
-//----------------------------------------------------------------------------
-int TestLinePlot3D(int, char * [])
+//------------------------------------------------------------------------------
+int TestLinePlot3D(int, char*[])
 {
   // Create the data.
   vtkNew<vtkTable> varXSolution;
@@ -55,14 +43,14 @@ int TestLinePlot3D(int, char * [])
   vtkNew<vtkFloatArray> arrX2;
   arrX2->SetName("Z");
   varXSolution->AddColumn(arrX2);
-  const unsigned int numberOfTimePoints = 1000;
+  constexpr unsigned int numberOfTimePoints = 1000;
   varXSolution->SetNumberOfRows(numberOfTimePoints);
   float varX[3];
   varX[0] = 0.0f;
   varX[1] = 1.0f;
   varX[2] = 1.05f;
   float varXDerivative[3];
-  const float deltaT = 0.01f;
+  constexpr float deltaT = 0.01f;
   for (unsigned int ii = 0; ii < numberOfTimePoints; ++ii)
   {
     varXSolution->SetValue(ii, 0, varX[0]);
@@ -84,6 +72,7 @@ int TestLinePlot3D(int, char * [])
   // Add a line plot.
   vtkNew<vtkPlotLine3D> plot;
   plot->SetInputData(varXSolution);
+  plot->GetPen()->SetWidth(1);
   plot->GetPen()->SetColorF(0.1, 0.2, 0.8, 1.0);
   chart->AddPlot(plot);
 

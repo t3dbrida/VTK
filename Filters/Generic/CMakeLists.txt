@@ -1,13 +1,14 @@
-set(Module_SRCS
-  vtkGenericClip.cxx
-  vtkGenericContourFilter.cxx
-  vtkGenericCutter.cxx
-  vtkGenericDataSetTessellator.cxx
-  vtkGenericGeometryFilter.cxx
-  vtkGenericGlyph3DFilter.cxx
-  vtkGenericOutlineFilter.cxx
-  vtkGenericProbeFilter.cxx
-  vtkGenericStreamTracer.cxx
-  )
+set(classes
+  vtkGenericClip
+  vtkGenericContourFilter
+  vtkGenericCutter
+  vtkGenericDataSetTessellator
+  vtkGenericGeometryFilter
+  vtkGenericGlyph3DFilter
+  vtkGenericOutlineFilter
+  vtkGenericProbeFilter
+  vtkGenericStreamTracer)
 
-vtk_module_library(vtkFiltersGeneric ${Module_SRCS})
+vtk_module_add_module(VTK::FiltersGeneric
+  CLASSES ${classes})
+vtk_add_test_mangling(VTK::FiltersGeneric)

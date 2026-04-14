@@ -1,169 +1,222 @@
-set(Module_SRCS
-  vtkAbstractMapper3D.cxx
-  vtkAbstractMapper.cxx
-  vtkAbstractPicker.cxx
-  vtkAbstractVolumeMapper.cxx
-  vtkActor2DCollection.cxx
-  vtkActor2D.cxx
-  vtkActorCollection.cxx
-  vtkActor.cxx
-  vtkAssembly.cxx
-  vtkBackgroundColorMonitor.cxx
-  vtkBillboardTextActor3D.cxx
-  vtkCameraActor.cxx
-  vtkCamera.cxx
-  vtkCameraInterpolator.cxx
-  vtkCellCenterDepthSort.cxx
-  vtkCIEDE2000.cxx
-  vtkColorTransferFunction.cxx
-  vtkCompositeDataDisplayAttributes.cxx
-  vtkCompositeDataDisplayAttributesLegacy.cxx
-  vtkCompositePolyDataMapper.cxx
-  vtkCoordinate.cxx
-  vtkCullerCollection.cxx
-  vtkCuller.cxx
-  vtkDataSetMapper.cxx
-  vtkDiscretizableColorTransferFunction.cxx
-  vtkDistanceToCamera.cxx
-  vtkFollower.cxx
-  vtkFrameBufferObjectBase.cxx
-  vtkFrustumCoverageCuller.cxx
-  vtkFXAAOptions.cxx
-  vtkGenericRenderWindowInteractor.cxx
-  vtkGenericVertexAttributeMapping.cxx
-  vtkGlyph3DMapper.cxx
-  vtkGPUInfo.cxx
-  vtkGPUInfoList.cxx
-  vtkGraphicsFactory.cxx
-  vtkGraphMapper.cxx
-  vtkGraphToGlyphs.cxx
-  vtkHardwareSelector.cxx
-  vtkHierarchicalPolyDataMapper.cxx
-  vtkImageActor.cxx
-  vtkImageMapper3D.cxx
-  vtkImageMapper.cxx
-  vtkImageProperty.cxx
-  vtkImageSlice.cxx
-  vtkImageSliceMapper.cxx
-  vtkInteractorEventRecorder.cxx
-  vtkInteractorObserver.cxx
-  vtkLabeledContourMapper.cxx
-  vtkLightActor.cxx
-  vtkLightCollection.cxx
-  vtkLight.cxx
-  vtkLightKit.cxx
-  vtkLogLookupTable.cxx
-  vtkLookupTableWithEnabling.cxx
-  vtkMapArrayValues.cxx
-  vtkMapper2D.cxx
-  vtkMapperCollection.cxx
-  vtkMapper.cxx
-  vtkObserverMediator.cxx
-  vtkPointGaussianMapper.cxx
-  vtkPolyDataMapper2D.cxx
-  vtkPolyDataMapper.cxx
-  vtkProp3DCollection.cxx
-  vtkProp3D.cxx
-  vtkProp3DFollower.cxx
-  vtkPropAssembly.cxx
-  vtkPropCollection.cxx
-  vtkProp.cxx
-  vtkProperty2D.cxx
-  vtkProperty.cxx
-  vtkRendererCollection.cxx
-  vtkRenderer.cxx
-  vtkRendererDelegate.cxx
-  vtkRendererSource.cxx
-  vtkRenderPass.cxx
-  vtkRenderState.cxx
-  vtkRenderTimerLog.cxx
-  vtkRenderWindowCollection.cxx
-  vtkRenderWindow.cxx
-  vtkRenderWindowInteractor.cxx
-  vtkRenderWindowInteractor3D.cxx
-  vtkSelectVisiblePoints.cxx
-  vtkShaderDeviceAdapter2.cxx
-  vtkSkybox.cxx
-  vtkTextActor.cxx
-  vtkTextActor3D.cxx
-  vtkTexture.cxx
-  vtkTexturedActor2D.cxx
-  vtkTransformCoordinateSystems.cxx
-  vtkTransformInterpolator.cxx
-  vtkTupleInterpolator.cxx
-  vtkViewDependentErrorMetric.cxx
-  vtkViewport.cxx
-  vtkVisibilitySort.cxx
-  vtkVolumeCollection.cxx
-  vtkVolume.cxx
-  vtkVolumeProperty.cxx
-  vtkWindowLevelLookupTable.cxx
-  vtkWindowToImageFilter.cxx
+# The TDx support has not been moved, this header is here to define nothing,
+# and so allow classes in other modules to safely include it and keep going.
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/vtkTDxConfigure.h.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/vtkTDxConfigure.h")
 
-  vtkAssemblyNode.cxx # Needed by vtkAssembly
-  vtkAssemblyPath.cxx # Needed by vtkAssembly
-  vtkAssemblyPaths.cxx # Needed by vtkAssembly
+set(classes
+  vtkAbstractHyperTreeGridMapper
+  vtkAbstractMapper
+  vtkAbstractMapper3D
+  vtkAbstractPicker
+  vtkAbstractVolumeMapper
+  vtkActor
+  vtkActor2D
+  vtkActor2DCollection
+  vtkActorCollection
+  vtkAssembly
+  vtkAvatar
+  vtkBackgroundColorMonitor
+  vtkBillboardTextActor3D
+  vtkCamera
+  vtkCameraActor
+  vtkCameraInterpolator
+  vtkCellCenterDepthSort
+  vtkCellGraphicsPrimitiveMap
+  vtkCellGridMapper
+  vtkCellGridRenderRequest
+  vtkColorTransferFunction
+  vtkCompositeCellGridMapper
+  vtkCompositeDataDisplayAttributes
+  vtkCompositeDataDisplayAttributesLegacy
+  vtkCompositePolyDataMapper
+  vtkCompositePolyDataMapperDelegator
+  vtkCoordinate
+  vtkCuller
+  vtkCullerCollection
+  vtkDataSetMapper
+  vtkDiscretizableColorTransferFunction
+  vtkDistanceToCamera
+  vtkFXAAOptions
+  vtkFlagpoleLabel
+  vtkFollower
+  vtkFrameBufferObjectBase
+  vtkFrustumCoverageCuller
+  vtkGPUInfo
+  vtkGPUInfoList
+  vtkGenericVertexAttributeMapping
+  vtkGlyph3DMapper
+  vtkGraphMapper
+  vtkGraphToGlyphs
+  vtkGraphicsFactory
+  vtkHardwarePicker
+  vtkHardwareSelector
+  vtkHardwareWindow
+  vtkHierarchicalPolyDataMapper
+  vtkImageActor
+  vtkImageMapper
+  vtkImageMapper3D
+  vtkImageProperty
+  vtkImageSlice
+  vtkImageSliceMapper
+  vtkInteractorEventRecorder
+  vtkInteractorObserver
+  vtkLabeledContourMapper
+  vtkLight
+  vtkLightActor
+  vtkLightCollection
+  vtkLightKit
+  vtkLogLookupTable
+  vtkLookupTableWithEnabling
+  vtkMapArrayValues
+  vtkMapper
+  vtkMapper2D
+  vtkMapperCollection
+  vtkObserverMediator
+  vtkPointGaussianMapper
+  vtkPolyDataMapper
+  vtkPolyDataMapper2D
+  vtkProp
+  vtkProp3D
+  vtkProp3DCollection
+  vtkProp3DFollower
+  vtkPropAssembly
+  vtkPropCollection
+  vtkProperty
+  vtkProperty2D
+  vtkRenderPass
+  vtkRenderState
+  vtkRenderTimerLog
+  vtkRenderWindow
+  vtkRenderWindowCollection
+  vtkRenderWindowInteractor
+  vtkRenderWindowInteractor3D
+  vtkRenderer
+  vtkRendererCollection
+  vtkRendererDelegate
+  vtkRendererSource
+  vtkResizingWindowToImageFilter
+  vtkSelectVisiblePoints
+  vtkShaderProperty
+  vtkSkybox
+  vtkStereoCompositor
+  vtkTextActor
+  vtkTextActor3D
+  vtkTexture
+  vtkTexturedActor2D
+  vtkTransformCoordinateSystems
+  vtkTransformInterpolator
+  vtkTupleInterpolator
+  vtkUniforms
+  vtkViewDependentErrorMetric
+  vtkViewport
+  vtkVisibilitySort
+  vtkVolume
+  vtkVolumeCollection
+  vtkVolumeProperty
+  vtkWindowLevelLookupTable
+  vtkWindowToImageFilter
 
-  vtkAreaPicker.cxx # Needed by vtkRenderer
-  vtkPicker.cxx # Needed by vtkRenderer
-  vtkAbstractPropPicker.cxx # Needed by vtkAreaPicker
-  vtkPropPicker.cxx # Needed by vtkRenderWindowInteractor
-  vtkPickingManager.cxx # Needed by vtkRenderWindowInteractor
-  vtkLODProp3D.cxx # Needed by vtkAreaPicker
-  vtkWorldPointPicker.cxx # Needed by vtkPropPicker
+  # Needed by vtkAssembly
+  vtkAssemblyNode
+  vtkAssemblyPath
+  vtkAssemblyPaths
+
+  # Needed by vtkRenderer
+  vtkAreaPicker
+  vtkPicker
+
+  # Needed by vtkAreaPicker
+  vtkAbstractPropPicker
+  vtkLODProp3D
+
+  # Needed by vtkRenderWindowInteractor
+  vtkPropPicker
+  vtkPickingManager
+
+  # Needed by vtkPropPicker
+  vtkWorldPointPicker
 
   # Needed for the InteractorStyleSwitch...
-  vtkCellPicker.cxx
-  vtkPointPicker.cxx
-  vtkRenderedAreaPicker.cxx
-  vtkScenePicker.cxx
+  vtkCellPicker
+  vtkPointPicker
+  vtkRenderedAreaPicker
+  vtkScenePicker
 
   # Needed by vtkRenderWindowInteractor, for the default interactor.
-  vtkInteractorStyle.cxx
-  vtkInteractorStyleSwitchBase.cxx
-  vtkInteractorStyle3D.cxx
-  # vtkTDx stuff dragged in by vtkInteractorStyle
-  vtkTDxInteractorStyle.cxx
-  vtkTDxInteractorStyleCamera.cxx
-  vtkTDxInteractorStyleSettings.cxx
+  vtkInteractorStyle
+  vtkInteractorStyle3D
+  vtkInteractorStyleSwitchBase
 
-  vtkStringToImage.cxx
-  vtkTextMapper.cxx
-  vtkTextProperty.cxx
-  vtkTextPropertyCollection.cxx
-  vtkTextRenderer.cxx
+  # vtkTDx stuff dragged in by vtkInteractorStyle
+  vtkTDxInteractorStyle
+  vtkTDxInteractorStyleCamera
+  vtkTDxInteractorStyleSettings
+
+  vtkStringToImage
+  vtkTextMapper
+  vtkTextProperty
+  vtkTextPropertyCollection
+  vtkTextRenderer
 
   # Some of the new rendering code - may move around in the future.
-  vtkAbstractInteractionDevice.cxx
-  vtkAbstractRenderDevice.cxx
-  vtkRenderWidget.cxx
-  )
+  vtkAbstractInteractionDevice
+  vtkAbstractRenderDevice
+  vtkRenderWidget)
+
+set(nowrap_classes
+  vtkCIEDE2000)
 
 # needed as we do not have vtkRenderingOpenGLConfigure.h here
 set_source_files_properties(
   vtkRenderWindow.cxx  # dummy out painterdevice adapter
   vtkHardwareSelector.cxx # dummy out painter device adapter
-  PROPERTIES COMPILE_FLAGS -DVTK_OPENGL2)
+  PROPERTIES
+    COMPILE_DEFINITIONS VTK_OPENGL2)
 
-set(${vtk-module}_HDRS
+set(headers
   vtkGPUInfoListArray.h
-  vtkNoise200x200.h
+  vtkLabeledDatatypeDefinitions.h
   vtkPythagoreanQuadruples.h
   vtkRayCastStructures.h
   vtkRenderingCoreEnums.h
-  vtkTDxMotionEventInfo.h
-  )
+  vtkStateStorage.h
+  "${CMAKE_CURRENT_BINARY_DIR}/vtkTDxConfigure.h"
+  vtkTDxMotionEventInfo.h)
 
-# On OS X, vtkRenderWindowJava must be compiled with Objective C++
-if(APPLE)
-  set_source_files_properties(
-    vtkRenderWindow.cxx
-    PROPERTIES WRAP_JAVA_OBJC 1
-  )
-endif()
+set(nowrap_headers
+  vtkNoise200x200.h)
 
-vtk_module_library(vtkRenderingCore ${Module_SRCS})
+
+# Hand written (de)serialization routines
+set(serialization_helper_sources)
+if (VTK_WRAP_SERIALIZATION)
+  list(APPEND serialization_helper_sources
+    vtkAbstractMapperSerDesHelper.cxx
+    vtkColorTransferFunctionSerDesHelper.cxx
+    vtkCompositeDataDisplayAttributesSerDesHelper.cxx
+    vtkDataSetMapperSerDesHelper.cxx
+    vtkDiscretizableColorTransferFunctionSerDesHelper.cxx
+    vtkShaderPropertySerDesHelper.cxx
+    vtkTextureSerDesHelper.cxx)
+endif ()
+
+vtk_module_add_module(VTK::RenderingCore
+  CLASSES ${classes}
+  NOWRAP_CLASSES ${nowrap_classes}
+  HEADERS ${headers}
+  SOURCES ${serialization_helper_sources}
+  NOWRAP_HEADERS ${nowrap_headers}
+  )
 
 if (VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN)
-  target_compile_definitions(vtkRenderingCore PRIVATE -DVTK_DEFAULT_RENDER_WINDOW_OFFSCREEN)
+  vtk_module_definitions(VTK::RenderingCore
+    PRIVATE
+      VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN)
+endif()
+vtk_add_test_mangling(VTK::RenderingCore)
+
+# Add precompiled header to improve build performance
+if(VTK_USE_PCH)
+  vtk_module_precompile_headers(VTK::RenderingCore PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/vtkRenderingCorePCH.h>")
 endif()

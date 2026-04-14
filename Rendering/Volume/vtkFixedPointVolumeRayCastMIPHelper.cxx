@@ -1,31 +1,21 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkFixedPointVolumeRayCastMIPHelper.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkFixedPointVolumeRayCastMIPHelper.h"
 
-#include "vtkImageData.h"
+#include "vtkArrayDispatch.h"
 #include "vtkCommand.h"
+#include "vtkDataArray.h"
+#include "vtkDataArrayRange.h"
+#include "vtkFixedPointRayCastImage.h"
 #include "vtkFixedPointVolumeRayCastMapper.h"
+#include "vtkImageData.h"
 #include "vtkObjectFactory.h"
+#include "vtkRectilinearGrid.h"
 #include "vtkRenderWindow.h"
 #include "vtkVolume.h"
 #include "vtkVolumeProperty.h"
-#include "vtkFixedPointRayCastImage.h"
-#include "vtkDataArray.h"
 
-#include <cmath>
-
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkFixedPointVolumeRayCastMIPHelper);
 
 // Construct a new vtkFixedPointVolumeRayCastMIPHelper with default values
@@ -39,170 +29,166 @@ vtkFixedPointVolumeRayCastMIPHelper::~vtkFixedPointVolumeRayCastMIPHelper() = de
 // maximum value (in native type). After we have a maximum value for the ray
 // we will convert it to unsigned short using the scale/shift, then use this
 // index to lookup the final color/opacity.
-template <class T>
-void vtkFixedPointMIPHelperGenerateImageOneNN( T *data,
-                                       int threadID,
-                                       int threadCount,
-                                       vtkFixedPointVolumeRayCastMapper *mapper,
-                                       vtkVolume *vtkNotUsed(vol))
+struct vtkFixedPointMIPHelperGenerateImageOneNNFunctor
 {
-  VTKKWRCHelper_InitializationAndLoopStartNN();
-  VTKKWRCHelper_InitializeMIPOneNN();
-  VTKKWRCHelper_SpaceLeapSetup();
-
-  if ( cropping )
+  template <class TArray>
+  void operator()(TArray* dataArray, int threadID, int threadCount,
+    vtkFixedPointVolumeRayCastMapper* mapper, vtkVolume* vtkNotUsed(vol))
   {
-    int maxValueDefined = 0;
-    unsigned short maxIdx = 0;
+    using T = vtk::GetAPIType<TArray>;
+    auto data = vtk::DataArrayValueRange<1>(dataArray).begin();
+    VTKKWRCHelper_InitializationAndLoopStartNN
+    VTKKWRCHelper_InitializeMIPOneNN
+    VTKKWRCHelper_SpaceLeapSetup
 
-    for ( k = 0; k < numSteps; k++ )
+    if (cropping)
     {
-      if ( k )
-      {
-        mapper->FixedPointIncrement( pos, dir );
-      }
+      int maxValueDefined = 0;
+      unsigned short maxIdx = 0;
 
-      VTKKWRCHelper_MIPSpaceLeapCheck( maxIdx, maxValueDefined, mapper->GetFlipMIPComparison() );
-
-      if ( !mapper->CheckIfCropped( pos ) )
+      for (k = 0; k < numSteps; k++)
       {
-        mapper->ShiftVectorDown( pos, spos );
-        dptr = data +  spos[0]*inc[0] + spos[1]*inc[1] + spos[2]*inc[2];
-        if ( !maxValueDefined ||
-             ( (mapper->GetFlipMIPComparison() && *dptr < maxValue) ||
-               (!mapper->GetFlipMIPComparison() && *dptr > maxValue) ) )
+        if (k)
         {
-          maxValue = *dptr;
-          maxIdx = static_cast<unsigned short>((maxValue + shift[0])*scale[0]);
-          maxValueDefined = 1;
+          mapper->FixedPointIncrement(pos, dir);
+        }
+
+        VTKKWRCHelper_MIPSpaceLeapCheck(maxIdx, maxValueDefined, mapper->GetFlipMIPComparison())
+
+        if (!mapper->CheckIfCropped(pos))
+        {
+          mapper->ShiftVectorDown(pos, spos);
+          dptr = data + spos[0] * inc[0] + spos[1] * inc[1] + spos[2] * inc[2];
+          if (!maxValueDefined ||
+            ((mapper->GetFlipMIPComparison() && *dptr < maxValue) ||
+              (!mapper->GetFlipMIPComparison() && *dptr > maxValue)))
+          {
+            maxValue = *dptr;
+            maxIdx = static_cast<unsigned short>((maxValue + shift[0]) * scale[0]);
+            maxValueDefined = 1;
+          }
         }
       }
-    }
 
-    if ( maxValueDefined )
-    {
-      VTKKWRCHelper_LookupColorMax( colorTable[0], scalarOpacityTable[0], maxIdx, imagePtr );
-    }
-    else
-    {
-      imagePtr[0] = imagePtr[1] = imagePtr[2] = imagePtr[3] = 0;
-    }
-  }
-  else
-  {
-    unsigned short maxIdx =
-      static_cast<unsigned short>((maxValue + shift[0])*scale[0]);
-
-    for ( k = 0; k < numSteps; k++ )
-    {
-      if ( k )
+      if (maxValueDefined)
       {
-        mapper->FixedPointIncrement( pos, dir );
-      }
-
-      VTKKWRCHelper_MIPSpaceLeapCheck( maxIdx, 1, mapper->GetFlipMIPComparison() );
-
-      mapper->ShiftVectorDown( pos, spos );
-      dptr = data +  spos[0]*inc[0] + spos[1]*inc[1] + spos[2]*inc[2];
-      if ( mapper->GetFlipMIPComparison() )
-      {
-        maxValue = ( *dptr < maxValue )?(*dptr):(maxValue);
+        VTKKWRCHelper_LookupColorMax(colorTable[0], scalarOpacityTable[0], maxIdx, imagePtr)
       }
       else
       {
-        maxValue = ( *dptr > maxValue )?(*dptr):(maxValue);
+        imagePtr[0] = imagePtr[1] = imagePtr[2] = imagePtr[3] = 0;
+      }
+    }
+    else
+    {
+      unsigned short maxIdx = static_cast<unsigned short>((maxValue + shift[0]) * scale[0]);
+
+      for (k = 0; k < numSteps; k++)
+      {
+        if (k)
+        {
+          mapper->FixedPointIncrement(pos, dir);
+        }
+
+        VTKKWRCHelper_MIPSpaceLeapCheck(maxIdx, 1, mapper->GetFlipMIPComparison())
+
+        mapper->ShiftVectorDown(pos, spos);
+        dptr = data + spos[0] * inc[0] + spos[1] * inc[1] + spos[2] * inc[2];
+        if (mapper->GetFlipMIPComparison())
+        {
+          maxValue = (*dptr < maxValue) ? (*dptr) : (maxValue);
+        }
+        else
+        {
+          maxValue = (*dptr > maxValue) ? (*dptr) : (maxValue);
+        }
+
+        maxIdx = static_cast<unsigned short>((maxValue + shift[0]) * scale[0]);
       }
 
-      maxIdx = static_cast<unsigned short>((maxValue + shift[0])*scale[0]);
+      VTKKWRCHelper_LookupColorMax(colorTable[0], scalarOpacityTable[0], maxIdx, imagePtr)
     }
 
-    VTKKWRCHelper_LookupColorMax( colorTable[0], scalarOpacityTable[0], maxIdx, imagePtr );
+    VTKKWRCHelper_IncrementAndLoopEnd
   }
-
-  VTKKWRCHelper_IncrementAndLoopEnd();
-
-}
+};
 
 // This method is called when the interpolation type is nearest neighbor and
 // the data has two or four dependent components. If it is four, they must be
 // unsigned char components.  Compute max of last components in native type,
 // then use first component to look up a color (2 component data) or first three
 // as the color directly (four component data). Lookup alpha off the last component.
-template <class T>
-void vtkFixedPointMIPHelperGenerateImageDependentNN(
-  T *data,
-  int threadID,
-  int threadCount,
-  vtkFixedPointVolumeRayCastMapper *mapper,
-  vtkVolume *vtkNotUsed(vol))
+struct vtkFixedPointMIPHelperGenerateImageDependentNNFunctor
 {
-  VTKKWRCHelper_InitializationAndLoopStartNN();
-  VTKKWRCHelper_InitializeMIPMultiNN();
-  VTKKWRCHelper_SpaceLeapSetup();
-
-  int maxValueDefined = 0;
-  unsigned short maxIdxS = 0;
-
-  for ( k = 0; k < numSteps; k++ )
+  template <class TArray>
+  void operator()(TArray* dataArray, int threadID, int threadCount,
+    vtkFixedPointVolumeRayCastMapper* mapper, vtkVolume* vtkNotUsed(vol))
   {
-    if ( k )
-    {
-      mapper->FixedPointIncrement( pos, dir );
-    }
+    using T = vtk::GetAPIType<TArray>;
+    auto data = vtk::DataArrayValueRange(dataArray).begin();
+    VTKKWRCHelper_InitializationAndLoopStartNN
+    VTKKWRCHelper_InitializeMIPMultiNN
+    VTKKWRCHelper_SpaceLeapSetup
 
-    VTKKWRCHelper_MIPSpaceLeapCheck( maxIdxS, maxValueDefined,
-                                     mapper->GetFlipMIPComparison() );
-    VTKKWRCHelper_CroppingCheckNN( pos );
+    int maxValueDefined = 0;
+    unsigned short maxIdxS = 0;
 
-    mapper->ShiftVectorDown( pos, spos );
-    dptr = data +  spos[0]*inc[0] + spos[1]*inc[1] + spos[2]*inc[2];
-    if ( !maxValueDefined ||
-         ( ( mapper->GetFlipMIPComparison() && *(dptr + components - 1) < maxValue[components-1] ) ||
-           ( !mapper->GetFlipMIPComparison() && *(dptr + components - 1) > maxValue[components-1] ) ) )
+    for (k = 0; k < numSteps; k++)
     {
-      for ( c = 0; c < components; c++ )
+      if (k)
       {
-        maxValue[c] = *(dptr+c);
+        mapper->FixedPointIncrement(pos, dir);
       }
-      maxIdxS =
-        static_cast<unsigned short>((maxValue[components-1] +
-                                     shift[components-1])*scale[components-1]);
-      maxValueDefined = 1;
-    }
-  }
 
-  if ( maxValueDefined )
-  {
-    unsigned short maxIdx[4]={0,0,0,0};
-    if ( components == 2 )
+      VTKKWRCHelper_MIPSpaceLeapCheck(maxIdxS, maxValueDefined, mapper->GetFlipMIPComparison())
+      VTKKWRCHelper_CroppingCheckNN(pos)
+
+      mapper->ShiftVectorDown(pos, spos);
+      dptr = data + spos[0] * inc[0] + spos[1] * inc[1] + spos[2] * inc[2];
+      if (!maxValueDefined ||
+        ((mapper->GetFlipMIPComparison() && *(dptr + components - 1) < maxValue[components - 1]) ||
+          (!mapper->GetFlipMIPComparison() && *(dptr + components - 1) > maxValue[components - 1])))
+      {
+        for (c = 0; c < components; c++)
+        {
+          maxValue[c] = *(dptr + c);
+        }
+        maxIdxS = static_cast<unsigned short>(
+          (maxValue[components - 1] + shift[components - 1]) * scale[components - 1]);
+        maxValueDefined = 1;
+      }
+    }
+
+    if (maxValueDefined)
     {
-      maxIdx[0] = static_cast<unsigned short>((maxValue[0] +
-                                               shift[0])*scale[0]);
-      maxIdx[1] = static_cast<unsigned short>((maxValue[1] +
-                                               shift[1])*scale[1]);
+      unsigned short maxIdx[4] = { 0, 0, 0, 0 };
+      if (components == 2)
+      {
+        maxIdx[0] = static_cast<unsigned short>((maxValue[0] + shift[0]) * scale[0]);
+        maxIdx[1] = static_cast<unsigned short>((maxValue[1] + shift[1]) * scale[1]);
+      }
+      else
+      {
+        maxIdx[0] = static_cast<unsigned short>(maxValue[0]);
+        maxIdx[1] = static_cast<unsigned short>(maxValue[1]);
+        maxIdx[2] = static_cast<unsigned short>(maxValue[2]);
+        maxIdx[3] = static_cast<unsigned short>((maxValue[3] + shift[3]) * scale[3]);
+      }
+
+      for (c = 0; c < components; c++)
+      {
+      }
+      VTKKWRCHelper_LookupDependentColorUS(
+        colorTable[0], scalarOpacityTable[0], maxIdx, components, imagePtr)
     }
     else
     {
-      maxIdx[0] = static_cast<unsigned short>(maxValue[0]);
-      maxIdx[1] = static_cast<unsigned short>(maxValue[1]);
-      maxIdx[2] = static_cast<unsigned short>(maxValue[2]);
-      maxIdx[3] = static_cast<unsigned short>((maxValue[3] +
-                                               shift[3])*scale[3]);
+      imagePtr[0] = imagePtr[1] = imagePtr[2] = imagePtr[3] = 0;
     }
 
-    for ( c = 0; c < components; c++ )
-    {
-    }
-    VTKKWRCHelper_LookupDependentColorUS( colorTable[0], scalarOpacityTable[0],
-                                          maxIdx, components, imagePtr );
+    VTKKWRCHelper_IncrementAndLoopEnd
   }
-  else
-  {
-    imagePtr[0] = imagePtr[1] = imagePtr[2] = imagePtr[3] = 0;
-  }
-
-  VTKKWRCHelper_IncrementAndLoopEnd();
-}
+};
 
 // This method is called when the interpolation type is nearest neighbor and
 // the data has more than one independent components. We compute the max of
@@ -210,72 +196,68 @@ void vtkFixedPointMIPHelperGenerateImageDependentNN(
 // convert this into an unsigned short index value. We use the index values
 // to lookup the color/opacity per component, then use the component weights to
 // blend these into one final color.
-template <class T>
-void vtkFixedPointMIPHelperGenerateImageIndependentNN(
-  T *data,
-  int threadID,
-  int threadCount,
-  vtkFixedPointVolumeRayCastMapper *mapper,
-  vtkVolume *vol)
+struct vtkFixedPointMIPHelperGenerateImageIndependentNNFunctor
 {
-  VTKKWRCHelper_InitializeWeights();
-  VTKKWRCHelper_InitializationAndLoopStartNN();
-  VTKKWRCHelper_InitializeMIPMultiNN();
-  VTKKWRCHelper_SpaceLeapSetupMulti();
-
-  int maxValueDefined = 0;
-  unsigned short maxIdx[4] = {0, 0, 0, 0};
-
-  for ( k = 0; k < numSteps; k++ )
+  template <class TArray>
+  void operator()(TArray* dataArray, int threadID, int threadCount,
+    vtkFixedPointVolumeRayCastMapper* mapper, vtkVolume* vol)
   {
-    if ( k )
-    {
-      mapper->FixedPointIncrement( pos, dir );
-    }
-    VTKKWRCHelper_CroppingCheckNN( pos );
-    VTKKWRCHelper_MIPSpaceLeapPopulateMulti( maxIdx,
-                                             mapper->GetFlipMIPComparison() )
+    using T = vtk::GetAPIType<TArray>;
+    auto data = vtk::DataArrayValueRange(dataArray).begin();
+    VTKKWRCHelper_InitializeWeights
+    VTKKWRCHelper_InitializationAndLoopStartNN
+    VTKKWRCHelper_InitializeMIPMultiNN
+    VTKKWRCHelper_SpaceLeapSetupMulti
 
-    mapper->ShiftVectorDown( pos, spos );
-    dptr = data +  spos[0]*inc[0] + spos[1]*inc[1] + spos[2]*inc[2];
+    int maxValueDefined = 0;
+    unsigned short maxIdx[4] = { 0, 0, 0, 0 };
 
-    if ( !maxValueDefined )
+    for (k = 0; k < numSteps; k++)
     {
-      for ( c = 0; c < components; c++ )
+      if (k)
       {
-        maxValue[c] = *(dptr+c);
-        maxIdx[c] = static_cast<unsigned short>((maxValue[c] +
-                                                 shift[c])*scale[c]);
+        mapper->FixedPointIncrement(pos, dir);
       }
-      maxValueDefined = 1;
-    }
-    else
-    {
-      for ( c = 0; c < components; c++ )
+      VTKKWRCHelper_CroppingCheckNN(pos)
+      VTKKWRCHelper_MIPSpaceLeapPopulateMulti(maxIdx, mapper->GetFlipMIPComparison())
+
+      mapper->ShiftVectorDown(pos, spos);
+      dptr = data + spos[0] * inc[0] + spos[1] * inc[1] + spos[2] * inc[2];
+
+      if (!maxValueDefined)
       {
-        if ( VTKKWRCHelper_MIPSpaceLeapCheckMulti( c, mapper->GetFlipMIPComparison() ) &&
-            ((mapper->GetFlipMIPComparison() &&  *(dptr + c) < maxValue[c] ) ||
-             (!mapper->GetFlipMIPComparison() &&  *(dptr + c) > maxValue[c] )) )
+        for (c = 0; c < components; c++)
         {
-          maxValue[c] = *(dptr+c);
-          maxIdx[c] = static_cast<unsigned short>((maxValue[c] +
-                                                   shift[c])*scale[c]);
+          maxValue[c] = *(dptr + c);
+          maxIdx[c] = static_cast<unsigned short>((maxValue[c] + shift[c]) * scale[c]);
+        }
+        maxValueDefined = 1;
+      }
+      else
+      {
+        for (c = 0; c < components; c++)
+        {
+          if (VTKKWRCHelper_MIPSpaceLeapCheckMulti(c, mapper->GetFlipMIPComparison()) &&
+            ((mapper->GetFlipMIPComparison() && *(dptr + c) < maxValue[c]) ||
+              (!mapper->GetFlipMIPComparison() && *(dptr + c) > maxValue[c])))
+          {
+            maxValue[c] = *(dptr + c);
+            maxIdx[c] = static_cast<unsigned short>((maxValue[c] + shift[c]) * scale[c]);
+          }
         }
       }
     }
-  }
 
-  imagePtr[0] = imagePtr[1] = imagePtr[2] = imagePtr[3] = 0;
-  if ( maxValueDefined )
-  {
-    VTKKWRCHelper_LookupAndCombineIndependentColorsMax(colorTable,
-                                                       scalarOpacityTable,
-                                                       maxIdx, weights,
-                                                       components, imagePtr );
-  }
+    imagePtr[0] = imagePtr[1] = imagePtr[2] = imagePtr[3] = 0;
+    if (maxValueDefined)
+    {
+      VTKKWRCHelper_LookupAndCombineIndependentColorsMax(
+        colorTable, scalarOpacityTable, maxIdx, weights, components, imagePtr)
+    }
 
-  VTKKWRCHelper_IncrementAndLoopEnd();
-}
+    VTKKWRCHelper_IncrementAndLoopEnd
+  }
+};
 
 // This method is called when the interpolation type is linear, the
 // data contains one component and scale = 1.0 and shift = 0.0. This is
@@ -285,97 +267,92 @@ void vtkFixedPointMIPHelperGenerateImageIndependentNN(
 // according to our fractional position within the cell, and apply trilinear
 // interpolation to compute the index. We find the maximum index along
 // the ray, and then use this to look up a final color.
-template <class T>
-void vtkFixedPointMIPHelperGenerateImageOneSimpleTrilin(
-  T *dataPtr,
-  int threadID,
-  int threadCount,
-  vtkFixedPointVolumeRayCastMapper *mapper,
-  vtkVolume *vtkNotUsed(vol))
+struct vtkFixedPointMIPHelperGenerateImageOneSimpleTrilinFunctor
 {
-  VTKKWRCHelper_InitializationAndLoopStartTrilin();
-  VTKKWRCHelper_InitializeMIPOneTrilin();
-  VTKKWRCHelper_SpaceLeapSetup();
-
-  int maxValueDefined = 0;
-  unsigned short maxIdx=0;
-  unsigned int maxScalar = 0;
-
-  for ( k = 0; k < numSteps; k++ )
+  template <class TArray>
+  void operator()(TArray* dataArray, int threadID, int threadCount,
+    vtkFixedPointVolumeRayCastMapper* mapper, vtkVolume* vtkNotUsed(vol))
   {
-    if ( k )
+    auto data = vtk::DataArrayValueRange<1>(dataArray).begin();
+    VTKKWRCHelper_InitializationAndLoopStartTrilin
+    VTKKWRCHelper_InitializeMIPOneTrilin
+    VTKKWRCHelper_SpaceLeapSetup
+
+    int maxValueDefined = 0;
+    unsigned short maxIdx = 0;
+    unsigned int maxScalar = 0;
+
+    for (k = 0; k < numSteps; k++)
     {
-      mapper->FixedPointIncrement( pos, dir );
-    }
-
-    VTKKWRCHelper_MIPSpaceLeapCheck( maxIdx, maxValueDefined,
-                                     mapper->GetFlipMIPComparison() );
-    VTKKWRCHelper_CroppingCheckTrilin( pos );
-
-    mapper->ShiftVectorDown( pos, spos );
-    if ( spos[0] != oldSPos[0] ||
-         spos[1] != oldSPos[1] ||
-         spos[2] != oldSPos[2] )
-    {
-      oldSPos[0] = spos[0];
-      oldSPos[1] = spos[1];
-      oldSPos[2] = spos[2];
-
-      dptr = dataPtr + spos[0]*inc[0] + spos[1]*inc[1] + spos[2]*inc[2];
-      VTKKWRCHelper_GetCellScalarValuesSimple( dptr );
-      if ( mapper->GetFlipMIPComparison() )
+      if (k)
       {
-        maxScalar = (A<B)?(A):(B);
-        maxScalar = (C<maxScalar)?(C):(maxScalar);
-        maxScalar = (D<maxScalar)?(D):(maxScalar);
-        maxScalar = (E<maxScalar)?(E):(maxScalar);
-        maxScalar = (F<maxScalar)?(F):(maxScalar);
-        maxScalar = (G<maxScalar)?(G):(maxScalar);
-        maxScalar = (H<maxScalar)?(H):(maxScalar);
-      }
-      else
-      {
-        maxScalar = (A>B)?(A):(B);
-        maxScalar = (C>maxScalar)?(C):(maxScalar);
-        maxScalar = (D>maxScalar)?(D):(maxScalar);
-        maxScalar = (E>maxScalar)?(E):(maxScalar);
-        maxScalar = (F>maxScalar)?(F):(maxScalar);
-        maxScalar = (G>maxScalar)?(G):(maxScalar);
-        maxScalar = (H>maxScalar)?(H):(maxScalar);
+        mapper->FixedPointIncrement(pos, dir);
       }
 
-    }
+      VTKKWRCHelper_MIPSpaceLeapCheck(maxIdx, maxValueDefined, mapper->GetFlipMIPComparison())
+      VTKKWRCHelper_CroppingCheckTrilin(pos)
 
-    if ( !maxValueDefined ||
-         ((mapper->GetFlipMIPComparison() && maxScalar < static_cast<unsigned int>(maxValue) ) ||
-          (!mapper->GetFlipMIPComparison() && maxScalar > static_cast<unsigned int>(maxValue) )) )
-    {
-      VTKKWRCHelper_ComputeWeights(pos);
-      VTKKWRCHelper_InterpolateScalar(val);
-
-      if ( !maxValueDefined ||
-           ((mapper->GetFlipMIPComparison() && val < maxValue ) ||
-            (!mapper->GetFlipMIPComparison() && val > maxValue )) )
+      mapper->ShiftVectorDown(pos, spos);
+      if (spos[0] != oldSPos[0] || spos[1] != oldSPos[1] || spos[2] != oldSPos[2])
       {
-        maxValue = val;
-        maxIdx = static_cast<unsigned short>(maxValue);
-        maxValueDefined = 1;
+        oldSPos[0] = spos[0];
+        oldSPos[1] = spos[1];
+        oldSPos[2] = spos[2];
+
+        dptr = data + spos[0] * inc[0] + spos[1] * inc[1] + spos[2] * inc[2];
+        VTKKWRCHelper_GetCellScalarValuesSimple(dptr)
+        if (mapper->GetFlipMIPComparison())
+        {
+          maxScalar = (A < B) ? (A) : (B);
+          maxScalar = (C < maxScalar) ? (C) : (maxScalar);
+          maxScalar = (D < maxScalar) ? (D) : (maxScalar);
+          maxScalar = (E < maxScalar) ? (E) : (maxScalar);
+          maxScalar = (F < maxScalar) ? (F) : (maxScalar);
+          maxScalar = (G < maxScalar) ? (G) : (maxScalar);
+          maxScalar = (H < maxScalar) ? (H) : (maxScalar);
+        }
+        else
+        {
+          maxScalar = (A > B) ? (A) : (B);
+          maxScalar = (C > maxScalar) ? (C) : (maxScalar);
+          maxScalar = (D > maxScalar) ? (D) : (maxScalar);
+          maxScalar = (E > maxScalar) ? (E) : (maxScalar);
+          maxScalar = (F > maxScalar) ? (F) : (maxScalar);
+          maxScalar = (G > maxScalar) ? (G) : (maxScalar);
+          maxScalar = (H > maxScalar) ? (H) : (maxScalar);
+        }
+      }
+
+      if (!maxValueDefined ||
+        ((mapper->GetFlipMIPComparison() && maxScalar < static_cast<unsigned int>(maxValue)) ||
+          (!mapper->GetFlipMIPComparison() && maxScalar > static_cast<unsigned int>(maxValue))))
+      {
+        VTKKWRCHelper_ComputeWeights(pos)
+        VTKKWRCHelper_InterpolateScalar(val)
+
+        if (!maxValueDefined ||
+          ((mapper->GetFlipMIPComparison() && val < maxValue) ||
+            (!mapper->GetFlipMIPComparison() && val > maxValue)))
+        {
+          maxValue = val;
+          maxIdx = maxValue;
+          maxValueDefined = 1;
+        }
       }
     }
-  }
 
-  if ( maxValueDefined )
-  {
-    VTKKWRCHelper_LookupColorMax( colorTable[0], scalarOpacityTable[0], maxIdx, imagePtr );
-  }
-  else
-  {
-    imagePtr[0] = imagePtr[1] = imagePtr[2] = imagePtr[3] = 0;
-  }
+    if (maxValueDefined)
+    {
+      VTKKWRCHelper_LookupColorMax(colorTable[0], scalarOpacityTable[0], maxIdx, imagePtr)
+    }
+    else
+    {
+      imagePtr[0] = imagePtr[1] = imagePtr[2] = imagePtr[3] = 0;
+    }
 
-  VTKKWRCHelper_IncrementAndLoopEnd();
-}
-
+    VTKKWRCHelper_IncrementAndLoopEnd
+  }
+};
 
 // This method is called when the interpolation type is linear, the
 // data contains one component and scale != 1.0 or shift != 0.0. This
@@ -386,70 +363,65 @@ void vtkFixedPointMIPHelperGenerateImageOneSimpleTrilin(
 // within the cell, and apply trilinear interpolation to compute the index.
 // We find the maximum index along the ray, and then use this to look up a
 // final color.
-template <class T>
-void vtkFixedPointMIPHelperGenerateImageOneTrilin(
-  T *dataPtr,
-  int threadID,
-  int threadCount,
-  vtkFixedPointVolumeRayCastMapper *mapper,
-  vtkVolume *vtkNotUsed(vol))
+struct vtkFixedPointMIPHelperGenerateImageOneTrilinFunctor
 {
-  VTKKWRCHelper_InitializationAndLoopStartTrilin();
-  VTKKWRCHelper_InitializeMIPOneTrilin();
-  VTKKWRCHelper_SpaceLeapSetup();
-
-  int maxValueDefined = 0;
-  unsigned short maxIdx = 0;
-  for ( k = 0; k < numSteps; k++ )
+  template <class TArray>
+  void operator()(TArray* dataArray, int threadID, int threadCount,
+    vtkFixedPointVolumeRayCastMapper* mapper, vtkVolume* vtkNotUsed(vol))
   {
-    if ( k )
+    auto data = vtk::DataArrayValueRange<1>(dataArray).begin();
+    VTKKWRCHelper_InitializationAndLoopStartTrilin
+    VTKKWRCHelper_InitializeMIPOneTrilin
+    VTKKWRCHelper_SpaceLeapSetup
+
+    int maxValueDefined = 0;
+    unsigned short maxIdx = 0;
+    for (k = 0; k < numSteps; k++)
     {
-      mapper->FixedPointIncrement( pos, dir );
+      if (k)
+      {
+        mapper->FixedPointIncrement(pos, dir);
+      }
+
+      VTKKWRCHelper_CroppingCheckTrilin(pos)
+      VTKKWRCHelper_MIPSpaceLeapCheck(maxIdx, maxValueDefined, mapper->GetFlipMIPComparison())
+
+      mapper->ShiftVectorDown(pos, spos);
+      if (spos[0] != oldSPos[0] || spos[1] != oldSPos[1] || spos[2] != oldSPos[2])
+      {
+        oldSPos[0] = spos[0];
+        oldSPos[1] = spos[1];
+        oldSPos[2] = spos[2];
+
+        dptr = data + spos[0] * inc[0] + spos[1] * inc[1] + spos[2] * inc[2];
+        VTKKWRCHelper_GetCellScalarValues(dptr, scale[0], shift[0])
+      }
+
+      VTKKWRCHelper_ComputeWeights(pos)
+      VTKKWRCHelper_InterpolateScalar(val)
+
+      if (!maxValueDefined ||
+        ((mapper->GetFlipMIPComparison() && val < maxValue) ||
+          (!mapper->GetFlipMIPComparison() && val > maxValue)))
+      {
+        maxValue = val;
+        maxIdx = maxValue;
+        maxValueDefined = 1;
+      }
     }
 
-    VTKKWRCHelper_CroppingCheckTrilin( pos );
-    VTKKWRCHelper_MIPSpaceLeapCheck( maxIdx, maxValueDefined,
-                                     mapper->GetFlipMIPComparison() );
-
-    mapper->ShiftVectorDown( pos, spos );
-    if ( spos[0] != oldSPos[0] ||
-         spos[1] != oldSPos[1] ||
-         spos[2] != oldSPos[2] )
+    if (maxValueDefined)
     {
-      oldSPos[0] = spos[0];
-      oldSPos[1] = spos[1];
-      oldSPos[2] = spos[2];
-
-
-      dptr = dataPtr + spos[0]*inc[0] + spos[1]*inc[1] + spos[2]*inc[2];
-      VTKKWRCHelper_GetCellScalarValues( dptr, scale[0], shift[0] );
+      VTKKWRCHelper_LookupColorMax(colorTable[0], scalarOpacityTable[0], maxIdx, imagePtr)
+    }
+    else
+    {
+      imagePtr[0] = imagePtr[1] = imagePtr[2] = imagePtr[3] = 0;
     }
 
-    VTKKWRCHelper_ComputeWeights(pos);
-    VTKKWRCHelper_InterpolateScalar(val);
-
-    if ( !maxValueDefined ||
-         ((mapper->GetFlipMIPComparison() && val < maxValue ) ||
-          (!mapper->GetFlipMIPComparison() && val > maxValue )) )
-    {
-      maxValue = val;
-      maxIdx = static_cast<unsigned short>(maxValue);
-      maxValueDefined = 1;
-    }
+    VTKKWRCHelper_IncrementAndLoopEnd
   }
-
-  if ( maxValueDefined )
-  {
-    VTKKWRCHelper_LookupColorMax( colorTable[0], scalarOpacityTable[0],
-                                  maxIdx, imagePtr );
-  }
-  else
-  {
-    imagePtr[0] = imagePtr[1] = imagePtr[2] = imagePtr[3] = 0;
-  }
-
-  VTKKWRCHelper_IncrementAndLoopEnd();
-}
+};
 
 // This method is used when the interpolation type is linear, the data has
 // two or four components and the components are not considered independent.
@@ -465,92 +437,86 @@ void vtkFixedPointMIPHelperGenerateImageOneTrilin(
 // We then composite this into the color computed so far along the ray, and
 // check if we can terminate at this point (if the accumulated opacity is
 // higher than some threshold).
-template <class T>
-void vtkFixedPointMIPHelperGenerateImageDependentTrilin(
-  T *dataPtr,
-  int threadID,
-  int threadCount,
-  vtkFixedPointVolumeRayCastMapper *mapper,
-  vtkVolume *vtkNotUsed(vol))
+struct vtkFixedPointMIPHelperGenerateImageDependentTrilinFunctor
 {
-  VTKKWRCHelper_InitializationAndLoopStartTrilin();
-  VTKKWRCHelper_InitializeMIPMultiTrilin();
-  VTKKWRCHelper_SpaceLeapSetup();
-
-  int maxValueDefined = 0;
-  unsigned short maxIdx = 0;
-  for ( k = 0; k < numSteps; k++ )
+  template <class TArray>
+  void operator()(TArray* dataArray, int threadID, int threadCount,
+    vtkFixedPointVolumeRayCastMapper* mapper, vtkVolume* vtkNotUsed(vol))
   {
-    if ( k )
+    auto data = vtk::DataArrayValueRange(dataArray).begin();
+    VTKKWRCHelper_InitializationAndLoopStartTrilin
+    VTKKWRCHelper_InitializeMIPMultiTrilin
+    VTKKWRCHelper_SpaceLeapSetup
+
+    int maxValueDefined = 0;
+    unsigned short maxIdx = 0;
+    for (k = 0; k < numSteps; k++)
     {
-      mapper->FixedPointIncrement( pos, dir );
-    }
-
-    VTKKWRCHelper_CroppingCheckTrilin( pos );
-    VTKKWRCHelper_MIPSpaceLeapCheck( maxIdx, maxValueDefined,
-                                     mapper->GetFlipMIPComparison() );
-
-    mapper->ShiftVectorDown( pos, spos );
-    if ( spos[0] != oldSPos[0] ||
-         spos[1] != oldSPos[1] ||
-         spos[2] != oldSPos[2] )
-    {
-      oldSPos[0] = spos[0];
-      oldSPos[1] = spos[1];
-      oldSPos[2] = spos[2];
-
-      if ( components == 2 )
+      if (k)
       {
-        for ( c= 0; c < components; c++ )
+        mapper->FixedPointIncrement(pos, dir);
+      }
+
+      VTKKWRCHelper_CroppingCheckTrilin(pos)
+      VTKKWRCHelper_MIPSpaceLeapCheck(maxIdx, maxValueDefined, mapper->GetFlipMIPComparison())
+
+      mapper->ShiftVectorDown(pos, spos);
+      if (spos[0] != oldSPos[0] || spos[1] != oldSPos[1] || spos[2] != oldSPos[2])
+      {
+        oldSPos[0] = spos[0];
+        oldSPos[1] = spos[1];
+        oldSPos[2] = spos[2];
+
+        if (components == 2)
         {
-          dptr = dataPtr + spos[0]*inc[0] + spos[1]*inc[1] + spos[2]*inc[2]+ c;
-          VTKKWRCHelper_GetCellComponentScalarValues( dptr, c, scale[c],
-                                                      shift[c] );
+          for (c = 0; c < components; c++)
+          {
+            dptr = data + spos[0] * inc[0] + spos[1] * inc[1] + spos[2] * inc[2] + c;
+            VTKKWRCHelper_GetCellComponentScalarValues(dptr, c, scale[c], shift[c])
+          }
+        }
+        else
+        {
+          for (c = 0; c < 3; c++)
+          {
+            dptr = data + spos[0] * inc[0] + spos[1] * inc[1] + spos[2] * inc[2] + c;
+            VTKKWRCHelper_GetCellComponentRawScalarValues(dptr, c)
+          }
+          dptr = data + spos[0] * inc[0] + spos[1] * inc[1] + spos[2] * inc[2] + c;
+          VTKKWRCHelper_GetCellComponentScalarValues(dptr, 3, scale[3], shift[3])
         }
       }
-      else
+
+      VTKKWRCHelper_ComputeWeights(pos)
+      VTKKWRCHelper_InterpolateScalarComponent(val, c, components)
+
+      if (!maxValueDefined ||
+        ((mapper->GetFlipMIPComparison() && (val[components - 1] < maxValue[components - 1])) ||
+          (!mapper->GetFlipMIPComparison() && (val[components - 1] > maxValue[components - 1]))))
       {
-        for ( c= 0; c < 3; c++ )
+        for (c = 0; c < components; c++)
         {
-          dptr = dataPtr + spos[0]*inc[0] + spos[1]*inc[1] + spos[2]*inc[2]+ c;
-          VTKKWRCHelper_GetCellComponentRawScalarValues( dptr, c );
+          maxValue[c] = val[c];
         }
-        dptr = dataPtr + spos[0]*inc[0] + spos[1]*inc[1] + spos[2]*inc[2] + c;
-        VTKKWRCHelper_GetCellComponentScalarValues( dptr,3,scale[3],shift[3] );
+        maxIdx = static_cast<unsigned short>(
+          (maxValue[components - 1] + shift[components - 1]) * scale[components - 1]);
+        maxValueDefined = 1;
       }
-
     }
 
-    VTKKWRCHelper_ComputeWeights(pos);
-    VTKKWRCHelper_InterpolateScalarComponent( val, c, components );
-
-    if ( !maxValueDefined ||
-         ((mapper->GetFlipMIPComparison() && (val[components-1] < maxValue[components-1]) ) ||
-          (!mapper->GetFlipMIPComparison() && (val[components-1] > maxValue[components-1]) )) )
+    if (maxValueDefined)
     {
-      for ( c= 0; c < components; c++ )
-      {
-        maxValue[c] = val[c];
-      }
-      maxIdx = static_cast<unsigned short>((maxValue[components-1] +
-                                            shift[components-1])*scale[components-1]);
-      maxValueDefined = 1;
+      VTKKWRCHelper_LookupDependentColorUS(
+        colorTable[0], scalarOpacityTable[0], maxValue, components, imagePtr)
     }
-  }
+    else
+    {
+      imagePtr[0] = imagePtr[1] = imagePtr[2] = imagePtr[3] = 0;
+    }
 
-  if ( maxValueDefined )
-  {
-    VTKKWRCHelper_LookupDependentColorUS( colorTable[0],
-                                          scalarOpacityTable[0],
-                                          maxValue, components, imagePtr );
+    VTKKWRCHelper_IncrementAndLoopEnd
   }
-  else
-  {
-    imagePtr[0] = imagePtr[1] = imagePtr[2] = imagePtr[3] = 0;
-  }
-
-  VTKKWRCHelper_IncrementAndLoopEnd();
-}
+};
 
 // This method is used when the interpolation type is linear, the data has
 // more than one component and the components are considered independent. In
@@ -562,124 +528,112 @@ void vtkFixedPointMIPHelperGenerateImageDependentTrilin(
 // component. We do this for each sample along the ray to find a maximum value
 // per component, then we look up a color/opacity for each component and blend
 // them according to the component weights.
-template <class T>
-void vtkFixedPointMIPHelperGenerateImageIndependentTrilin(
-  T *dataPtr,
-  int threadID,
-  int threadCount,
-  vtkFixedPointVolumeRayCastMapper *mapper,
-  vtkVolume *vol)
+struct vtkFixedPointMIPHelperGenerateImageIndependentTrilinFunctor
 {
-  VTKKWRCHelper_InitializeWeights();
-  VTKKWRCHelper_InitializationAndLoopStartTrilin();
-  VTKKWRCHelper_InitializeMIPMultiTrilin();
-
-  int maxValueDefined = 0;
-  for ( k = 0; k < numSteps; k++ )
+  template <class TArray>
+  void operator()(TArray* dataArray, int threadID, int threadCount,
+    vtkFixedPointVolumeRayCastMapper* mapper, vtkVolume* vol)
   {
-    if ( k )
+    auto data = vtk::DataArrayValueRange(dataArray).begin();
+    VTKKWRCHelper_InitializeWeights
+    VTKKWRCHelper_InitializationAndLoopStartTrilin
+    VTKKWRCHelper_InitializeMIPMultiTrilin
+
+    int maxValueDefined = 0;
+    for (k = 0; k < numSteps; k++)
     {
-      mapper->FixedPointIncrement( pos, dir );
-    }
-
-    VTKKWRCHelper_CroppingCheckTrilin( pos );
-
-    mapper->ShiftVectorDown( pos, spos );
-    if ( spos[0] != oldSPos[0] ||
-         spos[1] != oldSPos[1] ||
-         spos[2] != oldSPos[2] )
-    {
-      oldSPos[0] = spos[0];
-      oldSPos[1] = spos[1];
-      oldSPos[2] = spos[2];
-
-      for ( c= 0; c < components; c++ )
+      if (k)
       {
-        dptr = dataPtr + spos[0]*inc[0] + spos[1]*inc[1] + spos[2]*inc[2] + c;
-        VTKKWRCHelper_GetCellComponentScalarValues( dptr, c, scale[c],
-                                                    shift[c] );
+        mapper->FixedPointIncrement(pos, dir);
       }
-    }
 
-    VTKKWRCHelper_ComputeWeights(pos);
-    VTKKWRCHelper_InterpolateScalarComponent( val, c, components );
+      VTKKWRCHelper_CroppingCheckTrilin(pos)
 
-    if ( !maxValueDefined )
-    {
-      for ( c= 0; c < components; c++ )
+      mapper->ShiftVectorDown(pos, spos);
+      if (spos[0] != oldSPos[0] || spos[1] != oldSPos[1] || spos[2] != oldSPos[2])
       {
-        maxValue[c] = val[c];
+        oldSPos[0] = spos[0];
+        oldSPos[1] = spos[1];
+        oldSPos[2] = spos[2];
+
+        for (c = 0; c < components; c++)
+        {
+          dptr = data + spos[0] * inc[0] + spos[1] * inc[1] + spos[2] * inc[2] + c;
+          VTKKWRCHelper_GetCellComponentScalarValues(dptr, c, scale[c], shift[c])
+        }
       }
-      maxValueDefined = 1;
-    }
-    else
-    {
-      for ( c= 0; c < components; c++ )
+
+      VTKKWRCHelper_ComputeWeights(pos)
+      VTKKWRCHelper_InterpolateScalarComponent(val, c, components)
+
+      if (!maxValueDefined)
       {
-        if ( ( mapper->GetFlipMIPComparison() && val[c] < maxValue[c] ) ||
-             ( !mapper->GetFlipMIPComparison() && val[c] > maxValue[c] ) )
+        for (c = 0; c < components; c++)
         {
           maxValue[c] = val[c];
         }
+        maxValueDefined = 1;
+      }
+      else
+      {
+        for (c = 0; c < components; c++)
+        {
+          if ((mapper->GetFlipMIPComparison() && val[c] < maxValue[c]) ||
+            (!mapper->GetFlipMIPComparison() && val[c] > maxValue[c]))
+          {
+            maxValue[c] = val[c];
+          }
+        }
       }
     }
-  }
 
-  imagePtr[0] = imagePtr[1] = imagePtr[2] = imagePtr[3] = 0;
-  if ( maxValueDefined )
-  {
-    VTKKWRCHelper_LookupAndCombineIndependentColorsMax( colorTable,
-                                                        scalarOpacityTable,
-                                                        maxValue, weights,
-                                                        components, imagePtr );
-  }
+    imagePtr[0] = imagePtr[1] = imagePtr[2] = imagePtr[3] = 0;
+    if (maxValueDefined)
+    {
+      VTKKWRCHelper_LookupAndCombineIndependentColorsMax(
+        colorTable, scalarOpacityTable, maxValue, weights, components, imagePtr)
+    }
 
-  VTKKWRCHelper_IncrementAndLoopEnd();
-}
+    VTKKWRCHelper_IncrementAndLoopEnd
+  }
+};
 
 void vtkFixedPointVolumeRayCastMIPHelper::GenerateImage(
-  int threadID,
-  int threadCount,
-  vtkVolume *vol,
-  vtkFixedPointVolumeRayCastMapper *mapper )
+  int threadID, int threadCount, vtkVolume* vol, vtkFixedPointVolumeRayCastMapper* mapper)
 {
-  void *dataPtr  = mapper->GetCurrentScalars()->GetVoidPointer(0);
-  int scalarType = mapper->GetCurrentScalars()->GetDataType();
+  auto* dataArray = mapper->GetCurrentScalars();
 
   // Nearest Neighbor interpolate
-  if ( mapper->ShouldUseNearestNeighborInterpolation( vol ) )
+  if (mapper->ShouldUseNearestNeighborInterpolation(vol))
   {
     // One component data
-    if ( mapper->GetCurrentScalars()->GetNumberOfComponents() == 1 )
+    if (mapper->GetCurrentScalars()->GetNumberOfComponents() == 1)
     {
-      switch ( scalarType )
+      vtkFixedPointMIPHelperGenerateImageOneNNFunctor functor;
+      if (!vtkArrayDispatch::Dispatch::Execute(
+            dataArray, functor, threadID, threadCount, mapper, vol))
       {
-        vtkTemplateMacro(
-          vtkFixedPointMIPHelperGenerateImageOneNN(
-            static_cast<VTK_TT *>(dataPtr),
-            threadID, threadCount, mapper, vol) );
+        functor(dataArray, threadID, threadCount, mapper, vol);
       }
     }
     // More that one independent components
-    else if ( vol->GetProperty()->GetIndependentComponents() )
+    else if (vol->GetProperty()->GetIndependentComponents())
     {
-      switch ( scalarType )
+      vtkFixedPointMIPHelperGenerateImageIndependentNNFunctor functor;
+      if (!vtkArrayDispatch::Dispatch::Execute(
+            dataArray, functor, threadID, threadCount, mapper, vol))
       {
-        vtkTemplateMacro(
-          vtkFixedPointMIPHelperGenerateImageIndependentNN(
-            static_cast<VTK_TT *>(dataPtr),
-            threadID, threadCount, mapper, vol) );
+        functor(dataArray, threadID, threadCount, mapper, vol);
       }
     }
     // Dependent (color) components
     else
     {
-      switch ( scalarType )
+      vtkFixedPointMIPHelperGenerateImageDependentNNFunctor functor;
+      if (!vtkArrayDispatch::Dispatch::Execute(
+            dataArray, functor, threadID, threadCount, mapper, vol))
       {
-        vtkTemplateMacro(
-          vtkFixedPointMIPHelperGenerateImageDependentNN(
-            static_cast<VTK_TT *>(dataPtr),
-            threadID, threadCount, mapper, vol) );
+        functor(dataArray, threadID, threadCount, mapper, vol);
       }
     }
   }
@@ -687,52 +641,47 @@ void vtkFixedPointVolumeRayCastMIPHelper::GenerateImage(
   else
   {
     // One component
-    if ( mapper->GetCurrentScalars()->GetNumberOfComponents() == 1 )
+    if (mapper->GetCurrentScalars()->GetNumberOfComponents() == 1)
     {
       // Scale == 1.0 and shift == 0.0 - simple case (faster)
-      if ( mapper->GetTableScale()[0] == 1.0 &&
-           mapper->GetTableShift()[0] == 0.0 )
+      if (mapper->GetTableScale()[0] == 1.0 && mapper->GetTableShift()[0] == 0.0)
       {
-        switch ( scalarType )
+        vtkFixedPointMIPHelperGenerateImageOneSimpleTrilinFunctor functor;
+        if (!vtkArrayDispatch::Dispatch::Execute(
+              dataArray, functor, threadID, threadCount, mapper, vol))
         {
-          vtkTemplateMacro(
-            vtkFixedPointMIPHelperGenerateImageOneSimpleTrilin(
-              static_cast<VTK_TT *>(dataPtr),
-              threadID, threadCount, mapper, vol) );
+          functor(dataArray, threadID, threadCount, mapper, vol);
         }
       }
       // Scale != 1.0 or shift != 0.0 - must apply scale/shift in inner loop
       else
       {
-        switch ( scalarType )
+        vtkFixedPointMIPHelperGenerateImageOneTrilinFunctor functor;
+        if (!vtkArrayDispatch::Dispatch::Execute(
+              dataArray, functor, threadID, threadCount, mapper, vol))
         {
-          vtkTemplateMacro(
-            vtkFixedPointMIPHelperGenerateImageOneTrilin(
-              static_cast<VTK_TT *>(dataPtr),
-              threadID, threadCount, mapper, vol) );
+          functor(dataArray, threadID, threadCount, mapper, vol);
         }
       }
     }
     // Independent components (more than one)
-    else if ( vol->GetProperty()->GetIndependentComponents() )
+    else if (vol->GetProperty()->GetIndependentComponents())
     {
-      switch ( scalarType )
+      vtkFixedPointMIPHelperGenerateImageIndependentTrilinFunctor functor;
+      if (!vtkArrayDispatch::Dispatch::Execute(
+            dataArray, functor, threadID, threadCount, mapper, vol))
       {
-        vtkTemplateMacro(
-          vtkFixedPointMIPHelperGenerateImageIndependentTrilin(
-            static_cast<VTK_TT *>(dataPtr),
-            threadID, threadCount, mapper, vol) );
+        functor(dataArray, threadID, threadCount, mapper, vol);
       }
     }
     // Dependent components
     else
     {
-      switch ( scalarType )
+      vtkFixedPointMIPHelperGenerateImageDependentTrilinFunctor functor;
+      if (!vtkArrayDispatch::Dispatch::Execute(
+            dataArray, functor, threadID, threadCount, mapper, vol))
       {
-        vtkTemplateMacro(
-          vtkFixedPointMIPHelperGenerateImageDependentTrilin(
-            static_cast<VTK_TT *>(dataPtr),
-            threadID, threadCount, mapper, vol) );
+        functor(dataArray, threadID, threadCount, mapper, vol);
       }
     }
   }
@@ -741,7 +690,6 @@ void vtkFixedPointVolumeRayCastMIPHelper::GenerateImage(
 // Print method for vtkFixedPointVolumeRayCastMIPHelper
 void vtkFixedPointVolumeRayCastMIPHelper::PrintSelf(ostream& os, vtkIndent indent)
 {
-  this->Superclass::PrintSelf(os,indent);
+  this->Superclass::PrintSelf(os, indent);
 }
-
-
+VTK_ABI_NAMESPACE_END

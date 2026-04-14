@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestGPURayCastVolumeUpdate.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 // This test volume tests whether updating the volume MTime updates the ,
 // geometry in the volume mapper.
 
@@ -24,26 +12,27 @@
 #include <vtkNew.h>
 #include <vtkPiecewiseFunction.h>
 #include <vtkRegressionTestImage.h>
-#include <vtkRenderer.h>
 #include <vtkRenderWindow.h>
 #include <vtkRenderWindowInteractor.h>
+#include <vtkRenderer.h>
 #include <vtkSmartPointer.h>
-#include <vtkTesting.h>
 #include <vtkTestUtilities.h>
+#include <vtkTesting.h>
 #include <vtkVolumeProperty.h>
 #include <vtkXMLImageDataReader.h>
 
-int TestGPURayCastVolumeDepthPass(int argc, char *argv[])
+#include <iostream>
+
+int TestGPURayCastVolumeDepthPass(int argc, char* argv[])
 {
-  cout << "CTEST_FULL_OUTPUT (Avoid ctest truncation of output)" << endl;
+  std::cout << "CTEST_FULL_OUTPUT (Avoid ctest truncation of output)" << std::endl;
 
   double scalarRange[2];
 
   vtkNew<vtkGPUVolumeRayCastMapper> volumeMapper;
 
   vtkNew<vtkXMLImageDataReader> reader;
-  char* volumeFile = vtkTestUtilities::ExpandDataFileName(
-                            argc, argv, "Data/vase_1comp.vti");
+  char* volumeFile = vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/vase_1comp.vti");
   reader->SetFileName(volumeFile);
   delete[] volumeFile;
 
@@ -94,8 +83,7 @@ int TestGPURayCastVolumeDepthPass(int argc, char *argv[])
   ren->AddVolume(volume);
   ren->ResetCamera();
 
-  int valid = volumeMapper->IsRenderSupported(renWin,
-                                              volumeProperty);
+  int valid = volumeMapper->IsRenderSupported(renWin, volumeProperty);
 
   int retVal;
   if (valid)
@@ -104,8 +92,8 @@ int TestGPURayCastVolumeDepthPass(int argc, char *argv[])
 
     iren->Initialize();
 
-    retVal = vtkRegressionTestImage( renWin );
-    if( retVal == vtkRegressionTester::DO_INTERACTOR)
+    retVal = vtkRegressionTestImage(renWin);
+    if (retVal == vtkRegressionTester::DO_INTERACTOR)
     {
       iren->Start();
     }
@@ -115,7 +103,7 @@ int TestGPURayCastVolumeDepthPass(int argc, char *argv[])
   else
   {
     retVal = vtkTesting::PASSED;
-    cout << "Required extensions not supported" << endl;
+    std::cout << "Required extensions not supported" << std::endl;
   }
 
   return !retVal;

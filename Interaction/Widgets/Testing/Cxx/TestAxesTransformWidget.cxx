@@ -1,49 +1,35 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestAxesTransformWidget.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 //
 // This example tests the vtkCaptionWidget.
 
 // First include the required header files for the VTK classes we are using.
-#include "vtkSmartPointer.h"
-#include "vtkAxesTransformWidget.h"
-#include "vtkAxesTransformRepresentation.h"
-#include "vtkSphereSource.h"
-#include "vtkPolyDataMapper.h"
 #include "vtkActor.h"
-#include "vtkTextActor.h"
-#include "vtkRenderer.h"
+#include "vtkAxesTransformRepresentation.h"
+#include "vtkAxesTransformWidget.h"
+#include "vtkCommand.h"
+#include "vtkDebugLeaks.h"
+#include "vtkInteractorEventRecorder.h"
+#include "vtkPolyDataMapper.h"
+#include "vtkRegressionTestImage.h"
 #include "vtkRenderWindow.h"
 #include "vtkRenderWindowInteractor.h"
-#include "vtkCommand.h"
-#include "vtkInteractorEventRecorder.h"
-#include "vtkRegressionTestImage.h"
-#include "vtkDebugLeaks.h"
+#include "vtkRenderer.h"
+#include "vtkSmartPointer.h"
+#include "vtkSphereSource.h"
+#include "vtkTextActor.h"
 #include "vtkTextProperty.h"
 
-const char eventLog[] =
-"o"
-;
+#include <iostream>
 
-int TestAxesTransformWidget( int , char *[] )
+const char eventLog[] = "o";
+
+int TestAxesTransformWidget(int, char*[])
 {
   // Create the RenderWindow, Renderer and both Actors
   //
-  vtkSmartPointer<vtkRenderer> ren1 =
-    vtkSmartPointer<vtkRenderer>::New();
-  vtkSmartPointer<vtkRenderWindow> renWin =
-    vtkSmartPointer<vtkRenderWindow>::New();
+  vtkSmartPointer<vtkRenderer> ren1 = vtkSmartPointer<vtkRenderer>::New();
+  vtkSmartPointer<vtkRenderWindow> renWin = vtkSmartPointer<vtkRenderWindow>::New();
   renWin->AddRenderer(ren1);
 
   vtkSmartPointer<vtkRenderWindowInteractor> iren =
@@ -53,7 +39,7 @@ int TestAxesTransformWidget( int , char *[] )
   // Create a test pipeline
   //
   vtkSmartPointer<vtkSphereSource> ss = vtkSmartPointer<vtkSphereSource>::New();
-  ss->SetCenter(100,250,500);
+  ss->SetCenter(100, 250, 500);
   ss->Update();
 
   vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
@@ -65,14 +51,13 @@ int TestAxesTransformWidget( int , char *[] )
   vtkSmartPointer<vtkAxesTransformRepresentation> rep =
     vtkSmartPointer<vtkAxesTransformRepresentation>::New();
 
-  vtkSmartPointer<vtkAxesTransformWidget> widget =
-    vtkSmartPointer<vtkAxesTransformWidget>::New();
+  vtkSmartPointer<vtkAxesTransformWidget> widget = vtkSmartPointer<vtkAxesTransformWidget>::New();
   widget->SetInteractor(iren);
   widget->SetRepresentation(rep);
 
   // Print the widget and its representation
-  rep->Print(cout);
-  widget->Print(cout);
+  rep->Print(std::cout);
+  widget->Print(std::cout);
 
   // Add the actors to the renderer, set the background and size
   //

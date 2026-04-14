@@ -1,0 +1,276 @@
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
+#define VTK_DEPRECATION_LEVEL 0
+
+#include "vtkTGAReader.h"
+
+#include "vtkDataArray.h"
+#include "vtkErrorCode.h"
+#include "vtkFileResourceStream.h"
+#include "vtkImageData.h"
+#include "vtkImageFlip.h"
+#include "vtkObjectFactory.h"
+#include "vtkPointData.h"
+
+#include <vtksys/FStream.hxx>
+
+VTK_ABI_NAMESPACE_BEGIN
+vtkStandardNewMacro(vtkTGAReader);
+
+namespace
+{
+constexpr int HeaderSize = 18;
+
+enum TGAFormat : unsigned char
+{
+  Uncompressed_RGB = 2,
+  RLE_RGB = 10
+};
+
+//----------------------------------------------------------------------------
+int ValidateHeader(char* content, size_t contentSize)
+{
+  if (contentSize < ::HeaderSize)
+  {
+    return 0;
+  }
+
+  // only uncompressed RGB and RLE encoded RGB formats are supported
+  if (content[2] != ::TGAFormat::RLE_RGB && content[2] != ::TGAFormat::Uncompressed_RGB)
+  {
+    return 0;
+  }
+
+  // only 24 and 32 bits per pixel are supported
+  unsigned char bitsPerPixel = static_cast<unsigned char>(content[16]);
+  if (bitsPerPixel != 24 && bitsPerPixel != 32)
+  {
+    return 0;
+  }
+
+  return 1;
+}
+}
+
+//----------------------------------------------------------------------------
+void vtkTGAReader::ExecuteInformation()
+{
+  char header[::HeaderSize];
+  size_t readSize = 0;
+
+  if (this->GetStream())
+  {
+    vtkResourceStream* stream = this->GetStream();
+    stream->Seek(0, vtkResourceStream::SeekDirection::Begin);
+    readSize = stream->Read(header, ::HeaderSize);
+  }
+  else if (this->GetMemoryBuffer())
+  {
+    // VTK_DEPRECATED_IN_9_6_0
+    const char* memBuffer = static_cast<const char*>(this->GetMemoryBuffer());
+    readSize = std::min(
+      static_cast<size_t>(::HeaderSize), static_cast<size_t>(this->GetMemoryBufferLength()));
+    std::copy(memBuffer, memBuffer + readSize, header);
+  }
+  else
+  {
+    this->ComputeInternalFileName(0);
+    vtksys::ifstream file(this->InternalFileName, std::ios::binary);
+    file.read(header, ::HeaderSize * sizeof(char));
+    readSize = file.gcount();
+    file.close();
+  }
+
+  if (!::ValidateHeader(header, readSize))
+  {
+    vtkErrorMacro("TGAReader error reading file: Invalid header.");
+    this->SetErrorCode(vtkErrorCode::FileFormatError);
+    return;
+  }
+
+  // tmp char needed to avoid strict anti aliasing warning
+  char* tmp = &header[8];
+  this->DataOrigin[0] = static_cast<double>(*reinterpret_cast<short*>(tmp));
+  tmp = &header[10];
+  this->DataOrigin[1] = static_cast<double>(*reinterpret_cast<short*>(tmp));
+  this->DataOrigin[2] = 0.0;
+
+  this->DataExtent[0] = 0;
+  tmp = &header[12];
+  this->DataExtent[1] = static_cast<int>(*reinterpret_cast<short*>(tmp) - 1);
+  this->DataExtent[2] = 0;
+  tmp = &header[14];
+  this->DataExtent[3] = static_cast<int>(*reinterpret_cast<short*>(tmp) - 1);
+
+  bool upperLeft = static_cast<bool>((header[17] >> 5) & 1);
+  this->SetFileLowerLeft(!upperLeft);
+
+  this->SetHeaderSize(::HeaderSize);
+  this->SetDataScalarTypeToUnsignedChar();
+
+  this->SetNumberOfScalarComponents(header[16] / 8);
+
+  this->vtkImageReader2::ExecuteInformation();
+}
+
+//------------------------------------------------------------------------------
+void vtkTGAReader::ExecuteDataWithInformation(vtkDataObject* output, vtkInformation* outInfo)
+{
+  vtkImageData* data = this->AllocateOutputData(output, outInfo);
+  data->GetPointData()->GetScalars()->SetName("TGAImage");
+
+  this->ComputeDataIncrements();
+
+  std::vector<unsigned char> content;
+
+  if (this->GetStream())
+  {
+    vtkResourceStream* stream = this->GetStream();
+    stream->Seek(0, vtkResourceStream::SeekDirection::End);
+    std::size_t size = stream->Tell();
+    content.resize(size);
+    stream->Seek(0, vtkResourceStream::SeekDirection::Begin);
+    stream->Read(content.data(), size);
+  }
+  else if (this->GetMemoryBuffer())
+  {
+    // VTK_DEPRECATED_IN_9_6_0
+    const unsigned char* uBuffer = reinterpret_cast<const unsigned char*>(this->GetMemoryBuffer());
+    content.assign(uBuffer, uBuffer + this->GetMemoryBufferLength());
+  }
+  else
+  {
+    vtksys::ifstream imageFile(this->InternalFileName, std::ios::binary);
+    content.assign(std::istreambuf_iterator<char>(imageFile), std::istreambuf_iterator<char>());
+  }
+  const auto contentSize = content.size();
+
+  if (!::ValidateHeader(reinterpret_cast<char*>(content.data()), contentSize))
+  {
+    vtkErrorMacro("TGAReader error reading file: Invalid header.");
+    this->SetErrorCode(vtkErrorCode::FileFormatError);
+    return;
+  }
+
+  bool encoded = (content[2] == ::TGAFormat::RLE_RGB);
+  vtkIdType nComponents = this->GetNumberOfScalarComponents();
+
+  // buffer to image data
+  unsigned char* outPtr = reinterpret_cast<unsigned char*>(data->GetScalarPointer());
+  unsigned char* endPtr =
+    outPtr + ((this->DataExtent[3] + 1) * (this->DataExtent[1] + 1) * nComponents);
+
+  auto GetColor = [&](size_t& currentIndex, unsigned char*& buffer)
+  {
+    for (vtkIdType j = 0; j < nComponents; j++)
+    {
+      buffer[j] = content[currentIndex + j];
+    }
+    if (nComponents >= 3) // swap red and blue
+    {
+      std::swap(buffer[0], buffer[2]);
+    }
+
+    currentIndex += nComponents;
+    buffer += nComponents;
+  };
+
+  size_t skip = ::HeaderSize + static_cast<size_t>(content[0]);
+
+  size_t index = skip;
+  while (outPtr < endPtr && index < content.size())
+  {
+    if (encoded)
+    {
+      unsigned char packet = content[index++];
+      if (packet & 0x80) // packet is RLE if highest bit is 1
+      {
+        // RLE packet (clear highest bit and add 1)
+        packet = (packet & 0x7f) + 1;
+        unsigned char* dupBuffer = outPtr;
+        if ((index + nComponents - 1) >= contentSize)
+        {
+          vtkErrorMacro("TGAReader error reading file: Premature EOF while reading.");
+          this->SetErrorCode(vtkErrorCode::FileFormatError);
+          return;
+        }
+        GetColor(index, outPtr);
+        for (unsigned char i = 0; i < packet - 1; i++)
+        {
+          for (vtkIdType k = 0; k < nComponents; k++)
+          {
+            outPtr[k] = dupBuffer[k];
+          }
+          outPtr += nComponents;
+        }
+      }
+      else
+      {
+        // raw packet (add 1)
+        packet += 1;
+        if ((index + (nComponents * packet) - 1) >= contentSize)
+        {
+          vtkErrorMacro("TGAReader error reading file: Premature EOF while reading.");
+          this->SetErrorCode(vtkErrorCode::FileFormatError);
+          return;
+        }
+        for (unsigned char i = 0; i < packet; i++)
+        {
+          GetColor(index, outPtr);
+        }
+      }
+    }
+    else
+    {
+      if ((index + nComponents - 1) >= contentSize)
+      {
+        vtkErrorMacro("TGAReader error reading file: Premature EOF while reading.");
+        this->SetErrorCode(vtkErrorCode::FileFormatError);
+        return;
+      }
+      GetColor(index, outPtr);
+    }
+  }
+
+  if (!this->FileLowerLeft)
+  {
+    vtkNew<vtkImageFlip> flipY;
+    flipY->SetFilteredAxis(1);
+    flipY->SetInputData(data);
+    flipY->Update();
+    data->ShallowCopy(flipY->GetOutput());
+  }
+}
+
+//----------------------------------------------------------------------------
+int vtkTGAReader::CanReadFile(const char* fname)
+{
+  vtkNew<vtkFileResourceStream> stream;
+  if (!stream->Open(fname))
+  {
+    return 0;
+  }
+  return this->CanReadFile(stream);
+}
+
+//----------------------------------------------------------------------------
+int vtkTGAReader::CanReadFile(vtkResourceStream* stream)
+{
+  if (!stream)
+  {
+    return 0;
+  }
+
+  stream->Seek(0, vtkResourceStream::SeekDirection::Begin);
+  char header[::HeaderSize];
+  auto readSize = stream->Read(header, ::HeaderSize);
+
+  return ::ValidateHeader(header, readSize);
+}
+
+//------------------------------------------------------------------------------
+void vtkTGAReader::PrintSelf(ostream& os, vtkIndent indent)
+{
+  this->Superclass::PrintSelf(os, indent);
+}
+VTK_ABI_NAMESPACE_END

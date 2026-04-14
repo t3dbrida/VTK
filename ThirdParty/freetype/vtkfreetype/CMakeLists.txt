@@ -1,24 +1,4 @@
-PROJECT (VTKFREETYPE)
-
-#
-# Dependency mask
-#
-INCLUDE_REGULAR_EXPRESSION (".*")
-
-#
-# Include paths
-#
-INCLUDE_DIRECTORIES (
-  ${VTKFREETYPE_SOURCE_DIR}/include
-  ${VTKFREETYPE_SOURCE_DIR}/src
-  ${VTKFREETYPE_BINARY_DIR}
-  ${VTKFREETYPE_BINARY_DIR}/include
-)
-
-#
-# Source files
-#
-SET (FREETYPE_SRCS
+set(sources
   src/base/ftbase.c
   src/base/ftbbox.c
   src/base/ftbitmap.c
@@ -37,114 +17,128 @@ SET (FREETYPE_SRCS
   src/pshinter/pshinter.c
   src/psnames/psmodule.c
   src/raster/raster.c
+  src/sdf/ftbsdf.c
+  src/sdf/ftsdf.c
+  src/sdf/ftsdfcommon.c
+  src/sdf/ftsdfrend.c
   src/sfnt/sfnt.c
   src/smooth/smooth.c
+  src/svg/svg.c
   src/truetype/truetype.c
   src/type1/type1.c
   src/type42/type42.c
-  src/winfonts/winfnt.c
-)
+  src/winfonts/winfnt.c)
 
-#
-# Static or shared lib flags
-#
-IF (BUILD_SHARED_LIBS)
-  SET (VTKFREETYPE_DLL 1)
-ELSE ()
-  SET (VTKFREETYPE_STATIC 1)
-ENDIF ()
+if (WIN32)
+  list(APPEND sources
+    builds/windows/ftdebug.c)
+else ()
+  list(APPEND sources
+    src/base/ftdebug.c)
+endif ()
 
-#
-# Win32 flags and specific drivers
-#
-IF (WIN32)
-  SET (FREETYPE_SRCS ${FREETYPE_SRCS} builds/win32/ftdebug.c)
-ELSE ()
-  SET (FREETYPE_SRCS ${FREETYPE_SRCS} src/base/ftdebug.c)
-ENDIF ()
+if (UNIX)
+  list(APPEND sources
+    builds/unix/ftsystem.c)
+  include(CheckIncludeFile)
+  check_include_file("fcntl.h" HAVE_FCNTL_H)
+  check_include_file("unistd.h" HAVE_UNISTD_H)
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/builds/unix/ftconfig.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/include/freetype/config/ftconfig.h")
+else ()
+  list(APPEND sources
+    src/base/ftsystem.c)
+endif ()
 
-#
-# Unix flags and specific drivers
-#
-IF (UNIX)
-  IF (CMAKE_SYSTEM MATCHES "HP-UX.*")
-    SET (VTKFREETYPE_HPUX_SOURCE 1)
-  ENDIF ()
-  SET (FREETYPE_SRCS ${FREETYPE_SRCS} builds/unix/ftsystem.c)
-  INCLUDE (${CMAKE_ROOT}/Modules/CheckIncludeFileCXX.cmake)
-  CHECK_INCLUDE_FILE_CXX("fcntl.h" HAVE_FCNTL_H)
-  CHECK_INCLUDE_FILE_CXX("unistd.h" HAVE_UNISTD_H)
-  CONFIGURE_FILE (builds/unix/ftconfig.in
-                  include/freetype/config/ftconfig.h)
-  SET(freetype_config_headers_exclude
-    ${VTKFREETYPE_SOURCE_DIR}/include/freetype/config/ftconfig.h)
-  SET(freetype_config_headers_include
-    ${VTKFREETYPE_BINARY_DIR}/include/freetype/config/ftconfig.h)
-ELSE ()
-  SET (FREETYPE_SRCS ${FREETYPE_SRCS} src/base/ftsystem.c)
-ENDIF ()
+vtk_module_add_module(VTK::freetype
+  SOURCES ${sources})
+vtk_module_definitions(VTK::freetype
+  PRIVATE
+    FT2_BUILD_LIBRARY)
+vtk_module_include(VTK::freetype
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+    "$<INSTALL_INTERFACE:${_vtk_build_HEADERS_DESTINATION}/vtkfreetype/include>")
+if (UNIX)
+  vtk_module_include(VTK::freetype
+    PUBLIC
+      "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>")
+endif ()
 
-#
-# freetype can be optionally built with support for resource
-# fork-based Mac fonts. That support requires linking against
-# Mac OS X frameworks, and so is disabled if using X11.
-#
-IF (APPLE AND NOT VTK_USE_X)
-  SET (VTKFREETYPE_MAC_FONT_SUPPORT 1)
-ENDIF ()
+if (WIN32)
+  vtk_module_definitions(
+    VTK::freetype PRIVATE _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS)
+  if (BUILD_SHARED_LIBS)
+    vtk_module_definitions(
+      VTK::freetype PRIVATE DLL_EXPORT)
+  endif ()
+endif ()
 
-#
-# Define the library (and install it)
-#
-VTK_ADD_LIBRARY (vtkfreetype ${FREETYPE_SRCS})
-
-#
-# Link to vtkzlib
-#
-TARGET_LINK_LIBRARIES(vtkfreetype ${vtkzlib_LIBRARIES})
-
-#
 # If we want freetype's Mac font support we need to link against
 # a couple of Mac OS X frameworks.
-#
-IF (APPLE AND VTKFREETYPE_MAC_FONT_SUPPORT)
-    TARGET_LINK_LIBRARIES (vtkfreetype "-framework ApplicationServices -framework CoreServices")
-ENDIF ()
+if (APPLE AND VTKFREETYPE_MAC_FONT_SUPPORT)
+  vtk_module_link(VTK::freetype
+    "-framework ApplicationServices -framework CoreServices")
+endif ()
 
-#
-# Create the configuration file
-#
-ADD_DEFINITIONS (-DFT2_BUILD_LIBRARY)
-CONFIGURE_FILE (${VTKFREETYPE_SOURCE_DIR}/include/vtkFreeTypeConfig.h.in
-                ${VTKFREETYPE_BINARY_DIR}/include/vtkFreeTypeConfig.h)
-
-
-#
-# Install headers
-#
-#
-IF(NOT VTK_INSTALL_NO_DEVELOPMENT)
-  INSTALL(FILES
-    ${VTKFREETYPE_SOURCE_DIR}/include/ft2build.h
-    ${VTKFREETYPE_SOURCE_DIR}/include/vtk_freetype_mangle.h
-    ${VTKFREETYPE_SOURCE_DIR}/include/vtk_ftmodule.h
-    ${VTKFREETYPE_BINARY_DIR}/include/vtkFreeTypeConfig.h
-    DESTINATION ${VTK_INSTALL_INCLUDE_DIR}/vtkfreetype/include
-    COMPONENT Development)
-
-  file(GLOB freetype_headers 
-    "${VTKFREETYPE_SOURCE_DIR}/include/freetype/*.h")
-  INSTALL(FILES ${freetype_headers}
-    DESTINATION ${VTK_INSTALL_INCLUDE_DIR}/vtkfreetype/include/freetype
-    COMPONENT Development)
-
-  file(GLOB freetype_config_headers 
-    "${VTKFREETYPE_SOURCE_DIR}/include/freetype/config/*.h")
-  if(freetype_config_headers_exclude)
-    list(REMOVE_ITEM freetype_config_headers ${freetype_config_headers_exclude})
-  endif()
-  INSTALL(FILES ${freetype_config_headers}
-                ${freetype_config_headers_include}
-    DESTINATION ${VTK_INSTALL_INCLUDE_DIR}/vtkfreetype/include/freetype/config
-    COMPONENT Development)
-ENDIF()
+vtk_module_install_headers(
+  SUBDIR  "vtkfreetype/include"
+  FILES   "include/ft2build.h"
+          "include/vtk_freetype_mangle.h")
+vtk_module_install_headers(
+  SUBDIR  "vtkfreetype/include/freetype"
+  FILES   "include/freetype/freetype.h"
+          "include/freetype/ftadvanc.h"
+          "include/freetype/ftbbox.h"
+          "include/freetype/ftbdf.h"
+          "include/freetype/ftbitmap.h"
+          "include/freetype/ftbzip2.h"
+          "include/freetype/ftcache.h"
+          "include/freetype/ftcid.h"
+          "include/freetype/ftcolor.h"
+          "include/freetype/ftdriver.h"
+          "include/freetype/fterrdef.h"
+          "include/freetype/fterrors.h"
+          "include/freetype/ftfntfmt.h"
+          "include/freetype/ftgasp.h"
+          "include/freetype/ftglyph.h"
+          "include/freetype/ftgxval.h"
+          "include/freetype/ftgzip.h"
+          "include/freetype/ftimage.h"
+          "include/freetype/ftincrem.h"
+          "include/freetype/ftlcdfil.h"
+          "include/freetype/ftlist.h"
+          "include/freetype/ftlogging.h"
+          "include/freetype/ftlzw.h"
+          "include/freetype/ftmac.h"
+          "include/freetype/ftmm.h"
+          "include/freetype/ftmodapi.h"
+          "include/freetype/ftmoderr.h"
+          "include/freetype/ftotval.h"
+          "include/freetype/ftoutln.h"
+          "include/freetype/ftparams.h"
+          "include/freetype/ftpfr.h"
+          "include/freetype/ftrender.h"
+          "include/freetype/ftsizes.h"
+          "include/freetype/ftsnames.h"
+          "include/freetype/ftstroke.h"
+          "include/freetype/ftsynth.h"
+          "include/freetype/ftsystem.h"
+          "include/freetype/fttrigon.h"
+          "include/freetype/fttypes.h"
+          "include/freetype/ftwinfnt.h"
+          "include/freetype/t1tables.h"
+          "include/freetype/ttnameid.h"
+          "include/freetype/tttables.h"
+          "include/freetype/tttags.h")
+vtk_module_install_headers(
+  SUBDIR  "vtkfreetype/include/freetype/config"
+  FILES   "include/freetype/config/ftconfig.h"
+          "include/freetype/config/ftheader.h"
+          "include/freetype/config/ftmodule.h"
+          "include/freetype/config/ftoption.h"
+          "include/freetype/config/ftstdlib.h"
+          "include/freetype/config/integer-types.h"
+          "include/freetype/config/mac-support.h"
+          "include/freetype/config/public-macros.h")

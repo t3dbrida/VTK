@@ -2,6 +2,11 @@
 include(CheckLibraryExists)
 include(CheckSymbolExists)
 
+if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  set(VTK_NO_PLATFORM_SOCKETS ON)
+  return ()
+endif ()
+
 check_library_exists("socket" getsockname "" VTK_HAVE_LIBSOCKET)
 
 if(NOT DEFINED VTK_HAVE_GETSOCKNAME_WITH_SOCKLEN_T)
@@ -11,7 +16,7 @@ if(NOT DEFINED VTK_HAVE_GETSOCKNAME_WITH_SOCKLEN_T)
   endif()
   message(STATUS "Checking for getsockname with socklen_t")
   try_compile(VTK_HAVE_GETSOCKNAME_WITH_SOCKLEN_T_COMPILED
-    ${VTK_BINARY_DIR}/CMakeTmp/SocklenT
+    ${CMAKE_CURRENT_BINARY_DIR}/CMakeTmp/SocklenT
     ${CMAKE_CURRENT_SOURCE_DIR}/vtkTestSocklenT.cxx
     CMAKE_FLAGS "-DLINK_LIBRARIES:STRING=${VTK_GETSOCKNAME_LIBS}"
     OUTPUT_VARIABLE OUTPUT)

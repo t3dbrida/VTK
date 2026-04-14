@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkLagrangianMatidaIntegrationModel.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-    This software is distributed WITHOUT ANY WARRANTY; without even
-    the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-    PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkLagrangianMatidaIntegrationModel
  * vtkLagrangianBasicIntegrationModel implementation
@@ -31,7 +19,7 @@
  * @sa
  * vtkLagrangianParticleTracker vtkLagrangianParticle
  * vtkLagrangianBasicIntegrationModel
-*/
+ */
 
 #ifndef vtkLagrangianMatidaIntegrationModel_h
 #define vtkLagrangianMatidaIntegrationModel_h
@@ -39,8 +27,9 @@
 #include "vtkFiltersFlowPathsModule.h" // For export macro
 #include "vtkLagrangianBasicIntegrationModel.h"
 
-class VTKFILTERSFLOWPATHS_EXPORT vtkLagrangianMatidaIntegrationModel :
-  public vtkLagrangianBasicIntegrationModel
+VTK_ABI_NAMESPACE_BEGIN
+class VTKFILTERSFLOWPATHS_EXPORT vtkLagrangianMatidaIntegrationModel
+  : public vtkLagrangianBasicIntegrationModel
 {
 public:
   vtkTypeMacro(vtkLagrangianMatidaIntegrationModel, vtkLagrangianBasicIntegrationModel);
@@ -54,8 +43,16 @@ public:
    * Evaluate the integration model velocity field
    * f at position x, using data from cell in dataSet with index cellId
    */
-  int FunctionValues(vtkDataSet* dataSet, vtkIdType cellId,
+  int FunctionValues(vtkLagrangianParticle* particle, vtkDataSet* dataSet, vtkIdType cellId,
     double* weights, double* x, double* f) override;
+
+  ///@{
+  /**
+   * Specify the acceleration of gravity.
+   * Default value is (0, 0, -9.8)
+   */
+  vtkSetVector3Macro(Gravity, double);
+  vtkGetVector3Macro(Gravity, double);
 
 protected:
   vtkLagrangianMatidaIntegrationModel();
@@ -63,14 +60,15 @@ protected:
 
   static double GetRelaxationTime(double dynVisc, double diameter, double density);
 
-  static double GetDragCoefficient(const double* flowVelocity,
-    const double* particleVelocity,
-    double dynVisc, double particleDiameter,
-    double flowDensity);
+  static double GetDragCoefficient(const double* flowVelocity, const double* particleVelocity,
+    double dynVisc, double particleDiameter, double flowDensity);
+
+  double Gravity[3] = { 0, 0, -9.8 };
 
 private:
   vtkLagrangianMatidaIntegrationModel(const vtkLagrangianMatidaIntegrationModel&) = delete;
   void operator=(const vtkLagrangianMatidaIntegrationModel&) = delete;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

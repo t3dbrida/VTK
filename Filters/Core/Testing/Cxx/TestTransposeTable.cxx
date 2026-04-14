@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestTransposeTable.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "vtkDoubleArray.h"
 #include "vtkFloatArray.h"
@@ -23,11 +11,13 @@
 
 #include <sstream>
 
-int TestTransposeTable(int, char *[])
+#include <iostream>
+
+int TestTransposeTable(int, char*[])
 {
   vtkNew<vtkTable> table;
 
-  const int nbValues = 5;
+  constexpr int nbValues = 5;
 
   vtkNew<vtkStringArray> colName;
   colName->SetName("Name");
@@ -78,21 +68,21 @@ int TestTransposeTable(int, char *[])
 
   if (table->GetNumberOfColumns() != outTable->GetNumberOfRows())
   {
-    cout << "Input table:" << endl;
+    std::cout << "Input table:" << std::endl;
     table->Dump();
-    cout << "Transposed table:" << endl;
+    std::cout << "Transposed table:" << std::endl;
     outTable->Dump();
-    cout << "Failed: Column/row mismatched!" << endl;
+    std::cout << "Failed: Column/row mismatched!" << std::endl;
     return EXIT_FAILURE;
   }
 
   if (table->GetNumberOfRows() != outTable->GetNumberOfColumns() - 1)
   {
-    cout << "Input table:" << endl;
+    std::cout << "Input table:" << std::endl;
     table->Dump();
-    cout << "Transposed table:" << endl;
+    std::cout << "Transposed table:" << std::endl;
     outTable->Dump();
-    cout << "Failed: Row/Column mismatched!" << endl;
+    std::cout << "Failed: Row/Column mismatched!" << std::endl;
     return EXIT_FAILURE;
   }
 
@@ -105,7 +95,7 @@ int TestTransposeTable(int, char *[])
     {
       if (col->GetVariantValue(j) != table->GetValue(i, j))
       {
-        cout << "Failed: Column/row mismatched!" << endl;
+        std::cout << "Failed: Column/row mismatched!" << std::endl;
         return EXIT_FAILURE;
       }
     }
@@ -126,9 +116,9 @@ int TestTransposeTable(int, char *[])
     {
       if (table->GetValue(i, j) != outTable2->GetValue(i, j))
       {
-        cout << "Transposed of transposed table:" << endl;
+        std::cout << "Transposed of transposed table:" << std::endl;
         outTable2->Dump();
-        cout << "Failed: Column/row mismatch!" << endl;
+        std::cout << "Failed: Column/row mismatch!" << std::endl;
         return EXIT_FAILURE;
       }
     }

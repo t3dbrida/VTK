@@ -1,38 +1,33 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkOpenGLPointGaussianMapper
  * @brief   draw PointGaussians using imposters
  *
  * An OpenGL mapper that uses imposters to draw PointGaussians. Supports
  * transparency and picking as well.
-*/
+ */
 
 #ifndef vtkOpenGLPointGaussianMapper_h
 #define vtkOpenGLPointGaussianMapper_h
 
-#include "vtkRenderingOpenGL2Module.h" // For export macro
 #include "vtkPointGaussianMapper.h"
-#include <vector> // for ivar
+#include "vtkRenderingOpenGL2Module.h" // For export macro
+#include "vtkWrappingHints.h"          // For VTK_MARSHALAUTO
+#include <vector>                      // for ivar
 
+VTK_ABI_NAMESPACE_BEGIN
 class vtkOpenGLPointGaussianMapperHelper;
+class vtkOverrideAttribute;
 
-class VTKRENDERINGOPENGL2_EXPORT vtkOpenGLPointGaussianMapper : public vtkPointGaussianMapper
+class VTKRENDERINGOPENGL2_EXPORT VTK_MARSHALAUTO vtkOpenGLPointGaussianMapper
+  : public vtkPointGaussianMapper
 {
 public:
   static vtkOpenGLPointGaussianMapper* New();
-  vtkTypeMacro(vtkOpenGLPointGaussianMapper, vtkPointGaussianMapper)
+  VTK_NEWINSTANCE
+  static vtkOverrideAttribute* CreateOverrideAttributes();
+  vtkTypeMacro(vtkOpenGLPointGaussianMapper, vtkPointGaussianMapper);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
   /**
@@ -40,25 +35,24 @@ public:
    * The parameter window could be used to determine which graphic
    * resources to release.
    */
-  void ReleaseGraphicsResources(vtkWindow *) override;
+  void ReleaseGraphicsResources(vtkWindow*) override;
 
   /**
-   * Is this mapper opqaue? currently always false.
+   * Based on emissive setting
    */
-  bool GetIsOpaque() override;
+  bool HasTranslucentPolygonalGeometry() override;
 
   /**
    * This calls RenderPiece (in a for loop if streaming is necessary).
    */
-  void Render(vtkRenderer *ren, vtkActor *act) override;
+  void Render(vtkRenderer* ren, vtkActor* act) override;
 
   /**
    * allows a mapper to update a selections color buffers
    * Called from a prop which in turn is called from the selector
    */
-  void ProcessSelectorPixelBuffers(vtkHardwareSelector *sel,
-    std::vector<unsigned int> &pixeloffsets,
-    vtkProp *prop) override;
+  void ProcessSelectorPixelBuffers(
+    vtkHardwareSelector* sel, std::vector<unsigned int>& pixeloffsets, vtkProp* prop) override;
 
 protected:
   vtkOpenGLPointGaussianMapper();
@@ -66,17 +60,19 @@ protected:
 
   void ReportReferences(vtkGarbageCollector* collector) override;
 
-  std::vector<vtkOpenGLPointGaussianMapperHelper *> Helpers;
-  vtkOpenGLPointGaussianMapperHelper *CreateHelper();
-  void CopyMapperValuesToHelper(
-    vtkOpenGLPointGaussianMapperHelper *helper);
+  std::vector<vtkOpenGLPointGaussianMapperHelper*> Helpers;
+
+  virtual vtkOpenGLPointGaussianMapperHelper* CreateHelper();
+  virtual void CopyMapperValuesToHelper(vtkOpenGLPointGaussianMapperHelper* helper);
 
   vtkTimeStamp HelperUpdateTime;
+  vtkTimeStamp ScaleTableUpdateTime;
+  vtkTimeStamp OpacityTableUpdateTime;
 
   // unused
-  void RenderPiece(vtkRenderer *, vtkActor *) override {};
+  void RenderPiece(vtkRenderer*, vtkActor*) override {}
 
-  void RenderInternal(vtkRenderer *, vtkActor *);
+  void RenderInternal(vtkRenderer*, vtkActor*);
 
   // create the table for opacity values
   void BuildOpacityTable();
@@ -84,12 +80,12 @@ protected:
   // create the table for scale values
   void BuildScaleTable();
 
-  float *OpacityTable; // the table
-  double OpacityScale; // used for quick lookups
+  float* OpacityTable;  // the table
+  double OpacityScale;  // used for quick lookups
   double OpacityOffset; // used for quick lookups
-  float *ScaleTable; // the table
-  double ScaleScale; // used for quick lookups
-  double ScaleOffset; // used for quick lookups
+  float* ScaleTable;    // the table
+  double ScaleScale;    // used for quick lookups
+  double ScaleOffset;   // used for quick lookups
 
   /**
    * We need to override this method because the standard streaming
@@ -116,4 +112,7 @@ private:
   void operator=(const vtkOpenGLPointGaussianMapper&) = delete;
 };
 
+#define vtkOpenGLPointGaussianMapper_OVERRIDE_ATTRIBUTES                                           \
+  vtkOpenGLPointGaussianMapper::CreateOverrideAttributes()
+VTK_ABI_NAMESPACE_END
 #endif

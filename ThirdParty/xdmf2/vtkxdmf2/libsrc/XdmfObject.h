@@ -70,9 +70,9 @@
 #define __XdmfObject_h
 
 # ifndef SWIG
-#if !defined( WIN32 ) || defined(__CYGWIN__)
+#if !defined( _WIN32 ) || defined(__CYGWIN__)
 #define UNIX
-#endif /* WIN32 */
+#endif /* _WIN32 */
 
 # ifdef __hpux
 #  include <sys/param.h>
@@ -87,7 +87,7 @@
 #  define STRNCMP strncmp
 # endif
 
-# if defined(WIN32) && !defined(__CYGWIN__)
+# if defined(_WIN32) && !defined(__CYGWIN__)
 /* winsock.h seems not being used in Xdmf, but
 *  will cause conflicts with projects that includes "winsock2.h" */
 /* #  include "winsock.h" */
@@ -350,7 +350,7 @@ need to make sure ....
 
 /*! Used for Parsing */
 
-#define XDMF_WORD_CMP( a, b )  ( (a) != NULL ) && ( STRCASECMP((a),(b)) == 0 )
+#define XDMF_WORD_CMP( a, b )  ( ( (a) != NULL ) && ( STRCASECMP((a),(b)) == 0 ) )
 
 #define XDMF_STRING_DUPLICATE( dest, src ) \
   if ( src ) { \

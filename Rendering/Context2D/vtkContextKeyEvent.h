@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkContextScene.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 /**
  * @class   vtkContextKeyEvent
@@ -20,26 +8,27 @@
  *
  * Provides a convenient data structure to represent key events in the
  * vtkContextScene. Passed to vtkAbstractContextItem objects.
-*/
+ */
 
 #ifndef vtkContextKeyEvent_h
 #define vtkContextKeyEvent_h
 
 #include "vtkRenderingContext2DModule.h" // For export macro
-#include "vtkWeakPointer.h" // For vtkWeakPointer
-#include "vtkVector.h" // For vtkVector2i
+#include "vtkVector.h"                   // For vtkVector2i
+#include "vtkWeakPointer.h"              // For vtkWeakPointer
 
+VTK_ABI_NAMESPACE_BEGIN
 class vtkRenderWindowInteractor;
 
 class VTKRENDERINGCONTEXT2D_EXPORT vtkContextKeyEvent
 {
 public:
-  vtkContextKeyEvent() {}
+  vtkContextKeyEvent();
 
   /**
    * Set the interactor for the key event.
    */
-  void SetInteractor(vtkRenderWindowInteractor *interactor);
+  void SetInteractor(vtkRenderWindowInteractor* interactor);
 
   /**
    * Get the interactor for the key event. This can be null, and is provided
@@ -64,5 +53,6 @@ protected:
   vtkVector2i Position;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif // vtkContextKeyEvent_h
 // VTK-HeaderTest-Exclude: vtkContextKeyEvent.h

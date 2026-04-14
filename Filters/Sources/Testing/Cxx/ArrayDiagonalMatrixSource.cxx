@@ -1,23 +1,6 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    ArrayDiagonalMatrixSource.cxx
-
--------------------------------------------------------------------------
-  Copyright 2008 Sandia Corporation.
-  Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-  the U.S. Government retains certain rights in this software.
--------------------------------------------------------------------------
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-FileCopyrightText: Copyright 2008 Sandia Corporation
+// SPDX-License-Identifier: LicenseRef-BSD-3-Clause-Sandia-USGov
 
 #include <vtkArrayData.h>
 #include <vtkArrayPrint.h>
@@ -29,17 +12,18 @@
 #include <iostream>
 #include <stdexcept>
 
-#define test_expression(expression) \
-{ \
-  if(!(expression)) \
-    throw std::runtime_error("Expression failed: " #expression); \
-}
+#define test_expression(expression)                                                                \
+  {                                                                                                \
+    if (!(expression))                                                                             \
+      throw std::runtime_error("Expression failed: " #expression);                                 \
+  }
 
-int ArrayDiagonalMatrixSource(int vtkNotUsed(argc), char *vtkNotUsed(argv)[])
+int ArrayDiagonalMatrixSource(int vtkNotUsed(argc), char* vtkNotUsed(argv)[])
 {
   try
   {
-    vtkSmartPointer<vtkDiagonalMatrixSource> source = vtkSmartPointer<vtkDiagonalMatrixSource>::New();
+    vtkSmartPointer<vtkDiagonalMatrixSource> source =
+      vtkSmartPointer<vtkDiagonalMatrixSource>::New();
     source->SetExtents(3);
     source->SetArrayType(vtkDiagonalMatrixSource::SPARSE);
     source->SetDiagonal(1.0);
@@ -50,8 +34,8 @@ int ArrayDiagonalMatrixSource(int vtkNotUsed(argc), char *vtkNotUsed(argv)[])
     vtkSparseArray<double>* const sparse_array = vtkSparseArray<double>::SafeDownCast(
       source->GetOutput()->GetArray(static_cast<vtkIdType>(0)));
 
-    cout << "sparse diagonal matrix:\n";
-    vtkPrintMatrixFormat(cout, sparse_array);
+    std::cout << "sparse diagonal matrix:\n";
+    vtkPrintMatrixFormat(std::cout, sparse_array);
 
     test_expression(sparse_array);
     test_expression(sparse_array->GetValue(vtkArrayCoordinates(0, 0)) == 1.0);
@@ -67,11 +51,11 @@ int ArrayDiagonalMatrixSource(int vtkNotUsed(argc), char *vtkNotUsed(argv)[])
     source->SetArrayType(vtkDiagonalMatrixSource::DENSE);
     source->Update();
 
-    vtkDenseArray<double>* const dense_array = vtkDenseArray<double>::SafeDownCast(
-      source->GetOutput()->GetArray(static_cast<vtkIdType>(0)));
+    vtkDenseArray<double>* const dense_array =
+      vtkDenseArray<double>::SafeDownCast(source->GetOutput()->GetArray(static_cast<vtkIdType>(0)));
 
-    cout << "dense diagonal matrix:\n";
-    vtkPrintMatrixFormat(cout, dense_array);
+    std::cout << "dense diagonal matrix:\n";
+    vtkPrintMatrixFormat(std::cout, dense_array);
 
     test_expression(dense_array);
     test_expression(dense_array->GetValue(vtkArrayCoordinates(0, 0)) == 1.0);
@@ -86,10 +70,9 @@ int ArrayDiagonalMatrixSource(int vtkNotUsed(argc), char *vtkNotUsed(argv)[])
 
     return 0;
   }
-  catch(std::exception& e)
+  catch (std::exception& e)
   {
-    cerr << e.what() << endl;
+    std::cerr << e.what() << std::endl;
     return 1;
   }
 }
-

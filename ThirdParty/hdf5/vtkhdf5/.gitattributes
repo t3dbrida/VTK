@@ -1,5 +1,4 @@
 * text=auto !eol
-bin/bbrelease -text
 bin/genparser -text
 bin/switch_maint_mode -text
 c++/src/H5OcreatProp.cpp -text
@@ -192,19 +191,18 @@ java/examples/testfiles/examples.intro.H5_CreateGroup.txt -text
 java/examples/testfiles/examples.intro.H5_CreateGroupAbsoluteRelative.txt -text
 java/examples/testfiles/examples.intro.H5_CreateGroupDataset.txt -text
 java/examples/testfiles/examples.intro.H5_ReadWrite.txt -text
-java/lib/ext/slf4j-nop-1.7.5.jar -text svneol=unset#application/zip
-java/lib/ext/slf4j-simple-1.7.5.jar -text svneol=unset#application/zip
+java/lib/ext/slf4j-nop-2.0.6.jar -text svneol=unset#application/zip
+java/lib/ext/slf4j-simple-2.0.6.jar -text svneol=unset#application/zip
 java/lib/hamcrest-core.jar -text svneol=unset#application/java-archive
 java/lib/junit.jar -text svneol=unset#application/java-archive
 java/lib/simplelogger.properties -text
-java/lib/slf4j-api-1.7.5.jar -text svneol=unset#application/zip
+java/lib/slf4j-api-2.0.6.jar -text svneol=unset#application/zip
 java/src/CMakeLists.txt -text
 java/src/Makefile.am -text
 java/src/hdf/CMakeLists.txt -text
 java/src/hdf/hdf5lib/CMakeLists.txt -text
 java/src/hdf/hdf5lib/H5.java -text
 java/src/hdf/hdf5lib/HDF5Constants.java -text
-java/src/hdf/hdf5lib/HDF5GroupInfo.java -text
 java/src/hdf/hdf5lib/HDFArray.java -text
 java/src/hdf/hdf5lib/HDFNativeData.java -text
 java/src/hdf/hdf5lib/callbacks/Callbacks.java -text
@@ -216,10 +214,10 @@ java/src/hdf/hdf5lib/callbacks/H5D_iterate_cb.java -text
 java/src/hdf/hdf5lib/callbacks/H5D_iterate_t.java -text
 java/src/hdf/hdf5lib/callbacks/H5E_walk_cb.java -text
 java/src/hdf/hdf5lib/callbacks/H5E_walk_t.java -text
-java/src/hdf/hdf5lib/callbacks/H5L_iterate_cb.java -text
 java/src/hdf/hdf5lib/callbacks/H5L_iterate_t.java -text
-java/src/hdf/hdf5lib/callbacks/H5O_iterate_cb.java -text
+java/src/hdf/hdf5lib/callbacks/H5L_iterate_opdata_t.java -text
 java/src/hdf/hdf5lib/callbacks/H5O_iterate_t.java -text
+java/src/hdf/hdf5lib/callbacks/H5O_iterate_opdata_t.java -text
 java/src/hdf/hdf5lib/callbacks/H5P_cls_close_func_cb.java -text
 java/src/hdf/hdf5lib/callbacks/H5P_cls_close_func_t.java -text
 java/src/hdf/hdf5lib/callbacks/H5P_cls_copy_func_cb.java -text
@@ -267,6 +265,8 @@ java/src/hdf/hdf5lib/structs/H5G_info_t.java -text
 java/src/hdf/hdf5lib/structs/H5L_info_t.java -text
 java/src/hdf/hdf5lib/structs/H5O_hdr_info_t.java -text
 java/src/hdf/hdf5lib/structs/H5O_info_t.java -text
+java/src/hdf/hdf5lib/structs/H5O_native_info_t.java -text
+java/src/hdf/hdf5lib/structs/H5O_token_t.java -text
 java/src/hdf/hdf5lib/structs/H5_ih_info_t.java -text
 java/src/hdf/overview.html -text
 java/src/jni/CMakeLists.txt -text
@@ -321,6 +321,7 @@ java/test/TestH5Dparams.java -text
 java/test/TestH5Dplist.java -text
 java/test/TestH5E.java -text
 java/test/TestH5Edefault.java -text
+java/test/TestH5Eparams.java -text
 java/test/TestH5Eregister.java -text
 java/test/TestH5F.java -text
 java/test/TestH5Fbasic.java -text
@@ -347,6 +348,7 @@ java/test/TestH5Sbasic.java -text
 java/test/TestH5T.java -text
 java/test/TestH5Tbasic.java -text
 java/test/TestH5Tparams.java -text
+java/test/TestUnit.java -text
 java/test/TestH5Z.java -text
 java/test/h5ex_g_iterate.orig -text svneol=unset#application/x-hdf
 java/test/junit.sh.in -text
@@ -361,6 +363,7 @@ m4/ax_check_rqrd_class.m4 -text
 m4/ax_java_check_class.m4 -text
 m4/ax_java_options.m4 -text
 m4/ax_jni_include_dir.m4 -text
+m4/ax_prog_doxygen.m4 -text
 m4/ax_prog_jar.m4 -text
 m4/ax_prog_java.m4 -text
 m4/ax_prog_java_cc.m4 -text
@@ -388,10 +391,10 @@ test/cork.c -text
 test/corrupt_stab_msg.h5 -text
 test/deflate.h5 -text
 test/dynlib4.c -text
-test/family_v16_00000.h5 -text
-test/family_v16_00001.h5 -text
-test/family_v16_00002.h5 -text
-test/family_v16_00003.h5 -text
+test/family_v16-000000.h5 -text
+test/family_v16-000001.h5 -text
+test/family_v16-000002.h5 -text
+test/family_v16-000003.h5 -text
 test/file_image_core_test.h5 -text
 test/filespace_1_6.h5 -text
 test/filespace_1_8.h5 -text
@@ -570,7 +573,6 @@ tools/h5diff/testfiles/tmpSingleSiteBethe.output.h5 -text
 tools/h5diff/testfiles/tmpSingleSiteBethe.reference.h5 -text
 tools/h5diff/testfiles/tmptest.he5 -text
 tools/h5diff/testfiles/tmptest2.he5 -text
-tools/h5dump/errfiles/non_existing.err -text
 tools/h5format_convert/CMakeLists.txt -text
 tools/h5format_convert/CMakeTests.cmake -text
 tools/h5format_convert/Makefile.am -text
@@ -726,7 +728,8 @@ tools/testfiles/tattrreg.h5 -text
 tools/testfiles/tbigdims.h5 -text
 tools/testfiles/tbinary.h5 -text
 tools/testfiles/tbitfields.h5 -text
-tools/testfiles/tbitnopaque.ddl -text
+tools/testfiles/tbitnopaque_be.ddl -text
+tools/testfiles/tbitnopaque_le.ddl -text
 tools/testfiles/tbitnopaque.h5 -text svneol=unset#application/x-hdf
 tools/testfiles/tchar.h5 -text
 tools/testfiles/tcmpdattrintsize.h5 -text
@@ -779,6 +782,7 @@ tools/testfiles/tints4dimsStride2.ddl -text
 tools/testfiles/tintsattrs.h5 -text svneol=unset#application/x-hdf
 tools/testfiles/tlarge_objname.h5 -text
 tools/testfiles/tldouble.h5 -text
+tools/testfiles/tldouble_scalar.h5 -text
 tools/testfiles/tlonglinks.h5 -text
 tools/testfiles/tloop.h5 -text
 tools/testfiles/tloop2.h5 -text

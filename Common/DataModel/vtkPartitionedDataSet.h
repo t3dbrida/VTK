@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkPartitionedDataSet.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkPartitionedDataSet
  * @brief   composite dataset to encapsulates a dataset consisting of
@@ -41,9 +29,11 @@
 
 #include "vtkCommonDataModelModule.h" // For export macro
 #include "vtkDataObjectTree.h"
+#include "vtkWrappingHints.h" // For VTK_MARSHALMANUAL
 
+VTK_ABI_NAMESPACE_BEGIN
 class vtkDataSet;
-class VTKCOMMONDATAMODEL_EXPORT vtkPartitionedDataSet : public vtkDataObjectTree
+class VTKCOMMONDATAMODEL_EXPORT VTK_MARSHALMANUAL vtkPartitionedDataSet : public vtkDataObjectTree
 {
 public:
   static vtkPartitionedDataSet* New();
@@ -54,10 +44,10 @@ public:
    * Return class name of data type (see vtkType.h for
    * definitions).
    */
-  int GetDataObjectType() override {return VTK_PARTITIONED_DATA_SET;}
+  int GetDataObjectType() VTK_FUTURE_CONST override { return VTK_PARTITIONED_DATA_SET; }
 
   /**
-   * Set the number of partitionss. This will cause allocation if the new number of
+   * Set the number of partitions. This will cause allocation if the new number of
    * partitions is greater than the current size. All new partitions are initialized to
    * null.
    */
@@ -68,13 +58,13 @@ public:
    */
   unsigned int GetNumberOfPartitions();
 
-  //@{
+  ///@{
   /**
    * Returns the partition at the given index.
    */
   vtkDataSet* GetPartition(unsigned int idx);
   vtkDataObject* GetPartitionAsDataObject(unsigned int idx);
-  //@}
+  ///@}
 
   /**
    * Sets the data object as the given partition. The total number of partitions will
@@ -82,49 +72,62 @@ public:
    */
   void SetPartition(unsigned int idx, vtkDataObject* partition);
 
-
-/**
- * Returns true if meta-data is available for a given partition.
- */
-  int HasMetaData(unsigned int idx)
-    { return this->Superclass::HasChildMetaData(idx); }
+  /**
+   * Returns true if meta-data is available for a given partition.
+   */
+  vtkTypeBool HasMetaData(unsigned int idx) { return this->Superclass::HasChildMetaData(idx); }
 
   /**
    * Returns the meta-data for the partition. If none is already present, a new
    * vtkInformation object will be allocated. Use HasMetaData to avoid
    * allocating vtkInformation objects.
    */
-  vtkInformation* GetMetaData(unsigned int idx)
-    { return this->Superclass::GetChildMetaData(idx); }
+  vtkInformation* GetMetaData(unsigned int idx) { return this->Superclass::GetChildMetaData(idx); }
 
-  //@{
+  ///@{
   /**
    * Retrieve an instance of this class from an information object.
    */
   static vtkPartitionedDataSet* GetData(vtkInformation* info);
-  static vtkPartitionedDataSet* GetData(vtkInformationVector* v, int i=0);
-  //@}
+  static vtkPartitionedDataSet* GetData(vtkInformationVector* v, int i = 0);
+  ///@}
 
   /**
    * Unhiding superclass method.
    */
   vtkInformation* GetMetaData(vtkCompositeDataIterator* iter) override
-    { return this->Superclass::GetMetaData(iter); }
+  {
+    return this->Superclass::GetMetaData(iter);
+  }
 
   /**
    * Unhiding superclass method.
    */
-  int HasMetaData(vtkCompositeDataIterator* iter) override
-    { return this->Superclass::HasMetaData(iter); }
+  vtkTypeBool HasMetaData(vtkCompositeDataIterator* iter) override
+  {
+    return this->Superclass::HasMetaData(iter);
+  }
+
+  /**
+   * Removes all partitions that have null datasets and resizes the dataset.
+   * Note any meta data associated with the null datasets will get lost.
+   */
+  void RemoveNullPartitions();
 
 protected:
   vtkPartitionedDataSet();
   ~vtkPartitionedDataSet() override;
 
+  /**
+   * vtkPartitionedDataSet cannot contain non-leaf children. This ensures that
+   * we don't accidentally create them in CopyStructure
+   */
+  vtkDataObjectTree* CreateForCopyStructure(vtkDataObjectTree*) override { return nullptr; }
+
 private:
   vtkPartitionedDataSet(const vtkPartitionedDataSet&) = delete;
   void operator=(const vtkPartitionedDataSet&) = delete;
-
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkDataSetAttributesFieldList.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class vtkDataSetAttributesFieldList
  * @brief helps manage arrays from multiple vtkDataSetAttributes.
@@ -56,12 +44,16 @@
 #define vtkDataSetAttributesFieldList_h
 
 #include "vtkCommonDataModelModule.h" // For export macro
-#include "vtkSystemIncludes.h"
 #include "vtkSmartPointer.h"          // for vtkSmartPointer
-#include <memory>                     // for unique_ptr
+#include "vtkSystemIncludes.h"
 
+#include <functional> // for std::function
+#include <memory>     // for unique_ptr
+
+VTK_ABI_NAMESPACE_BEGIN
 class vtkAbstractArray;
 class vtkDataSetAttributes;
+class vtkFieldData;
 class vtkIdList;
 
 class VTKCOMMONDATAMODEL_EXPORT vtkDataSetAttributesFieldList
@@ -100,7 +92,13 @@ public:
    */
   void UnionFieldList(vtkDataSetAttributes* dsa);
 
-  //@{
+  /**
+   * Generate a composite array from the provided fields that are registered
+   * so far and add them in the outputData
+   */
+  void GenerateCompositeArray(std::vector<vtkFieldData*> fields, vtkDataSetAttributes* outputData);
+
+  ///@{
   /**
    * These methods can called to generate and update the output
    * vtkDataSetAttributes. These match corresponding API on vtkDataSetAttributes
@@ -110,27 +108,39 @@ public:
   void CopyAllocate(vtkDataSetAttributes* output, int ctype, vtkIdType sz, vtkIdType ext) const;
   void CopyData(int inputIndex, vtkDataSetAttributes* input, vtkIdType fromId,
     vtkDataSetAttributes* output, vtkIdType toId) const;
-  void CopyData(int inputIdx, vtkDataSetAttributes* input, vtkIdType inputStart,
+  void CopyData(int inputIndex, vtkDataSetAttributes* input, vtkIdType inputStart,
     vtkIdType numValues, vtkDataSetAttributes* output, vtkIdType outStart) const;
-  void InterpolatePoint(int inputIdx, vtkDataSetAttributes* input, vtkIdList* inputIds,
+  void InterpolatePoint(int inputIndex, vtkDataSetAttributes* input, vtkIdList* inputIds,
     double* weights, vtkDataSetAttributes* output, vtkIdType toId) const;
-  //@}
+  ///@}
 
-  //@{
   /**
-   * vtkDataSetAttributes::FieldList used a different internal data structure in
-   * older versions of VTK. This exposes that API for legacy applications.
-   * It may be deprecated in the future.
-   *
-   * Using these methods should be avoided in new code.
+   * Use this method to provide a custom callback function to invoke for each
+   * array in the input and corresponding array in the output.
    */
-  int IsAttributePresent(int attrType) const;
-  int GetNumberOfFields() const;
-  int GetFieldIndex(int i) const;
-  const char* GetFieldName(int i) const;
-  int GetFieldComponents(int i) const;
-  int GetDSAIndex(int index, int i) const;
-  //@}
+  void TransformData(int inputIndex, vtkFieldData* input, vtkFieldData* output,
+    std::function<void(vtkAbstractArray*, vtkAbstractArray*)> op) const;
+
+  /**
+   * This method can be used to determine the number of arrays remaining
+   * after intersection or union operations. See also
+   * vtkFieldData::GetNumberOfArrays().
+   */
+  int GetNumberOfArrays();
+
+  /**
+   * A convenience function that builds a prototype / template dataset
+   * attributes for initializing the process of attribute interpolation and
+   * copying. The supplied protoPD should be initialized (empty), and the
+   * arrays present in this field list are instantiated and added to the
+   * prototype attributes. The typical usage is to use field list
+   * intersection (or union) operations to build up the field list, then
+   * create the prototype. Note, to retain an order of the data arrays,
+   * an optional ordering dataset attributes may be provided. (This is
+   * necessary because the vtkDataSetAttributesFieldList does not necessarily
+   * retain the original order of data arrays.)
+   */
+  void BuildPrototype(vtkDataSetAttributes* protoDSA, vtkDataSetAttributes* ordering = nullptr);
 
 protected:
   /**
@@ -147,5 +157,6 @@ private:
   void operator=(vtkDataSetAttributesFieldList&) = delete;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif
 // VTK-HeaderTest-Exclude: vtkDataSetAttributesFieldList.h

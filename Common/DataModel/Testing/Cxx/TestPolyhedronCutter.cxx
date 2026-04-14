@@ -1,44 +1,27 @@
-/*=========================================================================
-
-Program:   Visualization Toolkit
-Module:    TestPolyhedronCutter.cxx
-
-Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-All rights reserved.
-See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-This software is distributed WITHOUT ANY WARRANTY; without even
-the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "vtkCutter.h"
 #include "vtkPlane.h"
 #include "vtkPolygon.h"
+#include "vtkTestUtilities.h"
 #include "vtkUnstructuredGrid.h"
 #include "vtkXMLUnstructuredGridReader.h"
 
 #include <set>
 
-using namespace std;
+#include <iostream>
 
-int TestPolyhedronCutter(int argc, char *argv[])
+int TestPolyhedronCutter(int argc, char* argv[])
 {
   vtkObject::GlobalWarningDisplayOff();
   vtkNew<vtkXMLUnstructuredGridReader> r;
 
-  if (argc < 3)
-  {
-    cout << "Not enough arguments. Passing test nonetheless.";
-    return EXIT_SUCCESS;
-  }
-
-  char* fname = argv[1];
+  char* fname = vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/onePolyhedron.vtu");
   r->SetFileName(fname);
   r->Update();
 
-  vtkUnstructuredGrid *grid = r->GetOutput();
+  vtkUnstructuredGrid* grid = r->GetOutput();
   if (grid->GetNumberOfCells() != 1)
   {
     return EXIT_FAILURE;
@@ -48,6 +31,7 @@ int TestPolyhedronCutter(int argc, char *argv[])
   vtkNew<vtkPlane> cutPlane;
   cutPlane->SetOrigin(0, 0, 350);
   cutPlane->SetNormal(1, 0, 0);
+  cut->GenerateTrianglesOff();
   cut->SetCutFunction(cutPlane);
 
   cut->AddInputConnection(r->GetOutputPort());
@@ -75,12 +59,13 @@ int TestPolyhedronCutter(int argc, char *argv[])
 
   if (cell->GetNumberOfEdges() != 5)
   {
-    cerr << "The resulting polygon consists of " << cell->GetNumberOfEdges() << " edges instead of the expected 5 edges." << endl;
+    std::cerr << "The resulting polygon consists of " << cell->GetNumberOfEdges()
+              << " edges instead of the expected 5 edges." << std::endl;
     return EXIT_FAILURE;
   }
 
   vtkIdList* ids = cell->GetPointIds();
-  set<vtkIdType> uniqueIds;
+  std::set<vtkIdType> uniqueIds;
 
   for (int i = 0; i < 5; ++i)
   {
@@ -89,12 +74,12 @@ int TestPolyhedronCutter(int argc, char *argv[])
 
   if (uniqueIds.size() != 5)
   {
-    cerr << "The resulting polygon consists of invalid edges" << endl;
+    std::cerr << "The resulting polygon consists of invalid edges" << std::endl;
     return EXIT_FAILURE;
   }
 
   // For the second slice operation, the only requirement (currently) is that it returns *a result*
-  fname = argv[2];
+  fname = vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/sliceOfPolyhedron.vtu");
   r->SetFileName(fname);
   r->Update();
 

@@ -1,56 +1,46 @@
-/*=========================================================================
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-FileCopyrightText: Copyright 2004 Sandia Corporation
+// SPDX-License-Identifier: BSD-3-Clause
 
-  Program:   Visualization Toolkit
-  Module:    vtkStringArray.cxx
-  Language:  C++
-
-  Copyright 2004 Sandia Corporation.
-  Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-  license for use of this work by or on behalf of the
-  U.S. Government. Redistribution and use in source and binary forms, with
-  or without modification, are permitted provided that this Notice and any
-  statement of authorship are reproduced on all copies.
-
-=========================================================================*/
+// VTK_DEPRECATED_IN_9_7_0()
+#define VTK_DEPRECATION_LEVEL 0
 
 // We do not provide a definition for the copy constructor or
 // operator=.  Block the warning.
 #ifdef _MSC_VER
-# pragma warning (disable: 4661)
+#pragma warning(disable : 4661)
 #endif
-
-#include "vtkStdString.h"
 
 #include "vtkStringArray.h"
 
 #include "vtkArrayIteratorTemplate.h"
 #include "vtkCharArray.h"
+#include "vtkCommand.h"
 #include "vtkIdList.h"
-#include "vtkIdTypeArray.h"
 #include "vtkObjectFactory.h"
-#include "vtkSortDataArray.h"
+#include "vtkSMPTools.h"
+#include "vtkStdString.h"
 
-#include <utility>
 #include <algorithm>
-#include <map>
+#include <utility>
 #include <vector>
-
-// Map containing updates to a vtkStringArray that have occurred
-// since we last build the vtkStringArrayLookup.
-typedef std::multimap<vtkStdString, vtkIdType> vtkStringCachedUpdates;
 
 namespace
 {
-auto DefaultDeleteFunction = [](void *ptr) {
-  delete[] reinterpret_cast<vtkStdString *>(ptr);
-};
+vtkMallocingFunction DefaultNewFunction = [](size_t size) -> void*
+{ return new vtkStdString[size]; };
+vtkFreeingFunction DefaultDeleteFunction = [](void* ptr)
+{ delete[] static_cast<vtkStdString*>(ptr); };
 }
 
-//-----------------------------------------------------------------------------
+VTK_ABI_NAMESPACE_BEGIN
+
+//------------------------------------------------------------------------------
 class vtkStringArrayLookup
 {
 public:
-  vtkStringArrayLookup() : Rebuild(true)
+  vtkStringArrayLookup()
+    : Rebuild(true)
   {
     this->SortedArray = nullptr;
     this->IndexArray = nullptr;
@@ -70,204 +60,226 @@ public:
   }
   vtkStringArray* SortedArray;
   vtkIdList* IndexArray;
-  vtkStringCachedUpdates CachedUpdates;
   bool Rebuild;
 };
 
 vtkStandardNewMacro(vtkStringArray);
+vtkStandardExtendedNewMacro(vtkStringArray);
 
-//-----------------------------------------------------------------------------
-
+//------------------------------------------------------------------------------
 vtkStringArray::vtkStringArray()
 {
-  this->Array = nullptr;
-  this->DeleteFunction = DefaultDeleteFunction;
+  this->Buffer = vtkBuffer<ValueType>::New();
+  this->Buffer->SetMallocFunction(DefaultNewFunction);
+  this->Buffer->SetReallocFunction(nullptr);
+  this->Buffer->SetFreeFunction(false, DefaultDeleteFunction);
   this->Lookup = nullptr;
 }
 
-//-----------------------------------------------------------------------------
-
+//------------------------------------------------------------------------------
 vtkStringArray::~vtkStringArray()
 {
-  if (this->DeleteFunction)
-  {
-    this->DeleteFunction(this->Array);
-  }
+  this->Buffer->Delete();
   delete this->Lookup;
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+bool vtkStringArray::ReallocateTuples(vtkIdType numTuples)
+{
+  vtkIdType newSize = numTuples * this->GetNumberOfComponents();
+  if (newSize == this->Capacity)
+  {
+    return true;
+  }
+
+  if (this->Buffer->Reallocate(newSize))
+  {
+    this->Capacity = this->Buffer->GetSize();
+    // Notify observers that the buffer may have changed
+    this->InvokeEvent(vtkCommand::BufferChangedEvent);
+    return true;
+  }
+  return false;
+}
+
+//------------------------------------------------------------------------------
+bool vtkStringArray::EnsureAccessToTuple(vtkIdType tupleIdx)
+{
+  if (tupleIdx < 0)
+  {
+    return false;
+  }
+  vtkIdType minSize = (1 + tupleIdx) * this->NumberOfComponents;
+  vtkIdType expectedMaxId = minSize - 1;
+  if (this->MaxId < expectedMaxId)
+  {
+    if (this->Capacity < minSize)
+    {
+      if (!this->ReserveTuples(tupleIdx + 1))
+      {
+        return false;
+      }
+    }
+    this->MaxId = expectedMaxId;
+  }
+  return true;
+}
+
+//------------------------------------------------------------------------------
+vtkStringArray* vtkStringArray::FastDownCast(vtkAbstractArray* source)
+{
+  if (source)
+  {
+    switch (source->GetArrayType())
+    {
+      case vtkStringArray::ArrayTypeTag::value:
+        return static_cast<vtkStringArray*>(source);
+      default:
+        break;
+    }
+  }
+  return nullptr;
+}
+
+//------------------------------------------------------------------------------
 vtkArrayIterator* vtkStringArray::NewIterator()
 {
-  vtkArrayIteratorTemplate<vtkStdString>* iter =
-    vtkArrayIteratorTemplate<vtkStdString>::New();
+  vtkArrayIteratorTemplate<ValueType>* iter = vtkArrayIteratorTemplate<ValueType>::New();
   iter->Initialize(this);
   return iter;
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // This method lets the user specify data to be held by the array.  The
 // array argument is a pointer to the data.  size is the size of
 // the array supplied by the user.  Set save to 1 to keep the class
 // from deleting the array when it cleans up or reallocates memory.
 // The class uses the actual array provided; it does not copy the data
 // from the suppled array.
-void vtkStringArray::SetArray(vtkStdString *array, vtkIdType size, int save,
-                              int deleteMethod)
+void vtkStringArray::SetArray(ValueType* array, vtkIdType size, int save, int deleteMethod)
 {
-  if (this->Array && this->DeleteFunction)
-  {
-    vtkDebugMacro (<< "Deleting the array...");
-    this->DeleteFunction(this->Array);
-  }
-  else
-  {
-    vtkDebugMacro (<<"Warning, array not deleted, but will point to new array.");
-  }
+  this->Buffer->SetBuffer(array, size);
 
-  vtkDebugMacro(<<"Setting array to: " << array);
-
-  this->Array = array;
-  this->Size = size;
-  this->MaxId = size-1;
-
-  if(save!=0)
+  if (deleteMethod == VTK_DATA_ARRAY_DELETE || deleteMethod == VTK_DATA_ARRAY_USER_DEFINED)
   {
-    this->DeleteFunction = nullptr;
+    this->Buffer->SetFreeFunction(save != 0, DefaultDeleteFunction);
   }
-  else if(deleteMethod == VTK_DATA_ARRAY_DELETE ||
-          deleteMethod == VTK_DATA_ARRAY_USER_DEFINED)
-  {
-    this->DeleteFunction = DefaultDeleteFunction;
-  }
-  else if(deleteMethod == VTK_DATA_ARRAY_ALIGNED_FREE)
+  else if (deleteMethod == VTK_DATA_ARRAY_ALIGNED_FREE)
   {
 #ifdef _WIN32
-    this->DeleteFunction = _aligned_free;
+    this->Buffer->SetFreeFunction(save != 0, _aligned_free);
 #else
-    this->DeleteFunction = free;
+    this->Buffer->SetFreeFunction(save != 0, free);
 #endif
   }
-  else if(deleteMethod == VTK_DATA_ARRAY_FREE)
+  else if (deleteMethod == VTK_DATA_ARRAY_FREE)
   {
-    this->DeleteFunction = free;
+    this->Buffer->SetFreeFunction(save != 0, free);
   }
 
+  this->Capacity = size;
+  this->MaxId = this->Capacity - 1;
   this->DataChanged();
 }
 
-//-----------------------------------------------------------------------------
-void vtkStringArray::SetArrayFreeFunction(void (*callback)(void *))
+//------------------------------------------------------------------------------
+void vtkStringArray::SetArrayFreeFunction(void (*callback)(void*))
 {
-  this->DeleteFunction = callback;
+  this->Buffer->SetFreeFunction(false, callback);
 }
 
-//-----------------------------------------------------------------------------
-// Allocate memory for this array. Delete old storage only if necessary.
-
-vtkTypeBool vtkStringArray::Allocate(vtkIdType sz, vtkIdType)
+//------------------------------------------------------------------------------
+bool vtkStringArray::CopyComponent(int dstComponent, vtkAbstractArray* src, int srcComponent)
 {
-  if(sz > this->Size)
+  auto* source = vtkStringArray::SafeDownCast(src);
+  if (!source || source->GetNumberOfTuples() != this->GetNumberOfTuples() || srcComponent < 0 ||
+    srcComponent >= source->GetNumberOfComponents() || dstComponent < 0 ||
+    dstComponent >= this->GetNumberOfComponents())
   {
-    if(this->DeleteFunction)
+    return false;
+  }
+
+  vtkIdType nn = this->GetNumberOfTuples();
+  vtkSMPTools::For(0, nn,
+    [this, dstComponent, source, srcComponent](vtkIdType begin, vtkIdType end)
     {
-      this->DeleteFunction(this->Array);
-    }
-
-    this->Size = ( sz > 0 ? sz : 1);
-    this->Array = new vtkStdString[this->Size];
-    if(!this->Array)
-    {
-      return 0;
-    }
-    this->DeleteFunction = DefaultDeleteFunction;
-  }
-
-  this->MaxId = -1;
-  this->DataChanged();
-
-  return 1;
+      vtkIdType ndc = this->GetNumberOfComponents();
+      vtkIdType nsc = source->GetNumberOfComponents();
+      for (vtkIdType ii = begin; ii < end; ++ii)
+      {
+        this->SetValue(ii * ndc + dstComponent, source->GetValue(ii * nsc + srcComponent));
+      }
+    });
+  return true;
 }
 
-//-----------------------------------------------------------------------------
-// Release storage and reset array to initial state.
-
-void vtkStringArray::Initialize()
-{
-  if(this->DeleteFunction)
-  {
-    this->DeleteFunction(this->Array);
-  }
-  this->Array = nullptr;
-  this->Size = 0;
-  this->MaxId = -1;
-  this->DeleteFunction = DefaultDeleteFunction;
-  this->DataChanged();
-}
-
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // Deep copy of another string array.
 
 void vtkStringArray::DeepCopy(vtkAbstractArray* aa)
 {
   // Do nothing on a nullptr input.
-  if(!aa)
+  if (!aa)
   {
+    return;
+  }
+  vtkStringArray* sa = vtkArrayDownCast<vtkStringArray>(aa);
+  if (sa == nullptr)
+  {
+    vtkErrorMacro(<< "Shouldn't Happen: Couldn't downcast array into a vtkStringArray.");
     return;
   }
 
   // Avoid self-copy.
-  if(this == aa)
+  if (this != sa)
   {
-    return;
-  }
+    this->Superclass::DeepCopy(sa); // copy Information object
 
-  // If data type does not match, we can't copy.
-  if(aa->GetDataType() != this->GetDataType())
-  {
-    vtkErrorMacro(<< "Incompatible types: tried to copy an array of type "
-                  << aa->GetDataTypeAsString()
-                  << " into a string array ");
-    return;
-  }
+    this->SetNumberOfComponents(sa->GetNumberOfComponents());
+    this->SetNumberOfTuples(sa->GetNumberOfTuples());
 
-  vtkStringArray *fa = vtkArrayDownCast<vtkStringArray>( aa );
-  if ( fa == nullptr )
-  {
-    vtkErrorMacro(<< "Shouldn't Happen: Couldn't downcast array into a vtkStringArray." );
-    return;
+    std::copy_n(sa->Buffer->GetBuffer(), sa->GetNumberOfValues(), this->Buffer->GetBuffer());
+    this->DataChanged();
   }
-
-  // Free our previous memory.
-  if(this->DeleteFunction)
-  {
-    this->DeleteFunction(this->Array);
-  }
-
-  // Copy the given array into new memory.
-  this->MaxId = fa->GetMaxId();
-  this->Size = fa->GetSize();
-  this->DeleteFunction = DefaultDeleteFunction;
-  this->Array = new vtkStdString[this->Size];
-
-  for (int i = 0; i < this->Size; ++i)
-  {
-    this->Array[i] = fa->Array[i];
-  }
-  this->DataChanged();
+  this->Squeeze();
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+void vtkStringArray::ShallowCopy(vtkAbstractArray* src)
+{
+  vtkStringArray* o = vtkStringArray::FastDownCast(src);
+  if (o)
+  {
+    this->Capacity = o->Capacity;
+    this->MaxId = o->MaxId;
+    this->SetName(o->Name);
+    this->SetNumberOfComponents(o->NumberOfComponents);
+    this->CopyComponentNames(o);
+
+    if (this->Buffer != o->Buffer)
+    {
+      this->Buffer->Delete();
+      this->Buffer = o->Buffer;
+      this->Buffer->Register(nullptr);
+    }
+    this->DataChanged();
+  }
+  else
+  {
+    vtkErrorMacro(<< "Shouldn't Happen: Couldn't downcast array into a vtkStringArray.");
+  }
+}
+
+//------------------------------------------------------------------------------
 // Interpolate array value from other array value given the
 // indices and associated interpolation weights.
 // This method assumes that the two arrays are of the same time.
-void vtkStringArray::InterpolateTuple(vtkIdType i, vtkIdList *ptIndices,
-    vtkAbstractArray* source,  double* weights)
+void vtkStringArray::InterpolateTuple(
+  vtkIdType i, vtkIdList* ptIndices, vtkAbstractArray* source, double* weights)
 {
   if (this->GetDataType() != source->GetDataType())
   {
-    vtkErrorMacro("Cannot CopyValue from array of type "
-      << source->GetDataTypeAsString());
+    vtkErrorMacro("Cannot CopyValue from array of type " << source->GetDataTypeAsString());
     return;
   }
 
@@ -277,12 +289,12 @@ void vtkStringArray::InterpolateTuple(vtkIdType i, vtkIdList *ptIndices,
     return;
   }
 
-  // We use nearest neighbour for interpolating strings.
-  // First determine which is the nearest neighbour using the weights-
+  // We use nearest neighbor for interpolating strings.
+  // First determine which is the nearest neighbor using the weights-
   // it's the index with maximum weight.
   vtkIdType nearest = ptIndices->GetId(0);
   double max_weight = weights[0];
-  for (int k=1; k < ptIndices->GetNumberOfIds(); k++)
+  for (int k = 1; k < ptIndices->GetNumberOfIds(); k++)
   {
     if (weights[k] > max_weight)
     {
@@ -294,18 +306,17 @@ void vtkStringArray::InterpolateTuple(vtkIdType i, vtkIdList *ptIndices,
   this->InsertTuple(i, nearest, source);
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // Interpolate value from the two values, p1 and p2, and an
 // interpolation factor, t. The interpolation factor ranges from (0,1),
 // with t=0 located at p1. This method assumes that the three arrays are of
 // the same type. p1 is value at index id1 in fromArray1, while, p2 is
 // value at index id2 in fromArray2.
-void vtkStringArray::InterpolateTuple(vtkIdType i, vtkIdType id1,
-  vtkAbstractArray* source1, vtkIdType id2, vtkAbstractArray* source2,
-  double t)
+void vtkStringArray::InterpolateTuple(vtkIdType i, vtkIdType id1, vtkAbstractArray* source1,
+  vtkIdType id2, vtkAbstractArray* source2, double t)
 {
-  if (source1->GetDataType() != VTK_STRING ||
-    source2->GetDataType() != VTK_STRING)
+  if (source1->GetDataType() != vtkStringArray::DataTypeTag::value ||
+    source2->GetDataType() != vtkStringArray::DataTypeTag::value)
   {
     vtkErrorMacro("All arrays to InterpolateValue() must be of same type.");
     return;
@@ -323,431 +334,545 @@ void vtkStringArray::InterpolateTuple(vtkIdType i, vtkIdType id1,
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkStringArray::PrintSelf(ostream& os, vtkIndent indent)
 {
-  this->Superclass::PrintSelf(os,indent);
-  if(this->Array)
+  this->Superclass::PrintSelf(os, indent);
+  if (this->Buffer)
   {
-    os << indent << "Array: " << this->Array << "\n";
-  }
-  else
-  {
-    os << indent << "Array: (null)\n";
+    this->Buffer->PrintSelf(os, indent);
   }
 }
 
-//-----------------------------------------------------------------------------
-// Protected function does "reallocate"
-
-vtkStdString * vtkStringArray::ResizeAndExtend(vtkIdType sz)
+//------------------------------------------------------------------------------
+void vtkStringArray::Squeeze()
 {
-  vtkStdString * newArray;
-  vtkIdType newSize;
+  if (this->GetCapacity() > this->GetNumberOfValues())
+  {
+    vtkIdType numTuples = this->GetNumberOfTuples();
+    int numComps = this->GetNumberOfComponents() > 0 ? this->GetNumberOfComponents() : 1;
+    if (!this->ReallocateTuples(this->GetNumberOfTuples()))
+    {
+      vtkErrorMacro("Unable to allocate " << numTuples * numComps << " elements of size "
+                                          << sizeof(ValueType) << " bytes. ");
+#if !defined NDEBUG
+      // We're debugging, crash here preserving the stack
+      abort();
+#elif !defined VTK_DONT_THROW_BAD_ALLOC
+      // We can throw something that has universal meaning
+      throw std::bad_alloc();
+#else
+      // We indicate that malloc failed by return
+      return;
+#endif
+    }
+    this->Capacity = this->GetNumberOfValues();
+  }
+}
 
-  if(sz > this->Size)
+//------------------------------------------------------------------------------
+vtkTypeBool vtkStringArray::ReserveTuples(vtkIdType numTuples)
+{
+  assert(numTuples >= 0);
+  int numComps = this->GetNumberOfComponents();
+  vtkIdType curNumTuples = this->Capacity / (numComps > 0 ? numComps : 1);
+  if (numTuples > curNumTuples)
   {
     // Requested size is bigger than current size.  Allocate enough
     // memory to fit the requested size and be more than double the
     // currently allocated memory.
-    newSize = (this->Size+1) + sz;
-  }
-  else if (sz == this->Size)
-  {
-    // Requested size is equal to current size.  Do nothing.
-    return this->Array;
+    numTuples = curNumTuples + numTuples;
   }
   else
   {
-    // Requested size is smaller than current size.  Squeeze the
-    // memory.
-    newSize = sz;
-  }
-
-  if(newSize <= 0)
-  {
-    this->Initialize();
-    return nullptr;
-  }
-
-  newArray = new vtkStdString[newSize];
-  if(!newArray)
-  {
-    vtkErrorMacro("Cannot allocate memory\n");
-    return nullptr;
-  }
-
-  if(this->Array)
-  {
-    // can't use memcpy here
-    vtkIdType numCopy = (newSize < this->Size ? newSize : this->Size);
-    for (vtkIdType i = 0; i < numCopy; ++i)
-    {
-      newArray[i] = this->Array[i];
-    }
-    if(this->DeleteFunction)
-    {
-      this->DeleteFunction(this->Array);
-    }
-  }
-
-  if(newSize < this->Size)
-  {
-    this->MaxId = newSize-1;
-  }
-  this->Size = newSize;
-  this->Array = newArray;
-  this->DeleteFunction = DefaultDeleteFunction;
-
-  this->DataChanged();
-  return this->Array;
-}
-
-//-----------------------------------------------------------------------------
-vtkTypeBool vtkStringArray::Resize(vtkIdType sz)
-{
-  vtkStdString * newArray;
-  vtkIdType newSize = sz;
-
-  if(newSize == this->Size)
-  {
     return 1;
   }
 
-  if(newSize <= 0)
+  if (!this->ReallocateTuples(numTuples))
   {
-    this->Initialize();
-    return 1;
-  }
-
-  newArray = new vtkStdString[newSize];
-  if(!newArray)
-  {
-    vtkErrorMacro(<< "Cannot allocate memory\n");
+    vtkErrorMacro("Unable to allocate " << numTuples * numComps << " elements of size "
+                                        << sizeof(ValueType) << " bytes. ");
+#if !defined NDEBUG
+    // We're debugging, crash here preserving the stack
+    abort();
+#elif !defined VTK_DONT_THROW_BAD_ALLOC
+    // We can throw something that has universal meaning
+    throw std::bad_alloc();
+#else
+    // We indicate that malloc failed by return
     return 0;
+#endif
   }
 
-  if(this->Array)
-  {
-    vtkIdType numCopy = (newSize < this->Size ? newSize : this->Size);
+  // Allocation was successful. Save it.
+  this->Capacity = numTuples * numComps;
 
-    for (vtkIdType i = 0; i < numCopy; ++i)
-    {
-      newArray[i] = this->Array[i];
-    }
-
-    if (this->DeleteFunction)
-    {
-      this->DeleteFunction = DefaultDeleteFunction;
-      this->DeleteFunction(this->Array);
-
-    }
-  }
-
-  if(newSize < this->Size)
-  {
-    this->MaxId = newSize-1;
-  }
-  this->Size = newSize;
-  this->Array = newArray;
-  this->DeleteFunction = DefaultDeleteFunction;
-  this->DataChanged();
   return 1;
 }
 
-
-//-----------------------------------------------------------------------------
-void vtkStringArray::SetNumberOfValues(vtkIdType number)
+//------------------------------------------------------------------------------
+vtkStringArray::ValueType* vtkStringArray::WritePointer(vtkIdType valueIdx, vtkIdType numValues)
 {
-  this->Allocate(number);
-  this->MaxId = number - 1;
-  this->DataChanged();
-}
-
-//-----------------------------------------------------------------------------
-vtkStdString * vtkStringArray::WritePointer(vtkIdType id,
-                                     vtkIdType number)
-{
-  vtkIdType newSize=id+number;
-  if ( newSize > this->Size )
+  vtkIdType newSize = valueIdx + numValues;
+  if (newSize > this->Capacity)
   {
-    this->ResizeAndExtend(newSize);
-  }
-  if ( (--newSize) > this->MaxId )
-  {
-    this->MaxId = newSize;
-  }
-  this->DataChanged();
-  return this->Array + id;
-}
-
-//-----------------------------------------------------------------------------
-void vtkStringArray::InsertValue(vtkIdType id, vtkStdString f)
-{
-  if ( id >= this->Size )
-  {
-    if (!this->ResizeAndExtend(id+1))
+    if (!this->ReserveTuples(newSize / this->NumberOfComponents + 1))
     {
-      return;
+      return nullptr;
     }
+    this->MaxId = (newSize - 1);
   }
-  this->Array[id] = f;
-  if ( id > this->MaxId )
+
+  // For extending the in-use ids but not the size:
+  this->MaxId = std::max(this->MaxId, newSize - 1);
+
+  this->DataChanged();
+  return this->GetPointer(valueIdx);
+}
+
+//------------------------------------------------------------------------------
+void vtkStringArray::InsertValue(vtkIdType valueIdx, ValueType value)
+{
+  vtkIdType tuple = valueIdx / this->NumberOfComponents;
+  // Update MaxId to the inserted component (not the complete tuple) for
+  // compatibility with InsertNextValue.
+  vtkIdType newMaxId = valueIdx > this->MaxId ? valueIdx : this->MaxId;
+  if (this->EnsureAccessToTuple(tuple))
   {
-    this->MaxId = id;
+    assert("Sufficient space allocated." && this->MaxId >= newMaxId);
+    this->MaxId = newMaxId;
+    this->SetValue(valueIdx, value);
   }
-  this->DataElementChanged(id);
 }
 
-//-----------------------------------------------------------------------------
-vtkIdType vtkStringArray::InsertNextValue(vtkStdString f)
+//------------------------------------------------------------------------------
+vtkIdType vtkStringArray::InsertNextValue(ValueType value)
 {
-  this->InsertValue (++this->MaxId,f);
-  this->DataElementChanged(this->MaxId);
-  return this->MaxId;
+  vtkIdType nextValueIdx = this->MaxId + 1;
+  if (nextValueIdx >= this->Capacity)
+  {
+    vtkIdType tuple = nextValueIdx / this->NumberOfComponents;
+    this->EnsureAccessToTuple(tuple);
+    // Since EnsureAccessToTuple will update the MaxId to point to the last
+    // component in the last tuple, we move it back to support this method on
+    // multi-component arrays.
+    this->MaxId = nextValueIdx;
+  }
+
+  // Extending array without needing to reallocate:
+  this->MaxId = std::max(this->MaxId, nextValueIdx);
+
+  this->SetValue(nextValueIdx, value);
+  return nextValueIdx;
 }
 
-// ----------------------------------------------------------------------------
-int vtkStringArray::GetDataTypeSize( void )
+//------------------------------------------------------------------------------
+int vtkStringArray::GetDataTypeSize() const
 {
-  return static_cast<int>(sizeof(vtkStdString));
+  return sizeof(ValueType);
 }
 
-// ----------------------------------------------------------------------------
-unsigned long vtkStringArray::GetActualMemorySize( void )
+//------------------------------------------------------------------------------
+unsigned long vtkStringArray::GetActualMemorySize() const
 {
   size_t totalSize = 0;
-  size_t  numPrims = static_cast<size_t>(this->GetSize());
+  size_t numPrims = static_cast<size_t>(this->GetCapacity());
 
   for (size_t i = 0; i < numPrims; ++i)
   {
-    totalSize += sizeof( vtkStdString );
-    totalSize += this->Array[i].size() *sizeof( vtkStdString::value_type );
+    totalSize += sizeof(ValueType);
+    totalSize += this->Buffer->GetBuffer()[i].size() * sizeof(ValueType::value_type);
   }
 
-  return static_cast<unsigned long>(
-    ceil(static_cast<double>(totalSize) / 1024.0 )); // kibibytes
+  return static_cast<unsigned long>(ceil(static_cast<double>(totalSize) / 1024.0)); // kibibytes
 }
 
-// ----------------------------------------------------------------------------
-vtkIdType vtkStringArray::GetDataSize()
+//------------------------------------------------------------------------------
+vtkIdType vtkStringArray::GetDataSize() const
 {
   size_t size = 0;
   size_t numStrs = static_cast<size_t>(this->GetMaxId() + 1);
-  for(size_t i=0; i < numStrs; i++)
+  for (size_t i = 0; i < numStrs; i++)
   {
-    size += this->Array[i].size() + 1;
+    size += this->Buffer->GetBuffer()[i].size() + 1;
     // (+1) for termination character.
   }
   return static_cast<vtkIdType>(size);
 }
 
-// ----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // Set the tuple at the ith location using the jth tuple in the source array.
 // This method assumes that the two arrays have the same type
 // and structure. Note that range checking and memory allocation is not
 // performed; use in conjunction with SetNumberOfTuples() to allocate space.
-void vtkStringArray::SetTuple(vtkIdType i, vtkIdType j,
-  vtkAbstractArray* source)
+void vtkStringArray::SetTuple(
+  vtkIdType dstTupleIdx, vtkIdType srcTupleIdx, vtkAbstractArray* source)
 {
-  vtkStringArray* sa = vtkArrayDownCast<vtkStringArray>(source);
-  if (!sa)
+  // First, check for the common case of typeid(source) == typeid(this). This
+  // way we don't waste time redoing the other checks in the superclass, and
+  // can avoid doing a dispatch for the most common usage of this method.
+  vtkStringArray* other = vtkArrayDownCast<vtkStringArray>(source);
+  if (!other)
   {
-    vtkWarningMacro("Input and outputs array data types do not match.");
-    return ;
+    vtkErrorMacro(<< "Shouldn't Happen: Couldn't downcast array into a vtkStringArray.");
+    return;
   }
 
-  vtkIdType loci = i * this->NumberOfComponents;
-  vtkIdType locj = j * sa->GetNumberOfComponents();
-  for (vtkIdType cur = 0; cur < this->NumberOfComponents; cur++)
+  int numComps = this->GetNumberOfComponents();
+  if (source->GetNumberOfComponents() != numComps)
   {
-    this->SetValue(loci + cur, sa->GetValue(locj + cur));
+    vtkErrorMacro("Number of components do not match: Source: "
+      << source->GetNumberOfComponents() << " Dest: " << this->GetNumberOfComponents());
+    return;
   }
-  this->DataChanged();
+
+  for (int c = 0; c < numComps; ++c)
+  {
+    this->SetTypedComponent(dstTupleIdx, c, other->GetTypedComponent(srcTupleIdx, c));
+  }
 }
 
-// ----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // Insert the jth tuple in the source array, at ith location in this array.
 // Note that memory allocation is performed as necessary to hold the data.
-void vtkStringArray::InsertTuple(vtkIdType i, vtkIdType j,
-  vtkAbstractArray* source)
+void vtkStringArray::InsertTuple(vtkIdType i, vtkIdType j, vtkAbstractArray* source)
 {
-  vtkStringArray* sa = vtkArrayDownCast<vtkStringArray>(source);
-  if (!sa)
-  {
-    vtkWarningMacro("Input and outputs array data types do not match.");
-    return ;
-  }
-
-  vtkIdType loci = i * this->NumberOfComponents;
-  vtkIdType locj = j * sa->GetNumberOfComponents();
-  for (vtkIdType cur = 0; cur < this->NumberOfComponents; cur++)
-  {
-    this->InsertValue(loci + cur, sa->GetValue(locj + cur));
-  }
-  this->DataChanged();
+  this->EnsureAccessToTuple(i);
+  this->SetTuple(i, j, source);
 }
 
-// ----------------------------------------------------------------------------
-void vtkStringArray::InsertTuples(vtkIdList *dstIds, vtkIdList *srcIds,
-                                  vtkAbstractArray *source)
+//------------------------------------------------------------------------------
+void vtkStringArray::InsertTuples(vtkIdList* dstIds, vtkIdList* srcIds, vtkAbstractArray* source)
 {
-  vtkStringArray* sa = vtkArrayDownCast<vtkStringArray>(source);
-  if (!sa)
+  // First, check for the common case of typeid(source) == typeid(this). This
+  // way we don't waste time redoing the other checks in the superclass, and
+  // can avoid doing a dispatch for the most common usage of this method.
+  vtkStringArray* other = vtkArrayDownCast<vtkStringArray>(source);
+  if (!other)
   {
-    vtkWarningMacro("Input and outputs array data types do not match.");
-    return ;
-  }
-
-  if (this->NumberOfComponents != source->GetNumberOfComponents())
-  {
-    vtkWarningMacro("Input and output component sizes do not match.");
+    vtkErrorMacro(<< "Shouldn't Happen: Couldn't downcast array into a vtkStringArray.");
     return;
   }
 
-  vtkIdType numIds = dstIds->GetNumberOfIds();
-  if (srcIds->GetNumberOfIds() != numIds)
+  if (dstIds->GetNumberOfIds() == 0)
   {
-    vtkWarningMacro("Input and output id array sizes do not match.");
     return;
   }
 
-  for (vtkIdType idIndex = 0; idIndex < numIds; ++idIndex)
+  if (dstIds->GetNumberOfIds() != srcIds->GetNumberOfIds())
   {
-    vtkIdType numComp = this->NumberOfComponents;
-    vtkIdType srcLoc = srcIds->GetId(idIndex) * this->NumberOfComponents;
-    vtkIdType dstLoc = dstIds->GetId(idIndex) * this->NumberOfComponents;
-    while (numComp-- > 0)
+    vtkErrorMacro("Mismatched number of tuples ids. Source: "
+      << srcIds->GetNumberOfIds() << " Dest: " << dstIds->GetNumberOfIds());
+    return;
+  }
+
+  int numComps = this->GetNumberOfComponents();
+  if (other->GetNumberOfComponents() != numComps)
+  {
+    vtkErrorMacro("Number of components do not match: Source: "
+      << other->GetNumberOfComponents() << " Dest: " << this->GetNumberOfComponents());
+    return;
+  }
+
+  vtkIdType maxSrcTupleId = srcIds->GetId(0);
+  vtkIdType maxDstTupleId = dstIds->GetId(0);
+  for (int i = 0; i < dstIds->GetNumberOfIds(); ++i)
+  {
+    // parenthesis around std::max prevent MSVC macro replacement when
+    // inlined:
+    maxSrcTupleId = (std::max)(maxSrcTupleId, srcIds->GetId(i));
+    maxDstTupleId = (std::max)(maxDstTupleId, dstIds->GetId(i));
+  }
+
+  if (maxSrcTupleId >= other->GetNumberOfTuples())
+  {
+    vtkErrorMacro("Source array too small, requested tuple at index "
+      << maxSrcTupleId << ", but there are only " << other->GetNumberOfTuples()
+      << " tuples in the array.");
+    return;
+  }
+
+  vtkIdType newSize = (maxDstTupleId + 1) * this->NumberOfComponents;
+  if (this->Capacity < newSize)
+  {
+    if (!this->ReserveTuples(maxDstTupleId + 1))
     {
-      this->InsertValue(dstLoc++, sa->GetValue(srcLoc++));
+      vtkErrorMacro("Reallocate failed.");
+      return;
     }
   }
 
-  this->DataChanged();
+  // parenthesis around std::max prevent MSVC macro replacement when
+  // inlined:
+  this->MaxId = (std::max)(this->MaxId, newSize - 1);
+
+  vtkIdType numTuples = srcIds->GetNumberOfIds();
+  for (vtkIdType t = 0; t < numTuples; ++t)
+  {
+    vtkIdType srcT = srcIds->GetId(t);
+    vtkIdType dstT = dstIds->GetId(t);
+    for (int c = 0; c < numComps; ++c)
+    {
+      this->SetTypedComponent(dstT, c, other->GetTypedComponent(srcT, c));
+    }
+  }
 }
 
-// ----------------------------------------------------------------------------
-void vtkStringArray::InsertTuples(vtkIdType dstStart, vtkIdType n,
-                                  vtkIdType srcStart, vtkAbstractArray *source)
+//------------------------------------------------------------------------------
+void vtkStringArray::InsertTuplesStartingAt(
+  vtkIdType dstStart, vtkIdList* srcIds, vtkAbstractArray* source)
 {
-  vtkStringArray* sa = vtkArrayDownCast<vtkStringArray>(source);
-  if (!sa)
+  if (!srcIds->GetNumberOfIds())
   {
-    vtkWarningMacro("Input and outputs array data types do not match.");
-    return ;
-  }
-
-  if (this->NumberOfComponents != source->GetNumberOfComponents())
-  {
-    vtkWarningMacro("Input and output component sizes do not match.");
     return;
   }
 
-  vtkIdType srcEnd = srcStart + n;
-  if (srcEnd > source->GetNumberOfTuples())
+  // First, check for the common case of typeid(source) == typeid(this). This
+  // way we don't waste time redoing the other checks in the superclass, and
+  // can avoid doing a dispatch for the most common usage of this method.
+  vtkStringArray* other = vtkArrayDownCast<vtkStringArray>(source);
+  if (!other)
   {
-    vtkWarningMacro("Source range exceeds array size (srcStart=" << srcStart
-                    << ", n=" << n << ", numTuples="
-                    << source->GetNumberOfTuples() << ").");
+    vtkErrorMacro(<< "Shouldn't Happen: Couldn't downcast array into a vtkStringArray.");
     return;
   }
 
-  for (vtkIdType i = 0; i < n; ++i)
+  int numComps = this->GetNumberOfComponents();
+  if (other->GetNumberOfComponents() != numComps)
   {
-    vtkIdType numComp = this->NumberOfComponents;
-    vtkIdType srcLoc = (srcStart + i) * this->NumberOfComponents;
-    vtkIdType dstLoc = (dstStart + i) * this->NumberOfComponents;
-    while (numComp-- > 0)
+    vtkErrorMacro("Number of components do not match: Source: "
+      << other->GetNumberOfComponents() << " Dest: " << this->GetNumberOfComponents());
+    return;
+  }
+
+  vtkIdType maxSrcTupleId = srcIds->GetId(0);
+  vtkIdType maxDstTupleId = dstStart + srcIds->GetNumberOfIds() - 1;
+  for (int i = 0; i < srcIds->GetNumberOfIds(); ++i)
+  {
+    // parenthesis around std::max prevent MSVC macro replacement when
+    // inlined:
+    maxSrcTupleId = (std::max)(maxSrcTupleId, srcIds->GetId(i));
+  }
+
+  if (maxSrcTupleId >= other->GetNumberOfTuples())
+  {
+    vtkErrorMacro("Source array too small, requested tuple at index "
+      << maxSrcTupleId << ", but there are only " << other->GetNumberOfTuples()
+      << " tuples in the array.");
+    return;
+  }
+
+  vtkIdType newSize = (maxDstTupleId + 1) * this->NumberOfComponents;
+  if (this->Capacity < newSize)
+  {
+    if (!this->ReserveTuples(maxDstTupleId + 1))
     {
-      this->InsertValue(dstLoc++, sa->GetValue(srcLoc++));
+      vtkErrorMacro("Reallocate failed.");
+      return;
     }
   }
 
-  this->DataChanged();
+  // parenthesis around std::max prevent MSVC macro replacement when
+  // inlined:
+  this->MaxId = (std::max)(this->MaxId, newSize - 1);
+
+  vtkIdType numTuples = srcIds->GetNumberOfIds();
+  for (vtkIdType t = 0; t < numTuples; ++t)
+  {
+    vtkIdType srcT = srcIds->GetId(t);
+    vtkIdType dstT = dstStart + t;
+    for (int c = 0; c < numComps; ++c)
+    {
+      this->SetTypedComponent(dstT, c, other->GetTypedComponent(srcT, c));
+    }
+  }
 }
 
-// ----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+void vtkStringArray::InsertTuples(
+  vtkIdType dstStart, vtkIdType n, vtkIdType srcStart, vtkAbstractArray* source)
+{
+  // First, check for the common case of typeid(source) == typeid(this). This
+  // way we don't waste time redoing the other checks in the superclass, and
+  // can avoid doing a dispatch for the most common usage of this method.
+  vtkStringArray* other = vtkArrayDownCast<vtkStringArray>(source);
+  if (!other)
+  {
+    // Let the superclass handle dispatch/fallback.
+    vtkErrorMacro(<< "Shouldn't Happen: Couldn't downcast array into a vtkStringArray.");
+    return;
+  }
+
+  if (n == 0)
+  {
+    return;
+  }
+
+  int numComps = this->GetNumberOfComponents();
+  if (other->GetNumberOfComponents() != numComps)
+  {
+    vtkErrorMacro("Number of components do not match: Source: "
+      << other->GetNumberOfComponents() << " Dest: " << this->GetNumberOfComponents());
+    return;
+  }
+
+  vtkIdType maxSrcTupleId = srcStart + n - 1;
+  vtkIdType maxDstTupleId = dstStart + n - 1;
+
+  if (maxSrcTupleId >= other->GetNumberOfTuples())
+  {
+    vtkErrorMacro("Source array too small, requested tuple at index "
+      << maxSrcTupleId << ", but there are only " << other->GetNumberOfTuples()
+      << " tuples in the array.");
+    return;
+  }
+
+  vtkIdType newSize = (maxDstTupleId + 1) * this->NumberOfComponents;
+  if (this->Capacity < newSize)
+  {
+    if (!this->ReserveTuples(maxDstTupleId + 1))
+    {
+      vtkErrorMacro("Reallocate failed.");
+      return;
+    }
+  }
+
+  this->MaxId = std::max(this->MaxId, newSize - 1);
+
+  ValueType* srcBegin = other->GetPointer(srcStart * numComps);
+  ValueType* srcEnd = srcBegin + (n * numComps);
+  ValueType* dstBegin = this->GetPointer(dstStart * numComps);
+
+  std::copy(srcBegin, srcEnd, dstBegin);
+}
+
+//------------------------------------------------------------------------------
 // Insert the jth tuple in the source array, at the end in this array.
 // Note that memory allocation is performed as necessary to hold the data.
 // Returns the location at which the data was inserted.
-vtkIdType vtkStringArray::InsertNextTuple(vtkIdType j,
-                                          vtkAbstractArray* source)
+vtkIdType vtkStringArray::InsertNextTuple(vtkIdType srcTupleIdx, vtkAbstractArray* source)
 {
-  vtkStringArray* sa = vtkArrayDownCast<vtkStringArray>(source);
-  if (!sa)
-  {
-    vtkWarningMacro("Input and outputs array data types do not match.");
-    return -1;
-  }
+  vtkIdType nextTuple = this->GetNumberOfTuples();
+  this->InsertTuple(nextTuple, srcTupleIdx, source);
+  return nextTuple;
+}
 
-  vtkIdType locj = j * sa->GetNumberOfComponents();
-  for (vtkIdType cur = 0; cur < this->NumberOfComponents; cur++)
-  {
-    this->InsertNextValue(sa->GetValue(locj + cur));
-  }
+//------------------------------------------------------------------------------
+vtkStringArray::ValueType vtkStringArray::GetTypedComponent(vtkIdType tupleIdx, int comp) const
+{
+  return this->Buffer->GetBuffer()[this->NumberOfComponents * tupleIdx + comp];
+}
+
+//------------------------------------------------------------------------------
+void vtkStringArray::SetTypedComponent(vtkIdType tupleIdx, int comp, ValueType value)
+{
+  this->Buffer->GetBuffer()[this->NumberOfComponents * tupleIdx + comp] = value;
   this->DataChanged();
-  return (this->GetNumberOfTuples()-1);
 }
 
-// ----------------------------------------------------------------------------
-vtkStdString& vtkStringArray::GetValue( vtkIdType id )
+//------------------------------------------------------------------------------
+void vtkStringArray::GetTypedTuple(vtkIdType tupleIdx, ValueType* tuple) const
 {
-  return this->Array[id];
+  const vtkIdType valueIdx = tupleIdx * this->NumberOfComponents;
+  std::copy_n(this->Buffer->GetBuffer() + valueIdx, this->NumberOfComponents, tuple);
 }
 
-// ----------------------------------------------------------------------------
-void vtkStringArray::GetTuples(vtkIdList *indices, vtkAbstractArray *aa)
+//------------------------------------------------------------------------------
+void vtkStringArray::SetTypedTuple(vtkIdType tupleIdx, const ValueType* tuple)
+  VTK_EXPECTS(0 <= tupleIdx && tupleIdx < GetNumberOfTuples())
 {
-  if (aa == nullptr)
-  {
-    vtkErrorMacro(<<"GetTuples: Output array is null!");
-    return;
-  }
-
-  vtkStringArray *output = vtkArrayDownCast<vtkStringArray>(aa);
-
-  if (output == nullptr)
-  {
-    vtkErrorMacro(<< "Can't copy values from a string array into an array "
-                  << "of type " << aa->GetDataTypeAsString());
-    return;
-  }
-
-  for (vtkIdType i = 0; i < indices->GetNumberOfIds(); ++i)
-  {
-    vtkIdType index = indices->GetId(i);
-    output->SetValue(i, this->GetValue(index));
-  }
+  const vtkIdType valueIdx = tupleIdx * this->NumberOfComponents;
+  std::copy_n(tuple, this->NumberOfComponents, this->Buffer->GetBuffer() + valueIdx);
+  this->DataChanged();
 }
 
-// ----------------------------------------------------------------------------
-void vtkStringArray::GetTuples(vtkIdType startIndex,
-                          vtkIdType endIndex,
-                          vtkAbstractArray *aa)
+//------------------------------------------------------------------------------
+const vtkStringArray::ValueType& vtkStringArray::GetValue(vtkIdType valueIdx) const
 {
-  if (aa == nullptr)
+  return this->Buffer->GetBuffer()[valueIdx];
+}
+
+vtkStringArray::ValueType& vtkStringArray::GetValue(vtkIdType valueIdx)
+{
+  return this->Buffer->GetBuffer()[valueIdx];
+}
+
+//------------------------------------------------------------------------------
+void vtkStringArray::GetTuples(vtkIdList* tupleIds, vtkAbstractArray* aa)
+{
+  // First, check for the common case of typeid(source) == typeid(this). This
+  // way we don't waste time redoing the other checks in the superclass, and
+  // can avoid doing a dispatch for the most common usage of this method.
+  vtkStringArray* other = vtkArrayDownCast<vtkStringArray>(aa);
+  if (!other)
   {
-    vtkErrorMacro(<<"GetTuples: Output array is null!");
+    vtkErrorMacro(<< "Shouldn't Happen: Couldn't downcast array into a vtkStringArray.");
     return;
   }
 
-  vtkStringArray *output = vtkArrayDownCast<vtkStringArray>(aa);
-
-  if (output == nullptr)
+  int numComps = this->GetNumberOfComponents();
+  if (other->GetNumberOfComponents() != numComps)
   {
-    vtkErrorMacro(<< "Can't copy values from a string array into an array "
-                  << "of type " << aa->GetDataTypeAsString());
+    vtkErrorMacro("Number of components for input and output do not match.\n"
+                  "Source: "
+      << this->GetNumberOfComponents()
+      << "\n"
+         "Destination: "
+      << other->GetNumberOfComponents());
     return;
   }
 
-  for (vtkIdType i = 0; i < (endIndex - startIndex) + 1; ++i)
+  vtkIdType* srcTuple = tupleIds->GetPointer(0);
+  vtkIdType* srcTupleEnd = tupleIds->GetPointer(tupleIds->GetNumberOfIds());
+  vtkIdType dstTuple = 0;
+
+  while (srcTuple != srcTupleEnd)
   {
-    vtkIdType index = startIndex + i;
-    output->SetValue(i, this->GetValue(index));
+    for (int c = 0; c < numComps; ++c)
+    {
+      other->SetTypedComponent(dstTuple, c, this->GetTypedComponent(*srcTuple, c));
+    }
+    ++srcTuple;
+    ++dstTuple;
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+void vtkStringArray::GetTuples(vtkIdType p1, vtkIdType p2, vtkAbstractArray* aa)
+{
+  // First, check for the common case of typeid(source) == typeid(this). This
+  // way we don't waste time redoing the other checks in the superclass, and
+  // can avoid doing a dispatch for the most common usage of this method.
+  vtkStringArray* other = vtkArrayDownCast<vtkStringArray>(aa);
+  if (!other)
+  {
+    vtkErrorMacro(<< "Shouldn't Happen: Couldn't downcast array into a vtkStringArray.");
+    return;
+  }
+
+  int numComps = this->GetNumberOfComponents();
+  if (other->GetNumberOfComponents() != numComps)
+  {
+    vtkErrorMacro("Number of components for input and output do not match.\n"
+                  "Source: "
+      << this->GetNumberOfComponents()
+      << "\n"
+         "Destination: "
+      << other->GetNumberOfComponents());
+    return;
+  }
+
+  // p1-p2 are inclusive
+  for (vtkIdType srcT = p1, dstT = 0; srcT <= p2; ++srcT, ++dstT)
+  {
+    for (int c = 0; c < numComps; ++c)
+    {
+      other->SetTypedComponent(dstT, c, this->GetTypedComponent(srcT, c));
+    }
+  }
+}
+
+//------------------------------------------------------------------------------
 void vtkStringArray::UpdateLookup()
 {
   if (!this->Lookup)
@@ -763,74 +888,45 @@ void vtkStringArray::UpdateLookup()
     this->Lookup->SortedArray->Initialize();
     this->Lookup->SortedArray->SetNumberOfComponents(numComps);
     this->Lookup->SortedArray->SetNumberOfTuples(numTuples);
-    this->Lookup->IndexArray->SetNumberOfIds(numComps*numTuples);
-    std::vector<std::pair<vtkStdString, vtkIdType> > v;
-    for (vtkIdType i = 0; i < numComps*numTuples; i++)
+    this->Lookup->IndexArray->SetNumberOfIds(numComps * numTuples);
+    std::vector<std::pair<ValueType, vtkIdType>> v;
+    v.reserve(numComps * numTuples);
+    for (vtkIdType i = 0; i < numComps * numTuples; i++)
     {
-      v.push_back(std::pair<vtkStdString, vtkIdType>(this->Array[i], i));
+      v.emplace_back(this->Buffer->GetBuffer()[i], i);
     }
     std::sort(v.begin(), v.end());
-    for (vtkIdType i = 0; i < numComps*numTuples; i++)
+    for (vtkIdType i = 0; i < numComps * numTuples; i++)
     {
       this->Lookup->SortedArray->SetValue(i, v[i].first);
       this->Lookup->IndexArray->SetId(i, v[i].second);
     }
     this->Lookup->Rebuild = false;
-    this->Lookup->CachedUpdates.clear();
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkIdType vtkStringArray::LookupValue(vtkVariant var)
 {
   return this->LookupValue(var.ToString());
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkStringArray::LookupValue(vtkVariant var, vtkIdList* ids)
 {
   this->LookupValue(var.ToString(), ids);
 }
 
-//-----------------------------------------------------------------------------
-vtkIdType vtkStringArray::LookupValue(const vtkStdString& value)
+//------------------------------------------------------------------------------
+vtkIdType vtkStringArray::LookupValue(const ValueType& value)
 {
   this->UpdateLookup();
 
-  // First look into the cached updates, to see if there were any
-  // cached changes. Find an equivalent element in the set of cached
-  // indices for this value. Some of the indices may have changed
-  // values since the cache was built, so we need to do this equality
-  // check.
-  typedef vtkStringCachedUpdates::iterator CacheIterator;
-  CacheIterator cached    = this->Lookup->CachedUpdates.lower_bound(value),
-                cachedEnd = this->Lookup->CachedUpdates.end();
-  while (cached != cachedEnd)
-  {
-    // Check that we are still in the same equivalence class as the
-    // value.
-    if (value == cached->first)
-    {
-      // Check that the value in the original array hasn't changed.
-      vtkStdString currentValue = this->GetValue(cached->second);
-      if (value == currentValue)
-      {
-        return cached->second;
-      }
-    }
-    else
-    {
-      break;
-    }
-
-    ++cached;
-  }
-
   int numComps = this->Lookup->SortedArray->GetNumberOfComponents();
   vtkIdType numTuples = this->Lookup->SortedArray->GetNumberOfTuples();
-  vtkStdString* ptr = this->Lookup->SortedArray->GetPointer(0);
-  vtkStdString* ptrEnd = ptr + numComps*numTuples;
-  vtkStdString* found = std::lower_bound(ptr, ptrEnd, value);
+  ValueType* ptr = this->Lookup->SortedArray->GetPointer(0);
+  ValueType* ptrEnd = ptr + numComps * numTuples;
+  ValueType* found = std::lower_bound(ptr, ptrEnd, value);
 
   // Find an index with a matching value. Non-matching values might
   // show up here when the underlying value at that index has been
@@ -844,7 +940,7 @@ vtkIdType vtkStringArray::LookupValue(const vtkStdString& value)
     {
       // Check that the value in the original array hasn't changed.
       vtkIdType index = this->Lookup->IndexArray->GetId(offset);
-      vtkStdString currentValue = this->GetValue(index);
+      ValueType currentValue = this->GetValue(index);
       if (value == currentValue)
       {
         return index;
@@ -862,38 +958,18 @@ vtkIdType vtkStringArray::LookupValue(const vtkStdString& value)
   return -1;
 }
 
-//-----------------------------------------------------------------------------
-void vtkStringArray::LookupValue(const vtkStdString& value, vtkIdList* ids)
+//------------------------------------------------------------------------------
+void vtkStringArray::LookupValue(const ValueType& value, vtkIdList* ids)
 {
   this->UpdateLookup();
   ids->Reset();
 
-  // First look into the cached updates, to see if there were any
-  // cached changes. Find an equivalent element in the set of cached
-  // indices for this value. Some of the indices may have changed
-  // values since the cache was built, so we need to do this equality
-  // check.
-  typedef vtkStringCachedUpdates::iterator CacheIterator;
-  std::pair<CacheIterator, CacheIterator> cached
-    = this->Lookup->CachedUpdates.equal_range(value);
-  while (cached.first != cached.second)
-  {
-    // Check that the value in the original array hasn't changed.
-    vtkStdString currentValue = this->GetValue(cached.first->second);
-    if (cached.first->first == currentValue)
-    {
-      ids->InsertNextId(cached.first->second);
-    }
-
-    ++cached.first;
-  }
-
   // Perform a binary search of the sorted array using STL equal_range.
   int numComps = this->GetNumberOfComponents();
   vtkIdType numTuples = this->GetNumberOfTuples();
-  vtkStdString* ptr = this->Lookup->SortedArray->GetPointer(0);
-  std::pair<vtkStdString*,vtkStdString*> found =
-    std::equal_range(ptr, ptr + numComps*numTuples, value);
+  ValueType* ptr = this->Lookup->SortedArray->GetPointer(0);
+  std::pair<ValueType*, ValueType*> found =
+    std::equal_range(ptr, ptr + numComps * numTuples, value);
 
   // Add the indices of the found items to the ID list.
   vtkIdType offset = static_cast<vtkIdType>(found.first - ptr);
@@ -901,7 +977,7 @@ void vtkStringArray::LookupValue(const vtkStdString& value, vtkIdList* ids)
   {
     // Check that the value in the original array hasn't changed.
     vtkIdType index = this->Lookup->IndexArray->GetId(offset);
-    vtkStdString currentValue = this->GetValue(index);
+    ValueType currentValue = this->GetValue(index);
     if (*found.first == currentValue)
     {
       ids->InsertNextId(index);
@@ -912,7 +988,7 @@ void vtkStringArray::LookupValue(const vtkStdString& value, vtkIdList* ids)
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkStringArray::DataChanged()
 {
   if (this->Lookup)
@@ -921,105 +997,93 @@ void vtkStringArray::DataChanged()
   }
 }
 
-//----------------------------------------------------------------------------
-void vtkStringArray::DataElementChanged(vtkIdType id)
+//------------------------------------------------------------------------------
+void vtkStringArray::DataElementChanged(vtkIdType vtkNotUsed(id))
 {
   if (this->Lookup)
   {
-      if (this->Lookup->Rebuild)
-      {
-        // We're already going to rebuild the lookup table. Do nothing.
-        return;
-      }
-
-      if (this->Lookup->CachedUpdates.size() >
-          static_cast<size_t>(this->GetNumberOfTuples()/10))
-      {
-        // At this point, just rebuild the full table.
-        this->Lookup->Rebuild = true;
-      }
-      else
-      {
-        // Insert this change into the set of cached updates
-        std::pair<const vtkStdString, vtkIdType>
-          value(this->GetValue(id), id);
-        this->Lookup->CachedUpdates.insert(value);
-      }
+    if (this->Lookup->Rebuild)
+    {
+      // We're already going to rebuild the lookup table. Do nothing.
+      return;
+    }
+    this->Lookup->Rebuild = true;
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkStringArray::ClearLookup()
 {
   delete this->Lookup;
   this->Lookup = nullptr;
 }
 
-
-// ----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 
 //
 //
 // Below here are interface methods to allow values to be inserted as
-// const char * instead of vtkStdString.  Yes, they're trivial.  The
+// const char * instead of ValueType.  Yes, they're trivial.  The
 // wrapper code needs them.
 //
 //
 
-
-void vtkStringArray::SetValue( vtkIdType id, const char *value )
+void vtkStringArray::SetValue(vtkIdType id, const char* value)
 {
-  if( value )
+  if (value)
   {
-    this->SetValue( id, vtkStdString(value) );
+    this->SetValue(id, ValueType(value));
   }
 }
 
-void vtkStringArray::InsertValue( vtkIdType id, const char *value )
+void vtkStringArray::InsertValue(vtkIdType id, const char* value)
 {
-  if( value )
+  if (value)
   {
-    this->InsertValue( id, vtkStdString( value ) );
+    this->InsertValue(id, ValueType(value));
   }
 }
 
-void vtkStringArray::SetVariantValue( vtkIdType id, vtkVariant value )
+vtkVariant vtkStringArray::GetVariantValue(vtkIdType id)
 {
-  this->SetValue( id, value.ToString() );
+  return vtkVariant(this->GetValue(id));
 }
 
-void vtkStringArray::InsertVariantValue( vtkIdType id, vtkVariant value )
+void vtkStringArray::SetVariantValue(vtkIdType id, vtkVariant value)
 {
-  this->InsertValue( id, value.ToString() );
+  this->SetValue(id, value.ToString());
 }
 
-vtkIdType vtkStringArray::InsertNextValue( const char *value )
+void vtkStringArray::InsertVariantValue(vtkIdType id, vtkVariant value)
 {
-  if( value )
+  this->InsertValue(id, value.ToString());
+}
+
+vtkIdType vtkStringArray::InsertNextValue(const char* value)
+{
+  if (value)
   {
-    return this->InsertNextValue( vtkStdString( value ) );
+    return this->InsertNextValue(ValueType(value));
   }
   return this->MaxId;
 }
 
-vtkIdType vtkStringArray::LookupValue( const char *value )
+vtkIdType vtkStringArray::LookupValue(const char* value)
 {
-  if( value )
+  if (value)
   {
-    return this->LookupValue( vtkStdString( value ) );
+    return this->LookupValue(ValueType(value));
   }
   return -1;
 }
 
-void vtkStringArray::LookupValue( const char *value, vtkIdList* ids)
+void vtkStringArray::LookupValue(const char* value, vtkIdList* ids)
 {
-  if( value )
+  if (value)
   {
-    this->LookupValue( vtkStdString( value ), ids);
+    this->LookupValue(ValueType(value), ids);
     return;
   }
   ids->Reset();
 }
-
-// ----------------------------------------------------------------------------
-
+VTK_ABI_NAMESPACE_END

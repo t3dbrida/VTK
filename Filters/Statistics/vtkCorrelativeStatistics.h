@@ -1,22 +1,6 @@
-/*=========================================================================
-
-Program:   Visualization Toolkit
-Module:    vtkCorrelativeStatistics.h
-
-Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-All rights reserved.
-See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-This software is distributed WITHOUT ANY WARRANTY; without even
-the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-/*-------------------------------------------------------------------------
-  Copyright 2011 Sandia Corporation.
-  Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-  the U.S. Government retains certain rights in this software.
-  -------------------------------------------------------------------------*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-FileCopyrightText: Copyright 2011 Sandia Corporation
+// SPDX-License-Identifier: LicenseRef-BSD-3-Clause-Sandia-USGov
 /**
  * @class   vtkCorrelativeStatistics
  * @brief   A class for bivariate linear correlation
@@ -39,7 +23,7 @@ PURPOSE.  See the above copyright notice for more information.
  * Thanks to Philippe Pebay and David Thompson from Sandia National Laboratories
  * for implementing this class.
  * Updated by Philippe Pebay, Kitware SAS 2012
-*/
+ */
 
 #ifndef vtkCorrelativeStatistics_h
 #define vtkCorrelativeStatistics_h
@@ -47,7 +31,8 @@ PURPOSE.  See the above copyright notice for more information.
 #include "vtkFiltersStatisticsModule.h" // For export macro
 #include "vtkStatisticsAlgorithm.h"
 
-class vtkMultiBlockDataSet;
+VTK_ABI_NAMESPACE_BEGIN
+class vtkStatisticalModel;
 class vtkStringArray;
 class vtkTable;
 class vtkVariant;
@@ -60,11 +45,13 @@ public:
   void PrintSelf(ostream& os, vtkIndent indent) override;
   static vtkCorrelativeStatistics* New();
 
+  /// Correlative statistics requests are bivariate.
+  int GetMaximumNumberOfColumnsPerRequest() const override { return 2; }
+
   /**
    * Given a collection of models, calculate aggregate model
    */
-  void Aggregate( vtkDataObjectCollection*,
-                  vtkMultiBlockDataSet* ) override;
+  bool Aggregate(vtkDataObjectCollection*, vtkStatisticalModel*) override;
 
 protected:
   vtkCorrelativeStatistics();
@@ -73,29 +60,25 @@ protected:
   /**
    * Execute the calculations required by the Learn option.
    */
-  void Learn( vtkTable*,
-              vtkTable*,
-              vtkMultiBlockDataSet* ) override;
+  void Learn(vtkTable*, vtkTable*, vtkStatisticalModel*) override;
 
   /**
    * Execute the calculations required by the Derive option.
    */
-  void Derive( vtkMultiBlockDataSet* ) override;
+  void Derive(vtkStatisticalModel*) override;
 
   /**
    * Execute the calculations required by the Test option.
    */
-  void Test( vtkTable*,
-             vtkMultiBlockDataSet*,
-             vtkTable* ) override;
+  void Test(vtkTable*, vtkStatisticalModel*, vtkTable*) override;
 
   /**
    * Execute the calculations required by the Assess option.
    */
-  void Assess( vtkTable* inData,
-               vtkMultiBlockDataSet* inMeta,
-               vtkTable* outData ) override
-  { this->Superclass::Assess( inData, inMeta, outData, 2 ); }
+  void Assess(vtkTable* inData, vtkStatisticalModel* inMeta, vtkTable* outData) override
+  {
+    this->Superclass::Assess(inData, inMeta, outData, 2);
+  }
 
   /**
    * Calculate p-value. This will be overridden using the object factory with an
@@ -106,14 +89,13 @@ protected:
   /**
    * Provide the appropriate assessment functor.
    */
-  void SelectAssessFunctor( vtkTable* outData,
-                            vtkDataObject* inMeta,
-                            vtkStringArray* rowNames,
-                            AssessFunctor*& dfunc ) override;
+  void SelectAssessFunctor(vtkTable* outData, vtkDataObject* inMeta, vtkStringArray* rowNames,
+    AssessFunctor*& dfunc) override;
 
 private:
   vtkCorrelativeStatistics(const vtkCorrelativeStatistics&) = delete;
   void operator=(const vtkCorrelativeStatistics&) = delete;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

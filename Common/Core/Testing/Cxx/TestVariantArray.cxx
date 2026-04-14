@@ -1,56 +1,39 @@
-/*=========================================================================
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-FileCopyrightText: Copyright 2008 Sandia Corporation
+// SPDX-License-Identifier: LicenseRef-BSD-3-Clause-Sandia-USGov
 
-  Program:   Visualization Toolkit
-  Module:    TestVariantArray.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-/*-------------------------------------------------------------------------
-  Copyright 2008 Sandia Corporation.
-  Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-  the U.S. Government retains certain rights in this software.
--------------------------------------------------------------------------*/
-
-#include "vtkIntArray.h"
-#include "vtkStringArray.h"
 #include "vtkDoubleArray.h"
-#include "vtkVariantArray.h"
-#include "vtkArrayIterator.h"
-#include "vtkArrayIteratorTemplate.h"
 #include "vtkIdList.h"
+#include "vtkIntArray.h"
 #include "vtkMath.h"
 #include "vtkSmartPointer.h"
+#include "vtkStringArray.h"
+#include "vtkVariantArray.h"
 
 #include <time.h>
 #include <vector>
+
+#include <iostream>
+
 using std::vector;
 
 void PrintArrays(vector<double> vec, vtkVariantArray* arr)
 {
-  cerr << endl;
-  cerr << "index, vector, vtkVariantArray" << endl;
-  cerr << "------------------------------" << endl;
+  std::cerr << std::endl;
+  std::cerr << "index, vector, vtkVariantArray" << std::endl;
+  std::cerr << "------------------------------" << std::endl;
   for (vtkIdType i = 0; i < arr->GetNumberOfValues(); i++)
   {
-    cerr << i << ", " << vec[i] << ", " << arr->GetValue(i).ToDouble() << endl;
+    std::cerr << i << ", " << vec[i] << ", " << arr->GetValue(i).ToDouble() << std::endl;
   }
-  cerr << endl;
+  std::cerr << std::endl;
 }
 
 int TestLookup()
 {
-  vtkSmartPointer<vtkVariantArray> array =
-    vtkSmartPointer<vtkVariantArray>::New();
+  vtkNew<vtkVariantArray> array;
 
-  vtkSmartPointer<vtkIdList> idList =
-    vtkSmartPointer<vtkIdList>::New();
+  vtkNew<vtkIdList> idList;
 
   array->SetNumberOfValues(4);
   array->SetValue(0, "a");
@@ -61,28 +44,26 @@ int TestLookup()
   array->LookupValue("a", idList);
   if (idList->GetNumberOfIds() != 3)
   {
-    cerr << "Expected 3 a's, found " << idList->GetNumberOfIds()
-         << " of them\n";
+    std::cerr << "Expected 3 a's, found " << idList->GetNumberOfIds() << " of them\n";
     return 1;
   }
 
   if (idList->GetId(0) != 0 || idList->GetId(1) != 1 || idList->GetId(2) != 2)
   {
-    cerr << "idList for a is wrong\n";
+    std::cerr << "idList for a is wrong\n";
     return 1;
   }
 
   array->LookupValue("b", idList);
   if (idList->GetNumberOfIds() != 1)
   {
-    cerr << "Expected 1 b, found " << idList->GetNumberOfIds()
-         << " of them\n";
+    std::cerr << "Expected 1 b, found " << idList->GetNumberOfIds() << " of them\n";
     return 1;
   }
 
   if (idList->GetId(0) != 3)
   {
-    cerr << "idList for b is wrong\n";
+    std::cerr << "idList for b is wrong\n";
     return 1;
   }
 
@@ -91,28 +72,26 @@ int TestLookup()
   array->LookupValue("a", idList);
   if (idList->GetNumberOfIds() != 2)
   {
-    cerr << "Expected 2 a's, found " << idList->GetNumberOfIds()
-         << " of them\n";
+    std::cerr << "Expected 2 a's, found " << idList->GetNumberOfIds() << " of them\n";
     return 1;
   }
 
   if (idList->GetId(0) != 0 || idList->GetId(1) != 2)
   {
-    cerr << "idList for a is wrong\n";
+    std::cerr << "idList for a is wrong\n";
     return 1;
   }
 
   array->LookupValue("b", idList);
   if (idList->GetNumberOfIds() != 2)
   {
-    cerr << "Expected 2 b's, found " << idList->GetNumberOfIds()
-         << " of them\n";
+    std::cerr << "Expected 2 b's, found " << idList->GetNumberOfIds() << " of them\n";
     return 1;
   }
 
   if (idList->GetId(0) != 1 || idList->GetId(1) != 3)
   {
-    cerr << "idList for b is wrong\n";
+    std::cerr << "idList for b is wrong\n";
     return 1;
   }
 
@@ -121,101 +100,102 @@ int TestLookup()
 
 int TestVariantArray(int, char*[])
 {
-  cerr << "CTEST_FULL_OUTPUT" << endl;
+  std::cerr << "CTEST_FULL_OUTPUT" << std::endl;
 
   long seed = time(nullptr);
-  cerr << "Seed: " << seed << endl;
+  std::cerr << "Seed: " << seed << std::endl;
   vtkMath::RandomSeed(seed);
 
   int size = 20;
   double prob = 1.0 - 1.0 / size;
 
-  vtkVariantArray* arr = vtkVariantArray::New();
-  vector<double> vec;
+  vtkNew<vtkVariantArray> arr;
 
   // Resizing
   // * vtkTypeBool Allocate(vtkIdType sz);
   // * void Initialize();
   // * void SetNumberOfTuples(vtkIdType number);
   // * void Squeeze();
-  // * vtkTypeBool Resize(vtkIdType numTuples);
+  // * vtkTypeBool ReserveTuples(vtkIdType numTuples);
   // * void SetNumberOfValues(vtkIdType number);
   // * void SetVoidArray(void *arr, vtkIdType size, int save);
   // * void SetArray(vtkVariant* arr, vtkIdType size, int save);
 
-  arr->Allocate(1000);
-  if (arr->GetSize() != 1000 || arr->GetNumberOfTuples() != 0)
+  arr->ReserveValues(1000);
+  if (arr->GetCapacity() != 1000 || arr->GetNumberOfTuples() != 0)
   {
-    cerr << "size (" << arr->GetSize() << ") should be 1000, "
-         << "tuples (" << arr->GetNumberOfTuples() << ") should be 0." << endl;
-    exit(1);
+    std::cerr << "1) Capacity (" << arr->GetCapacity() << ") should be 1000, "
+              << "tuples (" << arr->GetNumberOfTuples() << ") should be 0." << std::endl;
+    return EXIT_FAILURE;
   }
 
   arr->SetNumberOfValues(2000);
-  if (arr->GetSize() != 2000 || arr->GetNumberOfTuples() != 2000)
+  if (arr->GetCapacity() != 3000 || arr->GetNumberOfTuples() != 2000)
   {
-    cerr << "size (" << arr->GetSize() << ") should be 2000, "
-         << "tuples (" << arr->GetNumberOfTuples() << ") should be 2000." << endl;
-    exit(1);
+    std::cerr << "2) Capacity (" << arr->GetCapacity() << ") should be 3000, "
+              << "tuples (" << arr->GetNumberOfTuples() << ") should be 2000." << std::endl;
+    return EXIT_FAILURE;
   }
 
   arr->Initialize();
-  if (arr->GetSize() != 0 || arr->GetNumberOfTuples() != 0)
+  if (arr->GetCapacity() != 0 || arr->GetNumberOfTuples() != 0)
   {
-    cerr << "size (" << arr->GetSize() << ") should be 0, "
-         << "tuples (" << arr->GetNumberOfTuples() << ") should be 0." << endl;
-    exit(1);
+    std::cerr << "3) Capacity (" << arr->GetCapacity() << ") should be 0, "
+              << "tuples (" << arr->GetNumberOfTuples() << ") should be 0." << std::endl;
+    return EXIT_FAILURE;
   }
 
   arr->SetNumberOfComponents(3);
 
   arr->SetNumberOfTuples(1000);
-  if (arr->GetSize() != 3000 || arr->GetNumberOfTuples() != 1000)
+  if (arr->GetCapacity() != 3000 || arr->GetNumberOfTuples() != 1000)
   {
-    cerr << "size (" << arr->GetSize() << ") should be 3000, "
-         << "tuples (" << arr->GetNumberOfTuples() << ") should be 1000." << endl;
-    exit(1);
+    std::cerr << "4) Capacity (" << arr->GetCapacity() << ") should be 3000, "
+              << "tuples (" << arr->GetNumberOfTuples() << ") should be 1000." << std::endl;
+    return EXIT_FAILURE;
   }
 
   arr->SetNumberOfTuples(500);
-  if (arr->GetSize() != 3000 || arr->GetNumberOfTuples() != 500)
+  arr->Squeeze();
+  if (arr->GetCapacity() != 1500 || arr->GetNumberOfTuples() != 500)
   {
-    cerr << "size (" << arr->GetSize() << ") should be 3000, "
-         << "tuples (" << arr->GetNumberOfTuples() << ") should be 500." << endl;
-    exit(1);
+    std::cerr << "5) Capacity (" << arr->GetCapacity() << ") should be 1500, "
+              << "tuples (" << arr->GetNumberOfTuples() << ") should be 500." << std::endl;
+    return EXIT_FAILURE;
   }
 
   arr->Squeeze();
-  if (arr->GetSize() != 1500 || arr->GetNumberOfTuples() != 500)
+  if (arr->GetCapacity() != 1500 || arr->GetNumberOfTuples() != 500)
   {
-    cerr << "size (" << arr->GetSize() << ") should be 1500, "
-         << "tuples (" << arr->GetNumberOfTuples() << ") should be 500." << endl;
-    exit(1);
+    std::cerr << "6) Capacity (" << arr->GetCapacity() << ") should be 1500, "
+              << "tuples (" << arr->GetNumberOfTuples() << ") should be 500." << std::endl;
+    return EXIT_FAILURE;
   }
 
   arr->SetNumberOfTuples(1000);
-  if (arr->GetSize() != 3000 || arr->GetNumberOfTuples() != 1000)
+  if (arr->GetCapacity() != 4500 || arr->GetNumberOfTuples() != 1000)
   {
-    cerr << "size=" << arr->GetSize() << ", should be 3000, "
-         << "tuples (" << arr->GetNumberOfTuples() << ", should be 1000." << endl;
-    exit(1);
+    std::cerr << "7) Capacity (" << arr->GetCapacity() << ") should be 4500, "
+              << "tuples (" << arr->GetNumberOfTuples() << ", should be 1000." << std::endl;
+    return EXIT_FAILURE;
   }
 
-  arr->Resize(500);
-  if (arr->GetSize() != 1500 || arr->GetNumberOfTuples() != 500)
+  arr->SetNumberOfTuples(500);
+  arr->Squeeze();
+  if (arr->GetCapacity() != 1500 || arr->GetNumberOfTuples() != 500)
   {
-    cerr << "size=" << arr->GetSize() << ", should be 1500, "
-         << "tuples=" << arr->GetNumberOfTuples() << ", should be 500." << endl;
-    exit(1);
+    std::cerr << "8) Capacity=" << arr->GetCapacity() << ", should be 1500, "
+              << "tuples=" << arr->GetNumberOfTuples() << ", should be 500." << std::endl;
+    return EXIT_FAILURE;
   }
 
   vtkVariant* userArray = new vtkVariant[3000];
   arr->SetVoidArray(reinterpret_cast<void*>(userArray), 3000, 0);
-  if (arr->GetSize() != 3000 || arr->GetNumberOfTuples() != 1000)
+  if (arr->GetCapacity() != 3000 || arr->GetNumberOfTuples() != 1000)
   {
-    cerr << "size=" << arr->GetSize() << ", should be 3000, "
-         << "tuples=" << arr->GetNumberOfTuples() << ", should be 1000." << endl;
-    exit(1);
+    std::cerr << "9) Capacity=" << arr->GetCapacity() << ", should be 3000, "
+              << "tuples=" << arr->GetNumberOfTuples() << ", should be 1000." << std::endl;
+    return EXIT_FAILURE;
   }
 
   arr->SetNumberOfComponents(1);
@@ -229,9 +209,10 @@ int TestVariantArray(int, char*[])
   // * void SetValue(vtkIdType id, vtkVariant value);
   // * void SetTuple(vtkIdType i, vtkIdType j, vtkAbstractArray* source);
 
-  cerr << "Performing insert operations." << endl;
+  std::cerr << "Performing insert operations." << std::endl;
   vtkIdType id = 0;
   bool empty = true;
+  vector<double> vec;
   while (empty || vtkMath::Random() < prob)
   {
     empty = false;
@@ -244,15 +225,15 @@ int TestVariantArray(int, char*[])
       vtkIdType index = arr->InsertNextValue(vtkVariant(id));
       if (index != id)
       {
-        cerr << "index=" << index << ", id=" << id << endl;
-        exit(1);
+        std::cerr << "10) index=" << index << ", id=" << id << std::endl;
+        return EXIT_FAILURE;
       }
     }
     vec.push_back(id);
     id++;
   }
 
-  vtkStringArray* stringArr = vtkStringArray::New();
+  vtkNew<vtkStringArray> stringArr;
   vtkIdType strId = id;
   empty = true;
   while (empty || vtkMath::Random() < prob)
@@ -273,8 +254,8 @@ int TestVariantArray(int, char*[])
       vtkIdType index = arr->InsertNextTuple(i, stringArr);
       if (index != id)
       {
-        cerr << "index=" << index << ", id=" << id << endl;
-        exit(1);
+        std::cerr << "11) index=" << index << ", id=" << id << std::endl;
+        return EXIT_FAILURE;
       }
     }
     vec.push_back(id);
@@ -282,7 +263,7 @@ int TestVariantArray(int, char*[])
   }
   PrintArrays(vec, arr);
 
-  cerr << "Performing set operations." << endl;
+  std::cerr << "Performing set operations." << std::endl;
   while (vtkMath::Random() < prob)
   {
     int index = static_cast<int>(vtkMath::Random(0, arr->GetNumberOfValues()));
@@ -300,8 +281,6 @@ int TestVariantArray(int, char*[])
     id++;
   }
 
-  stringArr->Delete();
-
   PrintArrays(vec, arr);
 
   // Reading from the array
@@ -313,7 +292,6 @@ int TestVariantArray(int, char*[])
   // * vtkArrayIterator* NewIterator();
   // * vtkVariant & GetValue(vtkIdType id) const;
   // * vtkVariant* GetPointer(vtkIdType id);
-  // * void *GetVoidPointer(vtkIdType id);
   // * vtkIdType GetNumberOfValues();
   // * void DeepCopy(vtkAbstractArray *da);
   //   void InterpolateTuple(vtkIdType i, vtkIdList *ptIndices,
@@ -324,83 +302,65 @@ int TestVariantArray(int, char*[])
 
   if (arr->IsNumeric())
   {
-    cerr << "The variant array is reported to be numeric, but should not be." << endl;
-    exit(1);
+    std::cerr << "12) The variant array is reported to be numeric, but should not be." << std::endl;
+    return EXIT_FAILURE;
   }
 
   if (arr->GetDataType() != VTK_VARIANT)
   {
-    cerr << "The type of the array should be VTK_VARIANT." << endl;
-    exit(1);
+    std::cerr << "13) The type of the array should be VTK_VARIANT." << std::endl;
+    return EXIT_FAILURE;
   }
 
-  if (arr->GetActualMemorySize() == 0
-    || arr->GetDataTypeSize() == 0
-    || arr->GetElementComponentSize() == 0)
+  if (arr->GetActualMemorySize() == 0 || arr->GetDataTypeSize() == 0 ||
+    arr->GetElementComponentSize() == 0)
   {
-    cerr << "One of the size functions returned zero." << endl;
-    exit(1);
+    std::cerr << "14) One of the size functions returned zero." << std::endl;
+    return EXIT_FAILURE;
   }
 
   if (arr->GetNumberOfValues() != static_cast<vtkIdType>(vec.size()))
   {
-    cerr << "Sizes do not match ("
-         << arr->GetNumberOfValues() << " != " << vec.size() << ")" << endl;
-    exit(1);
+    std::cerr << "15) Sizes do not match (" << arr->GetNumberOfValues() << " != " << vec.size()
+              << ")" << std::endl;
+    return EXIT_FAILURE;
   }
 
-  cerr << "Checking by index." << endl;
+  std::cerr << "Checking by index." << std::endl;
   for (vtkIdType i = 0; i < arr->GetNumberOfValues(); i++)
   {
     double arrVal = arr->GetValue(i).ToDouble();
     if (arrVal != vec[i])
     {
-      cerr << "values do not match (" << arrVal << " != " << vec[i] << ")" << endl;
-      exit(1);
+      std::cerr << "16) values do not match (" << arrVal << " != " << vec[i] << ")" << std::endl;
+      return EXIT_FAILURE;
     }
   }
 
-  cerr << "Check using an iterator." << endl;
-  vtkArrayIteratorTemplate<vtkVariant>* iter
-    = static_cast<vtkArrayIteratorTemplate<vtkVariant>*>(arr->NewIterator());
-  for (vtkIdType i = 0; i < iter->GetNumberOfValues(); i++)
-  {
-    double arrVal = iter->GetValue(i).ToDouble();
-    if (arrVal != vec[i])
-    {
-      cerr << "values do not match (" << arrVal << " != " << vec[i] << ")" << endl;
-      exit(1);
-    }
-  }
-  iter->Delete();
-
-  cerr << "Check using array pointer." << endl;
-  vtkVariant* pointer = reinterpret_cast<vtkVariant*>(arr->GetVoidPointer(0));
+  std::cerr << "Check using array pointer." << std::endl;
+  vtkVariant* pointer = arr->GetPointer(0);
   for (vtkIdType i = 0; i < arr->GetNumberOfValues(); i++)
   {
     double arrVal = pointer[i].ToDouble();
     if (arrVal != vec[i])
     {
-      cerr << "values do not match (" << arrVal << " != " << vec[i] << ")" << endl;
-      exit(1);
+      std::cerr << "17) values do not match (" << arrVal << " != " << vec[i] << ")" << std::endl;
+      return EXIT_FAILURE;
     }
   }
 
-  cerr << "Perform a deep copy and check it." << endl;
-  vtkVariantArray* copy = vtkVariantArray::New();
+  std::cerr << "Perform a deep copy and check it." << std::endl;
+  vtkNew<vtkVariantArray> copy;
   arr->DeepCopy(copy);
   for (vtkIdType i = 0; i < arr->GetNumberOfValues(); i++)
   {
     double arrVal = copy->GetValue(i).ToDouble();
     if (arrVal != vec[i])
     {
-      cerr << "values do not match (" << arrVal << " != " << vec[i] << ")" << endl;
-      exit(1);
+      std::cerr << "18) values do not match (" << arrVal << " != " << vec[i] << ")" << std::endl;
+      return EXIT_FAILURE;
     }
   }
-  copy->Delete();
-
-  arr->Delete();
 
   if (int result = TestLookup())
   {
@@ -409,4 +369,3 @@ int TestVariantArray(int, char*[])
 
   return 0;
 }
-

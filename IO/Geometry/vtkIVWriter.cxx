@@ -1,248 +1,237 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkIVWriter.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkIVWriter.h"
 
 #include "vtkCellArray.h"
 #include "vtkInformation.h"
 #include "vtkLookupTable.h"
 #include "vtkObjectFactory.h"
-#include "vtkPolyData.h"
 #include "vtkPointData.h"
+#include "vtkPolyData.h"
+#include "vtkStringFormatter.h"
 
+#include <vtksys/SystemTools.hxx>
+
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkIVWriter);
 
-//----------------------------------------------------------------------------
-void vtkIVWriter::WriteData()
+//------------------------------------------------------------------------------
+bool vtkIVWriter::WriteDataAndReturn()
 {
-  FILE *fp;
+  FILE* fp;
 
   // make sure the user specified a FileName
-  if ( this->FileName == nullptr)
+  if (this->FileName == nullptr)
   {
     vtkErrorMacro(<< "Please specify FileName to use");
-    return;
+    return false;
   }
 
   // try opening the files
-  fp = fopen(this->FileName,"w");
+  fp = vtksys::SystemTools::Fopen(this->FileName, "w");
   if (!fp)
   {
     vtkErrorMacro(<< "unable to open OpenInventor file: " << this->FileName);
-    return;
+    return false;
   }
 
   //
   //  Write header
   //
   vtkDebugMacro("Writing OpenInventor file");
-  fprintf(fp,"#Inventor V2.0 ascii\n");
-  fprintf(fp,"# OpenInventor file written by the visualization toolkit\n\n");
+  vtk::print(fp, "#Inventor V2.0 ascii\n");
+  vtk::print(fp, "# OpenInventor file written by the visualization toolkit\n\n");
   this->WritePolyData(this->GetInput(), fp);
   if (fclose(fp))
   {
-    vtkErrorMacro(<< this->FileName
-                  << " did not close successfully. Check disk space.");
+    vtkErrorMacro(<< this->FileName << " did not close successfully. Check disk space.");
+    return false;
   }
+  return true;
 }
 
-//----------------------------------------------------------------------------
-void vtkIVWriter::WritePolyData(vtkPolyData *pd, FILE *fp)
+//------------------------------------------------------------------------------
+void vtkIVWriter::WritePolyData(vtkPolyData* pd, FILE* fp)
 {
-  vtkPoints *points;
+  vtkPoints* points;
   vtkIdType i;
-  vtkCellArray *cells;
+  vtkCellArray* cells;
   vtkIdType npts = 0;
-  vtkIdType *indx = nullptr;
-  vtkUnsignedCharArray *colors=nullptr;
+  const vtkIdType* indx = nullptr;
+  vtkUnsignedCharArray* colors = nullptr;
 
   points = pd->GetPoints();
 
   // create colors for vertices
-  vtkDataArray *scalars = pd->GetPointData()->GetScalars();
+  vtkDataArray* scalars = pd->GetPointData()->GetScalars();
 
-  if ( scalars )
+  if (scalars)
   {
-    vtkLookupTable *lut;
-    if ( (lut=scalars->GetLookupTable()) == nullptr )
+    vtkLookupTable* lut;
+    if ((lut = scalars->GetLookupTable()) == nullptr)
     {
       lut = vtkLookupTable::New();
       lut->Build();
     }
-    colors = lut->MapScalars(scalars,VTK_COLOR_MODE_DEFAULT,0);
-    if ( ! scalars->GetLookupTable() )
+    colors = lut->MapScalars(scalars, VTK_COLOR_MODE_DEFAULT, 0);
+    if (!scalars->GetLookupTable())
     {
       lut->Delete();
     }
   }
 
-  fprintf(fp,"Separator {\n");
+  vtk::print(fp, "Separator {{\n");
 
   // Point data (coordinates)
-  fprintf(fp,"\tCoordinate3 {\n");
-  fprintf(fp,"\t\tpoint [\n");
-  fprintf(fp,"\t\t\t");
-  for (i=0; i<points->GetNumberOfPoints(); i++)
+  vtk::print(fp, "\tCoordinate3 {{\n");
+  vtk::print(fp, "\t\tpoint [\n");
+  vtk::print(fp, "\t\t\t");
+  for (i = 0; i < points->GetNumberOfPoints(); i++)
   {
     double xyz[3];
     points->GetPoint(i, xyz);
-    fprintf(fp, "%g %g %g, ", xyz[0], xyz[1], xyz[2]);
-    if (!((i+1)%2))
+    vtk::print(fp, "{:g} {:g} {:g}, ", xyz[0], xyz[1], xyz[2]);
+    if (!((i + 1) % 2))
     {
-      fprintf(fp, "\n\t\t\t");
+      vtk::print(fp, "\n\t\t\t");
     }
   }
-  fprintf(fp, "\n\t\t]");
-  fprintf(fp, "\t}\n");
+  vtk::print(fp, "\n\t\t]");
+  vtk::print(fp, "\t}}\n");
 
   // Per vertex coloring
-  fprintf(fp,"\tMaterialBinding {\n");
-  fprintf(fp,"\t\tvalue PER_VERTEX_INDEXED\n");
-  fprintf(fp,"\t}\n");
+  vtk::print(fp, "\tMaterialBinding {{\n");
+  vtk::print(fp, "\t\tvalue PER_VERTEX_INDEXED\n");
+  vtk::print(fp, "\t}}\n");
 
   // Colors, if any
   if (colors)
   {
-    fprintf(fp,"\tMaterial {\n");
-    fprintf(fp,"\t\tdiffuseColor [\n");
-    fprintf(fp, "\t\t\t");
-    for (i=0; i<colors->GetNumberOfTuples(); i++)
+    vtk::print(fp, "\tMaterial {{\n");
+    vtk::print(fp, "\t\tdiffuseColor [\n");
+    vtk::print(fp, "\t\t\t");
+    for (i = 0; i < colors->GetNumberOfTuples(); i++)
     {
-      unsigned char *rgba;
-      rgba = colors->GetPointer(4*i);
-      fprintf(fp, "%g %g %g, ", rgba[0]/255.0f,
-              rgba[1]/255.0f, rgba[2]/255.0f);
-      if (!((i+1)%2))
+      unsigned char* rgba;
+      rgba = colors->GetPointer(4 * i);
+      vtk::print(fp, "{:g} {:g} {:g}, ", rgba[0] / 255.0f, rgba[1] / 255.0f, rgba[2] / 255.0f);
+      if (!((i + 1) % 2))
       {
-        fprintf(fp, "\n\t\t\t");
+        vtk::print(fp, "\n\t\t\t");
       }
     }
-    fprintf(fp, "\n\t\t]\n");
-    fprintf(fp,"\t}\n");
+    vtk::print(fp, "\n\t\t]\n");
+    vtk::print(fp, "\t}}\n");
     colors->Delete();
   }
-
 
   // write out polys if any
   if (pd->GetNumberOfPolys() > 0)
   {
-    fprintf(fp,"\tIndexedFaceSet {\n");
-    fprintf(fp,"\t\tcoordIndex [\n");
+    vtk::print(fp, "\tIndexedFaceSet {{\n");
+    vtk::print(fp, "\t\tcoordIndex [\n");
     cells = pd->GetPolys();
-    for (cells->InitTraversal(); cells->GetNextCell(npts,indx); )
+    for (cells->InitTraversal(); cells->GetNextCell(npts, indx);)
     {
-      fprintf(fp, "\t\t\t");
+      vtk::print(fp, "\t\t\t");
       for (i = 0; i < npts; i++)
       {
         // treating vtkIdType as int
-        fprintf(fp,"%i, ", (int)indx[i]);
+        vtk::print(fp, "{:d}, ", (int)indx[i]);
       }
-      fprintf(fp,"-1,\n");
+      vtk::print(fp, "-1,\n");
     }
-    fprintf(fp,"\t\t]\n");
-    fprintf(fp,"\t}\n");
+    vtk::print(fp, "\t\t]\n");
+    vtk::print(fp, "\t}}\n");
   }
 
   // write out lines if any
   if (pd->GetNumberOfLines() > 0)
   {
-    fprintf(fp,"\tIndexedLineSet {\n");
-    fprintf(fp,"\t\tcoordIndex  [\n");
+    vtk::print(fp, "\tIndexedLineSet {{\n");
+    vtk::print(fp, "\t\tcoordIndex  [\n");
 
     cells = pd->GetLines();
-    for (cells->InitTraversal(); cells->GetNextCell(npts,indx); )
+    for (cells->InitTraversal(); cells->GetNextCell(npts, indx);)
     {
-      fprintf(fp,"\t\t\t");
+      vtk::print(fp, "\t\t\t");
       for (i = 0; i < npts; i++)
       {
         // treating vtkIdType as int
-        fprintf(fp,"%i, ", (int)indx[i]);
+        vtk::print(fp, "{:d}, ", (int)indx[i]);
       }
-      fprintf(fp,"-1,\n");
+      vtk::print(fp, "-1,\n");
     }
-    fprintf(fp,"\t\t]\n");
-    fprintf(fp,"\t}\n");
+    vtk::print(fp, "\t\t]\n");
+    vtk::print(fp, "\t}}\n");
   }
 
   // write out verts if any
   if (pd->GetNumberOfVerts() > 0)
   {
-    fprintf(fp,"\tIndexdedPointSet {\n");
-    fprintf(fp,"\t\tcoordIndex [");
+    vtk::print(fp, "\tIndexdedPointSet {{\n");
+    vtk::print(fp, "\t\tcoordIndex [");
     cells = pd->GetVerts();
-    for (cells->InitTraversal(); cells->GetNextCell(npts,indx); )
+    for (cells->InitTraversal(); cells->GetNextCell(npts, indx);)
     {
-      fprintf(fp,"\t\t\t");
+      vtk::print(fp, "\t\t\t");
       for (i = 0; i < npts; i++)
       {
         // treating vtkIdType as int
-        fprintf(fp,"%i, ", (int)indx[i]);
+        vtk::print(fp, "{:d}, ", (int)indx[i]);
       }
-      fprintf(fp,"-1,\n");
+      vtk::print(fp, "-1,\n");
     }
-    fprintf(fp,"\t\t]\n");
-    fprintf(fp,"\t}\n");
+    vtk::print(fp, "\t\t]\n");
+    vtk::print(fp, "\t}}\n");
   }
-
 
   // write out tstrips if any
   if (pd->GetNumberOfStrips() > 0)
   {
 
-    fprintf(fp,"\tIndexedTriangleStripSet {\n");
-    fprintf(fp,"\t\tcoordIndex [\n");
+    vtk::print(fp, "\tIndexedTriangleStripSet {{\n");
+    vtk::print(fp, "\t\tcoordIndex [\n");
     cells = pd->GetStrips();
-    for (cells->InitTraversal(); cells->GetNextCell(npts,indx); )
+    for (cells->InitTraversal(); cells->GetNextCell(npts, indx);)
     {
-      fprintf(fp,"\t\t\t");
+      vtk::print(fp, "\t\t\t");
       for (i = 0; i < npts; i++)
       {
         // treating vtkIdType as int
-        fprintf(fp,"%i, ", (int)indx[i]);
+        vtk::print(fp, "{:d}, ", (int)indx[i]);
       }
-      fprintf(fp,"-1,\n");
+      vtk::print(fp, "-1,\n");
     }
-    fprintf(fp,"\t\t]\n");
-    fprintf(fp,"\t}\n");
+    vtk::print(fp, "\t\t]\n");
+    vtk::print(fp, "\t}}\n");
   }
 
-  fprintf(fp,"}\n"); // close the Shape
-
+  vtk::print(fp, "}}\n"); // close the Shape
 }
 
-
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkIVWriter::PrintSelf(ostream& os, vtkIndent indent)
 {
-  this->Superclass::PrintSelf(os,indent);
+  this->Superclass::PrintSelf(os, indent);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkPolyData* vtkIVWriter::GetInput()
 {
   return vtkPolyData::SafeDownCast(this->Superclass::GetInput());
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkPolyData* vtkIVWriter::GetInput(int port)
 {
   return vtkPolyData::SafeDownCast(this->Superclass::GetInput(port));
 }
 
-//----------------------------------------------------------------------------
-int vtkIVWriter::FillInputPortInformation(int, vtkInformation *info)
+//------------------------------------------------------------------------------
+int vtkIVWriter::FillInputPortInformation(int, vtkInformation* info)
 {
   info->Set(vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkPolyData");
   return 1;
 }
+VTK_ABI_NAMESPACE_END

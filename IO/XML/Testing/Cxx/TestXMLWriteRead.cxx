@@ -1,26 +1,16 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestXMLWriteRead.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
+#include "vtkAOSDataArrayTemplate.h"
 #include "vtkPointSource.h"
 #include "vtkXMLPolyDataReader.h"
 #include "vtkXMLPolyDataWriter.h"
 
-#include "vtkPointSource.h"
 #include "vtkPoints.h"
 
 #include "vtkTestUtilities.h"
 #include <string>
+
+#include <iostream>
 
 namespace
 {
@@ -32,7 +22,7 @@ int TestXMLWriteRead(int argc, char* argv[])
   char* tempDir =
     vtkTestUtilities::GetArgOrEnvOrDefault("-T", argc, argv, "VTK_TEMP_DIR", "Testing/Temporary");
   std::string fileName(tempDir);
-  delete [] tempDir;
+  delete[] tempDir;
 
   int statusFloat, statusDouble;
 
@@ -90,10 +80,9 @@ int TestConvertType(const std::string& type, const std::string& fileName)
   unsigned int numberOfMismatches = 0;
   for (auto i = 0; i < originalPoints->GetNumberOfPoints(); ++i)
   {
-    T* original;
-    original = static_cast<T*>(originalPoints->GetVoidPointer(i * 3));
-    T* read;
-    read = static_cast<T*>(readPoints->GetVoidPointer(i * 3));
+    T* original =
+      vtkAOSDataArrayTemplate<T>::FastDownCast(originalPoints->GetData())->GetPointer(i * 3);
+    T* read = vtkAOSDataArrayTemplate<T>::FastDownCast(readPoints->GetData())->GetPointer(i * 3);
     for (auto j = 0; j < 3; ++j)
     {
       if (original[j] != read[j])

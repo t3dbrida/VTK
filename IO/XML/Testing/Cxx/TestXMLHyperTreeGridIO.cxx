@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /*
 This test does a read write cycle of a known good hypertree grid file,
 comparing the shape of read and written trees, to exercise the reader
@@ -7,30 +9,34 @@ and writer and ensure that they work.
 #include "vtkDataArray.h"
 #include "vtkHyperTreeGrid.h"
 #include "vtkNew.h"
+#include "vtkStringFormatter.h"
 #include "vtkTestUtilities.h"
 #include "vtkXMLHyperTreeGridReader.h"
 #include "vtkXMLHyperTreeGridWriter.h"
 
 #include <vtksys/SystemTools.hxx>
+
 #include <string>
+
+#include <iostream>
 
 #define VTK_SUCCESS 0
 #define VTK_FAILURE 1
 int TestXMLHyperTreeGridIO(int argc, char* argv[])
 {
-  char* temp_dir = vtkTestUtilities::GetArgOrEnvOrDefault(
-    "-T", argc, argv, "VTK_TEMP_DIR", "Testing/Temporary");
+  char* temp_dir =
+    vtkTestUtilities::GetArgOrEnvOrDefault("-T", argc, argv, "VTK_TEMP_DIR", "Testing/Temporary");
   if (!temp_dir)
   {
-    cerr << "Could not determine temporary directory." << endl;
+    std::cerr << "Could not determine temporary directory." << std::endl;
     return VTK_FAILURE;
   }
 
   char* data_dir = vtkTestUtilities::GetDataRoot(argc, argv);
   if (!data_dir)
   {
-    delete [] temp_dir;
-    cerr << "Could not determine data directory." << endl;
+    delete[] temp_dir;
+    std::cerr << "Could not determine data directory." << std::endl;
     return VTK_FAILURE;
   }
 
@@ -38,41 +44,43 @@ int TestXMLHyperTreeGridIO(int argc, char* argv[])
 
   std::string ifname = std::string(data_dir) + std::string("/Data/") + fname;
 
-  cout << "- READ INPUT --------------------------------" << endl;
+  std::cout << "- READ INPUT --------------------------------" << std::endl;
   vtkNew<vtkXMLHyperTreeGridReader> reader;
   reader->SetFileName(ifname.c_str());
   reader->Update();
 
-  vtkHyperTreeGrid *read_in = reader->GetOutput();
-  unsigned int size[3];
-  vtkDataArray *coords;
+  vtkHyperTreeGrid* read_in = reader->GetOutput();
+  int size[3];
+  vtkDataArray* coords;
   int ntp;
 
   std::string read1;
 
-  read_in->GetGridSize(size);
-  read1 += "SIZE "+std::to_string(size[0])+","+std::to_string(size[1])+","+std::to_string(size[2])+"\n";
-  read1 +="DIMS "+std::to_string(read_in->GetDimension())+"\n";
-  read1 +="#TREES "+std::to_string(read_in->GetNumberOfTrees())+"\n";
-  read1 +="ORIENTATION "+std::to_string(read_in->GetOrientation())+"\n";
-  read1 +="BRANCHFACTOR "+std::to_string(read_in->GetBranchFactor())+"\n";
+  read_in->GetDimensions(size);
+  read1 += "SIZE " + vtk::to_string(size[0]) + "," + vtk::to_string(size[1]) + "," +
+    vtk::to_string(size[2]) + "\n";
+  read1 += "DIMS " + vtk::to_string(read_in->GetDimension()) + "\n";
+  read1 += "#TREES " + vtk::to_string(read_in->GetMaxNumberOfTrees()) + "\n";
+  read1 += "ORIENTATION " + vtk::to_string(read_in->GetOrientation()) + "\n";
+  read1 += "BRANCHFACTOR " + vtk::to_string(read_in->GetBranchFactor()) + "\n";
   coords = read_in->GetXCoordinates();
   ntp = coords->GetNumberOfTuples();
-  read1 +="XCOORDS "+std::to_string(ntp)+":"+std::to_string(coords->GetTuple1(0))+"..."+std::to_string(coords->GetTuple1(ntp-1))+"\n";
+  read1 += "XCOORDS " + vtk::to_string(ntp) + ":" + vtk::to_string(coords->GetTuple1(0)) + "..." +
+    vtk::to_string(coords->GetTuple1(ntp - 1)) + "\n";
   coords = read_in->GetYCoordinates();
   ntp = coords->GetNumberOfTuples();
-  read1 +="YCOORDS "+std::to_string(ntp)+":"+std::to_string(coords->GetTuple1(0))+"..."+std::to_string(coords->GetTuple1(ntp-1))+"\n";
+  read1 += "YCOORDS " + vtk::to_string(ntp) + ":" + vtk::to_string(coords->GetTuple1(0)) + "..." +
+    vtk::to_string(coords->GetTuple1(ntp - 1)) + "\n";
   coords = read_in->GetZCoordinates();
   ntp = coords->GetNumberOfTuples();
-  read1 +="ZCOORDS "+std::to_string(ntp)+":"+std::to_string(coords->GetTuple1(0))+"..."+std::to_string(coords->GetTuple1(ntp-1))+"\n";
-  read1 +="TRANSPOSED "+std::to_string(read_in->GetTransposedRootIndexing())+"\n";
-  read1 +="#CHILDREN "+std::to_string(read_in->GetNumberOfChildren())+"\n";
-  read1 +="#LEVELS "+std::to_string(read_in->GetNumberOfLevels())+"\n";
-  read1 +="#VERTS "+std::to_string(read_in->GetNumberOfVertices())+"\n";
-  read1 +="#LEAVES "+std::to_string(read_in->GetNumberOfLeaves())+"\n";
-  read1 +="#CELLS "+std::to_string(read_in->GetNumberOfCells())+"\n";
-  read1 +="#POINTS "+std::to_string(read_in->GetNumberOfPoints())+"\n";
-  cout << read1 << endl;
+  read1 += "ZCOORDS " + vtk::to_string(ntp) + ":" + vtk::to_string(coords->GetTuple1(0)) + "..." +
+    vtk::to_string(coords->GetTuple1(ntp - 1)) + "\n";
+  read1 += "TRANSPOSED " + vtk::to_string(read_in->GetTransposedRootIndexing()) + "\n";
+  read1 += "#CHILDREN " + vtk::to_string(read_in->GetNumberOfChildren()) + "\n";
+  read1 += "#LEVELS " + vtk::to_string(read_in->GetNumberOfLevels()) + "\n";
+  read1 += "#VERTS " + vtk::to_string(read_in->GetNumberOfCells()) + "\n";
+  read1 += "#LEAVES " + vtk::to_string(read_in->GetNumberOfLeaves()) + "\n";
+  std::cout << read1 << std::endl;
 
   std::string output_dir = temp_dir;
   output_dir += "/HTG";
@@ -81,7 +89,7 @@ int TestXMLHyperTreeGridIO(int argc, char* argv[])
 
   std::string ofname = output_dir + "/" + fname;
 
-  cout << "- WRITE BINARY --------------------------------" << endl;
+  std::cout << "- WRITE BINARY --------------------------------" << std::endl;
 
   vtkNew<vtkXMLHyperTreeGridWriter> writer;
   writer->SetFileName(ofname.c_str());
@@ -89,67 +97,72 @@ int TestXMLHyperTreeGridIO(int argc, char* argv[])
   writer->SetDataModeToBinary();
   writer->Write();
 
-  reader->SetFileName(ofname.c_str());
-  reader->Update();
-  vtkHyperTreeGrid *wrote_out = reader->GetOutput();
+  vtkNew<vtkXMLHyperTreeGridReader> reader2;
+  reader2->SetFileName(ofname.c_str());
+  reader2->Update();
+  vtkHyperTreeGrid* wrote_out = reader2->GetOutput();
 
   std::string read2;
-  wrote_out->GetGridSize(size);
-  read2 += "SIZE "+std::to_string(size[0])+","+std::to_string(size[1])+","+std::to_string(size[2])+"\n";
-  read2 +="DIMS "+std::to_string(wrote_out->GetDimension())+"\n";
-  read2 +="#TREES "+std::to_string(wrote_out->GetNumberOfTrees())+"\n";
-  read2 +="ORIENTATION "+std::to_string(wrote_out->GetOrientation())+"\n";
-  read2 +="BRANCHFACTOR "+std::to_string(wrote_out->GetBranchFactor())+"\n";
+  wrote_out->GetDimensions(size);
+  read2 += "SIZE " + vtk::to_string(size[0]) + "," + vtk::to_string(size[1]) + "," +
+    vtk::to_string(size[2]) + "\n";
+  read2 += "DIMS " + vtk::to_string(wrote_out->GetDimension()) + "\n";
+  read2 += "#TREES " + vtk::to_string(wrote_out->GetMaxNumberOfTrees()) + "\n";
+  read2 += "ORIENTATION " + vtk::to_string(wrote_out->GetOrientation()) + "\n";
+  read2 += "BRANCHFACTOR " + vtk::to_string(wrote_out->GetBranchFactor()) + "\n";
   coords = wrote_out->GetXCoordinates();
   ntp = coords->GetNumberOfTuples();
-  read2 +="XCOORDS "+std::to_string(ntp)+":"+std::to_string(coords->GetTuple1(0))+"..."+std::to_string(coords->GetTuple1(ntp-1))+"\n";
+  read2 += "XCOORDS " + vtk::to_string(ntp) + ":" + vtk::to_string(coords->GetTuple1(0)) + "..." +
+    vtk::to_string(coords->GetTuple1(ntp - 1)) + "\n";
   coords = wrote_out->GetYCoordinates();
   ntp = coords->GetNumberOfTuples();
-  read2 +="YCOORDS "+std::to_string(ntp)+":"+std::to_string(coords->GetTuple1(0))+"..."+std::to_string(coords->GetTuple1(ntp-1))+"\n";
+  read2 += "YCOORDS " + vtk::to_string(ntp) + ":" + vtk::to_string(coords->GetTuple1(0)) + "..." +
+    vtk::to_string(coords->GetTuple1(ntp - 1)) + "\n";
   coords = wrote_out->GetZCoordinates();
   ntp = coords->GetNumberOfTuples();
-  read2 +="ZCOORDS "+std::to_string(ntp)+":"+std::to_string(coords->GetTuple1(0))+"..."+std::to_string(coords->GetTuple1(ntp-1))+"\n";
-  read2 +="TRANSPOSED "+std::to_string(wrote_out->GetTransposedRootIndexing())+"\n";
-  read2 +="#CHILDREN "+std::to_string(wrote_out->GetNumberOfChildren())+"\n";
-  read2 +="#LEVELS "+std::to_string(wrote_out->GetNumberOfLevels())+"\n";
-  read2 +="#VERTS "+std::to_string(wrote_out->GetNumberOfVertices())+"\n";
-  read2 +="#LEAVES "+std::to_string(wrote_out->GetNumberOfLeaves())+"\n";
-  read2 +="#CELLS "+std::to_string(wrote_out->GetNumberOfCells())+"\n";
-  read2 +="#POINTS "+std::to_string(wrote_out->GetNumberOfPoints())+"\n";
-  cout << read2 << endl;
+  read2 += "ZCOORDS " + vtk::to_string(ntp) + ":" + vtk::to_string(coords->GetTuple1(0)) + "..." +
+    vtk::to_string(coords->GetTuple1(ntp - 1)) + "\n";
+  read2 += "TRANSPOSED " + vtk::to_string(wrote_out->GetTransposedRootIndexing()) + "\n";
+  read2 += "#CHILDREN " + vtk::to_string(wrote_out->GetNumberOfChildren()) + "\n";
+  read2 += "#LEVELS " + vtk::to_string(wrote_out->GetNumberOfLevels()) + "\n";
+  read2 += "#VERTS " + vtk::to_string(wrote_out->GetNumberOfCells()) + "\n";
+  read2 += "#LEAVES " + vtk::to_string(wrote_out->GetNumberOfLeaves()) + "\n";
+  std::cout << read2 << std::endl;
 
-  cout << "- WRITE APPENDED --------------------------------" << endl;
+  std::cout << "- WRITE APPENDED --------------------------------" << std::endl;
 
   writer->SetDataModeToAppended();
   writer->Write();
 
-  reader->Update();
-  wrote_out = reader->GetOutput();
+  reader2->Update();
+  wrote_out = reader2->GetOutput();
 
   std::string read3;
-  wrote_out->GetGridSize(size);
-  read3 += "SIZE "+std::to_string(size[0])+","+std::to_string(size[1])+","+std::to_string(size[2])+"\n";
-  read3 +="DIMS "+std::to_string(wrote_out->GetDimension())+"\n";
-  read3 +="#TREES "+std::to_string(wrote_out->GetNumberOfTrees())+"\n";
-  read3 +="ORIENTATION "+std::to_string(wrote_out->GetOrientation())+"\n";
-  read3 +="BRANCHFACTOR "+std::to_string(wrote_out->GetBranchFactor())+"\n";
+  wrote_out->GetDimensions(size);
+  read3 += "SIZE " + vtk::to_string(size[0]) + "," + vtk::to_string(size[1]) + "," +
+    vtk::to_string(size[2]) + "\n";
+  read3 += "DIMS " + vtk::to_string(wrote_out->GetDimension()) + "\n";
+  read3 += "#TREES " + vtk::to_string(wrote_out->GetMaxNumberOfTrees()) + "\n";
+  read3 += "ORIENTATION " + vtk::to_string(wrote_out->GetOrientation()) + "\n";
+  read3 += "BRANCHFACTOR " + vtk::to_string(wrote_out->GetBranchFactor()) + "\n";
   coords = wrote_out->GetXCoordinates();
   ntp = coords->GetNumberOfTuples();
-  read3 +="XCOORDS "+std::to_string(ntp)+":"+std::to_string(coords->GetTuple1(0))+"..."+std::to_string(coords->GetTuple1(ntp-1))+"\n";
+  read3 += "XCOORDS " + vtk::to_string(ntp) + ":" + vtk::to_string(coords->GetTuple1(0)) + "..." +
+    vtk::to_string(coords->GetTuple1(ntp - 1)) + "\n";
   coords = wrote_out->GetYCoordinates();
   ntp = coords->GetNumberOfTuples();
-  read3 +="YCOORDS "+std::to_string(ntp)+":"+std::to_string(coords->GetTuple1(0))+"..."+std::to_string(coords->GetTuple1(ntp-1))+"\n";
+  read3 += "YCOORDS " + vtk::to_string(ntp) + ":" + vtk::to_string(coords->GetTuple1(0)) + "..." +
+    vtk::to_string(coords->GetTuple1(ntp - 1)) + "\n";
   coords = wrote_out->GetZCoordinates();
   ntp = coords->GetNumberOfTuples();
-  read3 +="ZCOORDS "+std::to_string(ntp)+":"+std::to_string(coords->GetTuple1(0))+"..."+std::to_string(coords->GetTuple1(ntp-1))+"\n";
-  read3 +="TRANSPOSED "+std::to_string(wrote_out->GetTransposedRootIndexing())+"\n";
-  read3 +="#CHILDREN "+std::to_string(wrote_out->GetNumberOfChildren())+"\n";
-  read3 +="#LEVELS "+std::to_string(wrote_out->GetNumberOfLevels())+"\n";
-  read3 +="#VERTS "+std::to_string(wrote_out->GetNumberOfVertices())+"\n";
-  read3 +="#LEAVES "+std::to_string(wrote_out->GetNumberOfLeaves())+"\n";
-  read3 +="#CELLS "+std::to_string(wrote_out->GetNumberOfCells())+"\n";
-  read3 +="#POINTS "+std::to_string(wrote_out->GetNumberOfPoints())+"\n";
-  cout << read3 << endl;
+  read3 += "ZCOORDS " + vtk::to_string(ntp) + ":" + vtk::to_string(coords->GetTuple1(0)) + "..." +
+    vtk::to_string(coords->GetTuple1(ntp - 1)) + "\n";
+  read3 += "TRANSPOSED " + vtk::to_string(wrote_out->GetTransposedRootIndexing()) + "\n";
+  read3 += "#CHILDREN " + vtk::to_string(wrote_out->GetNumberOfChildren()) + "\n";
+  read3 += "#LEVELS " + vtk::to_string(wrote_out->GetNumberOfLevels()) + "\n";
+  read3 += "#VERTS " + vtk::to_string(wrote_out->GetNumberOfCells()) + "\n";
+  read3 += "#LEAVES " + vtk::to_string(wrote_out->GetNumberOfLeaves()) + "\n";
+  std::cout << read3 << std::endl;
 
   bool ret = VTK_FAILURE;
   if (read1 == read2 && read1 == read3)
@@ -159,11 +172,11 @@ int TestXMLHyperTreeGridIO(int argc, char* argv[])
   }
   else
   {
-    cerr << "Problem: Written file does not match read in file." << endl;
+    std::cerr << "Problem: Written file does not match read in file." << std::endl;
   }
 
-  delete []temp_dir;
-  delete []data_dir;
+  delete[] temp_dir;
+  delete[] data_dir;
 
   return ret;
 }

@@ -1,50 +1,42 @@
-/*=========================================================================
-
-  Program:   DICOMParser
-  Module:    DICOMFile.cxx
-  Language:  C++
-
-  Copyright (c) 2003 Matt Turek
-  All rights reserved.
-  See Copyright.txt for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-
+// SPDX-FileCopyrightText: Copyright (c) 2003 Matt Turek
+// SPDX-License-Identifier: BSD-4-Clause
 #ifdef _MSC_VER
-#pragma warning ( disable : 4514 )
-#pragma warning ( disable : 4710 )
-#pragma warning ( push, 3 )
+#pragma warning(disable : 4514)
+#pragma warning(disable : 4710)
+#pragma warning(push, 3)
 #endif
 
-#include "DICOMConfig.h"
 #include "DICOMFile.h"
+#include "DICOMConfig.h"
 
+#include "vtksys/FStream.hxx"
+
+#include <iomanip>
+#include <iostream>
 #include <stdio.h>
 #include <string.h>
 #include <string>
 
-DICOMFile::DICOMFile() : InputStream()
+VTK_ABI_NAMESPACE_BEGIN
+DICOMFile::DICOMFile()
 {
   /* Are we little or big endian?  From Harbison&Steele.  */
   union
   {
     long l;
-    char c[sizeof (long)];
+    char c[sizeof(long)];
   } u;
   u.l = 1;
-  PlatformIsBigEndian = (u.c[sizeof (long) - 1] == 1);
+  PlatformIsBigEndian = (u.c[sizeof(long) - 1] == 1);
   if (PlatformIsBigEndian)
-    {
+  {
     PlatformEndian = "BigEndian";
-    }
+  }
   else
-    {
+  {
     PlatformEndian = "LittleEndian";
-    }
+  }
+  InputStream = nullptr;
 }
 
 DICOMFile::~DICOMFile()
@@ -55,13 +47,13 @@ DICOMFile::~DICOMFile()
 DICOMFile::DICOMFile(const DICOMFile& in)
 {
   if (strcmp(in.PlatformEndian, "LittleEndian") == 0)
-    {
+  {
     PlatformEndian = "LittleEndian";
-    }
+  }
   else
-    {
+  {
     PlatformEndian = "BigEndian";
-    }
+  }
   //
   // Some compilers can't handle. Comment out for now.
   //
@@ -71,150 +63,175 @@ DICOMFile::DICOMFile(const DICOMFile& in)
 void DICOMFile::operator=(const DICOMFile& in)
 {
   if (strcmp(in.PlatformEndian, "LittleEndian") == 0)
-    {
+  {
     PlatformEndian = "LittleEndian";
-    }
+  }
   else
-    {
+  {
     PlatformEndian = "BigEndian";
-    }
+  }
   //
   // Some compilers can't handle. Comment out for now.
   //
   // InputStream = in.InputStream;
 }
 
-bool DICOMFile::Open(const dicom_stl::string& filename)
+bool DICOMFile::Open(const std::string& filename)
 {
+  std::ios_base::openmode mode = std::ios::in;
 #ifdef _WIN32
-  InputStream.open(filename.c_str(), dicom_stream::ios::binary | dicom_stream::ios::in);
-#else
-  InputStream.open(filename.c_str(), dicom_stream::ios::in);
+  mode |= std::ios::binary;
 #endif
+  this->Close(); // ensure any old streams are closed
+  this->InputStream = new vtksys::ifstream(filename.c_str(), mode);
 
-  //if (InputStream.is_open())
-  if (InputStream.rdbuf()->is_open())
-    {
+  if (this->InputStream && !this->InputStream->fail())
+  {
     return true;
-    }
-  else
-    {
-    return false;
-    }
+  }
+
+  this->Close();
+  return false;
 }
 
 void DICOMFile::Close()
 {
-  InputStream.close();
+  delete this->InputStream;
+  this->InputStream = nullptr;
+}
+
+bool DICOMFile::SetStream(std::istream* stream)
+{
+  this->Close(); // ensure any old streams are closed
+
+  this->InputStream = stream;
+
+  if (this->InputStream && !this->InputStream->fail())
+  {
+    return true;
+  }
+
+  this->Close();
+  return false;
 }
 
 long DICOMFile::Tell()
 {
-  long loc = static_cast<long>(InputStream.tellg());
-  // dicom_stream::cout << "Tell: " << loc << dicom_stream::endl;
-  return loc;
+  if (InputStream)
+  {
+    return static_cast<long>(InputStream->tellg());
+  }
+  return 0;
 }
 
 void DICOMFile::SkipToPos(long increment)
 {
-  InputStream.seekg(increment, dicom_stream::ios::beg);
+  if (InputStream)
+  {
+    InputStream->seekg(increment, std::ios::beg);
+  }
 }
 
 long DICOMFile::GetSize()
 {
-  long curpos = this->Tell();
+  if (InputStream)
+  {
+    long curpos = this->Tell();
 
-  InputStream.seekg(0,dicom_stream::ios::end);
+    InputStream->seekg(0, std::ios::end);
 
-  long size = this->Tell();
-  // dicom_stream::cout << "Tell says size is: " << size << dicom_stream::endl;
-  this->SkipToPos(curpos);
+    long size = this->Tell();
+    this->SkipToPos(curpos);
 
-  return size;
+    return size;
+  }
+  return 0;
 }
 
 void DICOMFile::Skip(long increment)
 {
-  InputStream.seekg(increment, dicom_stream::ios::cur);
+  if (InputStream)
+  {
+    InputStream->seekg(increment, std::ios::cur);
+  }
 }
 
 void DICOMFile::SkipToStart()
 {
-  InputStream.seekg(0, dicom_stream::ios::beg);
+  InputStream->seekg(0, std::ios::beg);
 }
 
 void DICOMFile::Read(void* ptr, long nbytes)
 {
-  InputStream.read(static_cast<char*>(ptr), nbytes);
-  // dicom_stream::cout << (char*) ptr << dicom_stream::endl;
+  InputStream->read(static_cast<char*>(ptr), nbytes);
+  // std::cout << (char*) ptr << std::endl;
 }
 
 doublebyte DICOMFile::ReadDoubleByte()
 {
   doublebyte sh = 0;
   int sz = sizeof(doublebyte);
-  this->Read(reinterpret_cast<char*>(&sh),sz);
+  this->Read(reinterpret_cast<char*>(&sh), sz);
   if (PlatformIsBigEndian)
-    {
+  {
     sh = swap2(sh);
-    }
-  return(sh);
+  }
+  return (sh);
 }
 
 doublebyte DICOMFile::ReadDoubleByteAsLittleEndian()
 {
   doublebyte sh = 0;
   int sz = sizeof(doublebyte);
-  this->Read(reinterpret_cast<char*>(&sh),sz);
+  this->Read(reinterpret_cast<char*>(&sh), sz);
   if (PlatformIsBigEndian)
-    {
+  {
     sh = swap2(sh);
-    }
-  return(sh);
+  }
+  return (sh);
 }
 
 quadbyte DICOMFile::ReadQuadByte()
 {
   quadbyte sh;
   int sz = sizeof(quadbyte);
-  this->Read(reinterpret_cast<char*>(&sh),sz);
+  this->Read(reinterpret_cast<char*>(&sh), sz);
   if (PlatformIsBigEndian)
-    {
+  {
     sh = static_cast<quadbyte>(swap4(static_cast<uint>(sh)));
-    }
-  return(sh);
+  }
+  return (sh);
 }
 
 quadbyte DICOMFile::ReadNBytes(int len)
 {
   quadbyte ret = -1;
   switch (len)
-    {
+  {
     case 1:
       char ch;
-      this->Read(&ch,1);  //from Image
-      ret =static_cast<quadbyte>(ch);
+      this->Read(&ch, 1); // from Image
+      ret = static_cast<quadbyte>(ch);
       break;
     case 2:
-      ret =static_cast<quadbyte>(ReadDoubleByte());
+      ret = static_cast<quadbyte>(ReadDoubleByte());
       break;
     case 4:
       ret = ReadQuadByte();
       break;
     default:
-      dicom_stream::cerr << "Unable to read " << len << " bytes" << dicom_stream::endl;
+      std::cerr << "Unable to read " << len << " bytes" << std::endl;
       break;
-    }
+  }
   return (ret);
 }
 
 float DICOMFile::ReadAsciiFloat(int len)
 {
-  float ret=0.0;
+  float ret = 0.0;
 
-
-  char* val = new char[len+1];
-  this->Read(val,len);
+  char* val = new char[len + 1];
+  this->Read(val, len);
   val[len] = '\0';
 
 #if 0
@@ -225,25 +242,25 @@ float DICOMFile::ReadAsciiFloat(int len)
   char* val2 = new char[len2];
   strncpy(val2, (char*) val, len2);
 
-  dicom_stream::istrstream data(val2);
+  std::istrstream data(val2);
   data >> ret;
   delete [] val2;
 #else
-  sscanf(val,"%e",&ret);
+  ret = vtk::scan_value<float>(std::string_view(val, len))->value();
 #endif
 
-  dicom_stream::cout << "Read ASCII float: " << ret << dicom_stream::endl;
+  std::cout << "Read ASCII float: " << ret << std::endl;
 
-  delete [] val;
+  delete[] val;
   return (ret);
 }
 
 int DICOMFile::ReadAsciiInt(int len)
 {
-  int ret=0;
+  int ret = 0;
 
-  char* val = new char[len+1];
-  this->Read(val,len);
+  char* val = new char[len + 1];
+  this->Read(val, len);
   val[len] = '\0';
 
 #if 0
@@ -254,25 +271,25 @@ int DICOMFile::ReadAsciiInt(int len)
   char* val2 = new char[len2];
   strncpy(val2, (char*) val, len2);
 
-  dicom_stream::istrstream data(val2);
+  std::istrstream data(val2);
   data >> ret;
   delete [] val2;
 #else
-  sscanf(val,"%d",&ret);
+  ret = vtk::scan_int<int>(std::string_view(val, len))->value();
 #endif
 
-  dicom_stream::cout << "Read ASCII int: " << ret << dicom_stream::endl;
+  std::cout << "Read ASCII int: " << ret << std::endl;
 
-  delete [] val;
+  delete[] val;
   return (ret);
 }
 
 char* DICOMFile::ReadAsciiCharArray(int len)
 {
   if (len <= 0)
-    {
+  {
     return nullptr;
-    }
+  }
   char* val = new char[len + 1];
   this->Read(val, len);
   val[len] = 0; // NULL terminate.
@@ -280,5 +297,6 @@ char* DICOMFile::ReadAsciiCharArray(int len)
 }
 
 #ifdef _MSC_VER
-#pragma warning ( pop )
+#pragma warning(pop)
 #endif
+VTK_ABI_NAMESPACE_END

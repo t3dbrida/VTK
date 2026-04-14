@@ -1,16 +1,18 @@
-find_package(PostgreSQL REQUIRED)
-mark_as_advanced(PostgreSQL_INCLUDE_DIR PostgreSQL_LIBRARY)
+vtk_module_find_package(PRIVATE_IF_SHARED
+  PACKAGE PostgreSQL)
 
-set(PostgreSQL_SRCS
-  vtkPostgreSQLDatabase.cxx
-  vtkPostgreSQLQuery.cxx
-  vtkPostgreSQLToTableReader.cxx
-  vtkTableToPostgreSQLWriter.cxx
-  vtkIOPostgreSQL_AutoInit.cxx
-  )
+set(classes
+  vtkPostgreSQLDatabase
+  vtkPostgreSQLQuery
+  vtkPostgreSQLToTableReader
+  vtkTableToPostgreSQLWriter)
 
-include_directories(${PostgreSQL_INCLUDE_DIRS})
+vtk_module_add_module(VTK::IOPostgreSQL
+  CLASSES ${classes}
+  SOURCES vtkIOPostgreSQL_AutoInit.cxx)
 
-vtk_module_library(vtkIOPostgreSQL ${PostgreSQL_SRCS})
-
-vtk_module_link_libraries(vtkIOPostgreSQL LINK_PRIVATE ${PostgreSQL_LIBRARY})
+vtk_module_link(VTK::IOPostgreSQL
+  NO_KIT_EXPORT_IF_SHARED
+  PRIVATE
+    PostgreSQL::PostgreSQL)
+vtk_add_test_mangling(VTK::IOPostgreSQL)

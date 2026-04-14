@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkResourceFileLocator.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class vtkResourceFileLocator
  * @brief utility to locate resource files.
@@ -33,11 +21,13 @@
 #define vtkResourceFileLocator_h
 
 #include "vtkCommonMiscModule.h" // For export macro
+#include "vtkDeprecation.h"      // For VTK_DEPRECATED_IN_9_6_0
 #include "vtkObject.h"
 
 #include <string> // needed for std::string
 #include <vector> // needed for std::vector
 
+VTK_ABI_NAMESPACE_BEGIN
 class VTKCOMMONMISC_EXPORT vtkResourceFileLocator : public vtkObject
 {
 public:
@@ -45,17 +35,15 @@ public:
   vtkTypeMacro(vtkResourceFileLocator, vtkObject);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
-  //@{
+  ///@{
   /**
-   * Enable/disable printing of testing of various path during `Locate`
-   * to `stdout`.
+   * The log verbosity to use when logging information about the resource
+   * searching. Default is `vtkLogger::VERBOSITY_TRACE`.
    */
-  vtkSetMacro(PrintDebugInformation, bool);
-  vtkGetMacro(PrintDebugInformation, bool);
-  vtkBooleanMacro(PrintDebugInformation, bool);
-  //@}
+  vtkSetMacro(LogVerbosity, int);
+  vtkGetMacro(LogVerbosity, int);
+  ///@}
 
-  //@{
   /**
    * Given a starting anchor directory, look for the landmark file relative to
    * the anchor. If found return the anchor. If not found, go one directory up
@@ -63,9 +51,7 @@ public:
    */
   virtual std::string Locate(const std::string& anchor, const std::string& landmark,
     const std::string& defaultDir = std::string());
-  //@}
 
-  //@{
   /**
    * This variant is used to look for landmark relative to the anchor using
    * additional prefixes for the landmark file. For example, if you're looking for
@@ -77,9 +63,18 @@ public:
   virtual std::string Locate(const std::string& anchor,
     const std::vector<std::string>& landmark_prefixes, const std::string& landmark,
     const std::string& defaultDir = std::string());
-  //@}
 
-  //@{
+  /**
+   * Return the path to the library containing the given pointer.
+   */
+  static VTK_FILEPATH std::string GetLibraryPathForAddress(const void* ptr);
+
+  /**
+   * Return the path to the current executable.
+   */
+  static VTK_FILEPATH std::string GetCurrentExecutablePath();
+
+  ///@{
   /**
    * Returns the name of the library providing the symbol. For example, if you
    * want to locate where the VTK libraries located call
@@ -88,27 +83,25 @@ public:
    * can simply use the `vtkGetLibraryPathForSymbol(GetVTKVersion)` macro
    * that makes the appropriate call as per the current platform.
    */
-  static std::string GetLibraryPathForSymbolUnix(const char* symbolname);
-  static std::string GetLibraryPathForSymbolWin32(const void* fptr);
-  //@}
+  VTK_DEPRECATED_IN_9_6_0("Use GetLibraryPathForAddress() instead")
+  static VTK_FILEPATH std::string GetLibraryPathForSymbolUnix(const char* symbolname);
+  VTK_DEPRECATED_IN_9_6_0("Use GetLibraryPathForAddress() instead")
+  static VTK_FILEPATH std::string GetLibraryPathForSymbolWin32(const void* fptr);
+  ///@}
 
 protected:
   vtkResourceFileLocator();
   ~vtkResourceFileLocator() override;
 
-  bool PrintDebugInformation;
-
 private:
   vtkResourceFileLocator(const vtkResourceFileLocator&) = delete;
   void operator=(const vtkResourceFileLocator&) = delete;
+
+  int LogVerbosity;
 };
 
-#if defined(_WIN32) && !defined(__CYGWIN__)
 #define vtkGetLibraryPathForSymbol(function)                                                       \
-  vtkResourceFileLocator::GetLibraryPathForSymbolWin32(reinterpret_cast<const void*>(&function))
-#else
-#define vtkGetLibraryPathForSymbol(function)                                                       \
-  vtkResourceFileLocator::GetLibraryPathForSymbolUnix(#function)
-#endif
+  vtkResourceFileLocator::GetLibraryPathForAddress(reinterpret_cast<const void*>(&function))
 
+VTK_ABI_NAMESPACE_END
 #endif

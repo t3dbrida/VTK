@@ -1,31 +1,33 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkHyperTreeGridGeometry.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkHyperTreeGridGeometry
- * @brief   Hyper tree grid outer surface
+ * @brief   Generate vtkHyperTreeGrid external surface
+ *
+ * Generate the external surface (vtkPolyData) of the input 1D/2D/3D vtkHyperTreeGrid.
+ * Delegate the work internally to different implementation classes depending on the
+ * dimension of the input HyperTreeGrid.
+ *
+ * In the HTG case the surface generated is:
+ * - 1D from a 1D HTG (segments)
+ * - 2D from a 2D and 3D HTG (faces)
+ *
+ * This filters also take account of interfaces, that will generate "cuts"
+ * over the generated segments/surfaces.
  *
  * @sa
  * vtkHyperTreeGrid vtkHyperTreeGridAlgorithm
  *
  * @par Thanks:
- * This class was written by Philippe Pebay, Joachim Pouderoux,
- * and Charles Law, Kitware 2013
+ * This class was written by Philippe Pebay, Joachim Pouderoux, and Charles Law, Kitware 2013
  * This class was modified by Guenole Harel and Jacques-Bernard Lekien, 2014
- * This class was rewritten by Philippe Pebay, NexGen Analytics 2017
- * This work was supported by Commissariat a l'Energie Atomique (CEA/DIF)
-*/
+ * This class was rewritten by Philippe Pebay, 2016
+ * This class was modified by Jacques-Bernard Lekien and Guenole Harel, 2018
+ * This class has been corrected and extended by Jacques-Bernard Lekien to fully support
+ * the subcell notion of onion skin interface (mixed cell), 2023
+ * This work was supported by Commissariat a l'Energie Atomique
+ * CEA, DAM, DIF, F-91297 Arpajon, France.
+ */
 
 #ifndef vtkHyperTreeGridGeometry_h
 #define vtkHyperTreeGridGeometry_h
@@ -33,125 +35,111 @@
 #include "vtkFiltersHyperTreeModule.h" // For export macro
 #include "vtkHyperTreeGridAlgorithm.h"
 
-class vtkBitArray;
+VTK_ABI_NAMESPACE_BEGIN
+
 class vtkCellArray;
-class vtkDoubleArray;
+class vtkDataObject;
 class vtkHyperTreeGrid;
-class vtkHyperTreeGridCursor;
-class vtkIdList;
-class vtkIdTypeArray;
+class vtkInformation;
 class vtkPoints;
 
 class VTKFILTERSHYPERTREE_EXPORT vtkHyperTreeGridGeometry : public vtkHyperTreeGridAlgorithm
 {
 public:
   static vtkHyperTreeGridGeometry* New();
-  vtkTypeMacro( vtkHyperTreeGridGeometry, vtkHyperTreeGridAlgorithm );
-  void PrintSelf( ostream&, vtkIndent ) override;
+  vtkTypeMacro(vtkHyperTreeGridGeometry, vtkHyperTreeGridAlgorithm);
+  void PrintSelf(ostream& os, vtkIndent indent) override;
+
+  ///@{
+  /**
+   * Turn on/off merging of coincident points using a locator.
+   * Note that when merging is on, points with different point attributes
+   * (e.g., normals) are merged, which may cause rendering artifacts.
+   */
+  vtkSetMacro(Merging, bool);
+  vtkGetMacro(Merging, bool);
+  ///@}
+
+  ///@{
+  /**
+   * Set/Get for the PassThroughCellIds boolean.
+   *
+   * When set to true this boolean ensures an array named with whatever is
+   * in `OriginalCellIdArrayName` gets created in the output holding the
+   * original cell ids
+   *
+   * default is false
+   */
+  vtkSetMacro(PassThroughCellIds, bool);
+  vtkGetMacro(PassThroughCellIds, bool);
+  vtkBooleanMacro(PassThroughCellIds, bool);
+  ///@}
+
+  ///@{
+  /**
+   * Set/Get the OriginalCellIdArrayName string.
+   *
+   * When PassThroughCellIds is set to true, the name of the generated
+   * array is whatever is set in this variable.
+   *
+   * default to vtkOriginalCellIds
+   */
+  vtkSetMacro(OriginalCellIdArrayName, std::string);
+  vtkGetMacro(OriginalCellIdArrayName, std::string);
+  ///@}
+
+  ///@{
+  /**
+   * If false, only draw the interface (lines).
+   * Otherwise, draw the full cell with interface (poly).
+   *
+   * default is true
+   */
+  vtkSetMacro(FillMaterial, bool);
+  vtkGetMacro(FillMaterial, bool);
+  vtkBooleanMacro(FillMaterial, bool);
+  ///@}
 
 protected:
-  vtkHyperTreeGridGeometry();
-  ~vtkHyperTreeGridGeometry() override;
+  vtkHyperTreeGridGeometry() = default;
+  ~vtkHyperTreeGridGeometry() override = default;
 
   /**
    * For this algorithm the output is a vtkPolyData instance
    */
-  int FillOutputPortInformation( int, vtkInformation* ) override;
+  int FillOutputPortInformation(int, vtkInformation*) override;
 
   /**
    * Main routine to generate external boundary
    */
-  int ProcessTrees( vtkHyperTreeGrid*, vtkDataObject* ) override;
+  int ProcessTrees(vtkHyperTreeGrid*, vtkDataObject*) override;
 
   /**
-   * Recursively descend into tree down to leaves
+   * Boolean for passing input original cell ids to the output poly data
+   *
+   * default is false
    */
-  void RecursivelyProcessTree( vtkHyperTreeGridCursor*, vtkBitArray* );
+  bool PassThroughCellIds = false;
 
   /**
-   * Process 1D leaves and issue corresponding edges (lines)
+   * Name of the array holding original cell ids in output if PassThroughCellIds is true
    */
-  void ProcessLeaf1D( vtkHyperTreeGridCursor* );
+  std::string OriginalCellIdArrayName = "vtkOriginalCellIds";
 
   /**
-   * Process 2D leaves and issue corresponding faces (quads)
+   * If true, a vtkIncrementalPointLocator is used when inserting
+   * new points to the output.
+   *
+   * XXX: Only used in the 3D case.
    */
-  void ProcessLeaf2D( vtkHyperTreeGridCursor*, vtkBitArray* );
-
-  /**
-   * Process 3D leaves and issue corresponding cells (voxels)
-   */
-  void ProcessLeaf3D( vtkHyperTreeGridCursor*, vtkBitArray* );
-
-  /**
-   * Helper method to generate a face based on its normal and offset from cursor origin
-   */
-  void AddFace( vtkIdType, double*, double*, int, unsigned int, bool create = true );
-
-  /**
-   * Dimension of input grid
-   */
-  unsigned int Dimension;
-
-  /**
-   * Orientation of input grid when dimension < 3
-   */
-  unsigned int Orientation;
-
-  /**
-   * Storage for points of output unstructured mesh
-   */
-  vtkPoints* Points;
-
-  /**
-   * Storage for cells of output unstructured mesh
-   */
-  vtkCellArray* Cells;
-
-  //@{
-  /**
-   * Keep track of input interface parameters
-   */
-  bool HasInterface;
-  vtkDoubleArray* Normals;
-  vtkDoubleArray* Intercepts;
-  //@}
-
-  //@{
-  /**
-   * Storage for interface points
-   */
-  vtkPoints* FacePoints;
-  vtkIdList* FaceIDs;
-  //@}
-
-  //@{
-  /**
-   * Storage for interface edges
-   */
-  vtkIdType EdgesA[12];
-  vtkIdType EdgesB[12];
-  //@}
-
-  //@{
-  /**
-   * Storage for interface faces
-   */
-  vtkIdTypeArray* FacesA;
-  vtkIdTypeArray* FacesB;
-  //@}
-
-  //@{
-  /**
-   * Storage for interface scalars
-   */
-  vtkDoubleArray* FaceScalarsA;
-  vtkDoubleArray* FaceScalarsB;
-  //@}
+  bool Merging = false;
 
 private:
   vtkHyperTreeGridGeometry(const vtkHyperTreeGridGeometry&) = delete;
   void operator=(const vtkHyperTreeGridGeometry&) = delete;
+
+  bool FillMaterial = true;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif /* vtkHyperTreeGridGeometry_h */

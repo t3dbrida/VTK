@@ -1,35 +1,28 @@
 /*
- *	Copyright 1996, University Corporation for Atmospheric Research
+ *	Copyright 2018, University Corporation for Atmospheric Research
  *      See netcdf/COPYRIGHT file for copying and redistribution conditions.
  */
 
 #ifndef NCURI_H
 #define NCURI_H
 
-/* Define error codes */
-#define NCU_OK (0)
-#define NCU_EINVAL        (1) /* Generic, mostly means bad argument */
-#define NCU_EBADURL       (2)
-#define NCU_ENOMEM        (3)
-#define NCU_EPROTO        (4)
-#define NCU_EPATH         (5)
-#define NCU_EUSRPWD       (6)
-#define NCU_EHOST         (7)
-#define NCU_EPORT         (8)
-#define NCU_EPARAMS       (9)
-#define NCU_ENOPARAM      (10)
-#define NCU_ECONSTRAINTS  (11)
+#include "vtk_netcdf_mangle.h"
 
-/* Define flags to control what is included by ncuribuild*/
-#define NCURIPATH      1
-#define NCURIPWD       2
-#define NCURIQUERY     4
-#define NCURIFRAG      8
-#define NCURIENCODE    16 /* If output should be encoded */
-#define NCURIBASE    (NCURIPWD|NCURIPATH)
-#define NCURISVC     (NCURIQUERY|NCURIBASE) /* for sending to server  */
-#define NCURIALL     (NCURIPATH|NCURIPWD|NCURIQUERY|NCURIFRAG) /* for rebuilding after changes */
+#include "ncexternl.h"
 
+/* Define flags to control what is included by ncuribuild;
+   protocol+host+port always included
+*/
+#define NCURIPATH	    1
+#define NCURIPWD	    2
+#define NCURIQUERY	    4
+#define NCURIFRAG	    8
+#define NCURIENCODEPATH	    16 /* If output url path should be encoded */
+#define NCURIENCODEQUERY    32 /* If output url query should be encoded */
+#define NCURIENCODE	    (NCURIENCODEPATH|NCURIENCODEQUERY)
+#define NCURIBASE	    (NCURIPWD|NCURIPATH)
+#define NCURISVC	    (NCURIBASE|NCURIQUERY) /* for sending to server  */
+#define NCURIALL	    (NCURIBASE|NCURIQUERY|NCURIFRAG) /* for rebuilding after changes */
 
 /*! This is an open structure meaning
 	it is ok to directly access its fields
@@ -44,50 +37,95 @@ typedef struct NCURI {
     char* path;	      /*!< path */
     char* query;      /*!< query */
     char* fragment;   /*!< fragment */
-    char** fraglist; /* envv style list of decomposed fragment*/
-    char** querylist; /* envv style list of decomposed query*/
-#if 0
-    char* projection; /*!< without leading '?'*/
-    char* selection;  /*!< with leading '&'*/
-#endif
+    void* fraglist;   /* some representation of the decomposed fragment string */
+    void* querylist;   /* some representation of the decomposed query string */
 } NCURI;
+
+#if 0
+/* Declaration modifiers for DLL support (MSC et al) */
+#if defined(DLL_NETCDF) /* define when library is a DLL */
+#  if defined(DLL_EXPORT) /* define when building the library */
+#   define MSC_EXTRA __declspec(dllexport)
+#  else
+#   define MSC_EXTRA __declspec(dllimport)
+#  endif
+#  include <io.h>
+#else
+#define MSC_EXTRA  /**< Needed for DLL build. */
+#endif  /* defined(DLL_NETCDF) */
+
+#define EXTERNL MSC_EXTRA extern /**< Needed for DLL build. */
+#endif
 
 #if defined(_CPLUSPLUS_) || defined(__CPLUSPLUS__) || defined(__CPLUSPLUS)
 extern "C" {
 #endif
 
-extern int ncuriparse(const char* s, NCURI** ncuri);
-extern void ncurifree(NCURI* ncuri);
+EXTERNL int ncuriparse(const char* s, NCURI** ncuri);
+EXTERNL void ncurifree(NCURI* ncuri);
 
 /* Replace the protocol */
-extern int ncurisetprotocol(NCURI*,const char* newprotocol);
+EXTERNL int ncurisetprotocol(NCURI*,const char* newprotocol);
+
+/* Replace the host */
+EXTERNL int ncurisethost(NCURI*,const char* newhost);
+
+/* Replace the path */
+EXTERNL int ncurisetpath(NCURI*,const char* newpath);
 
 /* Replace the constraints */
-extern int ncurisetquery(NCURI*,const char* query);
+EXTERNL int ncurisetquery(NCURI*,const char* query);
+
+/* Replace the fragment list */
+EXTERNL int ncurisetfragments(NCURI*, const char* fragments);
+
+/* Rebuild the uri */
+EXTERNL int ncurirebuild(NCURI*);
+
+/* Replace a specific &key=...& in uri fragment */
+EXTERNL int ncurisetfragmentkey(NCURI* duri,const char* key, const char* value);
+
+/* append a specific &key=...& in uri fragment */
+EXTERNL int ncuriappendfragmentkey(NCURI* duri,const char* key, const char* value);
+
+/* Replace a specific &key=...& in uri query */
+EXTERNL int ncurisetquerykey(NCURI* duri,const char* key, const char* value);
+
+/* append a specific &key=...& in uri query */
+EXTERNL int ncuriappendquerykey(NCURI* duri,const char* key, const char* value);
+
+/* Get the actual list of queryies */
+EXTERNL void* ncuriqueryparams(NCURI* uri);
+/* Get the actual list of frags */
+EXTERNL void* ncurifragmentparams(NCURI* uri);
+
 
 /* Construct a complete NC URI; caller frees returned string */
-extern char* ncuribuild(NCURI*,const char* prefix, const char* suffix, int flags);
+EXTERNL char* ncuribuild(NCURI*,const char* prefix, const char* suffix, int flags);
 
 /*! Search the fragment for a given parameter
     Null result => entry not found; !NULL=>found;
     In any case, the result is imutable and should not be free'd.
 */
-extern const char* ncurilookup(NCURI*, const char* param);
+EXTERNL const char* ncurifragmentlookup(NCURI*, const char* param);
 
 /*! Search the query for a given parameter
     Null result => entry not found; !NULL=>found;
     In any case, the result is imutable and should not be free'd.
 */
-extern const char* ncuriquerylookup(NCURI*, const char* param);
+EXTERNL const char* ncuriquerylookup(NCURI*, const char* param);
 
 /* URL Encode/Decode */
-extern char* ncuridecode(char* s);
+EXTERNL char* ncuridecode(const char* s);
 /* Partial decode */
-extern char* ncuridecodepartial(char* s, const char* decodeset);
+EXTERNL char* ncuridecodepartial(const char* s, const char* decodeset);
 /* Encode using specified character set */
-extern char* ncuriencodeonly(char* s, char* allowable);
+EXTERNL char* ncuriencodeonly(const char* s, const char* allowable);
 /* Encode user or pwd */
-extern char* ncuriencodeuserpwd(char* s);
+EXTERNL char* ncuriencodeuserpwd(const char* s);
+
+/* Deep clone a uri */
+EXTERNL NCURI* ncuriclone(NCURI*);
 
 #if defined(_CPLUSPLUS_) || defined(__CPLUSPLUS__) || defined(__CPLUSPLUS)
 }

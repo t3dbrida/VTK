@@ -1,35 +1,23 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    X3DTest.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkActor.h"
+#include "vtkCompositePolyDataMapper.h"
 #include "vtkConeSource.h"
-#include "vtkDebugLeaks.h"
 #include "vtkGlyph3D.h"
 #include "vtkInformation.h"
 #include "vtkMultiBlockDataSet.h"
 #include "vtkNew.h"
-#include "vtkPolyData.h"
 #include "vtkPolyDataMapper.h"
 #include "vtkRegressionTestImage.h"
 #include "vtkRenderWindow.h"
 #include "vtkRenderWindowInteractor.h"
 #include "vtkRenderer.h"
-#include "vtkRenderer.h"
 #include "vtkSphereSource.h"
 #include "vtkX3DExporter.h"
 
-int X3DTest( int argc, char *argv[] )
+#include <iostream>
+
+int X3DTest(int argc, char* argv[])
 {
   vtkNew<vtkRenderer> renderer;
   vtkNew<vtkRenderWindow> renWin;
@@ -64,13 +52,13 @@ int X3DTest( int argc, char *argv[] )
 
   renderer->AddActor(sphereActor);
   renderer->AddActor(spikeActor);
-  renderer->SetBackground(1,1,1);
-  renWin->SetSize(300,300);
+  renderer->SetBackground(1, 1, 1);
+  renWin->SetSize(300, 300);
 
   renWin->Render();
 
   vtkNew<vtkX3DExporter> exporter;
-  exporter->SetInput(renWin);
+  exporter->SetRenderWindow(renWin);
   exporter->SetFileName("testX3DExporter.x3d");
   exporter->Update();
   exporter->Write();
@@ -86,7 +74,7 @@ int X3DTest( int argc, char *argv[] )
   mb->SetBlock(1, sphere->GetOutputDataObject(0));
   mb->GetMetaData(1u)->Set(vtkMultiBlockDataSet::NAME(), "Sphere");
 
-  vtkNew<vtkPolyDataMapper> mbMapper;
+  vtkNew<vtkCompositePolyDataMapper> mbMapper;
   mbMapper->SetInputDataObject(mb);
 
   vtkNew<vtkActor> mbActor;
@@ -99,7 +87,7 @@ int X3DTest( int argc, char *argv[] )
   exporter->Write();
 
   int retVal = vtkRegressionTestImage(renWin);
-  if ( retVal == vtkRegressionTester::DO_INTERACTOR)
+  if (retVal == vtkRegressionTester::DO_INTERACTOR)
   {
     iren->Start();
   }

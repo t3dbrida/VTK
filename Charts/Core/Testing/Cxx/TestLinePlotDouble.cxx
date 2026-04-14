@@ -1,32 +1,24 @@
-/*=========================================================================
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
-  Program:   Visualization Toolkit
-  Module:    TestLinePlotDouble.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-
-#include "vtkRenderWindow.h"
 #include "vtkChartXY.h"
-#include "vtkPlot.h"
-#include "vtkTable.h"
-#include "vtkDoubleArray.h"
-#include "vtkContextView.h"
 #include "vtkContextScene.h"
-#include "vtkRenderWindowInteractor.h"
-#include "vtkNew.h"
+#include "vtkContextView.h"
+#include "vtkDoubleArray.h"
+#include "vtkFloatingPointExceptions.h"
 #include "vtkMath.h"
-
-//----------------------------------------------------------------------------
-int TestLinePlotDouble(int, char *[])
+#include "vtkNew.h"
+#include "vtkPlot.h"
+#include "vtkRenderWindow.h"
+#include "vtkRenderWindowInteractor.h"
+#include "vtkTable.h"
+//------------------------------------------------------------------------------
+int TestLinePlotDouble(int, char*[])
 {
+  // Thus test will cause floating point because it uses inf and nan for some
+  // numbers
+  vtkFloatingPointExceptions::Disable();
+
   // Set up a 2D scene, add an XY chart to it
   vtkNew<vtkContextView> view;
   view->GetRenderWindow()->SetSize(400, 300);
@@ -62,7 +54,7 @@ int TestLinePlotDouble(int, char *[])
   table->SetValue(4, 3, vtkMath::Inf());
 
   // Add multiple line plots, setting the colors etc
-  vtkPlot *line = chart->AddPlot(vtkChart::LINE);
+  vtkPlot* line = chart->AddPlot(vtkChart::LINE);
   line->SetInputData(table, 0, 1);
   line->SetColor(0, 255, 0, 255);
   line->SetWidth(1.0);

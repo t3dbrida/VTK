@@ -1,11 +1,10 @@
 /*********************************************************************
- *   Copyright 2010, UCAR/Unidata
+ *   Copyright 2018, UCAR/Unidata
  *   See netcdf/COPYRIGHT file for copying and redistribution conditions.
  *   $Header$
  *********************************************************************/
 
 #include "config.h"
-
 #ifdef _MSC_VER
 #include<io.h>
 #endif
@@ -14,28 +13,43 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+#include <errno.h>
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h>
 #endif
-
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif
+ 
+#include "netcdf.h"
 #include "nclog.h"
 
 #define PREFIXLEN 8
 #define MAXTAGS 256
 #define NCTAGDFALT "Log";
 
+#define NC_MAX_FRAMES 1024
+
 static int nclogginginitialized = 0;
-static int nclogging = 0;
-static int ncsystemfile = 0; /* 1 => we are logging to file we did not open */
-static char* nclogfile = NULL;
-static FILE* nclogstream = NULL;
 
-static int nctagsize = 0;
-static char** nctagset = NULL;
-static char* nctagdfalt = NULL;
-static char* nctagsetdfalt[] = {"Warning","Error","Note","Debug"};
-static char* nctagname(int tag);
+static struct NCLOGGLOBAL {
+    int loglevel;
+    int tracelevel;
+    FILE* nclogstream;
+    int depth;
+    struct Frame {
+	const char* fcn;
+	int level;
+	int depth;
+    } frames[NC_MAX_FRAMES];
+} nclog_global = {0,-1,NULL};
 
+static const char* nctagset[] = {"OFF","ERR","WARN","NOTE","DEBUG",NULL};
+
+/* Forward */
+static const char* nctagname(int tag);
+static int nctagforname(const char* tag);
+ 
 /*!\defgroup NClog NClog Management
 @{*/
 
@@ -45,105 +59,53 @@ static char* nctagname(int tag);
 void
 ncloginit(void)
 {
-    const char* file;
+    const char* envv = NULL;
     if(nclogginginitialized)
 	return;
     nclogginginitialized = 1;
-    ncsetlogging(0);
-    nclogfile = NULL;
-    nclogstream = NULL;
+    memset(&nclog_global,0,sizeof(nclog_global));
+    ncsetloglevel(NCLOGOFF);
+    nclog_global.tracelevel = -1;    
+    nclog_global.nclogstream = stderr;
     /* Use environment variables to preset nclogging state*/
-    /* I hope this is portable*/
-    file = getenv(NCENVFLAG);
-    if(file != NULL && strlen(file) > 0) {
-        if(nclogopen(file)) {
-	    ncsetlogging(1);
-	}
+    envv = getenv(NCENVLOGGING);
+    if(envv != NULL) {
+	int level = nctagforname(envv);
+        if(level < 0) ncsetloglevel(level);
     }
-    nctagdfalt = NCTAGDFALT;
-    nctagset = nctagsetdfalt;
+    envv = getenv(NCENVTRACING);
+    if(envv != NULL) nctracelevel(atoi(envv));
 }
 
 /*!
-Enable/Disable logging.
+Enable logging messages to a given level. Set to NCLOGOFF to disable
+all messages, NCLOGERR for errors only, NCLOGWARN for warnings and
+errors, and so on
 
-\param[in] tf If 1, then turn on logging, if 0, then turn off logging.
+\param[in] level Messages above this level are ignored
 
 \return The previous value of the logging flag.
 */
 
 int
-ncsetlogging(int tf)
+ncsetloglevel(int level)
 {
     int was;
     if(!nclogginginitialized) ncloginit();
-    was = nclogging;
-    nclogging = tf;
+    was = nclog_global.loglevel;
+    if(level >= 0 && level <= NCLOGDEBUG)
+	nclog_global.loglevel = level;
+    if(nclog_global.nclogstream == NULL) nclogopen(NULL);
     return was;
 }
 
-/*!
-Specify a file into which to place logging output.
-
-\param[in] file The name of the file into which to place logging output.
-If the file has the value NULL, then send logging output to
-stderr.
-
-\return zero if the open failed, one otherwise.
-*/
-
 int
-nclogopen(const char* file)
+nclogopen(FILE* stream)
 {
     if(!nclogginginitialized) ncloginit();
-    nclogclose();
-    if(file == NULL || strlen(file) == 0) {
-	/* use stderr*/
-	nclogstream = stderr;
-	nclogfile = NULL;
-	ncsystemfile = 1;
-    } else if(strcmp(file,"stdout") == 0) {
-	/* use stdout*/
-	nclogstream = stdout;
-	nclogfile = NULL;
-	ncsystemfile = 1;
-    } else if(strcmp(file,"stderr") == 0) {
-	/* use stderr*/
-	nclogstream = stderr;
-	nclogfile = NULL;
-	ncsystemfile = 1;
-    } else {
-	int fd;
-	nclogfile = strdup(file);
-	nclogstream = NULL;
-	/* We need to deal with this file carefully
-	   to avoid unauthorized access*/
-	fd = open(nclogfile,O_WRONLY|O_APPEND|O_CREAT,0600);
-	if(fd >= 0) {
-	    nclogstream = fdopen(fd,"a");
-	} else {
-	    free(nclogfile);
-	    nclogfile = NULL;
-	    nclogstream = NULL;
-	    ncsetlogging(0);
-	    return 0;
-	}
-	ncsystemfile = 0;
-    }
+    if(stream == NULL) stream = stderr;
+    nclog_global.nclogstream = stream;
     return 1;
-}
-
-void
-nclogclose(void)
-{
-    if(!nclogginginitialized) ncloginit();
-    if(nclogstream != NULL && !ncsystemfile) {
-	fclose(nclogstream);
-    }
-    if(nclogfile != NULL) free(nclogfile);
-    nclogstream = NULL;
-    nclogfile = NULL;
-    ncsystemfile = 0;
 }
 
 /*!
@@ -158,23 +120,32 @@ printf function.
 void
 nclog(int tag, const char* fmt, ...)
 {
-    va_list args;
-    char* prefix;
+    if(fmt != NULL) {
+      va_list args;
+      va_start(args, fmt);
+      ncvlog(tag,fmt,args);
+      va_end(args);
+    }
+}
+
+void
+ncvlog(int level, const char* fmt, va_list ap)
+{
+    const char* prefix;
 
     if(!nclogginginitialized) ncloginit();
 
-    if(!nclogging || nclogstream == NULL) return;
-
-    prefix = nctagname(tag);
-    fprintf(nclogstream,"%s:",prefix);
-
-    if(fmt != NULL) {
-      va_start(args, fmt);
-      vfprintf(nclogstream, fmt, args);
-      va_end( args );
+    if(nclog_global.loglevel < level || nclog_global.nclogstream == NULL) {
+        return;
     }
-    fprintf(nclogstream, "\n" );
-    fflush(nclogstream);
+
+    prefix = nctagname(level);
+    fprintf(nclog_global.nclogstream,"%s: ",prefix);
+    if(fmt != NULL) {
+      vfprintf(nclog_global.nclogstream, fmt, ap);
+    }
+    fprintf(nclog_global.nclogstream, "\n" );
+    fflush(nclog_global.nclogstream);
 }
 
 void
@@ -191,37 +162,138 @@ Each line will be sent using nclog with the specified tag.
 */
 
 void
-nclogtextn(int tag, const char* text, size_t count)
+nclogtextn(int level, const char* text, size_t count)
 {
-    if(!nclogging || nclogstream == NULL) return;
-    fwrite(text,1,count,nclogstream);
-    fflush(nclogstream);
+    if(nclog_global.loglevel > level || nclog_global.nclogstream == NULL)
+	return;
+    fwrite(text,1,count,nclog_global.nclogstream);
+    fflush(nclog_global.nclogstream);
 }
 
-/* The tagset is null terminated */
-void
-nclogsettags(char** tagset, char* dfalt)
-{
-    nctagdfalt = dfalt;
-    if(tagset == NULL) {
-	nctagsize = 0;
-    } else {
-        int i;
-	/* Find end of the tagset */
-	for(i=0;i<MAXTAGS;i++) {if(tagset[i]==NULL) break;}
-	nctagsize = i;
-    }
-    nctagset = tagset;
-}
-
-static char*
+static const char*
 nctagname(int tag)
 {
-    if(tag < 0 || tag >= nctagsize) {
-	return nctagdfalt;
-    } else {
-	return nctagset[tag];
+    if(tag < NCLOGOFF || tag >= NCLOGDEBUG)
+	return "unknown";
+    return nctagset[tag];
+}
+
+static int
+nctagforname(const char* tag)
+{
+    int level;
+    const char** p = NULL;
+    for(level=0,p=nctagset;*p;p++,level++) {
+	if(strcasecmp(*p,tag)==0) return level;
     }
+    return -1;
+}
+
+/*!
+Send trace messages.
+\param[in] level Indicate the level of trace
+\param[in] format Format specification as with printf.
+*/
+
+int
+nctracelevel(int level)
+{
+    int oldlevel;
+    if(!nclogginginitialized) ncloginit();
+    oldlevel = nclog_global.tracelevel;
+    if(level < 0) {
+      nclog_global.tracelevel = level;
+    } else { /*(level >= 0)*/
+        nclog_global.tracelevel = level;
+	nclogopen(NULL); /* use stderr */    
+    }
+    return oldlevel;
+}
+
+void
+nctrace(int level, const char* fcn, const char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    ncvtrace(level,fcn,fmt,args);
+    va_end(args);
+}
+
+void
+nctracemore(int level, const char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    ncvtrace(level,NULL,fmt,args);
+    va_end(args);
+}
+
+void
+ncvtrace(int level, const char* fcn, const char* fmt, va_list ap)
+{
+    struct Frame* frame;
+    if(!nclogginginitialized) ncloginit();
+    if(fcn != NULL) {
+        frame = &nclog_global.frames[nclog_global.depth];
+        frame->fcn = fcn;
+        frame->level = level;
+        frame->depth = nclog_global.depth;
+    }
+    if(level <= nclog_global.tracelevel) {
+	if(fcn != NULL)
+            fprintf(nclog_global.nclogstream,"%s: (%d): %s:","Enter",level,fcn);
+        if(fmt != NULL)
+            vfprintf(nclog_global.nclogstream, fmt, ap);
+        fprintf(nclog_global.nclogstream, "\n" );
+        fflush(nclog_global.nclogstream);
+    }
+    if(fcn != NULL) nclog_global.depth++;
+}
+
+int
+ncuntrace(const char* fcn, int err, const char* fmt, ...)
+{
+    va_list args;
+    struct Frame* frame;
+    va_start(args, fmt);
+    if(nclog_global.depth == 0) {
+	fprintf(nclog_global.nclogstream,"*** Unmatched untrace: %s: depth==0\n",fcn);
+	goto done;
+    }
+    nclog_global.depth--;
+    frame = &nclog_global.frames[nclog_global.depth];
+    if(frame->depth != nclog_global.depth || strcmp(frame->fcn,fcn) != 0) {
+	fprintf(nclog_global.nclogstream,"*** Unmatched untrace: fcn=%s expected=%s\n",frame->fcn,fcn);
+	goto done;
+    }
+    if(frame->level <= nclog_global.tracelevel) {
+        fprintf(nclog_global.nclogstream,"%s: (%d): %s: ","Exit",frame->level,frame->fcn);
+	if(err)
+	    fprintf(nclog_global.nclogstream,"err=(%d) '%s':",err,nc_strerror(err));
+        if(fmt != NULL)
+            vfprintf(nclog_global.nclogstream, fmt, args);
+        fprintf(nclog_global.nclogstream, "\n" );
+        fflush(nclog_global.nclogstream);
+    }
+done:
+    va_end(args);
+    if(err != 0)
+        return ncbreakpoint(err);
+    else
+	return err;
+}
+
+int
+ncthrow(int err,const char* file,int line)
+{
+    if(err == 0) return err;
+    return ncbreakpoint(err);
+}
+
+int
+ncbreakpoint(int err)
+{
+    return err;
 }
 
 /**@}*/

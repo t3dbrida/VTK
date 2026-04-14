@@ -1,9 +1,331 @@
-=======================
-CHANGES: MPI for Python
-=======================
+Release 4.0.1 [2024-10-11]
+==========================
 
-:Author:  Lisandro Dalcin
-:Contact: dalcinl@gmail.com
+* Update support for Python 3.13:
+
+  + Enable Cython 3.1 support for free-threaded CPython.
+  + Allow compiling Cython-generated C sources with the full Python C-API.
+  + Fix MPI DLL path workarounds on Windows after changes to `locals()`.
+
+* Enhancements to test suite:
+
+  + Support XML reports via `unittest-xml-reporting`.
+  + Add command line options to exclude tests by patterns and files.
+  + Refactor Python 2 code to use Python 3 constructs using `pyupgrade`.
+
+* Miscellaneous:
+
+  + Minor and mostly inconsequential subclass fix in `mpi4py.util.pkl5`.
+  + Update compatibility workarounds for legacy MPICH 3.0 release.
+
+
+Release 4.0.0 [2024-07-28]
+==========================
+
+* New features:
+
+  + Add support for the MPI-4.0 standard.
+
+    - Use large count MPI-4 routines.
+    - Add persistent collective communication.
+    - Add partitioned point-to-point communication.
+    - Add new communicator constructors.
+    - Add the `Session` class and its methods.
+
+  + Add support for the MPI-4.1 standard.
+
+    - Add non-destructive completion test for multiple requests.
+    - Add value-index datatype constructor.
+    - Add communicator/session buffer attach/detach/flush.
+    - Support for removal of error classes/codes/strings.
+    - Support for querying hardware resource information.
+
+  + Add preliminary support for the upcoming MPI-5.0 standard.
+
+    - User-level failure mitigation (ULFM).
+
+  + `mpi4py.util.pool`: New drop-in replacement for `multiprocessing.pool`.
+
+  + `mpi4py.util.sync`: New synchronization utilities.
+
+  + Add runtime check for mismatch between `mpiexec` and MPI library.
+
+  + Support `scikit-build-core`_ as an alternative build backend.
+
+  .. _scikit-build-core: https://scikit-build.readthedocs.io/
+
+  + Support `meson-python`_ as an alternative build backend.
+
+  .. _meson-python: https://meson-python.readthedocs.io/
+
+* Enhancements:
+
+  + `mpi4py.futures`: Support for parallel tasks.
+
+  + `mpi4py.futures`: Report exception tracebacks in workers.
+
+  + `mpi4py.util.pkl5`: Add support for collective communication.
+
+  + Add methods `Datatype.fromcode()`, `Datatype.tocode()` and
+    attributes `Datatype.typestr`, `Datatype.typechar` to simplify
+    NumPy interoperability for simple cases.
+
+  + Add methods `Comm.Create_errhandler()`, `Win.Create_errhandler()`,
+    and `File.Create_errhandler()` to create custom error handlers.
+
+  + Add support for pickle serialization of instances of MPI types.
+    All instances of `Datatype`, `Info`, and `Status` can be
+    serialized. Instances of `Op` can be serialized only if created
+    through `mpi4py` by calling `Op.Create()`. Instances of other MPI
+    types can be serialized only if they reference predefined handles.
+
+  + Add `handle` attribute and `fromhandle()` class method to MPI
+    classes to ease interoperability with external code. The handle
+    value is an unsigned integer guaranteed to fit on the platform's
+    ``uintptr_t`` C type.
+
+  + Add lowercase `free()` method to MPI classes to ease MPI object
+    deallocation and cleanup. This method eventually attempts to call
+    `Free()`, but only if the object's MPI handle is not a null or
+    predefined handle, and such call is allowed within the World Model
+    init/finalize.
+
+* Backward-incompatible changes:
+
+  + Python 2 is no longer supported, Python 3.6+ is required, but
+    typing stubs are supported for Python 3.8+.
+
+  + The `Intracomm.Create_group()` method is no longer defined in the
+    base `Comm` class.
+
+  + `Group.Compare()` and `Comm.Compare()` are no longer class methods
+    but instance methods. Existing codes using the former class
+    methods are expected to continue working.
+
+  + `Group.Translate_ranks()` is no longer a class method but an
+    instance method. Existing codes using the former class method are
+    expected to continue working.
+
+  + The `LB` and `UB` datatypes are no longer available, use
+    `Datatype.Create_resized()` instead.
+
+  + The `HOST` predefined attribute key is no longer available.
+
+  + The `MPI.memory` class has been renamed to `MPI.buffer`. The old
+    name is still available as an alias to the new name.
+
+  + The `mpi4py.dl` module is no longer available.
+
+  + The `mpi4py.get_config` function returns an empty dictionary.
+
+* Miscellaneous:
+
+  + The project is now licensed under the BSD-3-Clause license. This
+    change is fairly inconsequential for users and distributors. It
+    simply adds an additional clause against using contributor names
+    for promotional purposes without their consent.
+
+  + Add a new guidelines section to documentation laying out new fair
+    play rules. These rules ask companies and outside developers to
+    refrain from reusing the ``mpi4py`` name in unaffiliated projects,
+    publishing binary mpi4py wheels on the main Python Package Index
+    (PyPI), and distributing modified versions with incompatible or
+    extended API changes. The primary motivation of these rules is to
+    avoid fragmentation and end-user confusion.
+
+
+Release 3.1.6 [2024-04-14]
+==========================
+
+.. warning:: This is the last release supporting Python 2.
+
+* Fix various build issues.
+
+
+Release 3.1.5 [2023-10-04]
+==========================
+
+.. warning:: This is the last release supporting Python 2.
+
+* Rebuild C sources with Cython 0.29.36 to support Python 3.12.
+
+
+Release 3.1.4 [2022-11-02]
+==========================
+
+.. warning:: This is the last release supporting Python 2.
+
+* Rebuild C sources with Cython 0.29.32 to support Python 3.11.
+
+* Fix contiguity check for DLPack and CAI buffers.
+
+* Workaround build failures with setuptools v60.
+
+
+Release 3.1.3 [2021-11-25]
+==========================
+
+.. warning:: This is the last release supporting Python 2.
+
+* Add missing support for `MPI.BOTTOM` to generalized all-to-all collectives.
+
+
+Release 3.1.2 [2021-11-04]
+==========================
+
+.. warning:: This is the last release supporting Python 2.
+
+* `mpi4py.futures`: Add `_max_workers` property to `MPIPoolExecutor`.
+
+* `mpi4py.util.dtlib`: Fix computation of alignment for predefined datatypes.
+
+* `mpi4py.util.pkl5`: Fix deadlock when using ``ssend()`` + ``mprobe()``.
+
+* `mpi4py.util.pkl5`: Add environment variable `MPI4PY_PICKLE_THRESHOLD`.
+
+* `mpi4py.rc`: Interpret ``"y"`` and ``"n"`` strings as boolean values.
+
+* Fix/add typemap/typestr for `MPI.WCHAR`/`MPI.COUNT` datatypes.
+
+* Minor fixes and additions to documentation.
+
+* Minor fixes to typing support.
+
+* Support for local version identifier (PEP-440).
+
+
+Release 3.1.1 [2021-08-14]
+==========================
+
+.. warning:: This is the last release supporting Python 2.
+
+* Fix typo in Requires-Python package metadata.
+
+* Regenerate C sources with Cython 0.29.24.
+
+
+Release 3.1.0 [2021-08-12]
+==========================
+
+.. warning:: This is the last release supporting Python 2.
+
+* New features:
+
+  + `mpi4py.util`: New package collecting miscellaneous utilities.
+
+* Enhancements:
+
+  + Add pickle-based ``Request.waitsome()`` and ``Request.testsome()``.
+
+  + Add lowercase methods ``Request.get_status()`` and ``Request.cancel()``.
+
+  + Support for passing Python GPU arrays compliant with the `DLPack`_ data
+    interchange mechanism (`link <DIM_>`_) and the ``__cuda_array_interface__``
+    (CAI) standard (`link <CAI_>`_) to uppercase methods. This support requires
+    that mpi4py is built against `CUDA-aware MPI <CAM_>`_ implementations. This
+    feature is currently experimental and subject to future changes.
+
+  + `mpi4py.futures`: Add support for initializers and canceling futures at shutdown.
+    Environment variables names now follow the pattern ``MPI4PY_FUTURES_*``, the
+    previous ``MPI4PY_*`` names are deprecated.
+
+  + Add type annotations to Cython code. The first line of the docstring of functions
+    and methods displays a signature including type annotations.
+
+  + Add companion stub files to support type checkers.
+
+  + Support for weak references.
+
+* Miscellaneous:
+
+  + Add a new mpi4py publication (`link <DOI_>`_) to the citation listing.
+
+.. _DLPack: https://github.com/dmlc/dlpack
+.. _DIM: https://data-apis.org/array-api/latest/design_topics/data_interchange.html
+.. _CAI: https://numba.readthedocs.io/en/stable/cuda/cuda_array_interface.html
+.. _CAM: https://developer.nvidia.com/blog/introduction-cuda-aware-mpi/
+.. _DOI: https://doi.org/10.1109/MCSE.2021.3083216
+
+
+Release 3.0.3 [2019-11-04]
+==========================
+
+* Regenerate Cython wrappers to support Python 3.8.
+
+
+Release 3.0.2 [2019-06-11]
+==========================
+
+* Bug fixes:
+
+  + Fix handling of readonly buffers in support for Python 2 legacy
+    buffer interface. The issue triggers only when using a buffer-like
+    object that is readonly and does not export the new Python 3
+    buffer interface.
+  + Fix build issues with Open MPI 4.0.x series related to removal of
+    many MPI-1 symbols deprecated in MPI-2 and removed in MPI-3.
+  + Minor documentation fixes.
+
+
+Release 3.0.1 [2019-02-15]
+==========================
+
+* Bug fixes:
+
+  + Fix ``Comm.scatter()`` and other collectives corrupting input send
+    list. Add safety measures to prevent related issues in global
+    reduction operations.
+  + Fix error-checking code for counts in ``Op.Reduce_local()``.
+
+* Enhancements:
+
+  + Map size-specific Python/NumPy typecodes to MPI datatypes.
+  + Allow partial specification of target list/tuple arguments in the
+    various ``Win`` RMA methods.
+  + Workaround for removal of ``MPI_{LB|UB}`` in Open MPI 4.0.
+  + Support for Microsoft MPI v10.0.
+
+
+Release 3.0.0 [2017-11-08]
+==========================
+
+* New features:
+
+  + `mpi4py.futures`: Execute computations asynchronously using a pool
+    of MPI processes. This package is based on ``concurrent.futures``
+    from the Python standard library.
+  + `mpi4py.run`: Run Python code and abort execution in case of
+    unhandled exceptions to prevent deadlocks.
+  + `mpi4py.bench`: Run basic MPI benchmarks and tests.
+
+* Enhancements:
+
+  + Lowercase, pickle-based collective communication calls are now
+    thread-safe through the use of fine-grained locking.
+  + The ``MPI`` module now exposes a ``memory`` type which is a
+    lightweight variant of the builtin ``memoryview`` type, but
+    exposes both the legacy Python 2 and the modern Python 3 buffer
+    interface under a Python 2 runtime.
+  + The ``MPI.Comm.Alltoallw()`` method now uses ``count=1`` and
+    ``displ=0`` as defaults, assuming that messages are specified
+    through user-defined datatypes.
+  + The ``Request.Wait[all]()`` methods now return ``True`` to match
+    the interface of ``Request.Test[all]()``.
+  + The ``Win`` class now implements the Python buffer interface.
+
+* Backward-incompatible changes:
+
+  + The ``buf`` argument of the ``MPI.Comm.recv()`` method is
+    deprecated, passing anything but ``None`` emits a warning.
+  + The ``MPI.Win.memory`` property was removed, use the
+    ``MPI.Win.tomemory()`` method instead.
+  + Executing ``python -m mpi4py`` in the command line is now
+    equivalent to ``python -m mpi4py.run``. For the former behavior,
+    use ``python -m mpi4py.bench``.
+  + Python 2.6 and 3.2 are no longer supported. The ``mpi4py.MPI``
+    module may still build and partially work, but other pure-Python
+    modules under the ``mpi4py`` namespace will not.
+  + Windows: Remove support for legacy MPICH2, Open MPI, and DeinoMPI.
 
 
 Release 2.0.0 [2015-10-18]
@@ -35,7 +357,7 @@ Release 2.0.0 [2015-10-18]
 * Backward-incompatible changes:
 
   + Python 2.4, 2.5, 3.0 and 3.1 are no longer supported.
-  + Default MPI error handling policies are overriden. After import,
+  + Default MPI error handling policies are overridden. After import,
     mpi4py sets the ``ERRORS_RETURN`` error handler in ``COMM_SELF``
     and ``COMM_WORLD``, as well as any new ``Comm``, ``Win``, or
     ``File`` instance created through mpi4py, thus effectively
@@ -150,7 +472,7 @@ Release 1.2.1 [2010-02-26]
 * Fix distutils-related issues in Mac OS X. Now ARCHFLAGS environment
   variable is honored of all Python's ``config/Makefile`` variables.
 
-* Fix issues with Open MPI < 1.4.2 releated to error checking and
+* Fix issues with Open MPI < 1.4.2 related to error checking and
   ``MPI_XXX_NULL`` handles.
 
 
@@ -175,7 +497,7 @@ Release 1.2 [2009-12-29]
   feedback.
 
 * Support for logging of user-defined states and events using `MPE
-  <http://www.mcs.anl.gov/research/projects/perfvis/>`_. Runtime
+  <https://www.mcs.anl.gov/research/projects/perfvis/>`_. Runtime
   (i.e., without requiring a recompile!)  activation of logging of all
   MPI calls is supported in POSIX platforms implementing ``dlopen()``.
 

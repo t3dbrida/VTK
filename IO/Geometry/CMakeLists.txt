@@ -1,31 +1,44 @@
-SET(Module_SRCS
-  vtkAVSucdReader.cxx
-  vtkBYUReader.cxx
-  vtkBYUWriter.cxx
-  #vtkCGMWriter.cxx # Needs vtkViewport.
-  vtkChacoReader.cxx
-  vtkFacetWriter.cxx
-  vtkFLUENTReader.cxx
-  vtkGAMBITReader.cxx
-  vtkGaussianCubeReader.cxx
-  vtkHoudiniPolyDataWriter.cxx
-  vtkIVWriter.cxx
-  vtkMCubesReader.cxx
-  vtkMCubesWriter.cxx
-  vtkMFIXReader.cxx
-  vtkMoleculeReaderBase.cxx
-  vtkOBJReader.cxx
-  vtkOBJWriter.cxx
-  vtkOpenFOAMReader.cxx
-  vtkParticleReader.cxx
-  vtkPDBReader.cxx
-  vtkProStarReader.cxx
-  vtkPTSReader.cxx
-  vtkSTLReader.cxx
-  vtkSTLWriter.cxx
-  vtkTecplotReader.cxx
-  vtkWindBladeReader.cxx
-  vtkXYZMolReader.cxx
-  )
+set(classes
+  vtkAVSucdReader
+  vtkBYUReader
+  vtkBYUWriter
+  #vtkCGMWriter # Needs vtkViewport.
+  vtkChacoReader
+  vtkFacetWriter
+  vtkFLUENTReader
+  vtkGAMBITReader
+  vtkGLTFDocumentLoader
+  vtkGLTFReader
+  vtkGLTFTexture
+  vtkGLTFWriter
+  vtkHoudiniPolyDataWriter
+  vtkIVWriter
+  vtkMCubesReader
+  vtkMCubesWriter
+  vtkMFIXReader
+  vtkOBJReader
+  vtkOBJWriter
+  vtkOFFReader
+  vtkOpenFOAMReader
+  vtkParticleReader
+  vtkProStarReader
+  vtkPTSReader
+  vtkSTLReader
+  vtkSTLWriter
+  vtkTecplotReader
+  vtkWindBladeReader)
 
-vtk_module_library(vtkIOGeometry ${Module_SRCS})
+set(private_classes
+  vtkGLTFDocumentLoaderInternals
+  vtkGLTFWriterUtils
+  vtkGLTFUtils)
+
+set(headers
+  GLTFSampler.h)
+
+vtk_module_add_module(VTK::IOGeometry
+  CLASSES ${classes}
+  PRIVATE_CLASSES ${private_classes}
+  HEADERS ${headers}
+  )
+vtk_add_test_mangling(VTK::IOGeometry)

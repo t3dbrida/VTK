@@ -8,4 +8,5 @@ process.
 
   * Ignore whitespace errors for VTK's commit checks.
   * Integrate the CMake build with VTK's module system.
+  * Avoid processor-specific optimizations (NEON, SSE, etc.)
   * Mangle all exported symbols to have a `vtkpng_` prefix.

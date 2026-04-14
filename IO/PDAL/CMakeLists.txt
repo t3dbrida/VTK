@@ -1,17 +1,38 @@
-find_package(PDAL CONFIG REQUIRED)
-mark_as_advanced(PDAL_INCLUDE_DIR PDAL_LIBRARY)
+vtk_module_find_package(PRIVATE_IF_SHARED
+  PACKAGE PDAL
+  VERSION 2.0)
 
-set(PDALReader_SRCS vtkPDALReader.cxx)
+set(classes
+  vtkPDALReader)
 
-include_directories(${PDAL_INCLUDE_DIRS})
-
-# PDAL_LIBRARIES don't provide full paths which does not work if PDAL is not
-# installed as a system library
-foreach(pdal_lib IN LISTS PDAL_LIBRARIES)
-  if (NOT IS_ABSOLUTE ${pddal_lib})
-    link_directories("${PDAL_DIR}/../../")
-    break()
+set(pdal_libraries)
+if (PDAL_VERSION VERSION_LESS "2.6")
+  set(pdal_libraries pdal_util)
+  if (APPLE OR WIN32)
+    list(APPEND pdal_libraries
+      pdalcpp)
+  else()
+    list(APPEND pdal_libraries
+      pdal_base)
   endif()
-endforeach()
-vtk_module_library(vtkIOPDAL ${PDALReader_SRCS})
-vtk_module_link_libraries(vtkIOPDAL LINK_PRIVATE ${PDAL_LIBRARIES})
+else ()
+  list(APPEND pdal_libraries
+    pdalcpp)
+endif ()
+
+vtk_module_add_module(VTK::IOPDAL
+  CLASSES ${classes})
+vtk_module_link(VTK::IOPDAL
+  NO_KIT_EXPORT_IF_SHARED
+  PRIVATE
+    ${pdal_libraries})
+
+# PDAL 2.0 didn't include interfaces to its exported targets.
+# Resolved in https://github.com/PDAL/PDAL/issues/2262.
+if (PDAL_VERSION VERSION_LESS "2.2")
+  vtk_module_include(VTK::IOPDAL
+    PRIVATE
+      ${PDAL_INCLUDE_DIRS})
+endif ()
+
+vtk_add_test_mangling(VTK::IOPDAL)

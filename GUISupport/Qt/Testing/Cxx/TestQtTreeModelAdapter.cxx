@@ -1,22 +1,6 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestQtTreeModelAdapter.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-/*-------------------------------------------------------------------------
-  Copyright 2008 Sandia Corporation.
-  Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-  the U.S. Government retains certain rights in this software.
--------------------------------------------------------------------------*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-FileCopyrightText: Copyright 2008 Sandia Corporation
+// SPDX-License-Identifier: LicenseRef-BSD-3-Clause-Sandia-USGov
 // Tests vtkQtTreeModelAdapter.
 
 #include "vtkDataSetAttributes.h"
@@ -27,8 +11,9 @@
 #include "vtkSmartPointer.h"
 #include "vtkTree.h"
 
-#define VTK_CREATE(type, name) \
-  vtkSmartPointer<type> name = vtkSmartPointer<type>::New()
+#include <iostream>
+
+#define VTK_CREATE(type, name) vtkSmartPointer<type> name = vtkSmartPointer<type>::New()
 
 int TestQtTreeModelAdapter(int, char*[])
 {
@@ -57,12 +42,12 @@ int TestQtTreeModelAdapter(int, char*[])
   vtkQtTreeModelAdapter adapter(nullptr, tree);
   if (adapter.rowCount(QModelIndex()) != 1)
   {
-    cerr << "ERROR: Wrong number of rows." << endl;
+    std::cerr << "ERROR: Wrong number of rows." << std::endl;
     ++errors;
   }
   if (adapter.columnCount(QModelIndex()) != 2)
   {
-    cerr << "ERROR: Wrong number of columns." << endl;
+    std::cerr << "ERROR: Wrong number of columns." << std::endl;
     ++errors;
   }
 
@@ -87,13 +72,13 @@ int TestQtTreeModelAdapter(int, char*[])
     }
     else if (i < 4)
     {
-      ind = adapter.index(i-1, 0, ind0);
+      ind = adapter.index(i - 1, 0, ind0);
       parent = ind0;
       rows = 0;
     }
     else
     {
-      ind = adapter.index(i-4, 0, ind1);
+      ind = adapter.index(i - 4, 0, ind1);
       parent = ind1;
       rows = 0;
     }
@@ -101,22 +86,20 @@ int TestQtTreeModelAdapter(int, char*[])
     QModelIndex pind = adapter.PedigreeToQModelIndex(i);
     if (ind != pind)
     {
-      cerr << "ERROR: Pedigree lookup failed." << endl;
+      std::cerr << "ERROR: Pedigree lookup failed." << std::endl;
       ++errors;
     }
 #endif
     if (adapter.rowCount(ind) != rows)
     {
-      cerr << "ERROR: Row should have zero sub-rows." << endl;
+      std::cerr << "ERROR: Row should have zero sub-rows." << std::endl;
       ++errors;
     }
     if (adapter.parent(ind) != parent)
     {
-      cerr << "ERROR: Wrong parent." << endl;
+      std::cerr << "ERROR: Wrong parent." << std::endl;
       ++errors;
     }
   }
   return errors;
 }
-
-

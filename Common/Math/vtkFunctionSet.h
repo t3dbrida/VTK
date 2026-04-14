@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkFunctionSet.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkFunctionSet
  * @brief   Abstract interface for sets of functions
@@ -22,9 +10,9 @@
  * The only supported operation is the function evaluation at x_j.
  *
  * @sa
- * vtkImplicitDataSet vtkInterpolatedVelocityField
+ * vtkImplicitDataSet vtkCompositeInterpolatedVelocityField vtkAMRInterpolatedVelocityField
  * vtkInitialValueProblemSolver
-*/
+ */
 
 #ifndef vtkFunctionSet_h
 #define vtkFunctionSet_h
@@ -32,10 +20,11 @@
 #include "vtkCommonMathModule.h" // For export macro
 #include "vtkObject.h"
 
+VTK_ABI_NAMESPACE_BEGIN
 class VTKCOMMONMATH_EXPORT vtkFunctionSet : public vtkObject
 {
 public:
-  vtkTypeMacro(vtkFunctionSet,vtkObject);
+  vtkTypeMacro(vtkFunctionSet, vtkObject);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
   /**
@@ -43,28 +32,32 @@ public:
    * x and f have to point to valid double arrays of appropriate
    * sizes obtained with GetNumberOfFunctions() and
    * GetNumberOfIndependentVariables.
+   * If you inherit this class, make sure to reimplement at least one of the two
+   * FunctionValues signatures.
    */
-  virtual int FunctionValues(double* x, double* f) = 0;
+  virtual int FunctionValues(double* x, double* f) { return this->FunctionValues(x, f, nullptr); }
+  virtual int FunctionValues(double* x, double* f, void* vtkNotUsed(userData))
+  {
+    return this->FunctionValues(x, f);
+  }
 
   /**
    * Return the number of functions. Note that this is constant for
    * a given type of set of functions and can not be changed at
    * run time.
    */
-  virtual int GetNumberOfFunctions() {
-    return this->NumFuncs; }
+  virtual int GetNumberOfFunctions() { return this->NumFuncs; }
 
   /**
    * Return the number of independent variables. Note that this is
    * constant for a given type of set of functions and can not be changed
    * at run time.
    */
-  virtual int GetNumberOfIndependentVariables() {
-    return this->NumIndepVars; }
+  virtual int GetNumberOfIndependentVariables() { return this->NumIndepVars; }
 
 protected:
   vtkFunctionSet();
-  ~vtkFunctionSet() override {}
+  ~vtkFunctionSet() override = default;
 
   int NumFuncs;
   int NumIndepVars;
@@ -74,9 +67,5 @@ private:
   void operator=(const vtkFunctionSet&) = delete;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif
-
-
-
-
-

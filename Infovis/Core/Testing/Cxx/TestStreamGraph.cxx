@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "vtkDataSetAttributes.h"
 #include "vtkIntArray.h"
@@ -5,6 +7,8 @@
 #include "vtkStreamGraph.h"
 #include "vtkTable.h"
 #include "vtkTableToGraph.h"
+
+#include <iostream>
 
 int TestStreamGraph(int, char*[])
 {
@@ -35,7 +39,7 @@ int TestStreamGraph(int, char*[])
   for (int i = 0; i < 10; ++i)
   {
     src->SetValue(0, i);
-    tgt->SetValue(0, i+1);
+    tgt->SetValue(0, i + 1);
     time->SetValue(0, i);
     t2g->Modified();
     stream->Update();
@@ -48,7 +52,7 @@ int TestStreamGraph(int, char*[])
   vtkGraph* output = stream->GetOutput();
   if (output->GetNumberOfVertices() != 11 || output->GetNumberOfEdges() != 6)
   {
-    cerr << "ERROR: Incorrect number of vertices/edges." << endl;
+    std::cerr << "ERROR: Incorrect number of vertices/edges." << std::endl;
     return 1;
   }
   vtkDataArray* outputTime = output->GetEdgeData()->GetArray("time");
@@ -56,7 +60,7 @@ int TestStreamGraph(int, char*[])
   outputTime->GetRange(timeRange);
   if (timeRange[0] != 4 || timeRange[1] != 9)
   {
-    cerr << "ERROR: Incorrect time range." << endl;
+    std::cerr << "ERROR: Incorrect time range." << std::endl;
     return 1;
   }
 

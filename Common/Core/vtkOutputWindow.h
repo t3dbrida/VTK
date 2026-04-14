@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkOutputWindow.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkOutputWindow
  * @brief   base class for writing debug output to a console
@@ -20,31 +8,22 @@
  * with operating systems that have a stdout and stderr, and ones that
  * do not.  (i.e windows does not).  Sub-classes can be provided which can
  * redirect the output to a window.
-*/
+ */
 
 #ifndef vtkOutputWindow_h
 #define vtkOutputWindow_h
 
+#include "vtkCommonCoreModule.h"  // For export macro
 #include "vtkDebugLeaksManager.h" // Must be included before singletons
-#include "vtkCommonCoreModule.h" // For export macro
 #include "vtkObject.h"
 
-class VTKCOMMONCORE_EXPORT vtkOutputWindowCleanup
-{
-public:
-  vtkOutputWindowCleanup();
-  ~vtkOutputWindowCleanup();
-
-private:
-  vtkOutputWindowCleanup(const vtkOutputWindowCleanup& other) = delete;
-  vtkOutputWindowCleanup& operator=(const vtkOutputWindowCleanup& rhs) = delete;
-};
-
+VTK_ABI_NAMESPACE_BEGIN
+class vtkOutputWindowPrivateAccessor;
 class VTKCOMMONCORE_EXPORT vtkOutputWindow : public vtkObject
 {
 public:
-// Methods from vtkObject
-  vtkTypeMacro(vtkOutputWindow,vtkObject);
+  // Methods from vtkObject
+  vtkTypeMacro(vtkOutputWindow, vtkObject);
   /**
    * Print ObjectFactor to stream.
    */
@@ -52,7 +31,7 @@ public:
 
   /**
    * Creates a new instance of vtkOutputWindow. Note this *will* create a new
-   * instance using the vtkObjectFactor. If you want to access the global
+   * instance using the vtkObjectFactory. If you want to access the global
    * instance, use `GetInstance` instead.
    */
   static vtkOutputWindow* New();
@@ -65,9 +44,9 @@ public:
    * Supply a user defined output window. Call ->Delete() on the supplied
    * instance after setting it.
    */
-  static void SetInstance(vtkOutputWindow *instance);
+  static void SetInstance(vtkOutputWindow* instance);
 
-  //@{
+  ///@{
   /**
    * Display the text. Four virtual methods exist, depending on the type of
    * message to display. This allows redirection or reformatting of the
@@ -80,9 +59,9 @@ public:
   virtual void DisplayWarningText(const char*);
   virtual void DisplayGenericWarningText(const char*);
   virtual void DisplayDebugText(const char*);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * If PromptUser is set to true then each time a line of text
    * is displayed, the user is asked if they want to keep getting
@@ -94,21 +73,47 @@ public:
    */
   vtkBooleanMacro(PromptUser, bool);
   vtkSetMacro(PromptUser, bool);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
-   * Historically (VTK 8.1 and earlier), when printing messages to terminals,
-   * vtkOutputWindow would always post messages to `cerr`. Setting this to true
-   * restores that incorrect behavior. When false (default),
-   * vtkOutputWindow uses `cerr` for debug, error and warning messages, and
-   * `cout` for text messages.
+   * Flag indicates how the vtkOutputWindow handles displaying of text to
+   * `stderr` / `stdout`. Default is `DEFAULT` except in
+   * `vtkWin32OutputWindow` where on non dashboard runs, the default is
+   * `NEVER`.
+   *
+   * `NEVER` indicates that the messages should never be forwarded to the
+   * standard output/error streams.
+   *
+   * `ALWAYS` will result in error/warning/debug messages being posted to the
+   * standard error stream, while text messages to standard output stream.
+   *
+   * `ALWAYS_STDERR` will result in all messages being posted to the standard
+   * error stream (this was default behavior in VTK 8.1 and earlier).
+   *
+   * `DEFAULT` is similar to `ALWAYS` except when logging is enabled. If
+   * logging is enabled, messages posted to the output window using VTK error/warning macros such as
+   * `vtkErrorMacro`, `vtkWarningMacro` etc. will not posted on any of the output streams. This is
+   * done to avoid duplicate messages on these streams since these macros also result in add items
+   * to the log.
+   *
+   * @note vtkStringOutputWindow does not result this flag as is never forwards
+   * any text to the output streams.
    */
-  vtkSetMacro(UseStdErrorForAllMessages, bool);
-  vtkGetMacro(UseStdErrorForAllMessages, bool);
-  vtkBooleanMacro(UseStdErrorForAllMessages, bool);
-  //@}
-
+  enum DisplayModes
+  {
+    DEFAULT = -1,
+    NEVER = 0,
+    ALWAYS = 1,
+    ALWAYS_STDERR = 2
+  };
+  vtkSetClampMacro(DisplayMode, int, DEFAULT, ALWAYS_STDERR);
+  vtkGetMacro(DisplayMode, int);
+  void SetDisplayModeToDefault() { this->SetDisplayMode(vtkOutputWindow::DEFAULT); }
+  void SetDisplayModeToNever() { this->SetDisplayMode(vtkOutputWindow::NEVER); }
+  void SetDisplayModeToAlways() { this->SetDisplayMode(vtkOutputWindow::ALWAYS); }
+  void SetDisplayModeToAlwaysStdErr() { this->SetDisplayMode(vtkOutputWindow::ALWAYS_STDERR); }
+  ///@}
 protected:
   vtkOutputWindow();
   ~vtkOutputWindow() override;
@@ -129,20 +134,32 @@ protected:
    */
   vtkGetMacro(CurrentMessageType, MessageTypes);
 
+  enum class StreamType
+  {
+    Null,
+    StdOutput,
+    StdError,
+  };
+
+  /**
+   * Returns the standard output stream to post the message of the given type
+   * on.
+   */
+  virtual StreamType GetDisplayStream(MessageTypes msgType) const;
+
   bool PromptUser;
-  bool UseStdErrorForAllMessages;
 
 private:
-  static vtkOutputWindow* Instance;
-  MessageTypes CurrentMessageType;
+  std::atomic<MessageTypes> CurrentMessageType;
+  int DisplayMode;
+  std::atomic<int> InStandardMacros; // used to suppress display to output streams from standard
+                                     // macros when logging is enabled.
 
-private:
+  friend class vtkOutputWindowPrivateAccessor;
+
   vtkOutputWindow(const vtkOutputWindow&) = delete;
   void operator=(const vtkOutputWindow&) = delete;
 };
 
-// Uses schwartz counter idiom for singleton management
-static vtkOutputWindowCleanup vtkOutputWindowCleanupInstance;
-
-
+VTK_ABI_NAMESPACE_END
 #endif

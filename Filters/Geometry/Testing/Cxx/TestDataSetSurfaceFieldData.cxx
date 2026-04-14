@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestDataSetSurfaceMultiBlockFieldData.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include <cstdio>
 
 #include <vtkDataSetSurfaceFilter.h>
@@ -25,12 +13,14 @@
 #include <vtkStructuredGrid.h>
 #include <vtkUnstructuredGrid.h>
 
+#include <iostream>
+
 // Test to ensure that field data is copied for different data types in vtkDataSetSurface
 
 namespace
 {
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int TestDataSet(vtkDataSet* ds, int expectedValue)
 {
   vtkNew<vtkDataSetSurfaceFilter> surfacer;
@@ -56,14 +46,14 @@ int TestDataSet(vtkDataSet* ds, int expectedValue)
     vtkIntArray* array = vtkArrayDownCast<vtkIntArray>(fieldData->GetArray(0));
     if (!array)
     {
-      std::cerr << "Field data array was not of type vtkIntArray for data set type"
-                << className << "\n";
+      std::cerr << "Field data array was not of type vtkIntArray for data set type" << className
+                << "\n";
       return EXIT_FAILURE;
     }
     else if (array->GetNumberOfTuples() < 1)
     {
-      std::cerr << "No tuples in field data array for surface from data set type "
-                << className << "\n";
+      std::cerr << "No tuples in field data array for surface from data set type " << className
+                << "\n";
       return EXIT_FAILURE;
     }
     else
@@ -75,8 +65,8 @@ int TestDataSet(vtkDataSet* ds, int expectedValue)
       if (value != expectedValue)
       {
         std::cerr << "Unexpected block field array value " << value
-                  << " for surface from data set type " << className
-                  << ". Expected " << expectedValue << "\n";
+                  << " for surface from data set type " << className << ". Expected "
+                  << expectedValue << "\n";
         return EXIT_FAILURE;
       }
     }
@@ -85,7 +75,7 @@ int TestDataSet(vtkDataSet* ds, int expectedValue)
   return EXIT_SUCCESS;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void AddFieldData(vtkDataSet* ds, int id)
 {
   vtkNew<vtkIntArray> array;
@@ -97,10 +87,10 @@ void AddFieldData(vtkDataSet* ds, int id)
   ds->GetFieldData()->AddArray(array);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int TestImageData()
 {
- // Create image data
+  // Create image data
   vtkNew<vtkImageData> imageData;
   imageData->Initialize();
   imageData->SetSpacing(1, 1, 1);
@@ -121,7 +111,7 @@ int TestImageData()
   return TestDataSet(imageData, id);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int TestPolyData()
 {
   // Create polydata
@@ -134,7 +124,7 @@ int TestPolyData()
   return TestDataSet(polyData, id);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int TestStructuredGrid()
 {
   // Create structured grid data
@@ -147,7 +137,7 @@ int TestStructuredGrid()
   return TestDataSet(structuredGrid, id);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int TestUnstructuredGrid()
 {
   // Create unstructured grid data
@@ -162,7 +152,7 @@ int TestUnstructuredGrid()
 
 } // end anonymous namespace
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int TestDataSetSurfaceFieldData(int vtkNotUsed(argc), char* vtkNotUsed(argv)[])
 {
   if (TestImageData() != EXIT_SUCCESS)

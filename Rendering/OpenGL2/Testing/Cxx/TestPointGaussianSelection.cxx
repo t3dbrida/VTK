@@ -1,45 +1,35 @@
-/*=========================================================================
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
-  Program:   Visualization Toolkit
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-
-#include "vtkTestUtilities.h"
 #include "vtkRegressionTestImage.h"
+#include "vtkTestUtilities.h"
 
 #include "vtkActor.h"
 #include "vtkCamera.h"
-#include "vtkLookupTable.h"
 #include "vtkHardwareSelector.h"
 #include "vtkIdTypeArray.h"
 #include "vtkInformation.h"
+#include "vtkLookupTable.h"
 #include "vtkNew.h"
 #include "vtkPointGaussianMapper.h"
 #include "vtkPointSource.h"
-#include "vtkProp3DCollection.h"
 #include "vtkRandomAttributeGenerator.h"
+#include "vtkRenderWindow.h"
+#include "vtkRenderWindowInteractor.h"
 #include "vtkRenderedAreaPicker.h"
 #include "vtkRenderer.h"
-#include "vtkRenderWindowInteractor.h"
-#include "vtkRenderWindow.h"
 #include "vtkSelection.h"
 #include "vtkSelectionNode.h"
 
-int TestPointGaussianSelection(int argc, char *argv[])
+#include <iostream>
+
+int TestPointGaussianSelection(int argc, char* argv[])
 {
   int desiredPoints = 1.0e3;
 
   vtkNew<vtkPointSource> points;
   points->SetNumberOfPoints(desiredPoints);
-  points->SetRadius(pow(desiredPoints,0.33)*20.0);
+  points->SetRadius(pow(desiredPoints, 0.33) * 20.0);
   points->Update();
 
   vtkNew<vtkRandomAttributeGenerator> randomAttr;
@@ -53,7 +43,7 @@ int TestPointGaussianSelection(int argc, char *argv[])
   renderWindow->SetSize(300, 300);
   renderWindow->SetMultiSamples(0);
   renderWindow->AddRenderer(renderer);
-  vtkNew<vtkRenderWindowInteractor>  iren;
+  vtkNew<vtkRenderWindowInteractor> iren;
   iren->SetRenderWindow(renderWindow);
 
   vtkNew<vtkActor> actor;
@@ -90,9 +80,9 @@ int TestPointGaussianSelection(int argc, char *argv[])
   // Usa a lut instead.
   //
   vtkNew<vtkLookupTable> lut;
-  lut->SetHueRange(0.1,0.2);
-  lut->SetSaturationRange(1.0,0.5);
-  lut->SetValueRange(0.8,1.0);
+  lut->SetHueRange(0.1, 0.2);
+  lut->SetSaturationRange(1.0, 0.5);
+  lut->SetValueRange(0.8, 1.0);
   mapper->SetLookupTable(lut);
 #endif
 
@@ -103,16 +93,15 @@ int TestPointGaussianSelection(int argc, char *argv[])
   vtkNew<vtkHardwareSelector> selector;
   selector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_POINTS);
   selector->SetRenderer(renderer);
-  selector->SetArea(10,10,50,50);
-  vtkSelection *result = selector->Select();
+  selector->SetArea(10, 10, 50, 50);
+  vtkSelection* result = selector->Select();
 
   bool goodPick = false;
 
   if (result->GetNumberOfNodes() == 1)
   {
-    vtkSelectionNode *node = result->GetNode(0);
-    vtkIdTypeArray *selIds = vtkArrayDownCast<vtkIdTypeArray>(
-        node->GetSelectionList());
+    vtkSelectionNode* node = result->GetNode(0);
+    vtkIdTypeArray* selIds = vtkArrayDownCast<vtkIdTypeArray>(node->GetSelectionList());
 
     if (selIds)
     {
@@ -120,17 +109,14 @@ int TestPointGaussianSelection(int argc, char *argv[])
       for (vtkIdType i = 0; i < numIds; ++i)
       {
         vtkIdType curId = selIds->GetValue(i);
-        cerr << curId << "\n";
+        std::cerr << curId << "\n";
       }
     }
 
-    if (node->GetProperties()->Has(vtkSelectionNode::PROP_ID())
-      && node->GetProperties()->Get(vtkSelectionNode::PROP()) == actor.Get()
-      && node->GetProperties()->Get(vtkSelectionNode::COMPOSITE_INDEX()) == 1
-      && selIds
-      && selIds->GetNumberOfTuples() == 14
-      && selIds->GetValue(4) == 227
-      )
+    if (node->GetProperties()->Has(vtkSelectionNode::PROP_ID()) &&
+      node->GetProperties()->Get(vtkSelectionNode::PROP()) == actor.Get() &&
+      node->GetProperties()->Get(vtkSelectionNode::COMPOSITE_INDEX()) == 1 && selIds &&
+      selIds->GetNumberOfTuples() == 12 && selIds->GetValue(3) == 227)
     {
       goodPick = true;
     }
@@ -139,13 +125,13 @@ int TestPointGaussianSelection(int argc, char *argv[])
 
   if (!goodPick)
   {
-    cerr << "Incorrect splats picked!\n";
+    std::cerr << "Incorrect splats picked!\n";
     return EXIT_FAILURE;
   }
 
   // Interact if desired
   int retVal = vtkRegressionTestImage(renderWindow);
-  if ( retVal == vtkRegressionTester::DO_INTERACTOR)
+  if (retVal == vtkRegressionTester::DO_INTERACTOR)
   {
     iren->Start();
   }

@@ -12,224 +12,323 @@
 #include "metaArrow.h"
 
 #ifdef _MSC_VER
-#pragma warning(disable:4702)
+#  pragma warning(disable : 4702)
 #endif
 
-#include <stdio.h>
-#include <ctype.h>
-#include <string>
-
 #if (METAIO_USE_NAMESPACE)
-namespace METAIO_NAMESPACE {
+namespace METAIO_NAMESPACE
+{
 #endif
 
 //
 // Constructors
 //
-MetaArrow::
-MetaArrow()
-:MetaObject()
+MetaArrow::MetaArrow()
 {
-  if(META_DEBUG) METAIO_STREAM::cout << "MetaArrow()" << METAIO_STREAM::endl;
-  Clear();
+  META_DEBUG_PRINT( "MetaArrow()" );
+  MetaArrow::Clear();
 }
 
 //
-MetaArrow::
-MetaArrow(const char *_headerName)
-:MetaObject()
+MetaArrow::MetaArrow(const char * _headerName)
 {
-  if(META_DEBUG)  METAIO_STREAM::cout << "MetaArrow()" << METAIO_STREAM::endl;
-  Clear();
-  Read(_headerName);
+  META_DEBUG_PRINT( "MetaArrow()" );
+  MetaArrow::Clear();
+  MetaArrow::Read(_headerName);
 }
 
 //
-MetaArrow::
-MetaArrow(const MetaArrow *_Arrow)
-:MetaObject()
+MetaArrow::MetaArrow(const MetaArrow * _arrow)
 {
-  if(META_DEBUG)  METAIO_STREAM::cout << "MetaArrow()" << METAIO_STREAM::endl;
-  Clear();
-  CopyInfo(_Arrow);
+  META_DEBUG_PRINT( "MetaArrow()" );
+  MetaArrow::Clear();
+  MetaArrow::CopyInfo(_arrow);
 }
 
-MetaArrow::
-MetaArrow(unsigned int dim)
-:MetaObject(dim)
+MetaArrow::MetaArrow(unsigned int dim)
+  : MetaObject(dim)
 {
-  if(META_DEBUG) METAIO_STREAM::cout << "MetaArrow()" << METAIO_STREAM::endl;
-  Clear();
-  m_NDims = dim;
+  META_DEBUG_PRINT( "MetaArrow()" );
+  MetaArrow::Clear();
+  MetaObject::InitializeEssential(dim);
 }
 
 //
-MetaArrow::
-~MetaArrow()
+MetaArrow::~MetaArrow()
 {
-  M_Destroy();
+MetaObject::M_Destroy();
 }
 
 //
-void MetaArrow::
-PrintInfo() const
+void
+MetaArrow::PrintInfo() const
 {
   MetaObject::PrintInfo();
-  METAIO_STREAM::cout << "Length = " << M_Length << METAIO_STREAM::endl;
-  METAIO_STREAM::cout << "Direction = ";
+  std::cout << "Length = " << m_Length << '\n';
+  std::cout << "Position = ";
   for (int i = 0; i < m_NDims; i++)
-    {
-    METAIO_STREAM::cout << M_Direction[i] << " ";
-    }
-  METAIO_STREAM::cout << METAIO_STREAM::endl;
+  {
+    std::cout << m_Position[i] << " ";
+  }
+  std::cout << '\n';
+  std::cout << "Direction = ";
+  for (int i = 0; i < m_NDims; i++)
+  {
+    std::cout << m_Direction[i] << " ";
+  }
+  std::cout << '\n';
 }
 
-void MetaArrow::
-CopyInfo(const MetaObject * _object)
-  {
+void
+MetaArrow::CopyInfo(const MetaObject * _object)
+{
   MetaObject::CopyInfo(_object);
 
-  if(_object)
-    {
+  if (_object)
+  {
     const MetaArrow * arrow;
     try
-      {
-      arrow = (const MetaArrow *)(_object);
-      }
-    catch( ... )
-      {
+    {
+      arrow = dynamic_cast<const MetaArrow *>(_object);
+    }
+    catch (...)
+    {
       return;
-      }
-    if( arrow )
-      {
-      M_Length = arrow->Length();
-      const double* direction = arrow->Direction();
+    }
+    if (arrow)
+    {
+      m_Length = arrow->Length();
+      const double * direction = arrow->Direction();
       for (int i = 0; i < m_NDims; i++)
-        {
-        M_Direction[i] = direction[i];
-        }
+      {
+        m_Direction[i] = direction[i];
+      }
+      const double * position = arrow->Position();
+      for (int i = 0; i < m_NDims; i++)
+      {
+        m_Position[i] = position[i];
       }
     }
   }
-
-
-void  MetaArrow::
-Length(float length)
- {
-  M_Length = length;
- }
-
-float  MetaArrow::
-Length(void) const
- {
-  return M_Length;
- }
-
-void  MetaArrow::
-Direction(const double *direction)
- {
-  for (int i = 0; i < m_NDims; i++)
-    {
-    M_Direction[i] = direction[i];
-    }
- }
-
-const double * MetaArrow::
-Direction(void) const
- {
-  return M_Direction;
- }
-
-/** Clear Arrow information */
-void MetaArrow::
-Clear(void)
-{
-  if(META_DEBUG) METAIO_STREAM::cout << "MetaArrow: Clear" << METAIO_STREAM::endl;
-  MetaObject::Clear();
-  M_Length = 1;
-
-  // zero out direction then set to (1,0,0)
-  memset(M_Direction, 0, 10*sizeof(double));
-  M_Direction[0] = 1.0;
 }
 
-/** Destroy Arrow information */
-void MetaArrow::
-M_Destroy(void)
+
+void
+MetaArrow::Length(float length)
 {
-  MetaObject::M_Destroy();
+  m_Length = length;
+}
+
+float
+MetaArrow::Length() const
+{
+  return m_Length;
+}
+
+void
+MetaArrow::Direction(const double * direction)
+{
+  for (int i = 0; i < m_NDims; i++)
+  {
+    m_Direction[i] = direction[i];
+  }
+}
+
+const double *
+MetaArrow::Direction() const
+{
+  return m_Direction;
+}
+
+const double *
+MetaArrow::Position() const
+{
+  if (m_APIVersion == 1)
+  {
+    return m_Position;
+  }
+  else
+  {
+    return MetaObject::Position();
+  }
+}
+
+double
+MetaArrow::Position(int _i) const
+{
+  if (m_APIVersion == 1)
+  {
+    return m_Position[_i];
+  }
+  else
+  {
+    return MetaObject::Position(_i);
+  }
+}
+
+void
+MetaArrow::Position(const double * position)
+{
+  if (m_APIVersion == 1)
+  {
+    for (int i = 0; i < m_NDims; i++)
+    {
+      m_Position[i] = position[i];
+    }
+  }
+  else
+  {
+    MetaObject::Position(position);
+  }
+}
+
+void
+MetaArrow::Position(int _i, double value)
+{
+  if (m_APIVersion == 1)
+  {
+    m_Position[_i] = value;
+  }
+  else
+  {
+    MetaObject::Position(_i, value);
+  }
+}
+
+/** Clear Arrow information */
+void
+MetaArrow::Clear()
+{
+  META_DEBUG_PRINT( "MetaArrow: Clear" );
+  MetaObject::Clear();
+
+  strcpy(m_ObjectTypeName, "Arrow");
+
+  m_Length = 1;
+
+  // zero out direction then set to (1,0,0)
+  memset(m_Direction, 0, 10 * sizeof(double));
+  m_Direction[0] = 1.0;
+
+  memset(m_Position, 0, 10 * sizeof(double));
 }
 
 /** Set Read fields */
-void MetaArrow::
-M_SetupReadFields(void)
+void
+MetaArrow::M_SetupReadFields()
 {
-  if(META_DEBUG) METAIO_STREAM::cout << "MetaArrow: M_SetupReadFields" << METAIO_STREAM::endl;
+  META_DEBUG_PRINT( "MetaArrow: M_SetupReadFields" );
 
   MetaObject::M_SetupReadFields();
 
   MET_FieldRecordType * mF;
 
-  mF= new MET_FieldRecordType;
+  mF = new MET_FieldRecordType;
   MET_InitReadField(mF, "Length", MET_FLOAT, true);
   mF->terminateRead = false;
   m_Fields.push_back(mF);
 
   int nDimsRecordNumber = MET_GetFieldRecordNumber("NDims", &m_Fields);
 
-  mF= new MET_FieldRecordType;
+  mF = new MET_FieldRecordType;
+  MET_InitReadField(mF, "Position", MET_DOUBLE_ARRAY, false, nDimsRecordNumber);
+  m_Fields.push_back(mF);
+
+  mF = new MET_FieldRecordType;
   MET_InitReadField(mF, "Direction", MET_DOUBLE_ARRAY, true, nDimsRecordNumber);
   mF->terminateRead = true;
   m_Fields.push_back(mF);
 }
 
-void MetaArrow::
-M_SetupWriteFields(void)
+void
+MetaArrow::M_SetupWriteFields()
 {
-  strcpy(m_ObjectTypeName,"Arrow");
   MetaObject::M_SetupWriteFields();
 
   MET_FieldRecordType * mF;
 
   mF = new MET_FieldRecordType;
-  MET_InitWriteField(mF, "Length", MET_FLOAT, M_Length);
+  MET_InitWriteField(mF, "Length", MET_FLOAT, m_Length);
   m_Fields.push_back(mF);
 
+  if (m_APIVersion == 1)
+  {
+    mF = new MET_FieldRecordType;
+    MET_InitWriteField(mF, "Position", MET_DOUBLE_ARRAY, static_cast<size_t>(m_NDims), m_Position);
+    m_Fields.push_back(mF);
+  }
+
   mF = new MET_FieldRecordType;
-  MET_InitWriteField(mF, "Direction", MET_DOUBLE_ARRAY, m_NDims, M_Direction);
+  MET_InitWriteField(mF, "Direction", MET_DOUBLE_ARRAY, static_cast<size_t>(m_NDims), m_Direction);
   m_Fields.push_back(mF);
 }
 
-
-bool MetaArrow::
-M_Read(void)
+bool
+MetaArrow::M_Read()
 {
-  if(META_DEBUG) METAIO_STREAM::cout << "MetaArrow: M_Read: Loading Header" << METAIO_STREAM::endl;
+  META_DEBUG_PRINT( "MetaArrow: M_Read: Loading Header" );
 
-  if(!MetaObject::M_Read())
+  if (!MetaObject::M_Read())
   {
-    METAIO_STREAM::cout << "MetaArrow: M_Read: Error parsing file" << METAIO_STREAM::endl;
+    std::cout << "MetaArrow: M_Read: Error parsing file" << '\n';
     return false;
   }
 
-  if(META_DEBUG) METAIO_STREAM::cout << "MetaArrow: M_Read: Parsing Header" << METAIO_STREAM::endl;
+  META_DEBUG_PRINT( "MetaArrow: M_Read: Parsing Header" );
 
-  MET_FieldRecordType * mF_length;
-  mF_length = MET_GetFieldRecord("Length", &m_Fields);
-  if(mF_length->defined)
-    {
-    M_Length= (float)mF_length->value[0];
-    }
+  MET_FieldRecordType * mF;
+  mF = MET_GetFieldRecord("Length", &m_Fields);
+  if (mF && mF->defined)
+  {
+    m_Length = static_cast<float>(mF->value[0]);
+  }
 
-  MET_FieldRecordType * mF_direction;
-  mF_direction = MET_GetFieldRecord("Direction", &m_Fields);
-  if(mF_direction->defined)
+  mF = MET_GetFieldRecord("Position", &m_Fields);
+  if (mF && mF->defined)
+  {
+    if (m_APIVersion == 1)
     {
-    for (int i = 0; i < m_NDims; i++)
+      for (int i = 0; i < m_NDims; i++)
       {
-      M_Direction[i] = (double)mF_direction->value[i];
+        m_Position[i] = mF->value[i];
+      }
+      if (m_FileFormatVersion == 0)
+      {
+        for (int i = 0; i < m_NDims; i++)
+        {
+          m_Offset[i] = 0;
+        }
       }
     }
+  }
+  else
+  {
+    if (m_FileFormatVersion == 1)
+    {
+      std::cout << "MetaArrow: M_Read: Position not found" << '\n';
+      return false;
+    }
+    else // Old file format
+    {
+      if (m_APIVersion == 1) // new API - move offset to position
+      {
+        for (int i = 0; i < m_NDims; i++)
+        {
+          m_Position[i] = m_Offset[i];
+          m_Offset[i] = 0;
+        }
+      }
+    }
+  }
+
+  mF = MET_GetFieldRecord("Direction", &m_Fields);
+  if (mF && mF->defined)
+  {
+    for (int i = 0; i < m_NDims; i++)
+    {
+      m_Direction[i] = mF->value[i];
+    }
+  }
 
   return true;
 }

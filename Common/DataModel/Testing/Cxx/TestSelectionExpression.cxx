@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestSelectionExpression.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "vtkNew.h"
 #include "vtkSelection.h"
@@ -22,6 +10,8 @@
 #include <map>
 #include <random>
 #include <string>
+
+#include <iostream>
 
 vtkSmartPointer<vtkSignedCharArray> NewArray(vtkIdType numVals)
 {
@@ -50,7 +40,7 @@ void ValidateIternal(vtkSignedCharArray* result, const Functor& f)
     bool rval = get(result, cc);
     if (val != rval)
     {
-      cerr << "ERROR: failed at index '" << cc << "'." << endl;
+      std::cerr << "ERROR: failed at index '" << cc << "'." << std::endl;
       throw std::runtime_error("value mismatch");
     }
   }
@@ -61,7 +51,7 @@ void Validate(vtkSelection* expr, const char* exprstr,
   const std::vector<vtkSignedCharArray*>& arrays, const Functor& f)
 {
   expr->SetExpression(exprstr);
-  auto result = expr->Evaluate(&arrays[0], static_cast<unsigned int>(arrays.size()));
+  auto result = expr->Evaluate(arrays.data(), static_cast<unsigned int>(arrays.size()));
   if (!result)
   {
     throw std::runtime_error("null result");
@@ -81,8 +71,17 @@ void Validate(vtkSelection* expr, const char* exprstr, const MapType& arrays, co
   ValidateIternal(result, f);
 }
 
-int TestSelectionExpression(int, char* [])
+int TestSelectionExpression(int, char*[])
 {
+  // Test null arrays
+  vtkNew<vtkSelection> testEmptySelection;
+  testEmptySelection->SetNode("A", vtkSmartPointer<vtkSelectionNode>::New());
+  testEmptySelection->SetNode("B", vtkSmartPointer<vtkSelectionNode>::New());
+  testEmptySelection->SetNode("C", vtkSmartPointer<vtkSelectionNode>::New());
+  testEmptySelection->SetExpression("A|B|C");
+  std::vector<vtkSignedCharArray*> emptyArrays(testEmptySelection->GetNumberOfNodes(), nullptr);
+  testEmptySelection->Evaluate(emptyArrays.data(), static_cast<unsigned int>(emptyArrays.size()));
+
   vtkNew<vtkSelection> expr;
   vtkNew<vtkSelectionNode> aItem;
   vtkNew<vtkSelectionNode> bItem;
@@ -100,7 +99,7 @@ int TestSelectionExpression(int, char* [])
   expr->SetNode("F", fItem);
   expr->SetNode("G", gItem);
 
-  std::map<std::string, vtkSmartPointer<vtkSignedCharArray> > arrays;
+  std::map<std::string, vtkSmartPointer<vtkSignedCharArray>> arrays;
   std::vector<vtkSignedCharArray*> arrays_ptrs(expr->GetNumberOfNodes(), nullptr);
   for (int cc = 0, max = expr->GetNumberOfNodes(); cc < max; ++cc)
   {
@@ -110,42 +109,50 @@ int TestSelectionExpression(int, char* [])
     arrays_ptrs[cc] = newarray;
   }
 
-  Validate(expr, "A & (B | (C & D))", arrays_ptrs, [&](vtkIdType cc) {
-    auto a = get(arrays["A"], cc);
-    auto b = get(arrays["B"], cc);
-    auto c = get(arrays["C"], cc);
-    auto d = get(arrays["D"], cc);
-    return a && (b || (c && d));
-  });
+  Validate(expr, "A & (B | (C & D))", arrays_ptrs,
+    [&](vtkIdType cc)
+    {
+      auto a = get(arrays["A"], cc);
+      auto b = get(arrays["B"], cc);
+      auto c = get(arrays["C"], cc);
+      auto d = get(arrays["D"], cc);
+      return a && (b || (c && d));
+    });
 
-  Validate(expr, "A & B | (C & D)", arrays_ptrs, [&](vtkIdType cc) {
-    auto a = get(arrays["A"], cc);
-    auto b = get(arrays["B"], cc);
-    auto c = get(arrays["C"], cc);
-    auto d = get(arrays["D"], cc);
-    return (a && b) || (c && d);
-  });
+  Validate(expr, "A & B | (C & D)", arrays_ptrs,
+    [&](vtkIdType cc)
+    {
+      auto a = get(arrays["A"], cc);
+      auto b = get(arrays["B"], cc);
+      auto c = get(arrays["C"], cc);
+      auto d = get(arrays["D"], cc);
+      return (a && b) || (c && d);
+    });
 
-  Validate(expr, "(A & B) | (C | (D & E) ) | (C & D)", arrays_ptrs, [&](vtkIdType cc) {
-    auto a = get(arrays["A"], cc);
-    auto b = get(arrays["B"], cc);
-    auto c = get(arrays["C"], cc);
-    auto d = get(arrays["D"], cc);
-    auto e = get(arrays["E"], cc);
-    return (a && b) || (c || (d && e)) || (c && d);
-  });
+  Validate(expr, "(A & B) | (C | (D & E) ) | (C & D)", arrays_ptrs,
+    [&](vtkIdType cc)
+    {
+      auto a = get(arrays["A"], cc);
+      auto b = get(arrays["B"], cc);
+      auto c = get(arrays["C"], cc);
+      auto d = get(arrays["D"], cc);
+      auto e = get(arrays["E"], cc);
+      return (a && b) || (c || (d && e)) || (c && d);
+    });
 
   // empty expression is treated as "|"
-  Validate(expr, "", arrays, [&](vtkIdType cc) {
-    auto a = get(arrays["A"], cc);
-    auto b = get(arrays["B"], cc);
-    auto c = get(arrays["C"], cc);
-    auto d = get(arrays["D"], cc);
-    auto e = get(arrays["E"], cc);
-    auto f = get(arrays["F"], cc);
-    auto g = get(arrays["G"], cc);
-    return (a || b || c || d || e || f || g);
-  });
+  Validate(expr, "", arrays,
+    [&](vtkIdType cc)
+    {
+      auto a = get(arrays["A"], cc);
+      auto b = get(arrays["B"], cc);
+      auto c = get(arrays["C"], cc);
+      auto d = get(arrays["D"], cc);
+      auto e = get(arrays["E"], cc);
+      auto f = get(arrays["F"], cc);
+      auto g = get(arrays["G"], cc);
+      return (a || b || c || d || e || f || g);
+    });
 
   return EXIT_SUCCESS;
 }

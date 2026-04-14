@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkXMLTableWriter.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "vtkDataArray.h"
 #include "vtkErrorCode.h"
@@ -27,9 +15,10 @@
 #undef vtkXMLOffsetsManager_DoNotInclude
 #include "vtkXMLTableWriter.h"
 
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkXMLTableWriter);
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkXMLTableWriter::vtkXMLTableWriter()
 {
   this->NumberOfPieces = 1;
@@ -40,20 +29,20 @@ vtkXMLTableWriter::vtkXMLTableWriter()
   this->RowsOM = new OffsetsManagerArray;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkXMLTableWriter::~vtkXMLTableWriter()
 {
   delete this->RowsOM;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkXMLTableWriter::FillInputPortInformation(int vtkNotUsed(port), vtkInformation* info)
 {
   info->Set(vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkTable");
   return 1;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableWriter::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os, indent);
@@ -61,26 +50,26 @@ void vtkXMLTableWriter::PrintSelf(ostream& os, vtkIndent indent)
   os << indent << "WritePiece: " << this->WritePiece << "\n";
 }
 
-//----------------------------------------------------------------------------
-vtkTable* vtkXMLTableWriter::GetInputAsTable()
+//------------------------------------------------------------------------------
+vtkTable* vtkXMLTableWriter::GetTableInput()
 {
   return static_cast<vtkTable*>(this->Superclass::GetInput());
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 const char* vtkXMLTableWriter::GetDataSetName()
 {
   return "Table";
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 const char* vtkXMLTableWriter::GetDefaultFileExtension()
 {
   return "vtt";
 }
 
-//----------------------------------------------------------------------------
-int vtkXMLTableWriter::ProcessRequest(
+//------------------------------------------------------------------------------
+vtkTypeBool vtkXMLTableWriter::ProcessRequest(
   vtkInformation* request, vtkInformationVector** inputVector, vtkInformationVector* outputVector)
 {
 
@@ -143,7 +132,7 @@ int vtkXMLTableWriter::ProcessRequest(
         return 0;
       }
 
-      if (this->GetInputAsDataSet() != nullptr)
+      if (this->GetDataSetInput() != nullptr)
       {
         // use the current version for the file.
         this->UsePreviousVersion = false;
@@ -229,7 +218,7 @@ int vtkXMLTableWriter::ProcessRequest(
   return this->Superclass::ProcessRequest(request, inputVector, outputVector);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableWriter::AllocatePositionArrays()
 {
   this->NumberOfColsPositions = new vtkTypeInt64[this->NumberOfPieces];
@@ -238,7 +227,7 @@ void vtkXMLTableWriter::AllocatePositionArrays()
   this->RowsOM->Allocate(this->NumberOfPieces);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableWriter::DeletePositionArrays()
 {
   delete[] this->NumberOfColsPositions;
@@ -247,7 +236,7 @@ void vtkXMLTableWriter::DeletePositionArrays()
   this->NumberOfRowsPositions = nullptr;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkXMLTableWriter::WriteHeader()
 {
   vtkIndent indent = vtkIndent().GetNextIndent();
@@ -338,7 +327,7 @@ int vtkXMLTableWriter::WriteHeader()
   return 1;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkXMLTableWriter::WriteAPiece()
 {
   vtkIndent indent = vtkIndent().GetNextIndent();
@@ -362,7 +351,7 @@ int vtkXMLTableWriter::WriteAPiece()
   return result;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkXMLTableWriter::WriteFooter()
 {
   vtkIndent indent = vtkIndent().GetNextIndent();
@@ -388,7 +377,7 @@ int vtkXMLTableWriter::WriteFooter()
   return 1;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkXMLTableWriter::WriteInlineMode(vtkIndent indent)
 {
   ostream& os = *(this->Stream);
@@ -415,18 +404,18 @@ int vtkXMLTableWriter::WriteInlineMode(vtkIndent indent)
   return 1;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableWriter::WriteInlinePieceAttributes()
 {
-  vtkTable* input = this->GetInputAsTable();
+  vtkTable* input = this->GetTableInput();
   this->WriteScalarAttribute("NumberOfCols", input->GetNumberOfColumns());
   this->WriteScalarAttribute("NumberOfRows", input->GetNumberOfRows());
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableWriter::WriteInlinePiece(vtkIndent indent)
 {
-  vtkTable* input = this->GetInputAsTable();
+  vtkTable* input = this->GetTableInput();
 
   // Split progress among row data arrays.
   float progressRange[2] = { 0, 0 };
@@ -446,7 +435,7 @@ void vtkXMLTableWriter::WriteInlinePiece(vtkIndent indent)
   this->SetProgressRange(progressRange, 1, 2);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableWriter::WriteAppendedPieceAttributes(int index)
 {
   if (this->ErrorCode == vtkErrorCode::OutOfDiskSpaceError)
@@ -465,10 +454,10 @@ void vtkXMLTableWriter::WriteAppendedPieceAttributes(int index)
   }
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableWriter::WriteAppendedPiece(int index, vtkIndent indent)
 {
-  vtkTable* input = this->GetInputAsTable();
+  vtkTable* input = this->GetTableInput();
 
   this->WriteRowDataAppended(input->GetRowData(), indent, &this->RowsOM->GetPiece(index));
   if (this->ErrorCode == vtkErrorCode::OutOfDiskSpaceError)
@@ -477,11 +466,11 @@ void vtkXMLTableWriter::WriteAppendedPiece(int index, vtkIndent indent)
   }
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableWriter::WriteAppendedPieceData(int index)
 {
   ostream& os = *(this->Stream);
-  vtkTable* input = this->GetInputAsTable();
+  vtkTable* input = this->GetTableInput();
 
   std::streampos returnPosition = os.tellp();
 
@@ -512,7 +501,7 @@ void vtkXMLTableWriter::WriteAppendedPieceData(int index)
   this->SetProgressRange(progressRange, 1, 2);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableWriter::WriteRowDataAppended(
   vtkDataSetAttributes* ds, vtkIndent indent, OffsetsManagerGroup* dsManager)
 {
@@ -557,7 +546,7 @@ void vtkXMLTableWriter::WriteRowDataAppended(
   this->DestroyStringArray(numberOfArrays, names);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableWriter::WriteRowDataAppendedData(
   vtkDataSetAttributes* ds, int timestep, OffsetsManagerGroup* dsManager)
 {
@@ -604,7 +593,7 @@ void vtkXMLTableWriter::WriteRowDataAppendedData(
   }
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableWriter::WriteRowDataInline(vtkDataSetAttributes* ds, vtkIndent indent)
 {
   ostream& os = *(this->Stream);
@@ -648,10 +637,11 @@ void vtkXMLTableWriter::WriteRowDataInline(vtkDataSetAttributes* ds, vtkIndent i
   this->DestroyStringArray(numberOfArrays, names);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableWriter::SetInputUpdateExtent(int piece, int numPieces)
 {
   vtkInformation* inInfo = this->GetExecutive()->GetInputInformation(0, 0);
   inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_PIECES(), numPieces);
   inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_PIECE_NUMBER(), piece);
 }
+VTK_ABI_NAMESPACE_END

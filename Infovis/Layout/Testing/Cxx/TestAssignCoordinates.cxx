@@ -1,22 +1,6 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestAssignCoordinates.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-/*-------------------------------------------------------------------------
-  Copyright 2008 Sandia Corporation.
-  Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-  the U.S. Government retains certain rights in this software.
--------------------------------------------------------------------------*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-FileCopyrightText: Copyright 2008 Sandia Corporation
+// SPDX-License-Identifier: LicenseRef-BSD-3-Clause-Sandia-USGov
 
 #include "vtkAssignCoordinates.h"
 #include "vtkDataSetAttributes.h"
@@ -24,18 +8,18 @@
 #include "vtkGraphMapper.h"
 #include "vtkMutableDirectedGraph.h"
 #include "vtkRegressionTestImage.h"
-#include "vtkRenderer.h"
 #include "vtkRenderWindow.h"
 #include "vtkRenderWindowInteractor.h"
-#include "vtkSmartPointer.h"
+#include "vtkRenderer.h"
 #include "vtkSmartPointer.h"
 
-#define VTK_CREATE(type, name) \
-  vtkSmartPointer<type> name = vtkSmartPointer<type>::New()
+#include <iostream>
 
-int TestAssignCoordinates(int argc, char *argv[])
+#define VTK_CREATE(type, name) vtkSmartPointer<type> name = vtkSmartPointer<type>::New()
+
+int TestAssignCoordinates(int argc, char* argv[])
 {
-  cerr << "Generating graph ..." << endl;
+  std::cerr << "Generating graph ..." << std::endl;
   VTK_CREATE(vtkMutableDirectedGraph, g);
   VTK_CREATE(vtkDoubleArray, x);
   x->SetName("x");
@@ -56,16 +40,16 @@ int TestAssignCoordinates(int argc, char *argv[])
   g->GetVertexData()->AddArray(x);
   g->GetVertexData()->AddArray(y);
   g->GetVertexData()->AddArray(z);
-  cerr << "... done" << endl;
+  std::cerr << "... done" << std::endl;
 
-  cerr << "Sending graph through vtkAssignCoordinates ..." << endl;
+  std::cerr << "Sending graph through vtkAssignCoordinates ..." << std::endl;
   VTK_CREATE(vtkAssignCoordinates, assign);
   assign->SetInputData(g);
   assign->SetXCoordArrayName("x");
   assign->SetYCoordArrayName("y");
   assign->SetZCoordArrayName("z");
   assign->Update();
-  cerr << "... done" << endl;
+  std::cerr << "... done" << std::endl;
 
   VTK_CREATE(vtkGraphMapper, mapper);
   mapper->SetInputConnection(assign->GetOutputPort());

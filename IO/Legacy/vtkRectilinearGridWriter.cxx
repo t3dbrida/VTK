@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkRectilinearGridWriter.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkRectilinearGridWriter.h"
 
 #include "vtkInformation.h"
@@ -19,32 +7,31 @@
 #include "vtkRectilinearGrid.h"
 
 #if !defined(_WIN32) || defined(__CYGWIN__)
-# include <unistd.h> /* unlink */
+#include <unistd.h> /* unlink */
 #else
-# include <io.h> /* unlink */
+#include <io.h> /* unlink */
 #endif
 
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkRectilinearGridWriter);
 
-void vtkRectilinearGridWriter::WriteData()
+bool vtkRectilinearGridWriter::WriteDataAndReturn()
 {
-  ostream *fp;
-  vtkRectilinearGrid *input = vtkRectilinearGrid::SafeDownCast(
-    this->GetInput());
+  ostream* fp;
+  vtkRectilinearGrid* input = vtkRectilinearGrid::SafeDownCast(this->GetInput());
   int dim[3];
 
-  vtkDebugMacro(<<"Writing vtk rectilinear grid...");
+  vtkDebugMacro(<< "Writing vtk rectilinear grid...");
 
-  if ( !(fp=this->OpenVTKFile()) || !this->WriteHeader(fp) )
+  if (!(fp = this->OpenVTKFile()) || !this->WriteHeader(fp))
   {
     if (fp)
     {
-      vtkErrorMacro("Ran out of disk space; deleting file: "
-                    << this->FileName);
+      vtkErrorMacro("Ran out of disk space; deleting file: " << this->FileName);
       this->CloseVTKFile(fp);
       unlink(this->FileName);
     }
-    return;
+    return false;
   }
   //
   // Write rectilinear grid specific stuff
@@ -57,16 +44,15 @@ void vtkRectilinearGridWriter::WriteData()
     vtkErrorMacro("Ran out of disk space; deleting file: " << this->FileName);
     this->CloseVTKFile(fp);
     unlink(this->FileName);
-    return;
+    return false;
   }
 
   if (this->WriteExtent)
   {
     int extent[6];
     input->GetExtent(extent);
-    *fp << "EXTENT "
-        << extent[0] << " " << extent[1] << " " << extent[2] << " "
-        << extent[3] << " " << extent[4] << " " << extent[5] << "\n";
+    *fp << "EXTENT " << extent[0] << " " << extent[1] << " " << extent[2] << " " << extent[3] << " "
+        << extent[4] << " " << extent[5] << "\n";
   }
   else
   {
@@ -79,21 +65,21 @@ void vtkRectilinearGridWriter::WriteData()
     vtkErrorMacro("Ran out of disk space; deleting file: " << this->FileName);
     this->CloseVTKFile(fp);
     unlink(this->FileName);
-    return;
+    return false;
   }
   if (!this->WriteCoordinates(fp, input->GetYCoordinates(), 1))
   {
     vtkErrorMacro("Ran out of disk space; deleting file: " << this->FileName);
     this->CloseVTKFile(fp);
     unlink(this->FileName);
-    return;
+    return false;
   }
   if (!this->WriteCoordinates(fp, input->GetZCoordinates(), 2))
   {
     vtkErrorMacro("Ran out of disk space; deleting file: " << this->FileName);
     this->CloseVTKFile(fp);
     unlink(this->FileName);
-    return;
+    return false;
   }
 
   if (!this->WriteCellData(fp, input))
@@ -101,21 +87,21 @@ void vtkRectilinearGridWriter::WriteData()
     vtkErrorMacro("Ran out of disk space; deleting file: " << this->FileName);
     this->CloseVTKFile(fp);
     unlink(this->FileName);
-    return;
+    return false;
   }
   if (!this->WritePointData(fp, input))
   {
     vtkErrorMacro("Ran out of disk space; deleting file: " << this->FileName);
     this->CloseVTKFile(fp);
     unlink(this->FileName);
-    return;
+    return false;
   }
 
   this->CloseVTKFile(fp);
+  return true;
 }
 
-int vtkRectilinearGridWriter::FillInputPortInformation(int,
-                                                       vtkInformation *info)
+int vtkRectilinearGridWriter::FillInputPortInformation(int, vtkInformation* info)
 {
   info->Set(vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkRectilinearGrid");
   return 1;
@@ -133,5 +119,6 @@ vtkRectilinearGrid* vtkRectilinearGridWriter::GetInput(int port)
 
 void vtkRectilinearGridWriter::PrintSelf(ostream& os, vtkIndent indent)
 {
-  this->Superclass::PrintSelf(os,indent);
+  this->Superclass::PrintSelf(os, indent);
 }
+VTK_ABI_NAMESPACE_END

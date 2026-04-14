@@ -1,5 +1,6 @@
-set(Module_SRCS
-  vtkTRUCHASReader.cxx
-  )
+set(classes
+  vtkTRUCHASReader)
 
-vtk_module_library(vtkIOTRUCHAS ${Module_SRCS})
+vtk_module_add_module(VTK::IOTRUCHAS
+  CLASSES ${classes})
+vtk_add_test_mangling(VTK::IOTRUCHAS)

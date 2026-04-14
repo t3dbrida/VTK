@@ -1,29 +1,19 @@
-/*=========================================================================
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
-  Program:   Visualization Toolkit
-  Module:    TestBiQuadraticQuad.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-
-#include "vtkNew.h"
 #include "vtkBiQuadraticQuad.h"
-#include "vtkPointData.h"
 #include "vtkCellArray.h"
 #include "vtkDoubleArray.h"
+#include "vtkMathUtilities.h"
+#include "vtkNew.h"
+#include "vtkPointData.h"
+#include "vtkPolyData.h"
 #include "vtkProbeFilter.h"
 #include "vtkUnstructuredGrid.h"
-#include "vtkPolyData.h"
-#include "vtkMathUtilities.h"
 
-//----------------------------------------------------------------------------
+#include <iostream>
+
+//------------------------------------------------------------------------------
 int TestBiQuadraticQuad(int, char*[])
 {
   vtkNew<vtkPoints> points;
@@ -51,7 +41,7 @@ int TestBiQuadraticQuad(int, char*[])
   uArray->SetNumberOfComponents(1);
   uArray->SetNumberOfTuples(9);
   // set u(x, y) = x
-  for (int i=0; i<9; i++)
+  for (int i = 0; i < 9; i++)
   {
     uArray->SetValue(i, points->GetPoint(i)[0]);
   }
@@ -83,12 +73,12 @@ int TestBiQuadraticQuad(int, char*[])
   }
   else
   {
-    cout << "Failed to downcast prober scalars." << endl;
+    std::cout << "Failed to downcast prober scalars." << std::endl;
   }
   if (!vtkMathUtilities::FuzzyCompare(interpolated, probeX, 1.0e-6))
   {
-    cout << "Interpolated value of " << interpolated << " with probe value "
-         << probeX << " difference of " << (interpolated - probeX) <<  endl;
+    std::cout << "Interpolated value of " << interpolated << " with probe value " << probeX
+              << " difference of " << (interpolated - probeX) << std::endl;
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;

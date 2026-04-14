@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestExtractDataArraysOverTime.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkExtractDataArraysOverTime.h"
 
 #include "vtkExodusIIReader.h"
@@ -25,12 +13,17 @@
 #include "vtkTable.h"
 #include "vtkTestUtilities.h"
 
+#include <iostream>
+
 #define expect(x, msg)                                                                             \
-  if (!(x))                                                                                        \
+  do                                                                                               \
   {                                                                                                \
-    cerr << __LINE__ << ": " msg << endl;                                                          \
-    return false;                                                                                  \
-  }
+    if (!(x))                                                                                      \
+    {                                                                                              \
+      std::cerr << __LINE__ << ": " msg << std::endl;                                              \
+      return false;                                                                                \
+    }                                                                                              \
+  } while (false)
 
 namespace
 {
@@ -41,15 +34,15 @@ bool Validate0(vtkMultiBlockDataSet* mb, int num_timesteps)
 
   vtkTable* b0 = vtkTable::SafeDownCast(mb->GetBlock(0));
   expect(b0 != nullptr, "expecting a vtkTable for block 0");
-  expect(b0->GetNumberOfRows() == num_timesteps, "mismatched rows, expecting "
-      << num_timesteps << ", got " << b0->GetNumberOfRows());
-  expect(b0->GetNumberOfColumns() > 100, "mismatched columns");
+  expect(b0->GetNumberOfRows() == num_timesteps,
+    "mismatched rows, expecting " << num_timesteps << ", got " << b0->GetNumberOfRows());
+  expect(b0->GetNumberOfColumns() == 139, "mismatched columns");
 
   vtkTable* b1 = vtkTable::SafeDownCast(mb->GetBlock(1));
   expect(b1 != nullptr, "expecting a vtkTable for block 1");
-  expect(b1->GetNumberOfRows() == num_timesteps, "mismatched rows, expecting "
-      << num_timesteps << ", got " << b1->GetNumberOfRows());
-  expect(b1->GetNumberOfColumns() > 100, "mismatched columns");
+  expect(b1->GetNumberOfRows() == num_timesteps,
+    "mismatched rows, expecting " << num_timesteps << ", got " << b1->GetNumberOfRows());
+  expect(b1->GetNumberOfColumns() == 139, "mismatched columns");
   return true;
 }
 
@@ -60,14 +53,15 @@ bool Validate1(vtkMultiBlockDataSet* mb, int num_timesteps, const char* bname)
 
   vtkTable* b0 = vtkTable::SafeDownCast(mb->GetBlock(0));
   expect(b0 != nullptr, "expecting a vtkTable for block 0");
-  expect(b0->GetNumberOfRows() == num_timesteps, "mismatched rows, expecting "
-      << num_timesteps << ", got " << b0->GetNumberOfRows());
+  expect(b0->GetNumberOfRows() == num_timesteps,
+    "mismatched rows, expecting " << num_timesteps << ", got " << b0->GetNumberOfRows());
   expect(b0->GetNumberOfColumns() >= 5, "mismatched columns");
 
   const char* name = mb->GetMetaData(0u)->Get(vtkCompositeDataSet::NAME());
   expect(name != nullptr, "expecting non-null name.");
-  expect(strcmp(name, bname) == 0, "block name not matching,"
-                                   " expected '"
+  expect(strcmp(name, bname) == 0,
+    "block name not matching,"
+    " expected '"
       << bname << "', got '" << name << "'");
   return true;
 }
@@ -91,7 +85,7 @@ int TestExtractDataArraysOverTime(int argc, char* argv[])
   textracter->SetInputConnection(reader->GetOutputPort());
   textracter->UpdateInformation();
   textracter->GenerateTimeStepIndices(1, 11, 1);
-  const int num_timesteps = 10;
+  constexpr int num_timesteps = 10;
 
   vtkNew<vtkExtractDataArraysOverTime> extractor;
   extractor->SetReportStatisticsOnly(true);
@@ -101,7 +95,7 @@ int TestExtractDataArraysOverTime(int argc, char* argv[])
   if (!Validate0(
         vtkMultiBlockDataSet::SafeDownCast(extractor->GetOutputDataObject(0)), num_timesteps))
   {
-    cerr << "Failed to validate dataset at line: " << __LINE__ << endl;
+    std::cerr << "Failed to validate dataset at line: " << __LINE__ << std::endl;
     return EXIT_FAILURE;
   }
 
@@ -123,7 +117,7 @@ int TestExtractDataArraysOverTime(int argc, char* argv[])
   if (!Validate1(vtkMultiBlockDataSet::SafeDownCast(extractor->GetOutputDataObject(0)),
         num_timesteps, "gid=100"))
   {
-    cerr << "Failed to validate dataset at line: " << __LINE__ << endl;
+    std::cerr << "Failed to validate dataset at line: " << __LINE__ << std::endl;
     return EXIT_FAILURE;
   }
 
@@ -131,9 +125,9 @@ int TestExtractDataArraysOverTime(int argc, char* argv[])
   extractor->SetUseGlobalIDs(false);
   extractor->Update();
   if (!Validate1(vtkMultiBlockDataSet::SafeDownCast(extractor->GetOutputDataObject(0)),
-        num_timesteps, "id=0 block=2"))
+        num_timesteps, "originalId=99 block=2"))
   {
-    cerr << "Failed to validate dataset at line: " << __LINE__ << endl;
+    std::cerr << "Failed to validate dataset at line: " << __LINE__ << std::endl;
     return EXIT_FAILURE;
   }
 
@@ -143,9 +137,9 @@ int TestExtractDataArraysOverTime(int argc, char* argv[])
     0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_CELLS, "vtkOriginalCellIds");
   extractor->Update();
   if (!Validate1(vtkMultiBlockDataSet::SafeDownCast(extractor->GetOutputDataObject(0)),
-        num_timesteps, "id=99 block=2"))
+        num_timesteps, "originalId=99 block=2"))
   {
-    cerr << "Failed to validate dataset at line: " << __LINE__ << endl;
+    std::cerr << "Failed to validate dataset at line: " << __LINE__ << std::endl;
     return EXIT_FAILURE;
   }
 

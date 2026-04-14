@@ -1,36 +1,9 @@
 /*
- * Copyright (c) 2005-2017 National Technology & Engineering Solutions
+ * Copyright(C) 1999-2020, 2022, 2023, 2024 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met:
- *
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *
- *     * Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following
- *       disclaimer in the documentation and/or other materials provided
- *       with the distribution.
- *
- *     * Neither the name of NTESS nor the names of its
- *       contributors may be used to endorse or promote products derived
- *       from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
+ * See packages/seacas/LICENSE for details
  */
 /*****************************************************************************
  *
@@ -48,11 +21,10 @@
  *****************************************************************************/
 
 #include "exodusII.h"     // for ex_err, etc
-#include "exodusII_int.h" // for ex_get_counter_list, etc
-#include "vtk_netcdf.h"       // for NC_NOERR, nc_close, etc
-#include <stdio.h>
+#include "exodusII_int.h" // for exi_get_counter_list, etc
 
 /*!
+\ingroup Utilities
 
 The function ex_close() updates and then closes an open exodus file.
 
@@ -78,72 +50,72 @@ int ex_close(int exoid)
   int  status;
   int  status1;
   int  status2;
-#if NC_HAS_HDF5
-  int parent_id = 0;
-#endif
 
   EX_FUNC_ENTER();
 
-  ex_check_valid_file_id(exoid, __func__);
+  if (exi_check_valid_file_id(exoid, __func__) == EX_FATAL) {
+    EX_FUNC_LEAVE(EX_FATAL);
+  }
+
+#ifndef NDEBUG
+  struct exi_file_item *file = exi_find_file_item(exoid);
+  assert(!file->in_define_mode && file->persist_define_mode == 0);
+#endif
 
   /*
    * NOTE: If using netcdf-4, exoid must refer to the root group.
    * Need to determine whether there are any groups and if so,
-   * call ex_rm_file_item and ex_rm_stat_ptr on each group.
+   * call exi_rm_file_item and exi_rm_stat_ptr on each group.
    */
 
-#if NC_HAS_HDF5
-  /* nc_inq_grp_parent() will return NC_ENOGRP error if exoid
-   * refers to the root group (which is what we want)
+  /*
+   * Get exoid of root group
    */
-  if ((status = nc_inq_grp_parent(exoid, &parent_id)) != NC_ENOGRP) {
-    snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: file id %d does not refer to root group.", exoid);
-    ex_err(__func__, errmsg, EX_NOTROOTID);
-    EX_FUNC_LEAVE(EX_FATAL);
-  }
-#endif
 
   if ((status1 = nc_sync(exoid)) != NC_NOERR) {
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to update file id %d", exoid);
-    ex_err(__func__, errmsg, status1);
+    ex_err_fn(exoid, __func__, errmsg, status1);
   }
 
-  if ((status2 = nc_close(exoid)) != NC_NOERR) {
-    snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to close file id %d", exoid);
-    ex_err(__func__, errmsg, status2);
+  int root_id = exoid & EX_FILE_ID_MASK;
+  if ((status2 = nc_close(root_id)) != NC_NOERR) {
+    snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to close file id %d", root_id);
+    ex_err_fn(root_id, __func__, errmsg, status2);
   }
 
   /* Even if we have failures above due to nc_sync() or nc_close(), we still need to clean up our
    * internal datastructures.
    */
 
-  ex_rm_file_item(exoid, ex_get_counter_list(EX_ELEM_BLOCK));
-  ex_rm_file_item(exoid, ex_get_counter_list(EX_FACE_BLOCK));
-  ex_rm_file_item(exoid, ex_get_counter_list(EX_EDGE_BLOCK));
-  ex_rm_file_item(exoid, ex_get_counter_list(EX_NODE_SET));
-  ex_rm_file_item(exoid, ex_get_counter_list(EX_EDGE_SET));
-  ex_rm_file_item(exoid, ex_get_counter_list(EX_FACE_SET));
-  ex_rm_file_item(exoid, ex_get_counter_list(EX_SIDE_SET));
-  ex_rm_file_item(exoid, ex_get_counter_list(EX_ELEM_SET));
-  ex_rm_file_item(exoid, ex_get_counter_list(EX_NODE_MAP));
-  ex_rm_file_item(exoid, ex_get_counter_list(EX_EDGE_MAP));
-  ex_rm_file_item(exoid, ex_get_counter_list(EX_FACE_MAP));
-  ex_rm_file_item(exoid, ex_get_counter_list(EX_ELEM_MAP));
+  exi_rm_file_item(exoid, exi_get_counter_list(EX_ELEM_BLOCK));
+  exi_rm_file_item(exoid, exi_get_counter_list(EX_FACE_BLOCK));
+  exi_rm_file_item(exoid, exi_get_counter_list(EX_EDGE_BLOCK));
+  exi_rm_file_item(exoid, exi_get_counter_list(EX_NODE_SET));
+  exi_rm_file_item(exoid, exi_get_counter_list(EX_EDGE_SET));
+  exi_rm_file_item(exoid, exi_get_counter_list(EX_FACE_SET));
+  exi_rm_file_item(exoid, exi_get_counter_list(EX_SIDE_SET));
+  exi_rm_file_item(exoid, exi_get_counter_list(EX_ELEM_SET));
+  exi_rm_file_item(exoid, exi_get_counter_list(EX_NODE_MAP));
+  exi_rm_file_item(exoid, exi_get_counter_list(EX_EDGE_MAP));
+  exi_rm_file_item(exoid, exi_get_counter_list(EX_FACE_MAP));
+  exi_rm_file_item(exoid, exi_get_counter_list(EX_ELEM_MAP));
+  exi_rm_file_item(exoid, exi_get_counter_list(EX_ASSEMBLY));
+  exi_rm_file_item(exoid, exi_get_counter_list(EX_BLOB));
 
-  ex_rm_stat_ptr(exoid, &exoII_ed);
-  ex_rm_stat_ptr(exoid, &exoII_fa);
-  ex_rm_stat_ptr(exoid, &exoII_eb);
-  ex_rm_stat_ptr(exoid, &exoII_ns);
-  ex_rm_stat_ptr(exoid, &exoII_es);
-  ex_rm_stat_ptr(exoid, &exoII_fs);
-  ex_rm_stat_ptr(exoid, &exoII_ss);
-  ex_rm_stat_ptr(exoid, &exoII_els);
-  ex_rm_stat_ptr(exoid, &exoII_nm);
-  ex_rm_stat_ptr(exoid, &exoII_edm);
-  ex_rm_stat_ptr(exoid, &exoII_fam);
-  ex_rm_stat_ptr(exoid, &exoII_em);
+  exi_rm_stat_ptr(exoid, &exoII_ed);
+  exi_rm_stat_ptr(exoid, &exoII_fa);
+  exi_rm_stat_ptr(exoid, &exoII_eb);
+  exi_rm_stat_ptr(exoid, &exoII_ns);
+  exi_rm_stat_ptr(exoid, &exoII_es);
+  exi_rm_stat_ptr(exoid, &exoII_fs);
+  exi_rm_stat_ptr(exoid, &exoII_ss);
+  exi_rm_stat_ptr(exoid, &exoII_els);
+  exi_rm_stat_ptr(exoid, &exoII_nm);
+  exi_rm_stat_ptr(exoid, &exoII_edm);
+  exi_rm_stat_ptr(exoid, &exoII_fam);
+  exi_rm_stat_ptr(exoid, &exoII_em);
 
-  ex_conv_exit(exoid);
+  exi_conv_exit(exoid);
 
   status = EX_NOERR;
   if (status1 != NC_NOERR || status2 != NC_NOERR) {

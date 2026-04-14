@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkCellTypes.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkCellTypes
  * @brief   object provides direct access to cells in vtkCellArray and type information
@@ -31,7 +19,7 @@
  *
  * @sa
  * vtkCellArray vtkCellLinks
-*/
+ */
 
 #ifndef vtkCellTypes_h
 #define vtkCellTypes_h
@@ -39,58 +27,60 @@
 #include "vtkCommonDataModelModule.h" // For export macro
 #include "vtkObject.h"
 
-#include "vtkIntArray.h" // Needed for inline methods
-#include "vtkIdTypeArray.h" // Needed for inline methods
+#include "vtkCellType.h"          // Needed for inline methods
+#include "vtkCellTypeUtilities.h" // for backward compatibility
+#include "vtkDeprecation.h"       // for deprec macros
+#include "vtkIdTypeArray.h"       // Needed for inline methods
+#include "vtkSmartPointer.h"      // Needed for internals
 #include "vtkUnsignedCharArray.h" // Needed for inline methods
-#include "vtkCellType.h" // Needed for VTK_EMPTY_CELL
+
+VTK_ABI_NAMESPACE_BEGIN
+class vtkIntArray;
 
 class VTKCOMMONDATAMODEL_EXPORT vtkCellTypes : public vtkObject
 {
 public:
-  static vtkCellTypes *New();
-  vtkTypeMacro(vtkCellTypes,vtkObject);
+  static vtkCellTypes* New();
+  vtkTypeMacro(vtkCellTypes, vtkObject);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
   /**
    * Allocate memory for this array. Delete old storage only if necessary.
    */
-  int Allocate(int sz=512, int ext=1000);
+  int Allocate(vtkIdType sz = 512, vtkIdType ext = 1000);
 
+  ///@{
   /**
    * Add a cell at specified id.
    */
-  void InsertCell(vtkIdType id, unsigned char type, vtkIdType loc);
+  VTK_DEPRECATED_IN_9_6_0("Location is not used anymore, use InsertCell(id, type).")
+  void InsertCell(vtkIdType id, unsigned char type, vtkIdType);
+  void InsertCell(vtkIdType id, unsigned char type);
+  ///@}
 
+  ///@{
   /**
    * Add a cell to the object in the next available slot.
    */
-  vtkIdType InsertNextCell(unsigned char type, vtkIdType loc);
+  VTK_DEPRECATED_IN_9_6_0("Location is not used anymore, use InsertCell(id, type).")
+  vtkIdType InsertNextCell(unsigned char type, vtkIdType);
+  vtkIdType InsertNextCell(unsigned char type);
+  ///@}
 
   /**
    * Specify a group of cell types.
    */
-  void SetCellTypes(vtkIdType ncells, vtkUnsignedCharArray *cellTypes, vtkIdTypeArray *cellLocations);
-
-  /**
-   * Specify a group of cell types. This version is provided to maintain
-   * backwards compatibility and does a copy of the cellLocations
-   */
-  void SetCellTypes(vtkIdType ncells, vtkUnsignedCharArray *cellTypes, vtkIntArray *cellLocations);
-
-  /**
-   * Return the location of the cell in the associated vtkCellArray.
-   */
-  vtkIdType GetCellLocation(vtkIdType cellId) { return this->LocationArray->GetValue(cellId);};
+  void SetCellTypes(vtkIdType ncells, vtkUnsignedCharArray* cellTypes);
 
   /**
    * Delete cell by setting to nullptr cell type.
    */
-  void DeleteCell(vtkIdType cellId) { this->TypeArray->SetValue(cellId, VTK_EMPTY_CELL);};
+  void DeleteCell(vtkIdType cellId) { this->TypeArray->SetValue(cellId, VTK_EMPTY_CELL); }
 
   /**
    * Return the number of types in the list.
    */
-  vtkIdType GetNumberOfTypes() { return (this->MaxId + 1);};
+  vtkIdType GetNumberOfTypes() { return (this->MaxId + 1); }
 
   /**
    * Return 1 if type specified is contained in list; 0 otherwise.
@@ -100,12 +90,12 @@ public:
   /**
    * Add the type specified to the end of the list. Range checking is performed.
    */
-  vtkIdType InsertNextType(unsigned char type){return this->InsertNextCell(type,-1);};
+  vtkIdType InsertNextType(unsigned char type) { return this->InsertNextCell(type); }
 
   /**
    * Return the type of cell.
    */
-  unsigned char GetCellType(vtkIdType cellId) { return this->TypeArray->GetValue(cellId);};
+  unsigned char GetCellType(vtkIdType cellId) { return this->TypeArray->GetValue(cellId); }
 
   /**
    * Reclaim any extra memory.
@@ -131,18 +121,20 @@ public:
    * Standard DeepCopy method.  Since this object contains no reference
    * to other objects, there is no ShallowCopy.
    */
-  void DeepCopy(vtkCellTypes *src);
+  void DeepCopy(vtkCellTypes* src);
 
   /**
    * Given an int (as defined in vtkCellType.h) identifier for a class
    * return it's classname.
    */
+  VTK_DEPRECATED_IN_9_6_0("Use vtkCellTypeUtilities variant instead.")
   static const char* GetClassNameFromTypeId(int typeId);
 
   /**
    * Given a data object classname, return it's int identified (as
    * defined in vtkCellType.h)
    */
+  VTK_DEPRECATED_IN_9_6_0("Use vtkCellTypeUtilities variant instead.")
   static int GetTypeIdFromClassName(const char* classname);
 
   /**
@@ -151,32 +143,48 @@ public:
    * efficient than getting the appropriate vtkCell and checking its IsLinear
    * method.
    */
+  VTK_DEPRECATED_IN_9_6_0("Use vtkCellTypeUtilities variant instead.")
   static int IsLinear(unsigned char type);
+
+  /**
+   * Get the dimension of a cell.
+   */
+  VTK_DEPRECATED_IN_9_6_0("Use vtkCellTypeUtilities variant instead.")
+  static int GetDimension(unsigned char type);
+
+  ///@{
+  /**
+   * Methods for obtaining the arrays representing types and locations.
+   */
+  vtkUnsignedCharArray* GetCellTypesArray() { return this->TypeArray; }
+  VTK_DEPRECATED_IN_9_6_0("Location is not used anymore.")
+  vtkIdTypeArray* GetCellLocationsArray() { return this->LocationArray; }
+  ///@}
 
 protected:
   vtkCellTypes();
-  ~vtkCellTypes() override;
+  ~vtkCellTypes() override = default;
 
-  vtkUnsignedCharArray *TypeArray; // pointer to types array
-  vtkIdTypeArray *LocationArray;   // pointer to array of offsets
-  vtkIdType Size;            // allocated size of data
-  vtkIdType MaxId;           // maximum index inserted thus far
-  vtkIdType Extend;          // grow array by this point
+  vtkSmartPointer<vtkUnsignedCharArray> TypeArray; // pointer to types array
+
+  // VTK_DEPRECATED_IN_9_6_0
+  vtkNew<vtkIdTypeArray> LocationArray; // pointer to array of offsets
+
+  vtkIdType MaxId; // maximum index inserted thus far
 
 private:
   vtkCellTypes(const vtkCellTypes&) = delete;
   void operator=(const vtkCellTypes&) = delete;
 };
 
-
 //----------------------------------------------------------------------------
 inline int vtkCellTypes::IsType(unsigned char type)
 {
-  vtkIdType numTypes=this->GetNumberOfTypes();
+  vtkIdType numTypes = this->GetNumberOfTypes();
 
-  for (vtkIdType i=0; i<numTypes; i++)
+  for (vtkIdType i = 0; i < numTypes; i++)
   {
-    if ( type == this->GetCellType(i))
+    if (type == this->GetCellType(i))
     {
       return 1;
     }
@@ -187,10 +195,8 @@ inline int vtkCellTypes::IsType(unsigned char type)
 //-----------------------------------------------------------------------------
 inline int vtkCellTypes::IsLinear(unsigned char type)
 {
-  return (   (type <= 20)
-          || (type == VTK_CONVEX_POINT_SET)
-          || (type == VTK_POLYHEDRON) );
+  return vtkCellTypeUtilities::IsLinear(type);
 }
 
-
+VTK_ABI_NAMESPACE_END
 #endif

@@ -1,8 +1,9 @@
-set(Module_SRCS
-  vtkDepthImageToPointCloud.cxx
-  vtkImageResliceMapper.cxx
-  vtkImageSliceCollection.cxx
-  vtkImageStack.cxx
-  )
+set(classes
+  vtkDepthImageToPointCloud
+  vtkImageResliceMapper
+  vtkImageSliceCollection
+  vtkImageStack)
 
-vtk_module_library(${vtk-module} ${Module_SRCS})
+vtk_module_add_module(VTK::RenderingImage
+  CLASSES ${classes})
+vtk_add_test_mangling(VTK::RenderingImage)

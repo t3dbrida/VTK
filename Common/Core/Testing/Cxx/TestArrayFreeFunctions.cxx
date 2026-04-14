@@ -1,17 +1,5 @@
-/*==============================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestDataArrayAPI.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-==============================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkAbstractArray.h"
 
 // Helpers:
@@ -25,37 +13,45 @@
 #include <cstdint>
 #include <cstdio>
 
+#include <iostream>
+
 // Forward declare the test function:
-namespace {
+namespace
+{
 
 //------------------------------------------------------------------------------
-struct UseFree {
+struct UseFree
+{
   static const int value = vtkAbstractArray::VTK_DATA_ARRAY_FREE;
 };
 
-struct UseDelete {
+struct UseDelete
+{
   static const int value = vtkAbstractArray::VTK_DATA_ARRAY_DELETE;
 };
 
-struct UseAlignedFree {
+struct UseAlignedFree
+{
   static const int value = vtkAbstractArray::VTK_DATA_ARRAY_ALIGNED_FREE;
 };
 
-struct UseLambda {
+struct UseLambda
+{
   static const int value = vtkAbstractArray::VTK_DATA_ARRAY_USER_DEFINED;
 };
 
 int timesLambdaFreeCalled = 0;
 
 //------------------------------------------------------------------------------
-#define testAssert(expr, errorMessage) \
-  if (!(expr)) \
-  { \
-    ++errors; \
-    vtkGenericWarningMacro(<<"Assertion failed: " #expr << "\n" \
-                           << errorMessage); \
-  }
-
+#define testAssert(expr, errorMessage)                                                             \
+  do                                                                                               \
+  {                                                                                                \
+    if (!(expr))                                                                                   \
+    {                                                                                              \
+      ++errors;                                                                                    \
+      vtkGenericWarningMacro(<< "Assertion failed: " #expr << "\n" << errorMessage);               \
+    }                                                                                              \
+  } while (false)
 
 //------------------------------------------------------------------------------
 void* make_allocation(UseFree, std::size_t size, int)
@@ -65,10 +61,10 @@ void* make_allocation(UseFree, std::size_t size, int)
 
 void* make_allocation(UseDelete, std::size_t size, int type)
 {
-  //Std::string is weird. When UseDelete is passed it binds to a custom
-  //free function that casts the memory to std::string*. So to not violate
-  //this behavior we need to allocate as a string
-  if(type == VTK_STRING)
+  // Std::string is weird. When UseDelete is passed it binds to a custom
+  // free function that casts the memory to std::string*. So to not violate
+  // this behavior we need to allocate as a string
+  if (type == VTK_STRING)
   {
     return new std::string[size];
   }
@@ -81,9 +77,9 @@ void* make_allocation(UseDelete, std::size_t size, int type)
 void* make_allocation(UseAlignedFree, std::size_t size, int)
 {
 #if defined(_WIN32)
-    return _aligned_malloc(size, 16);
+  return _aligned_malloc(size, 16);
 #else
-    return malloc(size);
+  return malloc(size);
 #endif
 }
 
@@ -94,60 +90,68 @@ void* make_allocation(UseLambda, std::size_t size, int)
 
 //------------------------------------------------------------------------------
 template <typename FreeType>
-void assign_user_free(FreeType, vtkAbstractArray *) {}
-
-void assign_user_free(UseLambda, vtkAbstractArray *array)
+void assign_user_free(FreeType, vtkAbstractArray*)
 {
-  array->SetArrayFreeFunction([](void *ptr) {
-    delete[] reinterpret_cast<uint8_t *>(ptr);
-    timesLambdaFreeCalled++;
-  });
+}
+
+void assign_user_free(UseLambda, vtkAbstractArray* array)
+{
+  array->SetArrayFreeFunction(
+    [](void* ptr)
+    {
+      delete[] reinterpret_cast<uint8_t*>(ptr);
+      timesLambdaFreeCalled++;
+    });
 }
 
 //------------------------------------------------------------------------------
 template <typename FreeType>
-int assign_void_array(FreeType, vtkAbstractArray *array, void *ptr,
-                       std::size_t size, bool vtkShouldFree)
+int assign_void_array(
+  FreeType, vtkAbstractArray* array, void* ptr, std::size_t size, bool vtkShouldFree)
 {
   int errors = 0;
-  vtkSOADataArrayTemplate<double> *is_soa =
-      vtkArrayDownCast<vtkSOADataArrayTemplate<double>>(array);
-  if (is_soa)
+  if (vtkSOADataArrayTemplate<double>* is_soa =
+        vtkArrayDownCast<vtkSOADataArrayTemplate<double>>(array))
   {
     is_soa->SetNumberOfComponents(1);
-    is_soa->SetArray(0, reinterpret_cast<double *>(ptr),
-                     static_cast<vtkIdType>(size), false, !vtkShouldFree,
-                     FreeType::value);
+    is_soa->SetArray(0, reinterpret_cast<double*>(ptr), static_cast<vtkIdType>(size), false,
+      !vtkShouldFree, FreeType::value);
   }
   else
   {
     const int save = vtkShouldFree ? 0 : 1;
     array->SetVoidArray(ptr, static_cast<vtkIdType>(size), save, FreeType::value);
-    testAssert(array->GetVoidPointer(0) == ptr, "assignment failed");
+    testAssert( // NOLINTNEXTLINE(bugprone-unsafe-functions)
+      array->HasStandardMemoryLayout() && array->GetVoidPointer(0) == ptr, "assignment failed");
   }
   return errors;
 }
 
 //------------------------------------------------------------------------------
-template <typename FreeType> int ExerciseDelete(FreeType f)
+template <typename FreeType>
+int ExerciseDelete(FreeType f)
 {
   int errors = 0;
 
-  std::vector<vtkAbstractArray *> arrays;
-  arrays.push_back(vtkStringArray::New());
+  std::cout << "Starting tests for free type: " << f.value << std::endl;
+
+  std::vector<vtkAbstractArray*> arrays;
+  if constexpr (std::is_same_v<UseDelete, FreeType> || std::is_same_v<UseLambda, FreeType>)
+  {
+    arrays.push_back(vtkStringArray::New());
+  }
   arrays.push_back(vtkBitArray::New());
   arrays.push_back(vtkFloatArray::New());
   arrays.push_back(vtkAOSDataArrayTemplate<double>::New());
   arrays.push_back(vtkSOADataArrayTemplate<double>::New());
-
-  const std::size_t size = 5000;
+  constexpr std::size_t size = 5000;
   for (auto it = arrays.begin(); it != arrays.end(); ++it)
   {
 
-    vtkAbstractArray *array = *it;
+    vtkAbstractArray* array = *it;
 
     // test setting the array's memory and having it not free the memory
-    void *ptr = make_allocation(f, size, array->GetDataType());
+    void* ptr = make_allocation(f, size, array->GetDataType());
     errors += assign_void_array(f, array, ptr, size, false);
 
     // ask array to free memory, ptr should still be valid
@@ -165,7 +169,7 @@ template <typename FreeType> int ExerciseDelete(FreeType f)
 
   for (auto it = arrays.begin(); it != arrays.end(); ++it)
   {
-    vtkAbstractArray *array = *it;
+    vtkAbstractArray* array = *it;
     array->Delete();
   }
 
@@ -175,7 +179,7 @@ template <typename FreeType> int ExerciseDelete(FreeType f)
 } // end anon namespace
 
 //-------------Test Entry Point-------------------------------------------------
-int TestArrayFreeFunctions(int, char *[])
+int TestArrayFreeFunctions(int, char*[])
 {
   int errors = 0;
 
@@ -183,11 +187,11 @@ int TestArrayFreeFunctions(int, char *[])
   errors += ExerciseDelete(UseDelete{});
   errors += ExerciseDelete(UseAlignedFree{});
   errors += ExerciseDelete(UseLambda{});
-  if(timesLambdaFreeCalled != 5)
+  if (timesLambdaFreeCalled != 5)
   {
-   std::cerr << "Test failed! Lambda free not called " << std::endl;
+    std::cerr << "Test failed! Lambda free not called " << std::endl;
   }
-  if (errors > 0 )
+  if (errors > 0)
   {
     std::cerr << "Test failed! Error count: " << errors << std::endl;
   }

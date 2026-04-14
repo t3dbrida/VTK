@@ -1,50 +1,39 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkImageFlip.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkImageFlip
  * @brief   This flips an axis of an image. Right becomes left ...
  *
  * vtkImageFlip will reflect the data along the filtered axis.  This filter is
  * actually a thin wrapper around vtkImageReslice.
-*/
+ */
 
 #ifndef vtkImageFlip_h
 #define vtkImageFlip_h
 
-
-#include "vtkImagingCoreModule.h" // For export macro
+#include "vtkDeprecation.h" // for Deprecation macro
 #include "vtkImageReslice.h"
+#include "vtkImagingCoreModule.h" // For export macro
 
+VTK_ABI_NAMESPACE_BEGIN
 class VTKIMAGINGCORE_EXPORT vtkImageFlip : public vtkImageReslice
 {
 public:
-  static vtkImageFlip *New();
+  static vtkImageFlip* New();
 
-  vtkTypeMacro(vtkImageFlip,vtkImageReslice);
+  vtkTypeMacro(vtkImageFlip, vtkImageReslice);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
-  //@{
+  ///@{
   /**
    * Specify which axis will be flipped.  This must be an integer
    * between 0 (for x) and 2 (for z). Initial value is 0.
    */
   vtkSetMacro(FilteredAxis, int);
   vtkGetMacro(FilteredAxis, int);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * By default the image will be flipped about its center, and the
    * Origin, Spacing and Extent of the output will be identical to
@@ -64,7 +53,7 @@ public:
   vtkSetMacro(FlipAboutOrigin, vtkTypeBool);
   vtkGetMacro(FlipAboutOrigin, vtkTypeBool);
   vtkBooleanMacro(FlipAboutOrigin, vtkTypeBool);
-  //@}
+  ///@}
 
   /**
    * Keep the mis-named Axes variations around for compatibility with old
@@ -73,24 +62,27 @@ public:
   void SetFilteredAxes(int axis) { this->SetFilteredAxis(axis); }
   int GetFilteredAxes() { return this->GetFilteredAxis(); }
 
-  //@{
+  ///@{
   /**
    * PreserveImageExtentOff wasn't covered by test scripts and its
    * implementation was broken.  It is deprecated now and it has
    * no effect (i.e. the ImageExtent is always preserved).
    */
+  VTK_DEPRECATED_IN_9_6_0("This is no a no-op, Image extent is always preserved.")
   vtkSetMacro(PreserveImageExtent, vtkTypeBool);
+  VTK_DEPRECATED_IN_9_6_0("This is no a no-op, Image extent is always preserved.")
   vtkGetMacro(PreserveImageExtent, vtkTypeBool);
-  vtkBooleanMacro(PreserveImageExtent, vtkTypeBool);
-  //@}
+  VTK_DEPRECATED_IN_9_6_0("This is no a no-op, Image extent is always preserved.")
+  void PreserveImageExtentOn() {}
+  VTK_DEPRECATED_IN_9_6_0("This is no a no-op, Image extent is always preserved.")
+  void PreserveImageExtentOff() {}
+  ///@}
 
 protected:
   vtkImageFlip();
-  ~vtkImageFlip() override {}
+  ~vtkImageFlip() override = default;
 
-  int RequestInformation(vtkInformation *,
-                                 vtkInformationVector **,
-                                 vtkInformationVector *) override;
+  int RequestInformation(vtkInformation*, vtkInformationVector**, vtkInformationVector*) override;
 
   int FilteredAxis;
   vtkTypeBool FlipAboutOrigin;
@@ -101,4 +93,5 @@ private:
   void operator=(const vtkImageFlip&) = delete;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

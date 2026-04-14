@@ -1,17 +1,6 @@
-/*=========================================================================
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
-  Program:   Visualization Toolkit
-  Module:    vtkGenericDataObjectWriter.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
 #include "vtkGenericDataObjectWriter.h"
 
 #include "vtkCompositeDataSet.h"
@@ -22,11 +11,14 @@
 #include "vtkGraphWriter.h"
 #include "vtkImageData.h"
 #include "vtkInformation.h"
+#include "vtkLegacyCellGridWriter.h"
+#include "vtkLegacyStatisticalModelWriter.h"
 #include "vtkObjectFactory.h"
 #include "vtkPolyData.h"
 #include "vtkPolyDataWriter.h"
 #include "vtkRectilinearGrid.h"
 #include "vtkRectilinearGridWriter.h"
+#include "vtkStatisticalModel.h"
 #include "vtkStructuredGrid.h"
 #include "vtkStructuredGridWriter.h"
 #include "vtkStructuredPoints.h"
@@ -38,9 +30,10 @@
 #include "vtkUnstructuredGrid.h"
 #include "vtkUnstructuredGridWriter.h"
 
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkGenericDataObjectWriter);
 
-template<typename WriterT>
+template <typename WriterT>
 vtkDataWriter* CreateWriter(vtkAlgorithmOutput* input)
 {
   WriterT* const writer = WriterT::New();
@@ -52,43 +45,40 @@ vtkGenericDataObjectWriter::vtkGenericDataObjectWriter() = default;
 
 vtkGenericDataObjectWriter::~vtkGenericDataObjectWriter() = default;
 
-void vtkGenericDataObjectWriter::WriteData()
+bool vtkGenericDataObjectWriter::WriteDataAndReturn()
 {
-  vtkDebugMacro(<<"Writing vtk data object ...");
+  vtkDebugMacro(<< "Writing vtk data object ...");
 
   vtkDataWriter* writer = nullptr;
 
   vtkAlgorithmOutput* input = this->GetInputConnection(0, 0);
-  switch(this->GetInput()->GetDataObjectType())
+  switch (this->GetInput()->GetDataObjectType())
   {
     case VTK_COMPOSITE_DATA_SET:
       vtkErrorMacro(<< "Cannot write composite data set");
-      return;
+      return false;
+    case VTK_CELL_GRID:
+      writer = CreateWriter<vtkLegacyCellGridWriter>(input);
+      break;
     case VTK_DATA_OBJECT:
       vtkErrorMacro(<< "Cannot write data object");
-      return;
+      return false;
     case VTK_DATA_SET:
       vtkErrorMacro(<< "Cannot write data set");
-      return;
+      return false;
     case VTK_GENERIC_DATA_SET:
       vtkErrorMacro(<< "Cannot write generic data set");
-      return;
+      return false;
     case VTK_DIRECTED_GRAPH:
     case VTK_UNDIRECTED_GRAPH:
     case VTK_MOLECULE:
       writer = CreateWriter<vtkGraphWriter>(input);
       break;
-    case VTK_HIERARCHICAL_DATA_SET:
-      vtkErrorMacro(<< "Cannot write hierarchical data set");
-      return;
-    case VTK_HYPER_OCTREE:
-      vtkErrorMacro(<< "Cannot write hyper octree");
-      return;
     case VTK_IMAGE_DATA:
+    case VTK_UNIFORM_GRID:
       writer = CreateWriter<vtkStructuredPointsWriter>(input);
       break;
     case VTK_MULTIBLOCK_DATA_SET:
-    case VTK_HIERARCHICAL_BOX_DATA_SET:
     case VTK_MULTIPIECE_DATA_SET:
     case VTK_OVERLAPPING_AMR:
     case VTK_NON_OVERLAPPING_AMR:
@@ -96,20 +86,20 @@ void vtkGenericDataObjectWriter::WriteData()
     case VTK_PARTITIONED_DATA_SET_COLLECTION:
       writer = CreateWriter<vtkCompositeDataWriter>(input);
       break;
-    case VTK_MULTIGROUP_DATA_SET:
-      vtkErrorMacro(<< "Cannot write multigroup data set");
-      return;
     case VTK_PIECEWISE_FUNCTION:
       vtkErrorMacro(<< "Cannot write piecewise function");
-      return;
+      return false;
     case VTK_POINT_SET:
       vtkErrorMacro(<< "Cannot write point set");
-      return;
+      return false;
     case VTK_POLY_DATA:
       writer = CreateWriter<vtkPolyDataWriter>(input);
       break;
     case VTK_RECTILINEAR_GRID:
       writer = CreateWriter<vtkRectilinearGridWriter>(input);
+      break;
+    case VTK_STATISTICAL_MODEL:
+      writer = CreateWriter<vtkLegacyStatisticalModelWriter>(input);
       break;
     case VTK_STRUCTURED_GRID:
       writer = CreateWriter<vtkStructuredGridWriter>(input);
@@ -123,21 +113,16 @@ void vtkGenericDataObjectWriter::WriteData()
     case VTK_TREE:
       writer = CreateWriter<vtkTreeWriter>(input);
       break;
-    case VTK_TEMPORAL_DATA_SET:
-      vtkErrorMacro(<< "Cannot write temporal data set");
-      return;
-    case VTK_UNIFORM_GRID:
-      vtkErrorMacro(<< "Cannot write uniform grid");
-      return;
+    case VTK_UNSTRUCTURED_GRID_BASE:
     case VTK_UNSTRUCTURED_GRID:
       writer = CreateWriter<vtkUnstructuredGridWriter>(input);
       break;
   }
 
-  if(!writer)
+  if (!writer)
   {
     vtkErrorMacro(<< "null data object writer");
-    return;
+    return false;
   }
 
   writer->SetFileName(this->FileName);
@@ -150,23 +135,25 @@ void vtkGenericDataObjectWriter::WriteData()
   writer->SetLookupTableName(this->LookupTableName);
   writer->SetFieldDataName(this->FieldDataName);
   writer->SetFileType(this->FileType);
+  writer->SetFileVersion(this->FileVersion);
   writer->SetDebug(this->Debug);
   writer->SetWriteToOutputString(this->WriteToOutputString);
-  writer->Write();
+  bool ret = writer->Write();
   if (writer->GetErrorCode() == vtkErrorCode::OutOfDiskSpaceError)
   {
     this->SetErrorCode(vtkErrorCode::OutOfDiskSpaceError);
   }
   if (this->WriteToOutputString)
   {
-    delete [] this->OutputString;
+    delete[] this->OutputString;
     this->OutputStringLength = writer->GetOutputStringLength();
     this->OutputString = writer->RegisterAndGetOutputString();
   }
   writer->Delete();
+  return ret;
 }
 
-int vtkGenericDataObjectWriter::FillInputPortInformation(int, vtkInformation *info)
+int vtkGenericDataObjectWriter::FillInputPortInformation(int, vtkInformation* info)
 {
   info->Set(vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkDataObject");
   return 1;
@@ -174,5 +161,6 @@ int vtkGenericDataObjectWriter::FillInputPortInformation(int, vtkInformation *in
 
 void vtkGenericDataObjectWriter::PrintSelf(ostream& os, vtkIndent indent)
 {
-  this->Superclass::PrintSelf(os,indent);
+  this->Superclass::PrintSelf(os, indent);
 }
+VTK_ABI_NAMESPACE_END

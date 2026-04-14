@@ -1,8 +1,7 @@
-# XXX(kitware): cmake versions are handled by VTK.
-if (FALSE)
-cmake_minimum_required (VERSION 3.2.2)
+if (FALSE) # XXX(kitware): cmake versions are handled by VTK.
+cmake_minimum_required (VERSION 3.18)
 endif ()
-PROJECT (HDF5_HL_SRC)
+project (HDF5_HL_SRC C)
 
 #-----------------------------------------------------------------------------
 # List Source files
@@ -24,7 +23,6 @@ set (HL_HEADERS
     ${HDF5_HL_SRC_SOURCE_DIR}/H5DOpublic.h
     ${HDF5_HL_SRC_SOURCE_DIR}/H5DSpublic.h
     ${HDF5_HL_SRC_SOURCE_DIR}/H5IMpublic.h
-    ${HDF5_HL_SRC_SOURCE_DIR}/H5LTparse.h
     ${HDF5_HL_SRC_SOURCE_DIR}/H5LTpublic.h
     ${HDF5_HL_SRC_SOURCE_DIR}/H5PTpublic.h
     ${HDF5_HL_SRC_SOURCE_DIR}/H5TBpublic.h
@@ -33,26 +31,46 @@ set (HL_HEADERS
     ${HDF5_HL_SRC_SOURCE_DIR}/vtk_hdf5_hl_mangle.h
 )
 
-# XXX(kitware): Use VTK's module system.
-if (FALSE)
-add_library (${HDF5_HL_LIB_TARGET} STATIC ${HL_SOURCES} ${HL_HEADERS})
-TARGET_C_PROPERTIES (${HDF5_HL_LIB_TARGET} STATIC " " " ")
-target_link_libraries (${HDF5_HL_LIB_TARGET} ${HDF5_LIB_TARGET})
-H5_SET_LIB_OPTIONS (${HDF5_HL_LIB_TARGET} ${HDF5_HL_LIB_NAME} STATIC)
-set_target_properties (${HDF5_HL_LIB_TARGET} PROPERTIES
-    FOLDER libraries/hl
-    INTERFACE_INCLUDE_DIRECTORIES "$<INSTALL_INTERFACE:$<INSTALL_PREFIX>/include>"
+set (HL_PRIVATE_HEADERS
+    ${HDF5_HL_SRC_SOURCE_DIR}/H5LTparse.h
+    ${HDF5_HL_SRC_SOURCE_DIR}/H5DSprivate.h
+    ${HDF5_HL_SRC_SOURCE_DIR}/H5IMprivate.h
+    ${HDF5_HL_SRC_SOURCE_DIR}/H5PTprivate.h
+    ${HDF5_HL_SRC_SOURCE_DIR}/H5HLprivate2.h
+    ${HDF5_HL_SRC_SOURCE_DIR}/H5LTprivate.h
+    ${HDF5_HL_SRC_SOURCE_DIR}/H5PTprivate.h
+    ${HDF5_HL_SRC_SOURCE_DIR}/H5TBprivate.h
+    ${HDF5_HL_SRC_SOURCE_DIR}/H5LDprivate.h
 )
-set_global_variable (HDF5_LIBRARIES_TO_EXPORT "${HDF5_LIBRARIES_TO_EXPORT};${HDF5_HL_LIB_TARGET}")
-set (install_targets ${HDF5_HL_LIB_TARGET})
+
+if (FALSE) # XXX(kitware): Use VTK's module system.
+if (BUILD_STATIC_LIBS)
+  add_library (${HDF5_HL_LIB_TARGET} STATIC ${HL_SOURCES} ${HL_HEADERS} ${HL_PRIVATE_HEADERS})
+  target_include_directories (${HDF5_HL_LIB_TARGET}
+      PRIVATE "${HDF5_SRC_INCLUDE_DIRS};${HDF5_SRC_BINARY_DIR};$<$<BOOL:${HDF5_ENABLE_PARALLEL}>:${MPI_C_INCLUDE_DIRS}>"
+      INTERFACE "$<INSTALL_INTERFACE:$<INSTALL_PREFIX>/include>"
+  )
+  target_compile_options(${HDF5_HL_LIB_TARGET} PRIVATE "${HDF5_CMAKE_C_FLAGS}")
+  TARGET_C_PROPERTIES (${HDF5_HL_LIB_TARGET} STATIC)
+  target_link_libraries (${HDF5_HL_LIB_TARGET} PUBLIC ${HDF5_LIB_TARGET})
+  H5_SET_LIB_OPTIONS (${HDF5_HL_LIB_TARGET} ${HDF5_HL_LIB_NAME} STATIC 0)
+  set_target_properties (${HDF5_HL_LIB_TARGET} PROPERTIES FOLDER libraries/hl)
+  set_global_variable (HDF5_LIBRARIES_TO_EXPORT "${HDF5_LIBRARIES_TO_EXPORT};${HDF5_HL_LIB_TARGET}")
+  set (install_targets ${HDF5_HL_LIB_TARGET})
+endif ()
+
 else ()
-vtk_add_library(vtkhdf5_hl_src ${HL_SOURCES} ${HL_HEADERS})
-if (NOT VTK_INSTALL_NO_DEVELOPMENT)
-  install(FILES
-    ${HL_HEADERS}
-    DESTINATION  "${VTK_INSTALL_INCLUDE_DIR}/vtkhdf5/hl/src"
-    COMPONENT Development)
-endif()
+  add_library(vtkhdf5_hl_src ${HL_SOURCES} ${HL_HEADERS} ${HL_PRIVATE_HEADERS})
+target_include_directories(vtkhdf5_hl_src
+  PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${HDF5_BINARY_DIR}
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>"
+    "$<INSTALL_INTERFACE:${_vtk_build_HEADERS_DESTINATION}/vtkhdf5/hl/src>")
+vtk_module_install_headers(
+  FILES   ${HL_HEADERS}
+  SUBDIR  "vtkhdf5/hl/src")
 if (BUILD_SHARED_LIBS)
   target_compile_definitions(vtkhdf5_hl_src
     PUBLIC
@@ -63,33 +81,47 @@ endif ()
 target_link_libraries(vtkhdf5_hl_src
   PRIVATE
     vtkhdf5_src)
+_vtk_module_apply_properties(vtkhdf5_hl_src)
+_vtk_module_install(vtkhdf5_hl_src)
 
-if (DEFINED VTK_CUSTOM_LIBRARY_SUFFIX)
-  set(_lib_suffix "${VTK_CUSTOM_LIBRARY_SUFFIX}")
-else ()
-  set(_lib_suffix "-${VTK_MAJOR_VERSION}.${VTK_MINOR_VERSION}")
-endif ()
-set_property(TARGET vtkhdf5_hl_src PROPERTY OUTPUT_NAME vtkhdf5_hl${_lib_suffix})
+set(_vtk_add_module_output_name "vtkhdf5_hl")
+if (_vtk_build_LIBRARY_NAME_SUFFIX)
+  string(APPEND _vtk_add_module_output_name "-${_vtk_build_LIBRARY_NAME_SUFFIX}")
 endif ()
 
-# XXX(kitware): VTK handles shared/static flags.
-if (BUILD_SHARED_LIBS AND FALSE)
-  add_library (${HDF5_HL_LIBSH_TARGET} SHARED ${HL_SOURCES} ${HL_HEADERS})
-  TARGET_C_PROPERTIES (${HDF5_HL_LIBSH_TARGET} SHARED " " " ")
-  target_link_libraries (${HDF5_HL_LIBSH_TARGET} ${HDF5_LIBSH_TARGET})
-  H5_SET_LIB_OPTIONS (${HDF5_HL_LIBSH_TARGET} ${HDF5_HL_LIB_NAME} SHARED ${HDF5_HL_PACKAGE_SOVERSION})
-  set_target_properties (${HDF5_HL_LIBSH_TARGET} PROPERTIES
-      FOLDER libraries/hl
-      COMPILE_DEFINITIONS "H5_BUILT_AS_DYNAMIC_LIB"
-      INTERFACE_INCLUDE_DIRECTORIES "$<INSTALL_INTERFACE:$<INSTALL_PREFIX>/include>"
-      INTERFACE_COMPILE_DEFINITIONS H5_BUILT_AS_DYNAMIC_LIB=1
+set_target_properties(vtkhdf5_hl_src
+  PROPERTIES
+    OUTPUT_NAME "${_vtk_add_module_output_name}")
+endif ()
+
+if (BUILD_SHARED_LIBS AND FALSE) # XXX(kitware): VTK handles shared/static flags.
+  add_library (${HDF5_HL_LIBSH_TARGET} SHARED ${HL_SOURCES} ${HL_HEADERS} ${HL_PRIVATE_HEADERS})
+  target_include_directories (${HDF5_HL_LIBSH_TARGET}
+      PRIVATE "${HDF5_SRC_INCLUDE_DIRS};${HDF5_SRC_BINARY_DIR};$<$<BOOL:${HDF5_ENABLE_PARALLEL}>:${MPI_C_INCLUDE_DIRS}>"
+      INTERFACE "$<INSTALL_INTERFACE:$<INSTALL_PREFIX>/include>"
   )
+  target_compile_options(${HDF5_HL_LIBSH_TARGET} PRIVATE "${HDF5_CMAKE_C_FLAGS}")
+  target_compile_definitions(${HDF5_HL_LIBSH_TARGET} PUBLIC "H5_BUILT_AS_DYNAMIC_LIB")
+  TARGET_C_PROPERTIES (${HDF5_HL_LIBSH_TARGET} SHARED)
+  target_link_libraries (${HDF5_HL_LIBSH_TARGET} PUBLIC ${HDF5_LIBSH_TARGET})
+  H5_SET_LIB_OPTIONS (${HDF5_HL_LIBSH_TARGET} ${HDF5_HL_LIB_NAME} SHARED "HL")
+  set_target_properties (${HDF5_HL_LIBSH_TARGET} PROPERTIES FOLDER libraries/hl)
   set_global_variable (HDF5_LIBRARIES_TO_EXPORT "${HDF5_LIBRARIES_TO_EXPORT};${HDF5_HL_LIBSH_TARGET}")
   set (install_targets ${install_targets} ${HDF5_HL_LIBSH_TARGET})
 endif ()
 
-# XXX(kitware): VTK handles installation.
-if (FALSE)
+if (FALSE) # XXX(kitware): VTK handles installation.
+#-----------------------------------------------------------------------------
+# Add Target to clang-format
+#-----------------------------------------------------------------------------
+if (HDF5_ENABLE_FORMATTERS)
+  if (BUILD_STATIC_LIBS)
+    clang_format (HDF5_HL_SRC_FORMAT ${HDF5_HL_LIB_TARGET})
+  else ()
+    clang_format (HDF5_HL_SRC_FORMAT ${HDF5_HL_LIBSH_TARGET})
+  endif ()
+endif ()
+
 #-----------------------------------------------------------------------------
 # Add file(s) to CMake Install
 #-----------------------------------------------------------------------------
@@ -109,7 +141,9 @@ if (HDF5_EXPORTED_TARGETS)
   if (BUILD_SHARED_LIBS)
     INSTALL_TARGET_PDB (${HDF5_HL_LIBSH_TARGET} ${HDF5_INSTALL_BIN_DIR} hllibraries)
   endif ()
-  INSTALL_TARGET_PDB (${HDF5_HL_LIB_TARGET} ${HDF5_INSTALL_BIN_DIR} hllibraries)
+  if (BUILD_STATIC_LIBS)
+    INSTALL_TARGET_PDB (${HDF5_HL_LIB_TARGET} ${HDF5_INSTALL_LIB_DIR} hllibraries)
+  endif ()
 
   install (
       TARGETS
@@ -122,5 +156,92 @@ if (HDF5_EXPORTED_TARGETS)
       FRAMEWORK DESTINATION ${HDF5_INSTALL_FWRK_DIR} COMPONENT hllibraries
       INCLUDES DESTINATION include
   )
+endif ()
+
+#-----------------------------------------------------------------------------
+# Create pkgconfig files
+#-----------------------------------------------------------------------------
+set (_PKG_CONFIG_PREFIX ${CMAKE_INSTALL_PREFIX})
+set (_PKG_CONFIG_EXEC_PREFIX \${prefix})
+set (_PKG_CONFIG_LIBDIR \${exec_prefix}/${HDF5_INSTALL_LIB_DIR})
+set (_PKG_CONFIG_INCLUDEDIR \${prefix}/${HDF5_INSTALL_INCLUDE_DIR})
+set (_PKG_CONFIG_LIBNAME "${HDF5_HL_LIB_NAME}")
+set (_PKG_CONFIG_VERSION "${HDF5_PACKAGE_VERSION}")
+set (PKG_CONFIG_LIBNAME "${HDF5_HL_LIB_NAME}")
+if (${HDF_CFG_NAME} MATCHES "Debug" OR ${HDF_CFG_NAME} MATCHES "Developer")
+  set (PKG_CONFIG_LIBNAME "${PKG_CONFIG_LIBNAME}${CMAKE_DEBUG_POSTFIX}")
+endif ()
+
+set (_PKG_CONFIG_LIBS_PRIVATE)
+
+if (BUILD_STATIC_LIBS)
+  set (_PKG_CONFIG_LIBS "${_PKG_CONFIG_LIBS} -l${PKG_CONFIG_LIBNAME}")
+endif ()
+if (BUILD_SHARED_LIBS)
+  set (_PKG_CONFIG_SH_LIBS "${_PKG_CONFIG_SH_LIBS} -l${PKG_CONFIG_LIBNAME}")
+endif ()
+
+set (_PKG_CONFIG_REQUIRES "${HDF5_LIB_NAME} = ${HDF5_PACKAGE_VERSION}")
+set (_PKG_CONFIG_REQUIRES_PRIVATE "${HDF5_LIB_NAME} = ${HDF5_PACKAGE_VERSION}")
+
+configure_file (
+    ${HDF_CONFIG_DIR}/libhdf5.pc.in
+    ${HDF5_BINARY_DIR}/CMakeFiles/${HDF5_HL_LIB_CORENAME}.pc
+    @ONLY
+)
+install (
+    FILES ${HDF5_BINARY_DIR}/CMakeFiles/${HDF5_HL_LIB_CORENAME}.pc
+    DESTINATION ${HDF5_INSTALL_LIB_DIR}/pkgconfig
+    COMPONENT hllibraries
+)
+
+if (NOT WIN32 AND NOT MINGW)
+  if (HDF5_ENABLE_PARALLEL AND MPI_C_FOUND)
+    set (_PKG_CONFIG_COMPILER ${MPI_C_COMPILER})
+  else ()
+    set (_PKG_CONFIG_COMPILER ${CMAKE_C_COMPILER})
+  endif ()
+  configure_file (
+      ${HDF_RESOURCES_DIR}/libh5cc.in
+      ${HDF5_BINARY_DIR}/CMakeFiles/h5hlcc
+      @ONLY
+  )
+  install (
+      FILES ${HDF5_BINARY_DIR}/CMakeFiles/h5hlcc
+      DESTINATION ${HDF5_INSTALL_BIN_DIR}
+      PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
+      COMPONENT hllibraries
+  )
+endif ()
+endif ()
+
+if (FALSE) # XXX(kitware): VTK doesn't care about Doxygen for hdf5
+#-----------------------------------------------------------------------------
+# Option to build documentation
+#-----------------------------------------------------------------------------
+if (DOXYGEN_FOUND)
+# This cmake function requires that the non-default doxyfile settings are provided with set (DOXYGEN_xxx) commands
+# In addition the doxyfile aliases @INCLUDE option is not supported and would need to be provided in a set (DOXYGEN_ALIASES) command.
+#  doxygen_add_docs (hdf5lib_doc
+##      ${HL_SOURCES} ${HL_HEADERS} ${HDF5_DOXYGEN_DIR}/dox
+#      ${DOXYGEN_INPUT_DIRECTORY}
+#      ALL
+#      WORKING_DIRECTORY ${HDF5_HL_SRC_DIR}
+#      COMMENT "Generating HDF5 HL library Source Documentation"
+#  )
+
+# This custom target and doxygen/configure work together
+  # Replace variables inside @@ with the current values
+  add_custom_target (hdf5hllib_doc ALL
+        COMMAND ${DOXYGEN_EXECUTABLE} ${HDF5_BINARY_DIR}/Doxyfile
+        WORKING_DIRECTORY ${HDF5_HL_SRC_DIR}
+        COMMENT "Generating HDF5 HL library Source API documentation with Doxygen"
+        VERBATIM )
+
+  if (NOT TARGET doxygen)
+    add_custom_target (doxygen)
+  endif ()
+
+  add_dependencies (doxygen hdf5hllib_doc)
 endif ()
 endif ()

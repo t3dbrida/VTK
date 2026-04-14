@@ -1,62 +1,65 @@
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
-#include "vtkVRMLImporter.h"
-#include "vtkRenderer.h"
+#include "vtkNew.h"
+#include "vtkOBJImporter.h"
+
+#include "vtkCamera.h"
 #include "vtkRenderWindow.h"
 #include "vtkRenderWindowInteractor.h"
-#include "vtkOBJImporter.h"
-#include "vtkTestUtilities.h"
-#include "vtkNew.h"
-#include "vtkJPEGWriter.h"
-#include "vtkPNGWriter.h"
-#include "vtkImageCanvasSource2D.h"
-#include "vtkImageCast.h"
-#include "vtkCamera.h"
+#include "vtkRenderer.h"
 
-#include "vtkTestUtilities.h"
-#include "vtkRegressionTestImage.h"
 #include "vtksys/SystemTools.hxx"
 
-#include <sstream>
 #include "vtkMapper.h"
+#include <iostream>
 
-int TestOBJImporter( int argc, char * argv [] )
+int TestOBJImporter(int argc, char* argv[])
 {
   // note that the executable name is stripped out already
   // so argc argv will not have it
 
   // Files for testing demonstrate updated functionality for OBJ import:
   //       polydata + textures + actor properties all get loaded.
-  if(argc < 2)
+  if (argc < 2)
   {
-    std::cerr<<"expected TestName File1.obj [File2.obj.mtl]  [texture1]  ... "<<std::endl;
-    return -1;
+    std::cout << "expected TestName File1.obj [File2.obj.mtl]  [texture1]  ... " << std::endl;
+    return EXIT_FAILURE;
   }
 
   std::string filenameOBJ(argv[1]);
 
-  std::string filenameMTL,texfile1;
+  std::string filenameMTL, texfile1;
 
-  if(argc >= 3)
+  if (argc >= 3 && strcmp(argv[2], "-D") != 0)
   {
     filenameMTL = argv[2];
+
+    if (argc >= 4 && strcmp(argv[3], "-D") != 0)
+    {
+      texfile1 = argv[3];
+      texfile1 = vtksys::SystemTools::GetFilenamePath(texfile1);
+    }
   }
 
-  if(argc >= 4)
+  if (!vtkOBJImporter::CanReadFile(filenameOBJ))
   {
-    texfile1 = argv[3];
+    std::cout << "CanReadFile(filename) unexpected failure" << std::endl;
+    return EXIT_FAILURE;
   }
-  std::string texture_path1 = vtksys::SystemTools::GetFilenamePath(texfile1);
 
   vtkNew<vtkOBJImporter> importer;
+  importer->SetFileName(filenameOBJ.data());
 
-  if(argc > 4)
+  if (!filenameMTL.empty())
   {
-    importer->DebugOn();
+    importer->SetFileNameMTL(filenameMTL.data());
   }
 
-  importer->SetFileName(filenameOBJ.data());
-  importer->SetFileNameMTL(filenameMTL.data());
-  importer->SetTexturePath(texture_path1.data());
+  if (!texfile1.empty())
+  {
+    importer->SetTexturePath(texfile1.data());
+  }
 
   vtkNew<vtkRenderer> ren;
   vtkNew<vtkRenderWindow> renWin;
@@ -65,29 +68,25 @@ int TestOBJImporter( int argc, char * argv [] )
   renWin->AddRenderer(ren);
   iren->SetRenderWindow(renWin);
   importer->SetRenderWindow(renWin);
-  importer->Update();
+  if (!importer->Update())
+  {
+    std::cerr << "ERROR: Importer failed to update\n";
+    return EXIT_FAILURE;
+  }
 
   ren->ResetCamera();
 
-  if( 1 > ren->GetActors()->GetNumberOfItems() )
+  if (ren->GetActors()->GetNumberOfItems() < 1 ||
+    importer->GetImportedActors()->GetNumberOfItems() < 1)
   {
-    std::cerr << "failed to get an actor created?!" << std::endl;
-    return -1;
+    std::cout << "failed to get an actor created?!" << std::endl;
+    return EXIT_FAILURE;
   }
 
-  ren->GetActiveCamera()->SetPosition(10,10,-10);
+  ren->GetActiveCamera()->SetPosition(10, 10, -10);
   ren->ResetCamera();
-  int retVal = vtkRegressionTestImage(renWin);
-  if( retVal == vtkRegressionTester::DO_INTERACTOR )
-  {
-    renWin->SetSize(800,600);
-    iren->Start();
-  }
+  renWin->SetSize(800, 600);
+  iren->Start();
 
-  // Some tests do not produce images... allow them to pass.
-  // But if we had an image, it must be within the threshold:
-  return (
-    retVal == vtkRegressionTester::PASSED ||
-    retVal == vtkRegressionTester::NOT_RUN) ?
-    0 : 1;
+  return (EXIT_SUCCESS);
 }

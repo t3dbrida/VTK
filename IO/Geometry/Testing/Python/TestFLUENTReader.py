@@ -1,32 +1,50 @@
 #!/usr/bin/env python
-import vtk
-from vtk.util.misc import vtkGetDataRoot
+from vtkmodules.vtkFiltersGeometry import vtkGeometryFilter
+from vtkmodules.vtkIOGeometry import vtkFLUENTReader
+from vtkmodules.vtkRenderingCore import (
+    vtkActor,
+    vtkCompositePolyDataMapper,
+    vtkRenderWindow,
+    vtkRenderWindowInteractor,
+    vtkRenderer,
+)
+import vtkmodules.vtkInteractionStyle
+import vtkmodules.vtkRenderingFreeType
+import vtkmodules.vtkRenderingOpenGL2
+from vtkmodules.vtkFiltersExtraction import vtkExtractBlock
+from vtkmodules.util.misc import vtkGetDataRoot
+
 VTK_DATA_ROOT = vtkGetDataRoot()
 
 # Read some Fluent UCD data in ASCII form
-r = vtk.vtkFLUENTReader()
-r.SetFileName("" + str(VTK_DATA_ROOT) + "/Data/room.cas")
+r = vtkFLUENTReader()
+r.SetFileName(VTK_DATA_ROOT + "/Data/room.cas")
 r.EnableAllCellArrays()
 
-g = vtk.vtkGeometryFilter()
-g.SetInputConnection(r.GetOutputPort())
+extractBlock = vtkExtractBlock()
+extractBlock.AddIndex(1)
+extractBlock.SetInputConnection(r.GetOutputPort())
 
-FluentMapper = vtk.vtkCompositePolyDataMapper2()
-FluentMapper.SetInputConnection(g.GetOutputPort())
-FluentMapper.SetScalarModeToUseCellFieldData()
-FluentMapper.SelectColorArray("PRESSURE")
-FluentMapper.SetScalarRange(-31, 44)
-FluentActor = vtk.vtkActor()
-FluentActor.SetMapper(FluentMapper)
+g = vtkGeometryFilter()
+g.SetInputConnection(extractBlock.GetOutputPort())
 
-ren1 = vtk.vtkRenderer()
-renWin = vtk.vtkRenderWindow()
+fluentMapper = vtkCompositePolyDataMapper()
+fluentMapper.SetInputConnection(g.GetOutputPort())
+fluentMapper.SetScalarModeToUseCellFieldData()
+fluentMapper.SelectColorArray("PRESSURE")
+fluentMapper.SetScalarRange(-31, 44)
+
+fluentActor = vtkActor()
+fluentActor.SetMapper(fluentMapper)
+
+ren1 = vtkRenderer()
+renWin = vtkRenderWindow()
 renWin.AddRenderer(ren1)
-iren = vtk.vtkRenderWindowInteractor()
+iren = vtkRenderWindowInteractor()
 iren.SetRenderWindow(renWin)
 # Add the actors to the renderer, set the background and size
 #
-ren1.AddActor(FluentActor)
+ren1.AddActor(fluentActor)
 renWin.SetSize(300,300)
 renWin.Render()
 ren1.ResetCamera()

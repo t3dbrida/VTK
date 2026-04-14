@@ -17,6 +17,60 @@ if(CMAKE_SYSTEM MATCHES "SunOS.*")
   endif()
 endif()
 
+if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  # Enable exceptions because VTK and third party code rely on C++ exceptions.
+  # Allow C++ to catch exceptions. Emscripten disables it by default due to high overhead.
+  # Generate helper functions to get stack traces for uncaught exceptions
+  set(VTK_REQUIRED_CXX_FLAGS "${VTK_REQUIRED_CXX_FLAGS} -fwasm-exceptions")
+  set(VTK_REQUIRED_C_FLAGS "${VTK_REQUIRED_C_FLAGS} -fwasm-exceptions")
+  set(VTK_REQUIRED_EXE_LINKER_FLAGS "${VTK_REQUIRED_EXE_LINKER_FLAGS} -fwasm-exceptions -sEXCEPTION_STACK_TRACES=1")
+  set(VTK_REQUIRED_SHARED_LINKER_FLAGS "${VTK_REQUIRED_SHARED_LINKER_FLAGS} -fwasm-exceptions -sEXCEPTION_STACK_TRACES=1")
+  set(VTK_REQUIRED_MODULE_LINKER_FLAGS "${VTK_REQUIRED_MODULE_LINKER_FLAGS} -fwasm-exceptions -sEXCEPTION_STACK_TRACES=1")
+  # Consumers linking to VTK also need to add the exception flag.
+  if (TARGET vtkplatform)
+    target_link_options(vtkplatform
+      INTERFACE
+        "-fwasm-exceptions"
+        "-sEXCEPTION_STACK_TRACES=1")
+  endif ()
+  if (VTK_WEBASSEMBLY_THREADS)
+    # Remove after https://github.com/WebAssembly/design/issues/1271 is closed
+    # Set Wno flag globally because even though the flag is added in vtkCompilerWarningFlags.cmake,
+    # wrapping tools do not link with `vtkplatform`
+    set(VTK_REQUIRED_CXX_FLAGS "${VTK_REQUIRED_CXX_FLAGS} -pthread -Wno-pthreads-mem-growth")
+    set(VTK_REQUIRED_C_FLAGS "${VTK_REQUIRED_C_FLAGS} -pthread -Wno-pthreads-mem-growth")
+    set(VTK_REQUIRED_EXE_LINKER_FLAGS "${VTK_REQUIRED_EXE_LINKER_FLAGS} -pthread")
+    set(VTK_REQUIRED_SHARED_LINKER_FLAGS "${VTK_REQUIRED_SHARED_LINKER_FLAGS} -pthread")
+    set(VTK_REQUIRED_MODULE_LINKER_FLAGS "${VTK_REQUIRED_MODULE_LINKER_FLAGS} -pthread")
+    # Consumers linking to VTK also need to add the pthread flag.
+    if (TARGET vtkplatform)
+      target_compile_options(vtkplatform
+        INTERFACE
+          "-pthread"
+          "-Wno-pthreads-mem-growth")
+      target_link_options(vtkplatform
+        INTERFACE
+          "-pthread")
+    endif ()
+  endif ()
+  if (VTK_WEBASSEMBLY_64_BIT)
+    set(VTK_REQUIRED_CXX_FLAGS "${VTK_REQUIRED_CXX_FLAGS} -sMEMORY64=1")
+    set(VTK_REQUIRED_C_FLAGS "${VTK_REQUIRED_C_FLAGS} -sMEMORY64=1")
+    set(VTK_REQUIRED_EXE_LINKER_FLAGS "${VTK_REQUIRED_EXE_LINKER_FLAGS} -sMEMORY64=1")
+    set(VTK_REQUIRED_SHARED_LINKER_FLAGS "${VTK_REQUIRED_SHARED_LINKER_FLAGS} -sMEMORY64=1")
+    set(VTK_REQUIRED_MODULE_LINKER_FLAGS "${VTK_REQUIRED_MODULE_LINKER_FLAGS} -sMEMORY64=1")
+    # Consumers linking to VTK also need to add the memory64 flag.
+    if (TARGET vtkplatform)
+      target_compile_options(vtkplatform
+        INTERFACE
+          "-sMEMORY64=1")
+      target_link_options(vtkplatform
+        INTERFACE
+          "-sMEMORY64=1")
+    endif ()
+  endif ()
+endif ()
+
 # A GCC compiler.
 if(CMAKE_COMPILER_IS_GNUCXX)
   if(VTK_USE_X)
@@ -36,7 +90,7 @@ if(CMAKE_COMPILER_IS_GNUCXX)
     set(VTK_REQUIRED_MODULE_LINKER_FLAGS "${VTK_REQUIRED_MODULE_LINKER_FLAGS} -mthreads")
   endif()
   if(CMAKE_SYSTEM MATCHES "SunOS.*")
-# Disable warnings that occur in X11 headers.
+    # Disable warnings that occur in X11 headers.
     if(DART_ROOT AND BUILD_TESTING)
       set(VTK_REQUIRED_CXX_FLAGS "${VTK_REQUIRED_CXX_FLAGS} -Wno-unknown-pragmas")
       set(VTK_REQUIRED_C_FLAGS "${VTK_REQUIRED_C_FLAGS} -Wno-unknown-pragmas")
@@ -82,8 +136,8 @@ endif()
 
 #if so, test whether -i_dynamic is needed
 if(_MAY_BE_INTEL_COMPILER)
-  include(${VTK_CMAKE_DIR}/TestNO_ICC_IDYNAMIC_NEEDED.cmake)
-  testno_icc_idynamic_needed(NO_ICC_IDYNAMIC_NEEDED ${VTK_CMAKE_DIR})
+  include(${CMAKE_CURRENT_LIST_DIR}/TestNO_ICC_IDYNAMIC_NEEDED.cmake)
+  testno_icc_idynamic_needed(NO_ICC_IDYNAMIC_NEEDED ${CMAKE_CURRENT_LIST_DIR})
   if(NO_ICC_IDYNAMIC_NEEDED)
     set(VTK_REQUIRED_CXX_FLAGS "${VTK_REQUIRED_CXX_FLAGS}")
   else()
@@ -111,23 +165,36 @@ if(MSVC)
   endif()
 endif()
 
-# Disable deprecation warnings for standard C and STL functions in VS2005
+# Disable deprecation warnings for standard C and STL functions in VS2015+
 # and later
-if(MSVC_VERSION EQUAL 1400 OR MSVC_VERSION GREATER 1400 OR MSVC10)
+if(MSVC)
   add_definitions(-D_CRT_SECURE_NO_DEPRECATE -D_CRT_NONSTDC_NO_DEPRECATE -D_CRT_SECURE_NO_WARNINGS)
   add_definitions(-D_SCL_SECURE_NO_DEPRECATE -D_SCL_SECURE_NO_WARNINGS)
 endif()
 
-# Enable /MP flag for Visual Studio 2008 and greator
-if(MSVC_VERSION GREATER 1400)
+# Enable /MP flag for Visual Studio
+if(MSVC)
   set(CMAKE_CXX_MP_FLAG OFF CACHE BOOL "Build with /MP flag enabled")
   set(PROCESSOR_COUNT "$ENV{NUMBER_OF_PROCESSORS}")
-  set(CMAKE_CXX_MP_NUM_PROCESSORS CACHE ${PROCESSOR_COUNT} "The maximum number of processes for the /MP flag")
+  set(CMAKE_CXX_MP_NUM_PROCESSORS ${PROCESSOR_COUNT} CACHE STRING "The maximum number of processes for the /MP flag")
   if (CMAKE_CXX_MP_FLAG)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP${CMAKE_CXX_MP_NUM_PROCESSORS}")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /MP${CMAKE_CXX_MP_NUM_PROCESSORS}")
   endif ()
 endif()
+
+# Enable /bigobj for MSVC to allow larger symbol tables
+if(MSVC)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /bigobj")
+endif()
+
+# Use /utf-8 so that MSVC uses utf-8 in source files and object files
+if(MSVC)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /utf-8")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /utf-8")
+endif()
+
 #-----------------------------------------------------------------------------
 # Add compiler flags VTK needs to work on this platform.  This must be
 # done after the call to CMAKE_EXPORT_BUILD_SETTINGS, but before any

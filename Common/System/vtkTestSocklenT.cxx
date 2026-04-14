@@ -1,14 +1,20 @@
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include <cstdio>
 #include <cstdlib>
 #if !defined(_WIN32) || defined(__CYGWIN__)
-# include <sys/types.h>
-# include <sys/socket.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 #endif
 
 int main()
 {
   /* Test whether getsockname takes socklen_t.  */
-  if(getsockname(0, 0, (socklen_t*)0)) return 0;
-  if(sizeof (socklen_t)) return 0;
+  struct sockaddr addr;
+  socklen_t length = 0;
+  if (getsockname(0, &addr, &length))
+    return 0;
+  if (sizeof(socklen_t))
+    return 0;
   return 0;
 }

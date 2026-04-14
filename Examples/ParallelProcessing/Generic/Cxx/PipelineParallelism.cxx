@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    PipelineParallelism.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 // This example demonstrates how to write a pipeline parallel application
 // with VTK. It creates two parts of a pipeline on a two different
 // processors and connects them with ports. The two processes can then
@@ -27,7 +15,9 @@
 
 #include "PipelineParallelism.h"
 
-int main( int argc, char* argv[] )
+#include <iostream>
+
+int main(int argc, char* argv[])
 {
 
   // Note that this will create a vtkMPIController if MPI
@@ -47,7 +37,7 @@ int main( int argc, char* argv[] )
 
   if (numProcs != 2)
   {
-    cerr << "This example requires two processes." << endl;
+    std::cerr << "This example requires two processes." << endl;
     controller->Finalize();
     controller->Delete();
     return 1;
@@ -64,12 +54,3 @@ int main( int argc, char* argv[] )
 
   return 0;
 }
-
-
-
-
-
-
-
-
-

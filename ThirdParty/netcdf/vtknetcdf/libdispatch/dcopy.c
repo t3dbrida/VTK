@@ -1,20 +1,44 @@
-/* Copyright 2010 University Corporation for Atmospheric
-   Research/Unidata. See COPYRIGHT file for more info.
-
-   This file has the var and att copy functions.
-
-   "$Id: copy.c,v 1.1 2010/06/01 15:46:49 ed Exp $"
+/**
+ * @file
+ * Copyright 2018 University Corporation for Atmospheric
+ * Research/Unidata. See COPYRIGHT file for more info.
+ *
+ * This file has the var and att copy functions.
+ *
+ * @author Dennis Heimbigner
 */
-
+#include "config.h"
 #include "ncdispatch.h"
 #include "nc_logging.h"
+#include "nclist.h"
+
+static int NC_find_equal_type(int ncid1, nc_type xtype1, int ncid2, nc_type *xtype2);
 
 #ifdef USE_NETCDF4
-/* Compare two netcdf types for equality. Must have the ncids as well,
-   to find user-defined types. */
+
+static int searchgroup(int ncid1, int tid1, int grp, int* tid2);
+static int searchgrouptree(int ncid1, int tid1, int grp, int* tid2);
+
+#endif /*USE_NETCDF4*/
+
+
+#ifdef USE_NETCDF4
+/**
+ * @internal Compare two netcdf types for equality. Must have the
+ * ncids as well, to find user-defined types.
+ *
+ * @param ncid1 File ID.
+ * @param typeid1 Type ID.
+ * @param ncid2 File ID.
+ * @param typeid2 Type ID.
+ * @param equalp Pointer that gets 1 of the types are equal, 0
+ * otherwise.
+ *
+ * @return ::NC_NOERR No error.
+ * @author Ed Hartnett
+*/
 static int
-NC_compare_nc_types(int ncid1, int typeid1, int ncid2, int typeid2,
-		    int *equalp)
+NC_compare_nc_types(int ncid1, int typeid1, int ncid2, int typeid2, int *equalp)
 {
    int ret = NC_NOERR;
 
@@ -35,7 +59,8 @@ NC_compare_nc_types(int ncid1, int typeid1, int ncid2, int typeid2,
    }
    else
    {
-      int i, ret, equal1;
+      size_t i;
+      int ret, equal1;
       char name1[NC_MAX_NAME];
       char name2[NC_MAX_NAME];
       size_t size1, size2;
@@ -59,7 +84,7 @@ NC_compare_nc_types(int ncid1, int typeid1, int ncid2, int typeid2,
 	 return ret;
 
       /* Check the obvious. */
-      if(size1 != size2 || class1 != class2 || strcmp(name1,name2))
+      if(size1 != size2 || class1 != class2 || strcmp(name1,name2) != 0)
 	 return NC_NOERR;
 
       /* Check user-defined types in detail. */
@@ -91,7 +116,7 @@ NC_compare_nc_types(int ncid1, int typeid1, int ncid2, int typeid2,
 					     value1)) ||
 		   (ret = nc_inq_enum_member(ncid2, typeid2, i, name2,
 					     value2)) ||
-		   strcmp(name1, name2) || memcmp(value1, value2, size1))
+		   strcmp(name1, name2) != 0 || memcmp(value1, value2, size1) != 0)
 	       {
 		  free(value1);
 		  free(value2);
@@ -137,72 +162,68 @@ NC_compare_nc_types(int ncid1, int typeid1, int ncid2, int typeid2,
    return ret;
 }
 
-/* Recursively hunt for a netCDF type id. (Code from nc4internal.c);
-   Return matching typeid or 0 if not found. */
+/**
+ * @internal Recursively hunt for a netCDF type id, tid2, that is "equal" to tid1.
+ * Question is: what search order do we use? Ncgen uses root group tree in pre-order.
+ * But NC4_inq_typeid uses these rules:
+ * 1. ncid2
+ * 2. parents of ncid2 (up the tree to root)
+ * 3. root group tree in pre-order.
+ * We will leave ncgen for another day and use the nc_inq_typeid rule.
+ *
+ * Return matching typeid or 0 if not found.
+ *
+ * @param ncid1 File ID.
+ * @param tid1 Type ID.
+ * @param ncid2 File ID.
+ * @param tid2 Pointer that gets type ID of equal type.
+ *
+ * @return ::NC_NOERR No error.
+ * @author Ed Hartnett, Dennis Heimbigner
+*/
 static int
 NC_rec_find_nc_type(int ncid1, nc_type tid1, int ncid2, nc_type* tid2)
 {
-   int i,ret = NC_NOERR;
-   int nids;
-   int* ids = NULL;
+    int ret = NC_NOERR;
+    int parent;
 
-   /* Get all types in grp ncid2 */
-   if(tid2)
-      *tid2 = 0;
-   if ((ret = nc_inq_typeids(ncid2, &nids, NULL)))
-      return ret;
-   if (nids)
-   {
-      if (!(ids = (int *)malloc((size_t)nids * sizeof(int))))
-	 return NC_ENOMEM;
-      if ((ret = nc_inq_typeids(ncid2, &nids, ids)))
-	 return ret;
-      for(i = 0; i < nids; i++)
-      {
-	 int equal = 0;
-	 if ((ret = NC_compare_nc_types(ncid1, tid1, ncid2, ids[i], &equal)))
-	    return ret;
-	 if(equal)
-	 {
-	    if(tid2)
-	       *tid2 = ids[i];
-	    free(ids);
-	    return NC_NOERR;
-	 }
-      }
-      free(ids);
+    if((ret = searchgroup(ncid1,tid1,ncid2,tid2)))
+        goto done;
+    if(*tid2 != 0)
+        goto done; /* found */
+
+   /* Look in the parents of ncid2 upto the root */
+   switch (ret = nc_inq_grp_parent(ncid2,&parent)) {
+   case NC_NOERR:
+	/* Recurse up using parent grp */
+        ret = NC_rec_find_nc_type(ncid1, tid1, parent, tid2);
+	break;
+   case NC_ENOGRP:
+	/* do the breadth-first pre-order search of the whole tree */
+	/* ncid2 should be root group */
+	ret = searchgrouptree(ncid1,tid1,ncid2,tid2);
+	break;
+   default: break;
    }
 
-   /* recurse */
-   if ((ret = nc_inq_grps(ncid1, &nids, NULL)))
-      return ret;
-   if (nids)
-   {
-      if (!(ids = (int *)malloc((size_t)nids * sizeof(int))))
-	 return NC_ENOMEM;
-      if ((ret = nc_inq_grps(ncid1, &nids, ids)))
-      {
-	 free(ids);
-	 return ret;
-      }
-      for (i = 0; i < nids; i++)
-      {
-	 ret = NC_rec_find_nc_type(ncid1, tid1, ids[i], tid2);
-	 if (ret && ret != NC_EBADTYPE)
-	    break;
-	 if (tid2 && *tid2 != 0) /* found */
-	 {
-	    free(ids);
-	    return NC_NOERR;
-	 }
-      }
-      free(ids);
-   }
-   return NC_EBADTYPE; /* not found */
+done:
+    return ret;
 }
 
-/* Given a type in one file, find its equal (if any) in another
- * file. It sounds so simple, but it's a real pain! */
+#endif /* USE_NETCDF4 */
+
+/**
+ * @internal Given a type in one file, find its equal (if any) in
+ * another file. It sounds so simple, but it's a real pain!
+ *
+ * @param ncid1 File ID.
+ * @param xtype1 Type ID.
+ * @param ncid2 File ID.
+ * @param xtype2 Pointer that gets type ID of equal type.
+ *
+ * @return ::NC_NOERR No error.
+ * @author Ed Hartnett
+*/
 static int
 NC_find_equal_type(int ncid1, nc_type xtype1, int ncid2, nc_type *xtype2)
 {
@@ -220,34 +241,42 @@ NC_find_equal_type(int ncid1, nc_type xtype1, int ncid2, nc_type *xtype2)
       return NC_NOERR;
    }
 
+#ifdef USE_NETCDF4
    /* Recursively search group ncid2 and its children
       to find a type that is equal (using compare_type)
       to xtype1. */
    ret = NC_rec_find_nc_type(ncid1, xtype1 , ncid2, xtype2);
+#endif /* USE_NETCDF4 */
    return ret;
 }
 
-#endif /* USE_NETCDF4 */
-
-/* This will copy a variable that is an array of primitive type and
-   its attributes from one file to another, assuming dimensions in the
-   output file are already defined and have same dimension IDs and
-   length.  However it doesn't work for copying netCDF-4 variables of
-   type string or a user-defined type.
-
-   This function works even if the files are different formats,
-   (for example, one netcdf classic, the other netcdf-4).
-
-   If you're copying into a classic-model file, from a netcdf-4 file,
-   you must be copying a variable of one of the six classic-model
-   types, and similarly for the attributes.
-
-   For large netCDF-3 files, this can be a very inefficient way to
-   copy data from one file to another, because adding a new variable
-   to the target file may require more space in the header and thus
-   result in moving data for other variables in the target file. This
-   is not a problem for netCDF-4 files, which support efficient
-   addition of variables without moving data for other variables.
+/**
+ * This will copy a variable that is an array of primitive type and
+ * its attributes from one file to another, assuming dimensions in the
+ * output file are already defined and have same dimension IDs and
+ * length.  However it doesn't work for copying netCDF-4 variables of
+ * type string or a user-defined type.
+ *
+ * This function works even if the files are different formats,
+ * (for example, one netcdf classic, the other netcdf-4).
+ *
+ * If you're copying into a classic-model file, from a netcdf-4 file,
+ * you must be copying a variable of one of the six classic-model
+ * types, and similarly for the attributes.
+ *
+ * For large netCDF-3 files, this can be a very inefficient way to
+ * copy data from one file to another, because adding a new variable
+ * to the target file may require more space in the header and thus
+ * result in moving data for other variables in the target file. This
+ * is not a problem for netCDF-4 files, which support efficient
+ * addition of variables without moving data for other variables.
+ *
+ * @param ncid_in File ID to copy from.
+ * @param varid_in Variable ID to copy.
+ * @param ncid_out File ID to copy to.
+ *
+ * @return ::NC_NOERR No error.
+ * @author Glenn Davis, Ed Hartnett, Dennis Heimbigner
 */
 int
 nc_copy_var(int ncid_in, int varid_in, int ncid_out)
@@ -255,7 +284,9 @@ nc_copy_var(int ncid_in, int varid_in, int ncid_out)
    char name[NC_MAX_NAME + 1];
    char att_name[NC_MAX_NAME + 1];
    nc_type xtype;
-   int ndims, dimids_in[NC_MAX_VAR_DIMS], dimids_out[NC_MAX_VAR_DIMS], natts, real_ndims;
+   int ndims; 
+   int dimids_in[NC_MAX_VAR_DIMS], dimids_out[NC_MAX_VAR_DIMS];
+   int natts, real_ndims;
    int varid_out;
    int a, d;
    void *data = NULL;
@@ -267,14 +298,14 @@ nc_copy_var(int ncid_in, int varid_in, int ncid_out)
    int src_format, dest_format;
    char type_name[NC_MAX_NAME+1];
    char dimname_in[NC_MAX_NAME + 1];
-   int i;
+   size_t i;
 
    /* Learn about this var. */
    if ((retval = nc_inq_var(ncid_in, varid_in, name, &xtype,
                             &ndims, dimids_in, &natts)))
       return retval;
    /* find corresponding dimids in the output file */
-   for(i = 0; i < ndims; i++) {
+   for(i = 0; i < (size_t)ndims; i++) {
       dimids_out[i] = dimids_in[i];
       if ((retval = nc_inq_dimname(ncid_in, dimids_in[i], dimname_in)))
          return retval;
@@ -282,10 +313,8 @@ nc_copy_var(int ncid_in, int varid_in, int ncid_out)
          return retval;
    }
 
-#ifdef USE_NETCDF4
    LOG((2, "nc_copy_var: ncid_in 0x%x varid_in %d ncid_out 0x%x",
         ncid_in, varid_in, ncid_out));
-#endif
 
    /* Make sure we are not trying to write into a netcdf-3 file
     * anything that won't fit in netcdf-3. */
@@ -302,9 +331,7 @@ nc_copy_var(int ncid_in, int varid_in, int ncid_out)
    /* Later on, we will need to know the size of this type. */
    if ((retval = nc_inq_type(ncid_in, xtype, type_name, &type_size)))
       return retval;
-#ifdef USE_NETCDF4
    LOG((3, "type %s has size %d", type_name, type_size));
-#endif
 
    /* Switch back to define mode, and create the output var. */
    retval = nc_redef(ncid_out);
@@ -354,9 +381,7 @@ nc_copy_var(int ncid_in, int varid_in, int ncid_out)
    {
       if ((retval = nc_inq_dimlen(ncid_in, dimids_in[d], &dimlen[d])))
          BAIL(retval);
-#ifdef USE_NETCDF4
       LOG((4, "nc_copy_var: there are %d data", dimlen[d]));
-#endif
    }
 
    /* If this is really a scalar, then set the dimlen to 1. */
@@ -477,6 +502,19 @@ nc_copy_var(int ncid_in, int varid_in, int ncid_out)
    return retval;
 }
 
+/**
+ * Copy an attribute from one open file to another. This is called by
+ * nc_copy_att().
+ *
+ * @param ncid_in File ID to copy from.
+ * @param varid_in Variable ID to copy from.
+ * @param name Name of attribute to copy.
+ * @param ncid_out File ID to copy to.
+ * @param varid_out Variable ID to copy to.
+ *
+ * @return ::NC_NOERR No error.
+ * @author Glenn Davis, Ed Hartnett, Dennis Heimbigner
+*/
 static int
 NC_copy_att(int ncid_in, int varid_in, const char *name,
 	    int ncid_out, int varid_out)
@@ -493,99 +531,57 @@ NC_copy_att(int ncid_in, int varid_in, const char *name,
    if ((res = nc_inq_att(ncid_in, varid_in, name, &xtype, &len)))
       return res;
 
-   if (xtype < NC_STRING)
    {
-      /* Handle non-string atomic types. */
-      if (len)
-      {
-         size_t size = NC_atomictypelen(xtype);
+	/* Copy arbitrary attributes. */
+        int class;
+        size_t size = 0;
+        nc_type xtype_out = NC_NAT;
 
-         assert(size > 0);
-	 if (!(data = malloc(len * size)))
-	    return NC_ENOMEM;
+        if(xtype <= NC_MAX_ATOMIC_TYPE) {
+	    xtype_out = xtype;
+	    if((res = nc_inq_type(ncid_out,xtype_out,NULL,&size))) return res;
+	} else { /* User defined type */
+            /* Find out if there is an equal type in the output file. */
+            /* Note: original code used a libsrc4 specific internal function
+   	       which we had to "duplicate" here */
+            if ((res = NC_find_equal_type(ncid_in, xtype, ncid_out, &xtype_out)))
+  	        return res;
+            if (xtype_out) {
+		/* We found an equal type! */
+		if ((res = nc_inq_user_type(ncid_in, xtype, NULL, &size, NULL, NULL, &class)))
+		    return res;
+	    }
+	}
+        if((data = malloc(size * len))==NULL) {return NC_ENOMEM;}
+        res = nc_get_att(ncid_in, varid_in, name, data);
+	if(!res)
+	    res = nc_put_att(ncid_out, varid_out, name, xtype_out, len, data);
+	(void)nc_reclaim_data_all(ncid_out,xtype_out,data,len);
       }
 
-      res = nc_get_att(ncid_in, varid_in, name, data);
-      if (!res)
-	 res = nc_put_att(ncid_out, varid_out, name, xtype,
-			  len, data);
-      if (len)
-	 free(data);
-   }
-#ifdef USE_NETCDF4
-   else if (xtype == NC_STRING)
-   {
-      /* Copy string attributes. */
-      char **str_data;
-      if (!(str_data = malloc(sizeof(char *) * len)))
-	 return NC_ENOMEM;
-      res = nc_get_att_string(ncid_in, varid_in, name, str_data);
-      if (!res)
-	 res = nc_put_att_string(ncid_out, varid_out, name, len,
-				 (const char **)str_data);
-      nc_free_string(len, str_data);
-      free(str_data);
-   }
-   else
-   {
-      /* Copy user-defined type attributes. */
-      int class;
-      size_t size;
-      void *data;
-      nc_type xtype_out = NC_NAT;
-
-      /* Find out if there is an equal type in the output file. */
-      /* Note: original code used a libsrc4 specific internal function
-	 which we had to "duplicate" here */
-      if ((res = NC_find_equal_type(ncid_in, xtype, ncid_out, &xtype_out)))
-	 return res;
-      if (xtype_out)
-      {
-	 /* We found an equal type! */
-	 if ((res = nc_inq_user_type(ncid_in, xtype, NULL, &size,
-				    NULL, NULL, &class)))
-	    return res;
-	 if (class == NC_VLEN) /* VLENs are different... */
-	 {
-	    nc_vlen_t *vldata;
-	    int i;
-	    if (!(vldata = malloc(sizeof(nc_vlen_t) * len)))
-	       return NC_ENOMEM;
-	    if ((res = nc_get_att(ncid_in, varid_in, name, vldata)))
-	       return res;
-	    if ((res = nc_put_att(ncid_out, varid_out, name, xtype_out,
-				 len, vldata)))
-	       return res;
-	    for (i = 0; i < len; i++)
-	       if((res = nc_free_vlen(&vldata[i])))
-		  return res;
-	    free(vldata);
-         }
-	 else /* not VLEN */
-	 {
-	    if (!(data = malloc(size * len)))
-	       return NC_ENOMEM;
-	    res = nc_get_att(ncid_in, varid_in, name, data);
-	    if (!res)
-	       res = nc_put_att(ncid_out, varid_out, name, xtype_out, len, data);
-	    free(data);
-         }
-      }
-   }
-#endif /*!USE_NETCDF4*/
    return res;
 }
 
-/* Copy an attribute from one open file to another.
-
-   Special programming challenge: this function must work even if one
-   of the other of the files is a netcdf version 1.0 file (i.e. not
-   HDF5). So only use top level netcdf api functions.
-
-   From the netcdf-3 docs: The output netCDF dataset should be in
-   define mode if the attribute to be copied does not already exist
-   for the target variable, or if it would cause an existing target
-   attribute to grow.
+/**
+ * Copy an attribute from one open file to another.
+ *
+ * Special programming challenge: this function must work even if one
+ * of the other of the files is a netcdf version 1.0 file (i.e. not
+ * HDF5). So only use top level netcdf api functions.
+ *
+ * From the netcdf-3 docs: The output netCDF dataset should be in
+ * define mode if the attribute to be copied does not already exist
+ * for the target variable, or if it would cause an existing target
+ * attribute to grow.
+ *
+ * @param ncid_in File ID to copy from.
+ * @param varid_in Variable ID to copy from.
+ * @param name Name of attribute to copy.
+ * @param ncid_out File ID to copy to.
+ * @param varid_out Variable ID to copy to.
+ *
+ * @return ::NC_NOERR No error.
+ * @author Glenn Davis, Ed Hartnett, Dennis Heimbigner
 */
 int
 nc_copy_att(int ncid_in, int varid_in, const char *name,
@@ -652,3 +648,94 @@ nc_copy_att(int ncid_in, int varid_in, const char *name,
 
    return NC_NOERR;
 }
+
+#ifdef USE_NETCDF4
+
+/* Helper function for NC_rec_find_nc_type();
+   search a specified group for matching type.
+*/
+static int
+searchgroup(int ncid1, int tid1, int grp, int* tid2)
+{
+    int i,ret = NC_NOERR;
+    int nids;
+    int* ids = NULL;
+
+    /* Get all types in grp */
+    if(tid2)
+	*tid2 = 0;
+    if ((ret = nc_inq_typeids(grp, &nids, NULL)))
+	goto done;
+    if (nids)
+    {
+	if (!(ids = (int *)malloc((size_t)nids * sizeof(int))))
+	    {ret = NC_ENOMEM; goto done;}
+	if ((ret = nc_inq_typeids(grp, &nids, ids)))
+	    goto done;
+	for(i = 0; i < nids; i++)
+        {
+	    int equal = 0;
+	    if ((ret = NC_compare_nc_types(ncid1, tid1, grp, ids[i], &equal)))
+	        goto done;
+	    if(equal)
+	    {
+		if(tid2)
+		    *tid2 = ids[i];
+		goto done;
+	    }
+	}
+    }
+
+done:
+    nullfree(ids);
+    return ret;
+}
+
+/* Helper function for NC_rec_find_nc_type();
+   search a tree of groups for a matching type
+   using a breadth first queue
+*/
+static int
+searchgrouptree(int ncid1, int tid1, int grp, int* tid2)
+{
+    int i,ret = NC_NOERR;
+    int nids;
+    int* ids = NULL;
+    NClist* queue = nclistnew();
+    int gid;
+    uintptr_t id;
+
+    id = (uintptr_t)grp;
+    nclistpush(queue,(void*)id); /* prime the queue */
+    while(nclistlength(queue) > 0) {
+        id = (uintptr_t)nclistremove(queue,0);
+	gid  = (int)id;
+        if((ret = searchgroup(ncid1,tid1,gid,tid2)))
+            goto done;
+        if(*tid2 != 0)
+            goto done; /*we found it*/
+	/* Get subgroups of gid and push onto front of the queue (for breadth first) */
+        if((ret = nc_inq_grps(gid,&nids,NULL)))
+            goto done;
+        if (!(ids = (int *)malloc((size_t)nids * sizeof(int))))
+	    {ret = NC_ENOMEM; goto done;}
+        if ((ret = nc_inq_grps(gid, &nids, ids)))
+            goto done;
+	/* push onto the end of the queue */
+        for(i=0;i<nids;i++) {
+	    id = (uintptr_t)ids[i];
+	    nclistpush(queue,(void*)id);
+	}
+	free(ids); ids = NULL;
+    }
+    /* Not found */
+    ret = NC_EBADTYPE;
+
+done:
+    nclistfree(queue);
+    nullfree(ids);
+    return ret;
+}
+
+#endif /* USE_NETCDF4 */
+

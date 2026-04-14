@@ -1,31 +1,14 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    QVTKOpenGLNativeWidget.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class QVTKOpenGLNativeWidget
  * @brief QOpenGLWidget subclass to house a vtkGenericOpenGLRenderWindow in a Qt
  * application.
  *
  * QVTKOpenGLNativeWidget extends QOpenGLWidget to make it work with a
- * vtkGenericOpenGLRenderWindow. This is akin to QVTKWidget except it uses Qt to create and
- * manage the OpenGL context using QOpenGLWidget (added in Qt 5.4).
+ * vtkGenericOpenGLRenderWindow.
  *
- * While QVTKOpenGLNativeWidget is intended to be a replacement for QVTKWidget when
- * using Qt 5, there are a few difference between QVTKOpenGLNativeWidget and
- * QVTKWidget.
- *
- * Unlike QVTKWidget, QVTKOpenGLNativeWidget only works with vtkGenericOpenGLRenderWindow.
+ * Please note that QVTKOpenGLNativeWidget only works with vtkGenericOpenGLRenderWindow.
  * This is necessary since QOpenGLWidget wants to take over the window management as
  * well as the OpenGL context creation. Getting that to work reliably with
  * vtkXRenderWindow or vtkWin32RenderWindow (and other platform specific
@@ -97,94 +80,135 @@
  * `QVTKOpenGLNativeWidget::renderVTK`.
  *
  * @section Caveats
- * QVTKOpenGLNativeWidget only supports **OpenGL2** rendering backend.
  * QVTKOpenGLNativeWidget does not support stereo,
- * please use QVTKOpenGLWidget if you need support for stereo rendering
+ * please use QVTKOpenGLStereoWidget if you need support for stereo rendering
  *
  * QVTKOpenGLNativeWidget is targeted for Qt version 5.5 and above.
+ *
+ * @sa QVTKOpenGLStereoWidget QVTKRenderWidget
  *
  */
 #ifndef QVTKOpenGLNativeWidget_h
 #define QVTKOpenGLNativeWidget_h
 
 #include <QOpenGLWidget>
+#include <QScopedPointer> // for QScopedPointer.
 
 #include "QVTKInteractor.h"        // needed for QVTKInteractor
 #include "vtkGUISupportQtModule.h" // for export macro
 #include "vtkNew.h"                // needed for vtkNew
 #include "vtkSmartPointer.h"       // needed for vtkSmartPointer
 
-class QOpenGLDebugLogger;
-class QOpenGLFramebufferObject;
+VTK_ABI_NAMESPACE_BEGIN
 class QVTKInteractor;
 class QVTKInteractorAdapter;
-class QVTKOpenGLNativeWidgetObserver;
+class QVTKRenderWindowAdapter;
 class vtkGenericOpenGLRenderWindow;
 
 class VTKGUISUPPORTQT_EXPORT QVTKOpenGLNativeWidget : public QOpenGLWidget
 {
   Q_OBJECT
   typedef QOpenGLWidget Superclass;
+
 public:
-  QVTKOpenGLNativeWidget(QWidget* parent = Q_NULLPTR, Qt::WindowFlags f = Qt::WindowFlags());
+  QVTKOpenGLNativeWidget(QWidget* parent = nullptr, Qt::WindowFlags f = Qt::WindowFlags());
+  QVTKOpenGLNativeWidget(vtkGenericOpenGLRenderWindow* window, QWidget* parent = nullptr,
+    Qt::WindowFlags f = Qt::WindowFlags());
   ~QVTKOpenGLNativeWidget() override;
 
-  //@{
+  ///@{
   /**
-   * Get/Set the currently used vtkGenericOpenGLRenderWindow.
-   * GetRenderWindow() creates and returns a new vtkGenericOpenGLRenderWindow
-   * if it is not already provided.
+   * Set a render window to use. It a render window was already set, it will be
+   * finalized and all of its OpenGL resource released. If the \c win is
+   * non-null and it has no interactor set, then a QVTKInteractor instance will
+   * be created as set on the render window as the interactor.
    */
-  void SetRenderWindow(vtkGenericOpenGLRenderWindow* win);
-  void SetRenderWindow(vtkRenderWindow* win);
-  virtual vtkRenderWindow* GetRenderWindow();
-  //@}
+  void setRenderWindow(vtkGenericOpenGLRenderWindow* win);
+  void setRenderWindow(vtkRenderWindow* win);
+  ///@}
 
   /**
-   * Get the QEvent to VTK events translator.
+   * Returns the render window that is being shown in this widget.
    */
-  virtual QVTKInteractorAdapter* GetInteractorAdapter() { return this->InteractorAdapter; }
+  vtkRenderWindow* renderWindow() const;
 
   /**
    * Get the QVTKInteractor that was either created by default or set by the user.
    */
-  virtual QVTKInteractor* GetInteractor();
+  QVTKInteractor* interactor() const;
 
   /**
-   * Sets up vtkRenderWindow ivars using QSurfaceFormat.
+   * @copydoc QVTKRenderWindowAdapter::defaultFormat(bool)
    */
-  static void copyFromFormat(const QSurfaceFormat& format, vtkRenderWindow* win);
+  static QSurfaceFormat defaultFormat(bool stereo_capable = false);
 
+  ///@{
   /**
-   * Using the vtkRenderWindow, setup QSurfaceFormat.
+   * Enable or disable support for touch event processing. When enabled, this widget
+   * will process Qt::TouchBegin/TouchUpdate/TouchEnd event, otherwise, these events
+   * will be ignored. Default is true.
    */
-  static void copyToFormat(vtkRenderWindow* win, QSurfaceFormat& format);
+  void setEnableTouchEventProcessing(bool enable);
+  bool enableTouchEventProcesing() const { return this->EnableTouchEventProcessing; }
+  ///@}
 
+  ///@{
   /**
-   * Returns a typical QSurfaceFormat suitable for most applications using
-   * QVTKOpenGLNativeWidget. Note that this is not the QSurfaceFormat that gets used
-   * if none is specified. That is set using `QSurfaceFormat::setDefaultFormat`.
+   * Enable or disable support for HiDPI displays. When enabled, this enabled
+   * DPI scaling i.e. `vtkWindow::SetDPI` will be called with a DPI value scaled
+   * by the device pixel ratio every time the widget is resized. The unscaled
+   * DPI value can be specified by using `setUnscaledDPI`.
    */
-  static QSurfaceFormat defaultFormat();
+  void setEnableHiDPI(bool enable);
+  bool enableHiDPI() const { return this->EnableHiDPI; }
+  ///@}
 
+  ///@{
   /**
-   * Enable or disable support for HiDPI displays.
+   * Set/Get unscaled DPI value. Defaults to 72, which is also the default value
+   * in vtkWindow.
    */
-  virtual void setEnableHiDPI(bool enable);
-  virtual bool enableHiDPI() { return this->EnableHiDPI; }
+  void setUnscaledDPI(int);
+  int unscaledDPI() const { return this->UnscaledDPI; }
+  ///@}
 
+  ///@{
   /**
-   * Set the cursor on this widget.
+   * Set/Get a custom device pixel ratio to use to map Qt sizes to VTK (or
+   * OpenGL) sizes. Thus, when the QWidget is resized, it called
+   * `vtkRenderWindow::SetSize` on the internal vtkRenderWindow after
+   * multiplying the QWidget's size by this scale factor.
+   *
+   * By default, this is set to 0. Which means that `devicePixelRatio` obtained
+   * from Qt will be used. Set this to a number greater than 0 to override this
+   * behaviour and use the custom scale factor instead.
+   *
+   * `effectiveDevicePixelRatio` can be used to obtain the device-pixel-ratio
+   * that will be used given the value for customDevicePixelRatio.
    */
-  void setQVTKCursor(const QCursor &cursor);
+  void setCustomDevicePixelRatio(double cdpr);
+  double customDevicePixelRatio() const { return this->CustomDevicePixelRatio; }
+  double effectiveDevicePixelRatio() const;
+  ///@}
 
-signals:
+  ///@{
   /**
-   * This signal will be emitted whenever a mouse event occurs within the QVTK window.
+   * Set/get the default cursor to use for this widget.
    */
-  void mouseEvent(QMouseEvent* event);
+  void setDefaultCursor(const QCursor& cursor);
+  const QCursor& defaultCursor() const { return this->DefaultCursor; }
+  ///@}
 
-protected slots:
+  ///@{
+  /**
+   * Convenience method by symmetry with QVTKOpenGLStereoWidget.
+   * Internally just calls QWidget::setCursor / QWidget::cursor.
+   */
+  void setCursorCustom(const QCursor& cursor) { this->setCursor(cursor); }
+  QCursor cursorCustom() const { return this->cursor(); }
+  ///@}
+
+protected Q_SLOTS:
   /**
    * Called as a response to `QOpenGLContext::aboutToBeDestroyed`. This may be
    * called anytime during the widget lifecycle. We need to release any OpenGL
@@ -192,83 +216,27 @@ protected slots:
    */
   virtual void cleanupContext();
 
-private slots:
-  /**
-   * recreates the FBO used for VTK rendering.
-   */
-  void recreateFBO();
+  void updateSize();
 
-  /**
-   * called before the render window starts to render. We ensure that this->FBO
-   * is bound and ready to use.
-   */
-  void startEventCallback();
+protected: // NOLINT(readability-redundant-access-specifiers)
+  bool event(QEvent* evt) override;
+  void initializeGL() override;
+  void paintGL() override;
 
-protected:
-  bool event(QEvent* evt) Q_DECL_OVERRIDE;
-  void initializeGL() Q_DECL_OVERRIDE;
-  void resizeGL(int w, int h) Q_DECL_OVERRIDE;
-  void paintGL() Q_DECL_OVERRIDE;
-
-  void mousePressEvent(QMouseEvent* event) Q_DECL_OVERRIDE;
-  void mouseMoveEvent(QMouseEvent* event) Q_DECL_OVERRIDE;
-  void mouseReleaseEvent(QMouseEvent* event) Q_DECL_OVERRIDE;
-  void mouseDoubleClickEvent(QMouseEvent* event) Q_DECL_OVERRIDE;
-
-  /**
-   * This method is called to indicate that vtkRenderWindow needs to reinitialize
-   * itself before the next render (done in QVTKOpenGLNativeWidget::paintGL).
-   * This is needed when the context gets recreated
-   * or the default FrameBufferObject gets recreated, for example.
-   */
-  void requireRenderWindowInitialization();
-
-  /**
-   * This method may be called in `paintGL` to request VTK to do a render i.e.
-   * trigger render on the render window via its interactor.
-   *
-   * It will return true if render (or an equivalent action) was performed to
-   * update the frame buffer made available to VTK for rendering with latest
-   * rendering.
-   *
-   * Default implementation never returns false. However, subclasses can return
-   * false to indicate to QVTKOpenGLNativeWidget that it cannot generate a reasonable
-   * image to be displayed in QVTKOpenGLNativeWidget. In which case, the `paintGL`
-   * call will return leaving the `defaultFramebufferObject` untouched.
-   *
-   * Since by default `QOpenGLWidget::UpdateBehavior` is set to
-   * QOpenGLWidget::PartialUpdate, this means whatever was rendered in the frame
-   * buffer in most recent successful call will be preserved, unless the widget
-   * was forced to recreate the FBO as a result of resize or screen change.
-   *
-   * @sa Section @ref RenderAndPaint.
-   */
-  virtual bool renderVTK();
-
-protected:
   vtkSmartPointer<vtkGenericOpenGLRenderWindow> RenderWindow;
-  QVTKInteractorAdapter* InteractorAdapter;
-
-  bool EnableHiDPI;
-  int OriginalDPI;
+  QScopedPointer<QVTKRenderWindowAdapter> RenderWindowAdapter;
 
   static const double DevicePixelRatioTolerance;
 
 private:
   Q_DISABLE_COPY(QVTKOpenGLNativeWidget);
 
-  /**
-   * Called when vtkCommand::WindowFrameEvent is fired by the
-   * vtkGenericOpenGLRenderWindow.
-   */
-  void windowFrameEventCallback();
-
-  QOpenGLFramebufferObject* FBO;
-  bool InPaintGL;
-  bool DoVTKRenderInPaintGL;
-  vtkNew<QVTKOpenGLNativeWidgetObserver> Observer;
-  friend class QVTKOpenGLNativeWidgetObserver;
-  QOpenGLDebugLogger* Logger;
+  bool EnableTouchEventProcessing = true;
+  bool EnableHiDPI;
+  int UnscaledDPI;
+  double CustomDevicePixelRatio;
+  QCursor DefaultCursor;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

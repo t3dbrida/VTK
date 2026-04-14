@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestLinearSelector2D.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 // .SECTION Thanks
 // This test was written by Philippe Pebay, Kitware SAS 2011
 
@@ -32,6 +20,8 @@
 #include "vtkUnstructuredGridWriter.h"
 
 #include <sstream>
+
+#include <iostream>
 
 #if 0
 // Reference value
@@ -63,15 +53,15 @@ static int CheckExtractedUGrid( vtkExtractSelection* extract,
 
   // Initialize test status
   int testStatus = 0;
-  cerr << endl;
+  std::cerr << std::endl;
 
   // Verify selection cardinality
   vtkIdType nCells = ugrid->GetNumberOfCells();
-  cout << tag
+  std::cout << tag
        << " contains "
        << nCells
        << " cells."
-       << endl;
+       << std::endl;
 
   if ( nCells != cardSelectionLinearSelector2D )
   {
@@ -83,15 +73,15 @@ static int CheckExtractedUGrid( vtkExtractSelection* extract,
   }
 
   // Verify selection cells
-  cerr << "Original cell Ids (types): ";
+  std::cerr << "Original cell Ids (types): ";
   ugrid->GetCellData()->SetActiveScalars( "vtkOriginalCellIds" );
   vtkDataArray* oCellIds = ugrid->GetCellData()->GetScalars();
   for ( vtkIdType i = 0; i < oCellIds->GetNumberOfTuples(); ++ i )
   {
-    cerr << oCellIds->GetTuple1( i )
+    std::cerr << oCellIds->GetTuple1( i )
          << " ";
   }
-  cerr << endl;
+  std::cerr << std::endl;
 
   // If requested, write mesh
   if ( writeGrid )
@@ -104,33 +94,34 @@ static int CheckExtractedUGrid( vtkExtractSelection* extract,
     writer->SetFileName( fileNameSS.str().c_str() );
     writer->SetInputData( ugrid );
     writer->Write();
-    cerr << "Wrote file "
+    std::cerr << "Wrote file "
          << fileNameSS.str()
-         << endl;
+         << std::endl;
   }
 
   return testStatus;
 }
 #endif
 
-//----------------------------------------------------------------------------
-int TestLinearSelector2D( int argc, char * argv [] )
+//------------------------------------------------------------------------------
+int TestLinearSelector2D(int argc, char* argv[])
 {
   // Initialize test value
   int testIntValue = 0;
 
   // Read 2D unstructured input mesh
-  char* fileName = vtkTestUtilities::ExpandDataFileName( argc, argv, "Data/SemiDisk/SemiDisk.vtk");
-  vtkSmartPointer<vtkUnstructuredGridReader> reader = vtkSmartPointer<vtkUnstructuredGridReader>::New();
-  reader->SetFileName( fileName );
+  char* fileName = vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/SemiDisk/SemiDisk.vtk");
+  vtkSmartPointer<vtkUnstructuredGridReader> reader =
+    vtkSmartPointer<vtkUnstructuredGridReader>::New();
+  reader->SetFileName(fileName);
   reader->Update();
-  delete [] fileName;
+  delete[] fileName;
 
   // Create multi-block mesh for linear selector
   vtkSmartPointer<vtkMultiBlockDataSet> mesh = vtkSmartPointer<vtkMultiBlockDataSet>::New();
-  mesh->SetNumberOfBlocks( 1 );
-  mesh->GetMetaData( static_cast<unsigned>( 0 ) )->Set( vtkCompositeDataSet::NAME(), "Mesh" );
-  mesh->SetBlock( 0, reader->GetOutput() );
+  mesh->SetNumberOfBlocks(1);
+  mesh->GetMetaData(static_cast<unsigned>(0))->Set(vtkCompositeDataSet::NAME(), "Mesh");
+  mesh->SetBlock(0, reader->GetOutput());
 
   // *****************************************************************************
   // Selection along inner segment with endpoints (35.84,0,0) and (36.9,0.03,0)
@@ -138,16 +129,16 @@ int TestLinearSelector2D( int argc, char * argv [] )
 
   // Create selection along one line segment
   vtkSmartPointer<vtkLinearSelector> ls = vtkSmartPointer<vtkLinearSelector>::New();
-  ls->SetInputData( mesh );
-  ls->SetStartPoint( 35.84, .0, .0 );
-  ls->SetEndPoint( 36.9, .03, .0 );
+  ls->SetInputData(mesh);
+  ls->SetStartPoint(35.84, .0, .0);
+  ls->SetEndPoint(36.9, .03, .0);
   ls->IncludeVerticesOff();
-  ls->SetVertexEliminationTolerance( 1.e-12 );
+  ls->SetVertexEliminationTolerance(1.e-12);
 
   // Extract selection from mesh
-  vtkSmartPointer<vtkExtractSelection> es =  vtkSmartPointer<vtkExtractSelection>::New();
-  es->SetInputData( 0, mesh );
-  es->SetInputConnection( 1, ls->GetOutputPort() );
+  vtkSmartPointer<vtkExtractSelection> es = vtkSmartPointer<vtkExtractSelection>::New();
+  es->SetInputData(0, mesh);
+  es->SetInputConnection(1, ls->GetOutputPort());
   es->Update();
 
 #if 0

@@ -1,5 +1,5 @@
 /*
- * Copyright 2010 University Corporation for Atmospheric
+ * Copyright 2018 University Corporation for Atmospheric
  * Research/Unidata. See COPYRIGHT file for more info.
  *
  * This header file is for the parallel I/O functions of netCDF.
@@ -10,45 +10,140 @@
 #ifndef NCCONFIGURE_H
 #define NCCONFIGURE_H 1
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
+#ifdef HAVE_STDLIB_H
+#include <stdlib.h>
+#endif
+#ifdef HAVE_STDIO_H
+#include <stdio.h>
+#endif
+#ifdef HAVE_STDINT_H
+#include <stdint.h>
+#endif
+
 /*
 This is included in bottom
 of config.h. It is where,
 typically, alternatives to
 missing functions should be
-defined.
+defined and missing types defined.
 */
 
-#ifndef HAVE_STRDUP
-extern char* strdup(const char*);
+#ifdef _WIN32
+
+#ifndef HAVE_SSIZE_T
+#include <basetsd.h>
+typedef SSIZE_T ssize_t;
+#define HAVE_SSIZE_T 1
 #endif
 
-/* #if HAVE_BASETSD_H */
-/* #ifndef ssize_t */
-/* #ifndef SSIZE_T */
-/* #include <BaseTsd.h> */
-/* #endif */
-/* #define ssize_t SSIZE_T */
-/* #endif */
-/* #endif */
+#ifndef HAVE_MODE_T
+typedef int mode_t;
+#define HAVE_MODE_T 1
+#endif
 
+#ifndef F_OK
+#define F_OK 00
+#endif
 
+#endif
 
-/* handle null arguments */
+#include "config.h"
+#include "vtk_netcdf_mangle.h"
+
+/*Warning: Cygwin with -ansi does not define these functions
+  in its headers.*/
+#ifndef _WIN32
+#if __STDC__ == 1 /*supposed to be same as -ansi flag */
+
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
+/* WARNING: in some systems, these functions may be defined as macros, so check */
+#if ! defined(HAVE_STRDUP) || defined(__CYGWIN__)
+#ifndef strdup
+char* strdup(const char*);
+#endif
+#endif
+
+#ifndef HAVE_STRLCAT
+#ifndef strlcat
+#define strlcat vtknetcdf_nc_strlcat
+size_t vtknetcdf_nc_strlcat(char*,const char*,size_t);
+#endif
+#endif
+
+#ifndef HAVE_SNPRINTF
+#ifndef snprintf
+int snprintf(char*, size_t, const char*, ...);
+#endif
+#endif
+
+#ifndef HAVE_STRCASECMP
+#ifndef strcasecmp
+int strcasecmp(const char*, const char*);
+#endif
+#endif
+
+#ifndef HAVE_STRTOLL
+#ifndef strtoll
+long long int strtoll(const char*, char**, int);
+#endif
+#endif
+
+#ifndef HAVE_STRTOULL
+#ifndef strtoull
+unsigned long long int strtoull(const char*, char**, int);
+#endif
+#endif
+
+#if defined(__cplusplus)
+}
+#endif
+
+#endif /*STDC*/
+
+#else /*_WIN32*/
+
+#ifndef HAVE_STRLCAT
+#define strlcat(d,s,n) strcat_s((d),(n),(s))
+#endif
+
+#ifndef HAVE_STRLCPY
+#define strlcpy(d,s,n) strcpy_s((d),(n),(s))
+#endif
+
+#ifndef __MINGW32__
+#ifndef strcasecmp
+#define strcasecmp _stricmp
+#endif
+#ifndef strncasecmp
+#define strncasecmp _strnicmp
+#endif
+#ifndef snprintf
+#if _MSC_VER<1900
+#define snprintf _snprintf
+#endif
+#endif
+#ifndef fileno
+#define fileno(f) _fileno(f)
+#endif
+#endif /*__MINGW32__*/
+
+#endif /*_WIN32*/
+
 #ifndef nulldup
-#ifdef HAVE_STRDUP
-#define nulldup(s) ((s)==NULL?NULL:strdup(s))
-#else
-char *nulldup(const char* s);
-#endif
-#endif
-
-
-#ifndef nulldup
 #define nulldup(s) ((s)==NULL?NULL:strdup(s))
 #endif
+
 #ifndef nulllen
 #define nulllen(s) ((s)==NULL?0:strlen(s))
 #endif
+
 #ifndef nullfree
 #define nullfree(s) {if((s)!=NULL) {free(s);} else {}}
 #endif
@@ -68,6 +163,45 @@ typedef unsigned short ushort;
 
 #ifndef HAVE_UINT
 typedef unsigned int uint;
+#endif
+
+#ifndef HAVE_UINT64
+typedef unsigned long long uint64;
+#endif
+
+#ifndef HAVE_UINT64_T
+typedef unsigned long long uint64_t;
+#endif
+
+#ifndef _WIN32
+#ifndef HAVE_UINTPTR_T
+#ifndef uintptr_t
+#if SIZEOF_VOIDP == 8
+#define uintptr_t unsigned long
+#else
+#define uintptr_t unsigned int
+#endif
+#endif
+#endif
+#endif
+
+#ifndef HAVE_SIZE64_T
+typedef unsigned long long size64_t;
+#endif
+
+#ifndef HAVE_SSIZE64_T
+typedef long long ssize64_t;
+#endif
+
+#ifndef HAVE_PTRDIFF_T
+typedef long ptrdiff_t;
+#endif
+
+/* Provide a fixed size alternative to off_t or off64_t */
+typedef long long fileoffset_t;
+
+#ifndef NC_UNUSED
+#define NC_UNUSED(var) (void)var
 #endif
 
 #endif /* NCCONFIGURE_H */

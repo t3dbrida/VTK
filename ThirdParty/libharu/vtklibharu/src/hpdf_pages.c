@@ -110,7 +110,7 @@ HPDF_Pages_New  (HPDF_MMgr   mmgr,
     if (HPDF_Xref_Add (xref, pages) != HPDF_OK)
         return NULL;
 
-    /* add requiered elements */
+    /* add required elements */
     ret += HPDF_Dict_AddName (pages, "Type", "Pages");
     ret += HPDF_Dict_Add (pages, "Kids", HPDF_Array_New (pages->mmgr));
     ret += HPDF_Dict_Add (pages, "Count", HPDF_Number_New (pages->mmgr, 0));
@@ -343,7 +343,7 @@ HPDF_Page_New  (HPDF_MMgr   mmgr,
     attr->stream = attr->contents->stream;
     attr->xref = xref;
 
-    /* add requiered elements */
+    /* add required elements */
     ret += HPDF_Dict_AddName (page, "Type", "Page");
     ret += HPDF_Dict_Add (page, "MediaBox", HPDF_Box_Array_New (page->mmgr,
                 HPDF_ToBox (0, 0, (HPDF_INT16)(HPDF_DEF_PAGE_WIDTH), (HPDF_INT16)(HPDF_DEF_PAGE_HEIGHT))));
@@ -428,7 +428,7 @@ HPDF_Page_GetInheritableItem  (HPDF_Page          page,
     obj = HPDF_Dict_GetItem (page, key, obj_class);
 
     /* if resources of the object is NULL, search resources of parent
-     * pages recursivly
+     * pages recursively
      */
     if (!obj) {
         HPDF_Pages pages = HPDF_Dict_GetItem (page, "Parent", HPDF_OCLASS_DICT);
@@ -459,7 +459,7 @@ AddResource  (HPDF_Page  page)
     if (!resource)
         return HPDF_Error_GetCode (page->error);
 
-    /* althoth ProcSet-entry is obsolete, add it to resouce for
+    /* Although ProcSet-entry is obsolete, add it to resource for
      * compatibility
      */
 
@@ -582,12 +582,11 @@ HPDF_Page_CreateXObjectFromImage(HPDF_Doc       pdf,
                                  HPDF_Page      page,
                                  HPDF_Rect      rect,
                                  HPDF_Image     image,
-                                 HPDF_Boolean   zoom)
+                                 HPDF_BOOL      zoom)
 {
     HPDF_Dict resource;
     HPDF_Dict fromxobject;
     HPDF_Dict xobject;
-    HPDF_STATUS ret = HPDF_OK;
     HPDF_Array procset;
     HPDF_REAL tmp;
     HPDF_Array array1;
@@ -601,25 +600,26 @@ HPDF_Page_CreateXObjectFromImage(HPDF_Doc       pdf,
 
    fromxobject->header.obj_class |= HPDF_OSUBCLASS_XOBJECT;
 
-   /* add requiered elements */
+   /* add required elements */
    fromxobject->filter = HPDF_STREAM_FILTER_FLATE_DECODE;
 
    resource = HPDF_Dict_New (page->mmgr);
    if (!resource)
       return NULL;
 
-   /* althoth ProcSet-entry is obsolete, add it to resouce for
-    * compatibility*/
+   /* Although ProcSet-entry is obsolete, add it to resource for
+    * compatibility
+    */
 
-   ret += HPDF_Dict_Add (fromxobject, "Resources", resource);
+   HPDF_Dict_Add (fromxobject, "Resources", resource);
 
    procset = HPDF_Array_New (page->mmgr);
    if (!procset)
       return NULL;
 
-   ret += HPDF_Dict_Add (resource, "ProcSet", procset);
-   ret += HPDF_Array_Add (procset, HPDF_Name_New (page->mmgr, "PDF"));
-   ret += HPDF_Array_Add (procset, HPDF_Name_New (page->mmgr, "ImageC"));
+   HPDF_Dict_Add (resource, "ProcSet", procset);
+   HPDF_Array_Add (procset, HPDF_Name_New (page->mmgr, "PDF"));
+   HPDF_Array_Add (procset, HPDF_Name_New (page->mmgr, "ImageC"));
 
     xobject = HPDF_Dict_New (page->mmgr);
     if (!xobject)
@@ -644,10 +644,10 @@ HPDF_Page_CreateXObjectFromImage(HPDF_Doc       pdf,
       rect.bottom = tmp;
    }
 
-   ret += HPDF_Array_AddReal (array1, rect.left);
-   ret += HPDF_Array_AddReal (array1, rect.bottom);
-   ret += HPDF_Array_AddReal (array1, rect.right);
-   ret += HPDF_Array_AddReal (array1, rect.top);
+   HPDF_Array_AddReal (array1, rect.left);
+   HPDF_Array_AddReal (array1, rect.bottom);
+   HPDF_Array_AddReal (array1, rect.right);
+   HPDF_Array_AddReal (array1, rect.top);
 
     array2 = HPDF_Array_New (page->mmgr);
     if (!array2)
@@ -656,12 +656,12 @@ HPDF_Page_CreateXObjectFromImage(HPDF_Doc       pdf,
    if (HPDF_Dict_Add (fromxobject, "Matrix", array2) != HPDF_OK)
       return NULL;
 
-   ret += HPDF_Array_AddReal (array2, 1.0);
-   ret += HPDF_Array_AddReal (array2, 0.0);
-   ret += HPDF_Array_AddReal (array2, 0.0);
-   ret += HPDF_Array_AddReal (array2, 1.0);
-   ret += HPDF_Array_AddReal (array2, 0.0);
-   ret += HPDF_Array_AddReal (array2, 0.0);
+   HPDF_Array_AddReal (array2, 1.0);
+   HPDF_Array_AddReal (array2, 0.0);
+   HPDF_Array_AddReal (array2, 0.0);
+   HPDF_Array_AddReal (array2, 1.0);
+   HPDF_Array_AddReal (array2, 0.0);
+   HPDF_Array_AddReal (array2, 0.0);
 
    if (HPDF_Dict_AddNumber (fromxobject, "FormType", 1) != HPDF_OK)
       return NULL;
@@ -716,7 +716,6 @@ HPDF_Page_CreateXObjectAsWhiteRect  (HPDF_Doc   pdf,
     HPDF_Dict resource;
     HPDF_Dict fromxobject;
     HPDF_Dict xobject;
-    HPDF_STATUS ret = HPDF_OK;
     HPDF_Array procset;
     HPDF_REAL tmp;
     HPDF_Array array1;
@@ -730,25 +729,25 @@ HPDF_Page_CreateXObjectAsWhiteRect  (HPDF_Doc   pdf,
 
    fromxobject->header.obj_class |= HPDF_OSUBCLASS_XOBJECT;
 
-   /* add requiered elements */
+   /* add required elements */
    fromxobject->filter = HPDF_STREAM_FILTER_FLATE_DECODE;
 
    resource = HPDF_Dict_New (page->mmgr);
    if (!resource)
       return NULL;
 
-   /* althoth ProcSet-entry is obsolete, add it to resouce for
+   /* althoth ProcSet-entry is obsolete, add it to resource for
     * compatibility*/
 
-   ret += HPDF_Dict_Add (fromxobject, "Resources", resource);
+   HPDF_Dict_Add (fromxobject, "Resources", resource);
 
    procset = HPDF_Array_New (page->mmgr);
    if (!procset)
       return NULL;
 
-   ret += HPDF_Dict_Add (resource, "ProcSet", procset);
-   ret += HPDF_Array_Add (procset, HPDF_Name_New (page->mmgr, "PDF"));
-   ret += HPDF_Array_Add (procset, HPDF_Name_New (page->mmgr, "ImageC"));
+   HPDF_Dict_Add (resource, "ProcSet", procset);
+   HPDF_Array_Add (procset, HPDF_Name_New (page->mmgr, "PDF"));
+   HPDF_Array_Add (procset, HPDF_Name_New (page->mmgr, "ImageC"));
 
     xobject = HPDF_Dict_New (page->mmgr);
     if (!xobject)
@@ -770,10 +769,10 @@ HPDF_Page_CreateXObjectAsWhiteRect  (HPDF_Doc   pdf,
       rect.bottom = tmp;
    }
 
-   ret += HPDF_Array_AddReal (array1, 0.0);
-   ret += HPDF_Array_AddReal (array1, 0.0);
-   ret += HPDF_Array_AddReal (array1, rect.right-rect.left);
-   ret += HPDF_Array_AddReal (array1, rect.top-rect.bottom);
+   HPDF_Array_AddReal (array1, 0.0);
+   HPDF_Array_AddReal (array1, 0.0);
+   HPDF_Array_AddReal (array1, rect.right-rect.left);
+   HPDF_Array_AddReal (array1, rect.top-rect.bottom);
 
     array2 = HPDF_Array_New (page->mmgr);
     if (!array2)
@@ -782,12 +781,12 @@ HPDF_Page_CreateXObjectAsWhiteRect  (HPDF_Doc   pdf,
    if (HPDF_Dict_Add (fromxobject, "Matrix", array2) != HPDF_OK)
       return NULL;
 
-   ret += HPDF_Array_AddReal (array2, 1.0);
-   ret += HPDF_Array_AddReal (array2, 0.0);
-   ret += HPDF_Array_AddReal (array2, 0.0);
-   ret += HPDF_Array_AddReal (array2, 1.0);
-   ret += HPDF_Array_AddReal (array2, 0.0);
-   ret += HPDF_Array_AddReal (array2, 0.0);
+   HPDF_Array_AddReal (array2, 1.0);
+   HPDF_Array_AddReal (array2, 0.0);
+   HPDF_Array_AddReal (array2, 0.0);
+   HPDF_Array_AddReal (array2, 1.0);
+   HPDF_Array_AddReal (array2, 0.0);
+   HPDF_Array_AddReal (array2, 0.0);
 
    if (HPDF_Dict_AddNumber (fromxobject, "FormType", 1) != HPDF_OK)
       return NULL;
@@ -1189,7 +1188,7 @@ HPDF_Page_GetMiterLimit  (HPDF_Page   page)
 HPDF_EXPORT(HPDF_DashMode)
 HPDF_Page_GetDash  (HPDF_Page   page)
 {
-    HPDF_DashMode mode = {{0, 0, 0, 0, 0, 0, 0, 0}, 0, 0};
+    HPDF_DashMode mode = {{0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}, 0, 0.0f};
 
     HPDF_PTRACE((" HPDF_Page_GetDash\n"));
 
@@ -1310,8 +1309,6 @@ HPDF_Page_GetTextRise  (HPDF_Page   page)
 HPDF_EXPORT(HPDF_RGBColor)
 HPDF_Page_GetRGBFill  (HPDF_Page   page)
 {
-    HPDF_RGBColor DEF_RGB_COLOR = {0, 0, 0};
-
     HPDF_PTRACE((" HPDF_Page_GetRGBFill\n"));
 
     if (HPDF_Page_Validate (page)) {
@@ -1328,8 +1325,6 @@ HPDF_Page_GetRGBFill  (HPDF_Page   page)
 HPDF_EXPORT(HPDF_RGBColor)
 HPDF_Page_GetRGBStroke  (HPDF_Page   page)
 {
-    HPDF_RGBColor DEF_RGB_COLOR = {0, 0, 0};
-
     HPDF_PTRACE((" HPDF_Page_GetRGBStroke\n"));
 
     if (HPDF_Page_Validate (page)) {
@@ -1345,8 +1340,6 @@ HPDF_Page_GetRGBStroke  (HPDF_Page   page)
 HPDF_EXPORT(HPDF_CMYKColor)
 HPDF_Page_GetCMYKFill  (HPDF_Page   page)
 {
-    HPDF_CMYKColor DEF_CMYK_COLOR = {0, 0, 0, 0};
-
     HPDF_PTRACE((" HPDF_Page_GetCMYKFill\n"));
 
     if (HPDF_Page_Validate (page)) {
@@ -1363,8 +1356,6 @@ HPDF_Page_GetCMYKFill  (HPDF_Page   page)
 HPDF_EXPORT(HPDF_CMYKColor)
 HPDF_Page_GetCMYKStroke  (HPDF_Page   page)
 {
-    HPDF_CMYKColor DEF_CMYK_COLOR = {0, 0, 0, 0};
-
     HPDF_PTRACE((" HPDF_Page_GetCMYKStroke\n"));
 
     if (HPDF_Page_Validate (page)) {
@@ -1864,7 +1855,7 @@ HPDF_EXPORT(HPDF_Annotation)
 HPDF_Page_CreateWidgetAnnot (HPDF_Page  page,
                              HPDF_Rect  rect)
 {
-	HPDF_PageAttr attr;
+    HPDF_PageAttr attr;
     HPDF_Annotation annot;
 
     HPDF_PTRACE((" HPDF_Page_CreateWidgetAnnot\n"));
@@ -1874,7 +1865,7 @@ HPDF_Page_CreateWidgetAnnot (HPDF_Page  page,
 
     attr = (HPDF_PageAttr)page->attr;
 
-	annot = HPDF_WidgetAnnot_New(page->mmgr, attr->xref, rect);
+    annot = HPDF_WidgetAnnot_New(page->mmgr, attr->xref, rect);
 
     if (annot) {
         if (AddAnnotation (page, annot) != HPDF_OK) {
@@ -1970,10 +1961,10 @@ HPDF_Page_CreateLinkAnnot  (HPDF_Page          page,
     attr = (HPDF_PageAttr)page->attr;
 
     if (dst) {
-    if (!HPDF_Destination_Validate (dst)) {
-        HPDF_RaiseError (page->error, HPDF_INVALID_DESTINATION, 0);
-        return NULL;
-    }
+        if (!HPDF_Destination_Validate (dst)) {
+            HPDF_RaiseError (page->error, HPDF_INVALID_DESTINATION, 0);
+            return NULL;
+        }
     }
 
     annot = HPDF_LinkAnnot_New (page->mmgr, attr->xref, rect, dst);
@@ -1992,7 +1983,7 @@ HPDF_Page_CreateLinkAnnot  (HPDF_Page          page,
 HPDF_EXPORT(HPDF_Annotation)
 HPDF_Page_CreateURILinkAnnot  (HPDF_Page          page,
                                HPDF_Rect          rect,
-                               const char   *uri)
+                               const char        *uri)
 {
     HPDF_PageAttr attr;
     HPDF_Annotation annot;
@@ -2024,7 +2015,7 @@ HPDF_Page_CreateURILinkAnnot  (HPDF_Page          page,
 HPDF_EXPORT(HPDF_Annotation)
 HPDF_Page_CreateCircleAnnot (HPDF_Page          page,
                              HPDF_Rect          rect,
-                             const char            *text,
+                             const char        *text,
                              HPDF_Encoder       encoder)
 {
     HPDF_PageAttr attr;
@@ -2057,7 +2048,7 @@ HPDF_Page_CreateCircleAnnot (HPDF_Page          page,
 HPDF_EXPORT(HPDF_Annotation)
 HPDF_Page_CreateSquareAnnot (HPDF_Page          page,
                              HPDF_Rect          rect,
-                             const char            *text,
+                             const char        *text,
                              HPDF_Encoder       encoder)
 {
     HPDF_PageAttr attr;
@@ -2088,10 +2079,10 @@ HPDF_Page_CreateSquareAnnot (HPDF_Page          page,
 }
 
 HPDF_EXPORT(HPDF_Dict)
-HPDF_Page_Create3DView    (HPDF_Page       page,
-                           HPDF_U3D        u3d,
-                           HPDF_Annotation    annot3d,
-                           const char *name)
+HPDF_Page_Create3DView    (HPDF_Page        page,
+                           HPDF_U3D         u3d,
+                           HPDF_Annotation  annot3d,
+                           const char      *name)
 {
     HPDF_PageAttr attr;
     HPDF_Dict view;
@@ -2112,11 +2103,11 @@ HPDF_Page_Create3DView    (HPDF_Page       page,
 }
 
 HPDF_Annotation
-HPDF_Page_CreateTextMarkupAnnot (HPDF_Page     page,
-                                HPDF_Rect      rect,
-                                const char     *text,
-                                HPDF_Encoder   encoder,
-                                HPDF_AnnotType subType)
+HPDF_Page_CreateTextMarkupAnnot (HPDF_Page       page,
+                                 HPDF_Rect       rect,
+                                 const char     *text,
+                                 HPDF_Encoder    encoder,
+                                 HPDF_AnnotType  subType)
 {
     HPDF_PageAttr attr;
     HPDF_Annotation annot;
@@ -2147,9 +2138,9 @@ HPDF_Page_CreateTextMarkupAnnot (HPDF_Page     page,
 
 
 HPDF_EXPORT(HPDF_Annotation)
-HPDF_Page_CreateHighlightAnnot  (HPDF_Page          page,
+HPDF_Page_CreateHighlightAnnot (HPDF_Page          page,
                                 HPDF_Rect          rect,
-                                const char   *text,
+                                const char        *text,
                                 HPDF_Encoder       encoder)
 {
     HPDF_PTRACE((" HPDF_Page_CreateHighlightAnnot\n"));
@@ -2160,7 +2151,7 @@ HPDF_Page_CreateHighlightAnnot  (HPDF_Page          page,
 HPDF_EXPORT(HPDF_Annotation)
 HPDF_Page_CreateSquigglyAnnot  (HPDF_Page          page,
                                 HPDF_Rect          rect,
-                                const char   *text,
+                                const char        *text,
                                 HPDF_Encoder       encoder)
 {
     HPDF_PTRACE((" HPDF_Page_CreateSquigglyAnnot\n"));
@@ -2218,10 +2209,10 @@ HPDF_Page_CreatePopupAnnot  (    HPDF_Page          page,
 }
 
 HPDF_EXPORT(HPDF_Annotation)
-HPDF_Page_CreateStampAnnot  (    HPDF_Page           page,
+HPDF_Page_CreateStampAnnot  (    HPDF_Page          page,
                                 HPDF_Rect           rect,
                                 HPDF_StampAnnotName name,
-                                const char*            text,
+                                const char*         text,
                                 HPDF_Encoder        encoder)
 {
     HPDF_PageAttr attr;
@@ -2247,114 +2238,114 @@ HPDF_Page_CreateStampAnnot  (    HPDF_Page           page,
 }
 
 HPDF_EXPORT(HPDF_Annotation)
-HPDF_Page_CreateProjectionAnnot(HPDF_Page page,
-								HPDF_Rect rect,
-								const char* text,
-								HPDF_Encoder encoder)
+HPDF_Page_CreateProjectionAnnot(HPDF_Page    page,
+                                HPDF_Rect    rect,
+                                const char*  text,
+                                HPDF_Encoder encoder)
 {
-	HPDF_PageAttr attr;
-	HPDF_Annotation annot;
+    HPDF_PageAttr attr;
+    HPDF_Annotation annot;
 
-	HPDF_PTRACE((" HPDF_Page_CreateProjectionAnnot\n"));
+    HPDF_PTRACE((" HPDF_Page_CreateProjectionAnnot\n"));
 
-	if (!HPDF_Page_Validate (page))
-		return NULL;
+    if (!HPDF_Page_Validate (page))
+        return NULL;
 
-	attr = (HPDF_PageAttr)page->attr;
+    attr = (HPDF_PageAttr)page->attr;
 
-	annot = HPDF_ProjectionAnnot_New (page->mmgr, attr->xref, rect, text, encoder);
-	if (annot) {
-		if (AddAnnotation (page, annot) != HPDF_OK) {
-			HPDF_CheckError (page->error);
-			annot = NULL;
-		}
-	} else
-		HPDF_CheckError (page->error);
+    annot = HPDF_ProjectionAnnot_New (page->mmgr, attr->xref, rect, text, encoder);
+    if (annot) {
+        if (AddAnnotation (page, annot) != HPDF_OK) {
+            HPDF_CheckError (page->error);
+            annot = NULL;
+        }
+    } else
+        HPDF_CheckError (page->error);
 
-	return annot;
+    return annot;
 }
 
 
 HPDF_EXPORT(HPDF_3DMeasure)
-HPDF_Page_Create3DC3DMeasure(HPDF_Page page,
-							 HPDF_Point3D    firstanchorpoint,
-							 HPDF_Point3D    textanchorpoint)
+HPDF_Page_Create3DC3DMeasure(HPDF_Page       page,
+                             HPDF_Point3D    firstanchorpoint,
+                             HPDF_Point3D    textanchorpoint)
 {
-	HPDF_PageAttr attr;
-	HPDF_Annotation measure;
+    HPDF_PageAttr attr;
+    HPDF_Annotation measure;
 
-	HPDF_PTRACE((" HPDF_Page_Create3DC3DMeasure\n"));
+    HPDF_PTRACE((" HPDF_Page_Create3DC3DMeasure\n"));
 
-	if (!HPDF_Page_Validate (page))
-		return NULL;
+    if (!HPDF_Page_Validate (page))
+        return NULL;
 
-	attr = (HPDF_PageAttr)page->attr;
+    attr = (HPDF_PageAttr)page->attr;
 
-	measure = HPDF_3DC3DMeasure_New(page->mmgr, attr->xref, firstanchorpoint, textanchorpoint);
-	if ( !measure)
-		HPDF_CheckError (page->error);
+    measure = HPDF_3DC3DMeasure_New(page->mmgr, attr->xref, firstanchorpoint, textanchorpoint);
+    if ( !measure)
+        HPDF_CheckError (page->error);
 
-	return measure;
+    return measure;
 }
 
 HPDF_EXPORT(HPDF_3DMeasure)
 HPDF_Page_CreatePD33DMeasure(HPDF_Page       page,
-							 HPDF_Point3D    annotationPlaneNormal,
-							 HPDF_Point3D    firstAnchorPoint,
-							 HPDF_Point3D    secondAnchorPoint,
-							 HPDF_Point3D    leaderLinesDirection,
-							 HPDF_Point3D    measurementValuePoint,
-							 HPDF_Point3D    textYDirection,
-							 HPDF_REAL       value,
-							 const char*     unitsString
-							 )
+                             HPDF_Point3D    annotationPlaneNormal,
+                             HPDF_Point3D    firstAnchorPoint,
+                             HPDF_Point3D    secondAnchorPoint,
+                             HPDF_Point3D    leaderLinesDirection,
+                             HPDF_Point3D    measurementValuePoint,
+                             HPDF_Point3D    textYDirection,
+                             HPDF_REAL       value,
+                             const char*     unitsString
+                             )
 {
-	HPDF_PageAttr attr;
-	HPDF_Annotation measure;
+    HPDF_PageAttr attr;
+    HPDF_Annotation measure;
 
-	HPDF_PTRACE((" HPDF_Page_CreatePD33DMeasure\n"));
+    HPDF_PTRACE((" HPDF_Page_CreatePD33DMeasure\n"));
 
-	if (!HPDF_Page_Validate (page))
-		return NULL;
+    if (!HPDF_Page_Validate (page))
+        return NULL;
 
-	attr = (HPDF_PageAttr)page->attr;
+    attr = (HPDF_PageAttr)page->attr;
 
-	measure = HPDF_PD33DMeasure_New(page->mmgr,
-		attr->xref,
-		annotationPlaneNormal,
-		firstAnchorPoint,
-		secondAnchorPoint,
-		leaderLinesDirection,
-		measurementValuePoint,
-		textYDirection,
-		value,
-		unitsString
-		);
-	if ( !measure)
-		HPDF_CheckError (page->error);
+    measure = HPDF_PD33DMeasure_New(page->mmgr,
+        attr->xref,
+        annotationPlaneNormal,
+        firstAnchorPoint,
+        secondAnchorPoint,
+        leaderLinesDirection,
+        measurementValuePoint,
+        textYDirection,
+        value,
+        unitsString
+        );
+    if (!measure)
+        HPDF_CheckError (page->error);
 
-	return measure;
+    return measure;
 }
 
 
 HPDF_EXPORT(HPDF_ExData)
 HPDF_Page_Create3DAnnotExData(HPDF_Page page)
 {
-	HPDF_PageAttr attr;
-	HPDF_Annotation exData;
+    HPDF_PageAttr attr;
+    HPDF_Annotation exData;
 
-	HPDF_PTRACE((" HPDF_Page_Create3DAnnotExData\n"));
+    HPDF_PTRACE((" HPDF_Page_Create3DAnnotExData\n"));
 
-	if (!HPDF_Page_Validate (page))
-		return NULL;
+    if (!HPDF_Page_Validate (page))
+        return NULL;
 
-	attr = (HPDF_PageAttr)page->attr;
+    attr = (HPDF_PageAttr)page->attr;
 
-	exData = HPDF_3DAnnotExData_New(page->mmgr, attr->xref);
-	if ( !exData)
-		HPDF_CheckError (page->error);
+    exData = HPDF_3DAnnotExData_New(page->mmgr, attr->xref);
+    if ( !exData)
+        HPDF_CheckError (page->error);
 
-	return exData;
+    return exData;
 }
 
 
@@ -2371,3 +2362,41 @@ HPDF_Page_SetFilter  (HPDF_Page    page,
     attr->contents->filter = filter;
 }
 
+
+
+HPDF_EXPORT(HPDF_STATUS)
+HPDF_Page_SetBoundary  (HPDF_Page           page,
+                        HPDF_PageBoundary   boundary,
+                        HPDF_REAL           left,
+                        HPDF_REAL           bottom,
+                        HPDF_REAL           right,
+                        HPDF_REAL           top)
+{
+
+    char *key;
+
+    switch(boundary){
+        case HPDF_PAGE_MEDIABOX:
+            key = "MediaBox";
+            break;
+        case HPDF_PAGE_CROPBOX:
+            key = "CropBox";
+            break;
+        case HPDF_PAGE_BLEEDBOX:
+            key = "BleedBox";
+            break;
+        case HPDF_PAGE_TRIMBOX:
+            key = "TrimBox";
+            break;
+        case HPDF_PAGE_ARTBOX:
+            key = "ArtBox";
+            break;
+        default:
+            return HPDF_RaiseError(page->error, HPDF_PAGE_INVALID_BOUNDARY, 0);
+            break;
+    }
+
+    return HPDF_Dict_Add (page, key, HPDF_Box_Array_New (page->mmgr,
+                HPDF_ToBox ((HPDF_INT16)left, (HPDF_INT16)bottom, (HPDF_INT16)right, (HPDF_INT16)top)));
+
+}

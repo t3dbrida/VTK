@@ -1,11 +1,12 @@
-set(Module_SRCS
-  vtkSegYReader.cxx
-  )
+set(classes
+  vtkSegYReader)
 
-set (Module_PRIVATE_SRCS
-  vtkSegYIOUtils.cxx
-  vtkSegYReaderInternal.cxx
-  vtkSegYTraceReader.cxx
-  )
+set(private_classes
+  vtkSegYIOUtils
+  vtkSegYReaderInternal
+  vtkSegYTraceReader)
 
-vtk_module_library(vtkIOSegY ${Module_SRCS} ${Module_PRIVATE_SRCS})
+vtk_module_add_module(VTK::IOSegY
+  CLASSES ${classes}
+  PRIVATE_CLASSES ${private_classes})
+vtk_add_test_mangling(VTK::IOSegY)

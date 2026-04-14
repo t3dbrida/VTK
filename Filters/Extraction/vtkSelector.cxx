@@ -1,183 +1,298 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkSelector.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "vtkSelector.h"
 
-#include "vtkCompositeDataIterator.h"
 #include "vtkCompositeDataSet.h"
+#include "vtkDataAssembly.h"
+#include "vtkDataAssemblyUtilities.h"
+#include "vtkDataObjectTree.h"
+#include "vtkDataObjectTreeIterator.h"
 #include "vtkDataSet.h"
 #include "vtkDataSetAttributes.h"
+#include "vtkExpandMarkedElements.h"
 #include "vtkInformation.h"
+#include "vtkMultiBlockDataSet.h"
+#include "vtkMultiPieceDataSet.h"
+#include "vtkPartitionedDataSetCollection.h"
+#include "vtkSMPTools.h"
 #include "vtkSelectionNode.h"
 #include "vtkSignedCharArray.h"
-#include "vtkUniformGridAMRDataIterator.h"
+#include "vtkUniformGrid.h"
+#include "vtkUniformGridAMR.h"
+#include "vtkUniformGridAMRIterator.h"
 
-//----------------------------------------------------------------------------
-vtkSelector::vtkSelector()
-{
-}
+//------------------------------------------------------------------------------
+VTK_ABI_NAMESPACE_BEGIN
+vtkSelector::vtkSelector() = default;
 
-//----------------------------------------------------------------------------
-vtkSelector::~vtkSelector()
-{
-}
+//------------------------------------------------------------------------------
+vtkSelector::~vtkSelector() = default;
 
-//----------------------------------------------------------------------------
-void vtkSelector::Initialize(vtkSelectionNode* node, const std::string& insidednessArrayName)
+//------------------------------------------------------------------------------
+void vtkSelector::Initialize(vtkSelectionNode* node)
 {
   this->Node = node;
-  this->InsidednessArrayName = insidednessArrayName;
 }
 
-//--------------------------------------------------------------------------
-bool vtkSelector::ComputeSelectedElements(vtkDataObject* input, vtkDataObject* output)
+//------------------------------------------------------------------------------
+void vtkSelector::ProcessBlock(
+  vtkDataObject* inputBlock, vtkDataObject* outputBlock, bool forceFalse)
 {
-  if (auto inputCD = vtkCompositeDataSet::SafeDownCast(input))
+  assert(vtkCompositeDataSet::SafeDownCast(inputBlock) == nullptr &&
+    vtkCompositeDataSet::SafeDownCast(outputBlock) == nullptr);
+
+  int association =
+    vtkSelectionNode::ConvertSelectionFieldToAttributeType(this->Node->GetFieldType());
+
+  const vtkIdType numElements = inputBlock->GetNumberOfElements(association);
+  auto insidednessArray = this->CreateInsidednessArray(numElements);
+  if (forceFalse || !this->ComputeSelectedElements(inputBlock, insidednessArray))
   {
-    auto outputCD = vtkCompositeDataSet::SafeDownCast(output);
-    return this->ComputeSelectedElementsForCompositeDataSet(inputCD, outputCD);
+    insidednessArray->FillValue(0);
+  }
+
+  // If selecting cells containing points, we need to map the selected points
+  // to selected cells.
+  auto selectionProperties = this->Node->GetProperties();
+  if (association == vtkDataObject::POINT &&
+    selectionProperties->Has(vtkSelectionNode::CONTAINING_CELLS()) &&
+    selectionProperties->Get(vtkSelectionNode::CONTAINING_CELLS()) == 1)
+  {
+    // convert point insidednessArray to cell-based insidednessArray
+    insidednessArray = this->ComputeCellsContainingSelectedPoints(inputBlock, insidednessArray);
+    association = vtkDataObject::CELL;
+  }
+
+  auto dsa = outputBlock->GetAttributes(association);
+  if (dsa && insidednessArray)
+  {
+    dsa->AddArray(insidednessArray);
+  }
+}
+
+//------------------------------------------------------------------------------
+void vtkSelector::Execute(vtkDataObject* input, vtkDataObject* output)
+{
+  if (auto cd = vtkCompositeDataSet::SafeDownCast(input))
+  {
+    assert(vtkCompositeDataSet::SafeDownCast(output) != nullptr);
+
+    // Populate SubsetCompositeIds if selector expressions are provided in
+    // vtkSelectionNode's properties.
+    this->ProcessSelectors(cd);
+
+    vtkDataObjectTree* outputDOT = vtkDataObjectTree::SafeDownCast(output);
+    if (outputDOT)
+    {
+      auto inputAMR = vtkUniformGridAMR::SafeDownCast(input);
+      auto inputDOT = vtkDataObjectTree::SafeDownCast(input);
+      if (inputAMR)
+      {
+        this->ProcessAMR(inputAMR, outputDOT);
+      }
+      else if (inputDOT)
+      {
+        this->ProcessDataObjectTree(inputDOT, outputDOT, this->GetBlockSelection(0), 0);
+      }
+    }
   }
   else
   {
-    int association =
-      vtkSelectionNode::ConvertSelectionFieldToAttributeType(
-        this->Node->GetFieldType());
-    vtkIdType numElements = input->GetNumberOfElements(association);
-    auto insidednessArray = this->CreateInsidednessArray(numElements);
-    insidednessArray->SetName(this->InsidednessArrayName.c_str());
-
-    bool computed = this->ComputeSelectedElementsForBlock(input, insidednessArray,
-      VTK_UNSIGNED_INT_MAX, VTK_UNSIGNED_INT_MAX, VTK_UNSIGNED_INT_MAX);
-    if (!computed)
-    {
-      insidednessArray->Fill(0);
-    }
-
-    // If selecting cells containing points, we need to map the selected points
-    // to selected cells.
-    auto selectionProperties = this->Node->GetProperties();
-    if (association == vtkDataObject::POINT &&
-        selectionProperties->Has(vtkSelectionNode::CONTAINING_CELLS()) &&
-        selectionProperties->Get(vtkSelectionNode::CONTAINING_CELLS()) == 1)
-    {
-      // insidednessArray going in is associated with points. Returned, it is
-      // associated with cells.
-      insidednessArray = this->ComputeCellsContainingSelectedPoints(input, insidednessArray);
-      insidednessArray->SetName(this->InsidednessArrayName.c_str());
-      association = vtkDataObject::CELL;
-    }
-
-    if (auto dsa = output->GetAttributes(association))
-    {
-      dsa->AddArray(insidednessArray);
-    }
-    return computed;
+    this->ProcessBlock(input, output, false);
   }
+
+  // handle expanding to connected elements.
+  this->ExpandToConnectedElements(output);
 }
 
-//----------------------------------------------------------------------------
-bool vtkSelector::ComputeSelectedElementsForCompositeDataSet(
-  vtkCompositeDataSet* inputCD, vtkCompositeDataSet* outputCD)
+//------------------------------------------------------------------------------
+void vtkSelector::ExpandToConnectedElements(vtkDataObject* output)
 {
-  assert(inputCD != nullptr);
-  assert(outputCD != nullptr);
-  vtkSmartPointer<vtkCompositeDataIterator> inIter;
-  inIter.TakeReference(inputCD->NewIterator());
-  auto inIterAMR = vtkUniformGridAMRDataIterator::SafeDownCast(inIter);
-  for (inIter->InitTraversal(); !inIter->IsDoneWithTraversal(); inIter->GoToNextItem())
+  // Expand layers, if requested.
+  auto selectionProperties = this->Node->GetProperties();
+  if (selectionProperties->Has(vtkSelectionNode::CONNECTED_LAYERS()))
   {
-    vtkDataObject* inputBlock = inIter->GetCurrentDataObject();
-    vtkDataObject* outputBlock = outputCD->GetDataSet(inIter);
-    assert(inputBlock != nullptr);
-    assert(outputBlock != nullptr);
-
     int association =
-      vtkSelectionNode::ConvertSelectionFieldToAttributeType(
-        this->Node->GetFieldType());
-    vtkIdType numElements = inputBlock->GetNumberOfElements(association);
-    auto insidednessArray = this->CreateInsidednessArray(numElements);
-    insidednessArray->SetName(this->InsidednessArrayName.c_str());
-
-    unsigned int compositeIndex = inIter->GetCurrentFlatIndex();
-    unsigned int amrLevel = inIterAMR ? inIterAMR->GetCurrentLevel() : VTK_UNSIGNED_INT_MAX;
-    unsigned int amrIndex = inIterAMR ? inIterAMR->GetCurrentIndex() : VTK_UNSIGNED_INT_MAX;
-    if (this->SkipBlock(compositeIndex, amrLevel, amrIndex) ||
-      !this->ComputeSelectedElementsForBlock(inputBlock, insidednessArray, compositeIndex, amrLevel, amrIndex))
-    {
-      insidednessArray->Fill(0);
-    }
-
+      vtkSelectionNode::ConvertSelectionFieldToAttributeType(this->Node->GetFieldType());
     // If selecting cells containing points, we need to map the selected points
     // to selected cells.
-    auto selectionProperties = this->Node->GetProperties();
     if (association == vtkDataObject::POINT &&
-        selectionProperties->Has(vtkSelectionNode::CONTAINING_CELLS()) &&
-        selectionProperties->Get(vtkSelectionNode::CONTAINING_CELLS()) == 1)
+      selectionProperties->Has(vtkSelectionNode::CONTAINING_CELLS()) &&
+      selectionProperties->Get(vtkSelectionNode::CONTAINING_CELLS()) == 1)
     {
-      // insidednessArray going in is associated with points. Returned, it is
-      // associated with cells.
-      insidednessArray = this->ComputeCellsContainingSelectedPoints(inputBlock, insidednessArray);
-      insidednessArray->SetName(this->InsidednessArrayName.c_str());
       association = vtkDataObject::CELL;
     }
-    auto fieldData = outputBlock->GetAttributes(association);
-    if (fieldData)
+
+    const int layers = selectionProperties->Get(vtkSelectionNode::CONNECTED_LAYERS());
+    const bool removeSeed =
+      selectionProperties->Has(vtkSelectionNode::CONNECTED_LAYERS_REMOVE_SEED())
+      ? selectionProperties->Get(vtkSelectionNode::CONNECTED_LAYERS_REMOVE_SEED()) == 1
+      : false;
+    const bool removeIntermediateLayers =
+      selectionProperties->Has(vtkSelectionNode::CONNECTED_LAYERS_REMOVE_INTERMEDIATE_LAYERS())
+      ? selectionProperties->Get(vtkSelectionNode::CONNECTED_LAYERS_REMOVE_INTERMEDIATE_LAYERS()) ==
+        1
+      : false;
+    if (layers >= 1 && (association == vtkDataObject::POINT || association == vtkDataObject::CELL))
     {
-      fieldData->AddArray(insidednessArray);
+      vtkNew<vtkExpandMarkedElements> expander;
+      expander->SetInputArrayToProcess(0, 0, 0, association, this->InsidednessArrayName.c_str());
+      expander->SetNumberOfLayers(layers);
+      expander->SetRemoveSeed(removeSeed);
+      expander->SetRemoveIntermediateLayers(removeIntermediateLayers);
+      expander->SetInputDataObject(output);
+      expander->Update();
+      output->ShallowCopy(expander->GetOutputDataObject(0));
+    }
+  }
+}
+
+//------------------------------------------------------------------------------
+void vtkSelector::ProcessSelectors(vtkCompositeDataSet* input)
+{
+  this->SubsetCompositeIds.clear();
+
+  auto properties = this->Node->GetProperties();
+  if (properties->Has(vtkSelectionNode::ASSEMBLY_NAME()) &&
+    properties->Has(vtkSelectionNode::SELECTORS()))
+  {
+    if (auto assembly = vtkDataAssemblyUtilities::GetDataAssembly(
+          properties->Get(vtkSelectionNode::ASSEMBLY_NAME()), input))
+    {
+      std::vector<std::string> selectors(properties->Length(vtkSelectionNode::SELECTORS()));
+      for (int cc = 0; cc < static_cast<int>(selectors.size()); ++cc)
+      {
+        selectors[cc] = properties->Get(vtkSelectionNode::SELECTORS(), cc);
+      }
+
+      auto cids = vtkDataAssemblyUtilities::GetSelectedCompositeIds(
+        selectors, assembly, vtkPartitionedDataSetCollection::SafeDownCast(input));
+      this->SubsetCompositeIds.insert(cids.begin(), cids.end());
+    }
+  }
+}
+
+//------------------------------------------------------------------------------
+void vtkSelector::ProcessDataObjectTree(vtkDataObjectTree* input, vtkDataObjectTree* output,
+  vtkSelector::SelectionMode mode, unsigned int compositeIndex)
+{
+  auto iter = input->NewTreeIterator();
+  iter->TraverseSubTreeOff();
+  iter->VisitOnlyLeavesOff();
+  for (iter->InitTraversal(); !iter->IsDoneWithTraversal(); iter->GoToNextItem())
+  {
+    auto inputDO = iter->GetCurrentDataObject();
+    auto outputDO = output->GetDataSet(iter);
+    if (inputDO && outputDO)
+    {
+      const auto currentIndex = compositeIndex + iter->GetCurrentFlatIndex();
+
+      auto blockMode = this->GetBlockSelection(currentIndex);
+      blockMode = (blockMode == INHERIT) ? mode : blockMode;
+
+      auto inputDT = vtkDataObjectTree::SafeDownCast(inputDO);
+      auto outputDT = vtkDataObjectTree::SafeDownCast(outputDO);
+      if (inputDT && outputDT)
+      {
+        this->ProcessDataObjectTree(inputDT, outputDT, blockMode, currentIndex);
+      }
+      else
+      {
+
+        this->ProcessBlock(inputDO, outputDO, blockMode == EXCLUDE);
+      }
+    }
+  }
+  iter->Delete();
+}
+
+//------------------------------------------------------------------------------
+void vtkSelector::ProcessAMR(vtkUniformGridAMR* input, vtkDataObjectTree* output)
+{
+  auto iter = vtkUniformGridAMRIterator::SafeDownCast(input->NewIterator());
+  for (iter->InitTraversal(); !iter->IsDoneWithTraversal(); iter->GoToNextItem())
+  {
+    auto blockMode = this->GetBlockSelection(iter->GetCurrentFlatIndex(), false);
+    auto inputDS = iter->GetCurrentDataObject();
+    auto outputDS = output->GetDataSet(iter);
+    if (inputDS && outputDS)
+    {
+      this->ProcessBlock(inputDS, outputDS, blockMode == EXCLUDE);
     }
   }
 
-  return true;
+  iter->Delete();
 }
 
-//----------------------------------------------------------------------------
-bool vtkSelector::SkipBlock(unsigned int compositeIndex, unsigned int amrLevel, unsigned int amrIndex)
+//------------------------------------------------------------------------------
+vtkSelector::SelectionMode vtkSelector::GetBlockSelection(
+  unsigned int compositeIndex, bool isDataObjectTree)
 {
   auto properties = this->Node->GetProperties();
-  if (properties->Has(vtkSelectionNode::COMPOSITE_INDEX()) &&
-    static_cast<unsigned int>(properties->Get(vtkSelectionNode::COMPOSITE_INDEX())) != compositeIndex)
+  auto key = vtkSelectionNode::COMPOSITE_INDEX();
+  if (properties->Has(key))
   {
-    return true;
+    if (static_cast<unsigned int>(properties->Get(key)) == compositeIndex)
+    {
+      return INCLUDE;
+    }
+    else
+    {
+      if (isDataObjectTree)
+      {
+        // this needs some explanation:
+        // if `COMPOSITE_INDEX` is present, then the root node is to be treated as
+        // excluded unless explicitly selected. This ensures that
+        // we only "INCLUDE" the chosen subtree(s).
+        // For all other nodes, we will simply return INHERIT, that way the state
+        // from the parent is inherited unless overridden.
+        return compositeIndex == 0 ? EXCLUDE : INHERIT;
+      }
+      else
+      {
+        return EXCLUDE;
+      }
+    }
   }
-
-   if (properties->Has(vtkSelectionNode::HIERARCHICAL_LEVEL()) &&
-    static_cast<unsigned int>(properties->Get(vtkSelectionNode::HIERARCHICAL_LEVEL())) != amrLevel)
+  else if (properties->Has(vtkSelectionNode::SELECTORS()) &&
+    properties->Has(vtkSelectionNode::ASSEMBLY_NAME()))
   {
-    return true;
+    if (this->SubsetCompositeIds.find(compositeIndex) != this->SubsetCompositeIds.end())
+    {
+      return INCLUDE;
+    }
+    else
+    {
+      if (isDataObjectTree)
+      {
+        // see earlier explanation for why this is done for root node.
+        return compositeIndex == 0 ? EXCLUDE : INHERIT;
+      }
+      else
+      {
+        return EXCLUDE;
+      }
+    }
   }
-
-   if (properties->Has(vtkSelectionNode::HIERARCHICAL_INDEX()) &&
-    static_cast<unsigned int>(properties->Get(vtkSelectionNode::HIERARCHICAL_INDEX())) != amrIndex)
+  else
   {
-    return true;
+    return INHERIT;
   }
-  return false;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // Creates a new insidedness array with the given number of elements.
 vtkSmartPointer<vtkSignedCharArray> vtkSelector::CreateInsidednessArray(vtkIdType numElems)
 {
   auto darray = vtkSmartPointer<vtkSignedCharArray>::New();
-  darray->SetName("vtkInsidedness");
+  darray->SetName(this->InsidednessArrayName.c_str());
   darray->SetNumberOfComponents(1);
   darray->SetNumberOfTuples(numElems);
   return darray;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkSmartPointer<vtkSignedCharArray> vtkSelector::ComputeCellsContainingSelectedPoints(
   vtkDataObject* data, vtkSignedCharArray* selectedPoints)
 {
@@ -186,31 +301,48 @@ vtkSmartPointer<vtkSignedCharArray> vtkSelector::ComputeCellsContainingSelectedP
   {
     return nullptr;
   }
+
   const vtkIdType numCells = dataset->GetNumberOfCells();
   auto selectedCells = this->CreateInsidednessArray(numCells);
-  vtkNew<vtkIdList> cellPts;
-  // run through cells and accept those with any point inside
-  for (vtkIdType cellId = 0; cellId < numCells; ++cellId)
+
+  if (numCells > 0)
   {
-    dataset->GetCellPoints(cellId, cellPts);
-    vtkIdType numCellPts = cellPts->GetNumberOfIds();
-    signed char selectedPointFound = 0;
-    for (vtkIdType i = 0; i < numCellPts; ++i)
-    {
-      vtkIdType ptId = cellPts->GetId(i);
-      if (selectedPoints->GetValue(ptId) != 0)
-      {
-        selectedPointFound = 1;
-        break;
-      }
-    }
-    selectedCells->SetValue(cellId, selectedPointFound);
+    // call once to make the GetCellPoints call thread safe.
+    vtkNew<vtkIdList> cellPts;
+    dataset->GetCellPoints(0, cellPts);
   }
+
+  // run through cells and accept those with any point inside
+  vtkSMPTools::For(0, numCells,
+    [&](vtkIdType first, vtkIdType last)
+    {
+      vtkNew<vtkIdList> cellPts;
+      vtkIdType numCellPts;
+      const vtkIdType* pts;
+      signed char selectedPointFound;
+      for (vtkIdType cellId = first; cellId < last; ++cellId)
+      {
+        dataset->GetCellPoints(cellId, numCellPts, pts, cellPts);
+        selectedPointFound = 0;
+        for (vtkIdType i = 0; i < numCellPts; ++i)
+        {
+          if (selectedPoints->GetValue(pts[i]) != 0)
+          {
+            selectedPointFound = 1;
+            break;
+          }
+        }
+        selectedCells->SetValue(cellId, selectedPointFound);
+      }
+    });
+
   return selectedCells;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkSelector::PrintSelf(ostream& os, vtkIndent indent)
 {
-  Superclass::PrintSelf(os, indent);
+  this->Superclass::PrintSelf(os, indent);
+  os << indent << "InsidednessArrayName: " << this->InsidednessArrayName << endl;
 }
+VTK_ABI_NAMESPACE_END

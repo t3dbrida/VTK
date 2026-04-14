@@ -1,71 +1,98 @@
-SET(Module_SRCS
-  vtkAlgorithm.cxx
-  vtkAlgorithmOutput.cxx
-  vtkAnnotationLayersAlgorithm.cxx
-  vtkArrayDataAlgorithm.cxx
-  vtkCachedStreamingDemandDrivenPipeline.cxx
-  vtkCastToConcrete.cxx
-  vtkCompositeDataPipeline.cxx
-  vtkCompositeDataSetAlgorithm.cxx
-  vtkDataObjectAlgorithm.cxx
-  vtkDataSetAlgorithm.cxx
-  vtkDemandDrivenPipeline.cxx
-  vtkDirectedGraphAlgorithm.cxx
-  vtkEnsembleSource.cxx
-  vtkExecutive.cxx
-  vtkExtentSplitter.cxx
-  vtkExtentTranslator.cxx
-  vtkFilteringInformationKeyManager.cxx
-  vtkGraphAlgorithm.cxx
-  vtkHierarchicalBoxDataSetAlgorithm.cxx
-  vtkHyperTreeGridAlgorithm.cxx
-  vtkImageAlgorithm.cxx
-  vtkImageInPlaceFilter.cxx
-  vtkImageProgressIterator.cxx
-  vtkImageToStructuredGrid.cxx
-  vtkImageToStructuredPoints.cxx
-  vtkInformationDataObjectMetaDataKey.cxx
-  vtkInformationExecutivePortKey.cxx
-  vtkInformationExecutivePortVectorKey.cxx
-  vtkInformationIntegerRequestKey.cxx
-  vtkMoleculeAlgorithm.cxx
-  vtkMultiBlockDataSetAlgorithm.cxx
-  vtkMultiTimeStepAlgorithm.cxx
-  vtkParallelReader.cxx
-  vtkPassInputTypeAlgorithm.cxx
-  vtkPiecewiseFunctionAlgorithm.cxx
-  vtkPiecewiseFunctionShiftScale.cxx
-  vtkPointSetAlgorithm.cxx
-  vtkPolyDataAlgorithm.cxx
-  vtkReaderAlgorithm.cxx
-  vtkReaderExecutive.cxx
-  vtkRectilinearGridAlgorithm.cxx
-  vtkScalarTree.cxx
-  vtkSimpleImageToImageFilter.cxx
-  vtkSimpleReader.cxx
-  vtkSimpleScalarTree.cxx
-  vtkSpanSpace.cxx
-  vtkSphereTree.cxx
-  vtkStreamingDemandDrivenPipeline.cxx
-  vtkStructuredGridAlgorithm.cxx
-  vtkTableAlgorithm.cxx
-  vtkSMPProgressObserver.cxx
-  vtkThreadedCompositeDataPipeline.cxx
-  vtkThreadedImageAlgorithm.cxx
-  vtkTreeAlgorithm.cxx
-  vtkTrivialConsumer.cxx
-  vtkTrivialProducer.cxx
-  vtkUndirectedGraphAlgorithm.cxx
-  vtkUnstructuredGridAlgorithm.cxx
-  vtkUnstructuredGridBaseAlgorithm.cxx
-  vtkProgressObserver.cxx
-  vtkSelectionAlgorithm.cxx
-  vtkExtentRCBPartitioner.cxx
-  vtkUniformGridPartitioner.cxx
-  # New AMR classes
-  vtkUniformGridAMRAlgorithm.cxx
-  vtkOverlappingAMRAlgorithm.cxx
-  vtkNonOverlappingAMRAlgorithm.cxx
-  )
+set(classes
+  vtkAggregateToPartitionedDataSetCollection
+  vtkAlgorithm
+  vtkAlgorithmOutput
+  vtkAnnotationLayersAlgorithm
+  vtkArrayDataAlgorithm
+  vtkCachedStreamingDemandDrivenPipeline
+  vtkCastToConcrete
+  vtkCellGridAlgorithm
+  vtkCompositeDataPipeline
+  vtkCompositeDataSetAlgorithm
+  vtkDataObjectAlgorithm
+  vtkDataSetAlgorithm
+  vtkDemandDrivenPipeline
+  vtkDirectedGraphAlgorithm
+  vtkEndFor
+  vtkEnsembleSource
+  vtkExecutionAggregator
+  vtkExecutionRange
+  vtkExecutive
+  vtkExplicitStructuredGridAlgorithm
+  vtkExtentRCBPartitioner
+  vtkExtentSplitter
+  vtkExtentTranslator
+  vtkFilteringInformationKeyManager
+  vtkForEach
+  vtkGraphAlgorithm
+  vtkHyperTreeGridAlgorithm
+  vtkImageAlgorithm
+  vtkImageInPlaceFilter
+  vtkImageProgressIterator
+  vtkImageToStructuredGrid
+  vtkImageToStructuredPoints
+  vtkInformationDataObjectMetaDataKey
+  vtkInformationExecutivePortKey
+  vtkInformationExecutivePortVectorKey
+  vtkInformationIntegerRequestKey
+  vtkMoleculeAlgorithm
+  vtkMultiBlockDataSetAlgorithm
+  vtkMultiTimeStepAlgorithm
+  vtkParallelReader
+  vtkPartitionedDataSetAlgorithm
+  vtkPartitionedDataSetCollectionAlgorithm
+  vtkPassInputTypeAlgorithm
+  vtkPiecewiseFunctionAlgorithm
+  vtkPiecewiseFunctionShiftScale
+  vtkPointSetAlgorithm
+  vtkPolyDataAlgorithm
+  vtkProgressObserver
+  vtkReaderAlgorithm
+  vtkRectilinearGridAlgorithm
+  vtkSMPProgressObserver
+  vtkScalarTree
+  vtkSelectionAlgorithm
+  vtkSimpleImageToImageFilter
+  vtkSimpleReader
+  vtkSimpleScalarTree
+  vtkSpanSpace
+  vtkSphereTree
+  vtkStreamingDemandDrivenPipeline
+  vtkStructuredGridAlgorithm
+  vtkTableAlgorithm
+  vtkThreadedCompositeDataPipeline
+  vtkThreadedImageAlgorithm
+  vtkTimeRange
+  vtkTreeAlgorithm
+  vtkTrivialConsumer
+  vtkTrivialProducer
+  vtkUndirectedGraphAlgorithm
+  vtkUniformGridPartitioner
+  vtkUnstructuredGridAlgorithm
+  vtkUnstructuredGridBaseAlgorithm
 
-vtk_module_library(vtkCommonExecutionModel ${Module_SRCS})
+  # New AMR classes
+  vtkNonOverlappingAMRAlgorithm
+  vtkOverlappingAMRAlgorithm
+  vtkUniformGridAMRAlgorithm)
+
+set (template_classes
+  vtkTemporalAlgorithm)
+
+# Hand written (de)serialization routines
+set(serialization_helper_sources)
+if (VTK_WRAP_SERIALIZATION)
+  list(APPEND serialization_helper_sources
+    vtkAlgorithmSerDesHelper.cxx)
+endif ()
+
+vtk_module_add_module(VTK::CommonExecutionModel
+  CLASSES ${classes}
+  SOURCES ${serialization_helper_sources}
+  TEMPLATE_CLASSES ${template_classes})
+vtk_add_test_mangling(VTK::CommonExecutionModel)
+
+# Add precompiled header to improve build performance
+if(VTK_USE_PCH)
+  vtk_module_precompile_headers(VTK::CommonExecutionModel PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/vtkCommonExecutionModelPCH.h>")
+endif()

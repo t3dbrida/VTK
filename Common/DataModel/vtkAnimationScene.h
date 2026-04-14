@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkAnimationScene.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkAnimationScene
  * @brief   the animation scene manager.
@@ -25,27 +13,27 @@
  * 1/frame rate apart in time.
  * @sa
  * vtkAnimationCue
-*/
+ */
 
 #ifndef vtkAnimationScene_h
 #define vtkAnimationScene_h
 
-#include "vtkCommonDataModelModule.h" // For export macro
 #include "vtkAnimationCue.h"
+#include "vtkCommonDataModelModule.h" // For export macro
 
+VTK_ABI_NAMESPACE_BEGIN
 class vtkAnimationCue;
 class vtkCollection;
-class vtkCollectionIterator;
 class vtkTimerLog;
 
-class VTKCOMMONDATAMODEL_EXPORT vtkAnimationScene: public vtkAnimationCue
+class VTKCOMMONDATAMODEL_EXPORT vtkAnimationScene : public vtkAnimationCue
 {
 public:
   vtkTypeMacro(vtkAnimationScene, vtkAnimationCue);
   void PrintSelf(ostream& os, vtkIndent indent) override;
   static vtkAnimationScene* New();
 
-  //@{
+  ///@{
   /**
    * Get/Set the PlayMode for running/playing the animation scene.
    * In the Sequence mode, all the frames are generated one after the other.
@@ -57,9 +45,9 @@ public:
   void SetModeToSequence() { this->SetPlayMode(PLAYMODE_SEQUENCE); }
   void SetModeToRealTime() { this->SetPlayMode(PLAYMODE_REALTIME); }
   vtkGetMacro(PlayMode, int);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Get/Set the frame rate (in frames per second).
    * This parameter affects only in the Sequence mode. The time interval
@@ -67,9 +55,9 @@ public:
    */
   vtkSetMacro(FrameRate, double);
   vtkGetMacro(FrameRate, double);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Add/Remove an AnimationCue to/from the Scene.
    * It's an error to add a cue twice to the Scene.
@@ -77,8 +65,8 @@ public:
   void AddCue(vtkAnimationCue* cue);
   void RemoveCue(vtkAnimationCue* cue);
   void RemoveAllCues();
-  int  GetNumberOfCues();
-  //@}
+  int GetNumberOfCues();
+  ///@}
 
   /**
    * Starts playing the animation scene. Fires a vtkCommand::StartEvent
@@ -91,13 +79,13 @@ public:
    */
   void Stop();
 
-  //@{
+  ///@{
   /**
    * Enable/Disable animation loop.
    */
   vtkSetMacro(Loop, int);
   vtkGetMacro(Loop, int);
-  //@}
+  ///@}
 
   /**
    * Makes the state of the scene same as the given time.
@@ -117,15 +105,15 @@ public:
 
   enum PlayModes
   {
-    PLAYMODE_SEQUENCE=0,
-    PLAYMODE_REALTIME=1
+    PLAYMODE_SEQUENCE = 0,
+    PLAYMODE_REALTIME = 1
   };
 
 protected:
   vtkAnimationScene();
   ~vtkAnimationScene() override;
 
-  //@{
+  ///@{
   /**
    * Called on every valid tick.
    * Calls ticks on all the contained cues.
@@ -133,7 +121,7 @@ protected:
   void TickInternal(double currenttime, double deltatime, double clocktime) override;
   void StartCueInternal() override;
   void EndCueInternal() override;
-  //@}
+  ///@}
 
   void InitializeChildren();
   void FinalizeChildren();
@@ -145,7 +133,6 @@ protected:
   int StopPlay;
 
   vtkCollection* AnimationCues;
-  vtkCollectionIterator* AnimationCuesIterator;
   vtkTimerLog* AnimationTimer;
 
 private:
@@ -153,4 +140,5 @@ private:
   void operator=(const vtkAnimationScene&) = delete;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

@@ -1,39 +1,27 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestDistributedPointCloudFilter.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "vtkBoundingBox.h"
 #include "vtkDistributedPointCloudFilter.h"
 #include "vtkDoubleArray.h"
-#include "vtkIdFilter.h"
-#include "vtkMinimalStandardRandomSequence.h"
+#include "vtkGenerateIds.h"
+#include "vtkGenerateProcessIds.h"
 #include "vtkMPICommunicator.h"
 #include "vtkMPIController.h"
+#include "vtkMinimalStandardRandomSequence.h"
 #include "vtkNew.h"
 #include "vtkPointData.h"
 #include "vtkPoints.h"
 #include "vtkPolyData.h"
-#include "vtkProcessIdScalars.h"
 #include "vtkStringArray.h"
-
-//#define DEBUG_ON
 
 #ifdef DEBUG_ON
 #include "vtkXMLPPolyDataWriter.h"
 #endif
 
 #include <sstream>
+
+#include <iostream>
 
 int TestDistributedPointCloudFilter(int argc, char* argv[])
 {
@@ -77,9 +65,12 @@ int TestDistributedPointCloudFilter(int argc, char* argv[])
     for (vtkIdType i = 0; i < initialNumberOfPoints; i++)
     {
       double coords[3];
-      coords[0] = random->GetValue(); random->Next();
-      coords[1] = random->GetValue(); random->Next();
-      coords[2] = random->GetValue(); random->Next();
+      coords[0] = random->GetValue();
+      random->Next();
+      coords[1] = random->GetValue();
+      random->Next();
+      coords[2] = random->GetValue();
+      random->Next();
       points->SetPoint(i, coords);
       data->SetValue(i, totalNumberOfPoints - i - 1);
       sdata->SetValue(i, ss.str());
@@ -87,45 +78,50 @@ int TestDistributedPointCloudFilter(int argc, char* argv[])
   }
 
   // attach initial ids and process ids
-  vtkNew<vtkIdFilter> idFilter;
+  vtkNew<vtkGenerateIds> idFilter;
   idFilter->SetInputData(inputPoly);
-  idFilter->SetIdsArrayName("OriginalId");
-  vtkNew<vtkProcessIdScalars> procIdScalars;
+  idFilter->SetPointIdsArrayName("OriginalId");
+  idFilter->SetCellIdsArrayName("OriginalId");
+  vtkNew<vtkGenerateProcessIds> procIdScalars;
   procIdScalars->SetInputConnection(idFilter->GetOutputPort());
   procIdScalars->Update();
-  procIdScalars->GetOutput()->GetPointData()->GetArray("ProcessId")->SetName("OriginalProcessId");
+  procIdScalars->GetPolyDataOutput()->GetPointData()->GetProcessIds()->SetName(
+    "OriginalProcessIds");
+  procIdScalars->GetPolyDataOutput()->GetPointData()->SetActiveAttribute(
+    -1, vtkDataSetAttributes::PROCESSIDS);
 
   // distribute the points over the processors
   vtkNew<vtkDistributedPointCloudFilter> filter;
   filter->SetInputConnection(procIdScalars->GetOutputPort());
 
   // attach new process ids
-  vtkNew<vtkProcessIdScalars> outProcIdScalars;
+  vtkNew<vtkGenerateProcessIds> outProcIdScalars;
   outProcIdScalars->SetInputConnection(filter->GetOutputPort());
   outProcIdScalars->Update();
-  vtkPolyData *outputPoly = vtkPolyData::SafeDownCast(outProcIdScalars->GetOutput());
+  vtkPolyData* outputPoly = vtkPolyData::SafeDownCast(outProcIdScalars->GetOutput());
 
   bool error = false;
   int nbOfLocallyReceivedPoints = outputPoly->GetNumberOfPoints();
   if (nbOfLocallyReceivedPoints != finalNumberOfPointsPerRank)
   {
-    cerr << "No point on the node " << rank << "\n";
+    std::cerr << "No point on the node " << rank << "\n";
     // do not exit here so MPI can end correctly
     error = true;
   }
 
   if (outputPoly->GetPointData()->GetNumberOfArrays() != 5)
   {
-    cerr << "Incorrect number of point data arrays on rank " << rank << "\n";
+    std::cerr << "Incorrect number of point data arrays on rank " << rank << "\n";
     error = true;
   }
 
   double bounds[6];
   outputPoly->GetBounds(bounds);
   vtkBoundingBox bbox(bounds);
-  if (!bbox.IsValid() || bbox.GetLength(0) == 0. || bbox.GetLength(1) == 0. || bbox.GetLength(2) == 0.)
+  if (!bbox.IsValid() || bbox.GetLength(0) == 0. || bbox.GetLength(1) == 0. ||
+    bbox.GetLength(2) == 0.)
   {
-    cerr << "Incorrect bounding box of output points on rank " << rank << "\n";
+    std::cerr << "Incorrect bounding box of output points on rank " << rank << "\n";
     error = true;
   }
 
@@ -141,29 +137,16 @@ int TestDistributedPointCloudFilter(int argc, char* argv[])
 
   if (totalNumberOfReceivedPoints != totalNumberOfPoints)
   {
-    cerr << "Wrong total of points: " << totalNumberOfReceivedPoints << " instead of "
-         << totalNumberOfPoints << "\n";
-    cerr << "Rank " << rank << ":";
+    std::cerr << "Wrong total of points: " << totalNumberOfReceivedPoints << " instead of "
+              << totalNumberOfPoints << "\n";
+    std::cerr << "Rank " << rank << ":";
     for (int i = 0; i < nbOfLocallyReceivedPoints; i++)
     {
-      cout << " " << outputPoly->GetPoints()->GetPoint(i)[0];
+      std::cout << " " << outputPoly->GetPoints()->GetPoint(i)[0];
     }
-    cerr << endl;
+    std::cerr << std::endl;
     error = true;
   }
-
-#ifdef DEBUG_ON
-  vtkNew<vtkXMLPPolyDataWriter> writer;
-  std::stringstream ss;
-  ss << "TestDistributedPointCloudFilter-" << numberOfProcessors << "ranks.pvtp";
-  writer->SetFileName(ss.str().c_str());
-  writer->SetInputData(inputPoly);
-  writer->SetNumberOfPieces(numberOfProcessors);
-  writer->SetStartPiece(rank);
-  writer->SetEndPiece(rank);
-  writer->SetWriteSummaryFile(1);
-  writer->Update();
-#endif
 
   controller->Finalize();
 

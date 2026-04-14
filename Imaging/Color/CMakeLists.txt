@@ -1,14 +1,17 @@
-set(Module_SRCS
-  vtkImageHSIToRGB.cxx
-  vtkImageHSVToRGB.cxx
-  vtkImageYIQToRGB.cxx
-  vtkImageLuminance.cxx
-  vtkImageMapToRGBA.cxx
-  vtkImageMapToWindowLevelColors.cxx
-  vtkImageQuantizeRGBToIndex.cxx
-  vtkImageRGBToHSI.cxx
-  vtkImageRGBToHSV.cxx
-  vtkImageRGBToYIQ.cxx
-  )
+set(classes
+  vtkImageHSIToRGB
+  vtkImageHSVToRGB
+  vtkImageLuminance
+  vtkImageMapToRGBA
+  vtkImageMapToWindowLevelColors
+  vtkImageQuantizeRGBToIndex
+  vtkImageRGBToHSI
+  vtkImageRGBToHSV
+  vtkImageRGBToXYZ
+  vtkImageRGBToYIQ
+  vtkImageXYZToLAB
+  vtkImageYIQToRGB)
 
-vtk_module_library(${vtk-module} ${Module_SRCS})
+vtk_module_add_module(VTK::ImagingColor
+  CLASSES ${classes})
+vtk_add_test_mangling(VTK::ImagingColor)

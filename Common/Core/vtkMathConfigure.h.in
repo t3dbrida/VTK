@@ -1,22 +1,6 @@
-// -*- c++ -*-
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkMathConfigure.h.in
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-/*----------------------------------------------------------------------------
- Copyright (c) Sandia Corporation
- See Copyright.txt or http://www.paraview.org/HTML/Copyright.html for details.
-----------------------------------------------------------------------------*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-FileCopyrightText: Copyright (c) Sandia Corporation
+// SPDX-License-Identifier: BSD-3-Clause
 
 #ifndef vtkMathConfigure_h
 #define vtkMathConfigure_h
@@ -65,7 +49,7 @@
 // std::isnan because it is in the vtkMath header and not the
 // implementation file. To get around this issue we check __CUDACC__ which
 // is only set when we are compiling with the CUDA compiler
-#ifdef __CUDACC__
+#if defined(__CUDACC__) && defined(__NVCC__)
 
 #if defined(VTK_HAS_STD_ISINF)
 #undef VTK_HAS_STD_ISINF
@@ -79,25 +63,6 @@
 #undef VTK_HAS_STD_ISFINITE
 #endif
 
-#endif
-
-// We pretty much assume that all compilers are going to provide
-// std::numeric_limits methods in the limits header.  On of the Borland
-// dashboard compilers failed to link in the methods, so we have a special
-// case here.  If we find more platforms that do not support it correctly,
-// then we should probably implement a TRY_COMPILE in the CMakeLists.txt.
-#if !(defined(__BORLANDC__) && (__BORLANDC__ < 0x660))
-# define VTK_HAS_STD_NUMERIC_LIMITS
-#endif
-
-// If the isnan or isinf function does not exist, then our next attempt is to
-// use comparisons to determine if the number is not finite.  Although these
-// comparisons should be valid, some systems raise exceptions anyway (possibly
-// because exceptions for really bad operations like division by 0 are on).
-// This flag will instruct vtkMath not to make these comparisons.  (The next
-// fallback is to do IEEE-754 bit comparisons.)
-#if defined(__BORLANDC__) && (__BORLANDC__ < 0x660)
-# define VTK_NON_FINITE_CAUSES_EXCEPTIONS
 #endif
 
 #endif //vtkMathConfigure_h

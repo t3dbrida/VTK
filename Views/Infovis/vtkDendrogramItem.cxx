@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkDendrogramItem.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkDendrogramItem.h"
 
 #include "vtkBrush.h"
@@ -40,10 +28,12 @@
 #include <queue>
 #include <sstream>
 
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkDendrogramItem);
 
-//-----------------------------------------------------------------------------
-vtkDendrogramItem::vtkDendrogramItem() : PositionVector(0, 0)
+//------------------------------------------------------------------------------
+vtkDendrogramItem::vtkDendrogramItem()
+  : PositionVector(0, 0)
 {
   this->Position = this->PositionVector.GetData();
   this->DendrogramBuildTime = 0;
@@ -83,24 +73,24 @@ vtkDendrogramItem::vtkDendrogramItem() : PositionVector(0, 0)
   this->AddItem(this->ColorLegend);
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkDendrogramItem::~vtkDendrogramItem() = default;
 
-//-----------------------------------------------------------------------------
-void vtkDendrogramItem::SetPosition(const vtkVector2f &pos)
+//------------------------------------------------------------------------------
+void vtkDendrogramItem::SetPosition(const vtkVector2f& pos)
 {
   this->PositionVector = pos;
   this->DendrogramBuildTime = 0;
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkVector2f vtkDendrogramItem::GetPositionVector()
 {
   return this->PositionVector;
 }
 
-//-----------------------------------------------------------------------------
-void vtkDendrogramItem::SetTree(vtkTree *tree)
+//------------------------------------------------------------------------------
+void vtkDendrogramItem::SetTree(vtkTree* tree)
 {
   if (tree == nullptr || tree->GetNumberOfVertices() == 0)
   {
@@ -112,12 +102,14 @@ void vtkDendrogramItem::SetTree(vtkTree *tree)
 
   this->Tree = tree;
 
+  vtkSmartPointer<vtkUnsignedIntArray> originalVertexIsPruned =
+    vtkArrayDownCast<vtkUnsignedIntArray>(this->Tree->GetVertexData()->GetArray("VertexIsPruned"));
+
   // initialize some additional arrays for the tree's vertex data
   vtkNew<vtkUnsignedIntArray> vertexIsPruned;
   vertexIsPruned->SetNumberOfComponents(1);
   vertexIsPruned->SetName("VertexIsPruned");
-  vertexIsPruned->SetNumberOfValues(
-    this->Tree->GetNumberOfVertices());
+  vertexIsPruned->SetNumberOfValues(this->Tree->GetNumberOfVertices());
   vertexIsPruned->FillComponent(0, 0.0);
   this->Tree->GetVertexData()->AddArray(vertexIsPruned);
 
@@ -135,6 +127,19 @@ void vtkDendrogramItem::SetTree(vtkTree *tree)
   // make a copy of the full tree for later pruning
   this->PrunedTree->DeepCopy(this->Tree);
 
+  // If the tree already had an array named VertexIsPruned,
+  // use that array to construct the pruned tree.
+  if (originalVertexIsPruned)
+  {
+    for (vtkIdType i = 0; i < originalVertexIsPruned->GetNumberOfValues(); ++i)
+    {
+      if (originalVertexIsPruned->GetValue(i))
+      {
+        this->CollapseSubTree(i);
+      }
+    }
+  }
+
   // setup the lookup table that's used to color the triangles representing
   // collapsed subtrees.  First we find maximum possible value.
   vtkIdType root = this->Tree->GetRoot();
@@ -143,44 +148,36 @@ void vtkDendrogramItem::SetTree(vtkTree *tree)
     root = this->Tree->GetChild(root, 0);
   }
   int numLeavesInBiggestSubTree = 0;
-  for (vtkIdType child = 0; child < this->Tree->GetNumberOfChildren(root);
-       ++child)
+  for (vtkIdType child = 0; child < this->Tree->GetNumberOfChildren(root); ++child)
   {
     vtkIdType childVertex = this->Tree->GetChild(root, child);
     int numLeaves = this->CountLeafNodes(childVertex);
-    if (numLeaves > numLeavesInBiggestSubTree)
-    {
-      numLeavesInBiggestSubTree = numLeaves;
-    }
+    numLeavesInBiggestSubTree = std::max(numLeaves, numLeavesInBiggestSubTree);
   }
 
   double rangeMinimum = 2.0;
-  if (numLeavesInBiggestSubTree < rangeMinimum)
-  {
-    rangeMinimum = numLeavesInBiggestSubTree;
-  }
+  rangeMinimum = std::min<double>(numLeavesInBiggestSubTree, rangeMinimum);
 
   this->TriangleLookupTable->SetNumberOfTableValues(256);
   this->TriangleLookupTable->SetHueRange(0.5, 0.045);
-  this->TriangleLookupTable->SetRange(
-    rangeMinimum, static_cast<double>(numLeavesInBiggestSubTree));
+  this->TriangleLookupTable->SetRange(rangeMinimum, static_cast<double>(numLeavesInBiggestSubTree));
   this->TriangleLookupTable->Build();
 }
 
-//-----------------------------------------------------------------------------
-vtkTree * vtkDendrogramItem::GetTree()
+//------------------------------------------------------------------------------
+vtkTree* vtkDendrogramItem::GetTree()
 {
   return this->Tree;
 }
 
-//-----------------------------------------------------------------------------
-vtkTree * vtkDendrogramItem::GetPrunedTree()
+//------------------------------------------------------------------------------
+vtkTree* vtkDendrogramItem::GetPrunedTree()
 {
   return this->PrunedTree;
 }
 
-//-----------------------------------------------------------------------------
-bool vtkDendrogramItem::Paint(vtkContext2D *painter)
+//------------------------------------------------------------------------------
+bool vtkDendrogramItem::Paint(vtkContext2D* painter)
 {
   if (this->Tree->GetNumberOfVertices() == 0)
   {
@@ -193,8 +190,8 @@ bool vtkDendrogramItem::Paint(vtkContext2D *painter)
   return true;
 }
 
-//-----------------------------------------------------------------------------
-void vtkDendrogramItem::PrepareToPaint(vtkContext2D *painter)
+//------------------------------------------------------------------------------
+void vtkDendrogramItem::PrepareToPaint(vtkContext2D* painter)
 {
   if (this->IsDirty())
   {
@@ -203,7 +200,7 @@ void vtkDendrogramItem::PrepareToPaint(vtkContext2D *painter)
   this->ComputeLabelWidth(painter);
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 bool vtkDendrogramItem::IsDirty()
 {
   if (this->Tree->GetNumberOfVertices() == 0)
@@ -225,7 +222,7 @@ bool vtkDendrogramItem::IsDirty()
   return false;
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkDendrogramItem::RebuildBuffers()
 {
   if (this->Tree->GetNumberOfVertices() == 0)
@@ -235,7 +232,7 @@ void vtkDendrogramItem::RebuildBuffers()
 
   // Special case where our input tree has been modified.  Refresh PrunedTree
   // to be an up-to-date full copy of it.
-  if( this->Tree->GetMTime() > this->PrunedTree->GetMTime())
+  if (this->Tree->GetMTime() > this->PrunedTree->GetMTime())
   {
     this->PrunedTree->DeepCopy(this->Tree);
   }
@@ -244,16 +241,15 @@ void vtkDendrogramItem::RebuildBuffers()
 
   vtkNew<vtkTreeLayoutStrategy> strategy;
 
-  if (this->PrunedTree->GetVertexData()->GetAbstractArray(
-    this->DistanceArrayName) != nullptr)
+  if (this->PrunedTree->GetVertexData()->GetAbstractArray(this->DistanceArrayName.c_str()) !=
+    nullptr)
   {
-    strategy->SetDistanceArrayName(this->DistanceArrayName);
+    strategy->SetDistanceArrayName(this->DistanceArrayName.c_str());
   }
 
   strategy->SetLeafSpacing(1.0);
 
-  strategy->SetRotation(
-    this->GetAngleForOrientation(orientation));
+  strategy->SetRotation(this->GetAngleForOrientation(orientation));
 
   this->Layout->SetLayoutStrategy(strategy);
   this->Layout->SetInputData(this->PrunedTree);
@@ -269,7 +265,7 @@ void vtkDendrogramItem::RebuildBuffers()
     this->PositionColorLegend();
   }
 
-  if( this->PrunedTree->GetMTime() > this->MTime)
+  if (this->PrunedTree->GetMTime() > this->MTime)
   {
     this->DendrogramBuildTime = this->PrunedTree->GetMTime();
   }
@@ -279,7 +275,7 @@ void vtkDendrogramItem::RebuildBuffers()
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkDendrogramItem::ComputeMultipliers()
 {
   double xMax = 1;
@@ -293,34 +289,26 @@ void vtkDendrogramItem::ComputeMultipliers()
       this->LayoutTree->GetPoint(target, targetPoint);
       double x = fabs(targetPoint[0]);
       double y = fabs(targetPoint[1]);
-      if (x > xMax)
-      {
-        xMax = x;
-      }
-      if (y > yMax)
-      {
-        yMax = y;
-      }
+      xMax = std::max(x, xMax);
+      yMax = std::max(y, yMax);
     }
   }
 
   int orientation = this->GetOrientation();
   if (orientation == vtkDendrogramItem::LEFT_TO_RIGHT ||
-      orientation == vtkDendrogramItem::RIGHT_TO_LEFT)
+    orientation == vtkDendrogramItem::RIGHT_TO_LEFT)
   {
-    this->MultiplierX =
-      (this->LeafSpacing * (this->NumberOfLeafNodes - 1)) / yMax;
+    this->MultiplierX = (this->LeafSpacing * (this->NumberOfLeafNodes - 1)) / yMax;
     this->MultiplierY = this->MultiplierX;
   }
   else
   {
-    this->MultiplierY =
-      (this->LeafSpacing * (this->NumberOfLeafNodes - 1)) / xMax;
+    this->MultiplierY = (this->LeafSpacing * (this->NumberOfLeafNodes - 1)) / xMax;
     this->MultiplierX = this->MultiplierY;
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkDendrogramItem::ComputeBounds()
 {
   this->MinX = VTK_DOUBLE_MAX;
@@ -343,48 +331,23 @@ void vtkDendrogramItem::ComputeBounds()
     double x1 = this->Position[0] + targetPoint[0] * this->MultiplierX;
     double y1 = this->Position[1] + targetPoint[1] * this->MultiplierY;
 
-    if (x0 < this->MinX)
-    {
-      this->MinX = x0;
-    }
-    if (y0 < this->MinY)
-    {
-      this->MinY = y0;
-    }
-    if (x0 > this->MaxX)
-    {
-      this->MaxX = x0;
-    }
-    if (y0 > this->MaxY)
-    {
-      this->MaxY = y0;
-    }
-    if (x1 < this->MinX)
-    {
-      this->MinX = x1;
-    }
-    if (y1 < this->MinY)
-    {
-      this->MinY = y1;
-    }
-    if (x1 > this->MaxX)
-    {
-      this->MaxX = x1;
-    }
-    if (y1 > this->MaxY)
-    {
-      this->MaxY = y1;
-    }
+    this->MinX = std::min(x0, this->MinX);
+    this->MinY = std::min(y0, this->MinY);
+    this->MaxX = std::max(x0, this->MaxX);
+    this->MaxY = std::max(y0, this->MaxY);
+    this->MinX = std::min(x1, this->MinX);
+    this->MinY = std::min(y1, this->MinY);
+    this->MaxX = std::max(x1, this->MaxX);
+    this->MaxY = std::max(y1, this->MaxY);
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkDendrogramItem::CountLeafNodes()
 {
   // figure out how many leaf nodes we have.
   this->NumberOfLeafNodes = 0;
-  for (vtkIdType vertex = 0; vertex < this->LayoutTree->GetNumberOfVertices();
-       ++vertex)
+  for (vtkIdType vertex = 0; vertex < this->LayoutTree->GetNumberOfVertices(); ++vertex)
   {
     if (!this->LayoutTree->IsLeaf(vertex))
     {
@@ -394,13 +357,12 @@ void vtkDendrogramItem::CountLeafNodes()
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkDendrogramItem::CountLeafNodes(vtkIdType vertex)
 {
   // figure out how many leaf nodes descend from vertex.
   int numLeaves = 0;
-  for (vtkIdType child = 0; child < this->Tree->GetNumberOfChildren(vertex);
-       ++child)
+  for (vtkIdType child = 0; child < this->Tree->GetNumberOfChildren(vertex); ++child)
   {
     vtkIdType childVertex = this->Tree->GetChild(vertex, child);
     if (this->Tree->IsLeaf(childVertex))
@@ -415,8 +377,8 @@ int vtkDendrogramItem::CountLeafNodes(vtkIdType vertex)
   return numLeaves;
 }
 
-//-----------------------------------------------------------------------------
-void vtkDendrogramItem::PaintBuffers(vtkContext2D *painter)
+//------------------------------------------------------------------------------
+void vtkDendrogramItem::PaintBuffers(vtkContext2D* painter)
 {
   // Calculate the extent of the data that is visible within the window.
   this->UpdateVisibleSceneExtent(painter);
@@ -426,8 +388,8 @@ void vtkDendrogramItem::PaintBuffers(vtkContext2D *painter)
   double targetPoint[3];
   int numberOfCollapsedSubTrees = 0;
 
-  vtkUnsignedIntArray *vertexIsPruned = vtkArrayDownCast<vtkUnsignedIntArray>(
-    this->Tree->GetVertexData()->GetArray("VertexIsPruned"));
+  vtkUnsignedIntArray* vertexIsPruned =
+    vtkArrayDownCast<vtkUnsignedIntArray>(this->Tree->GetVertexData()->GetArray("VertexIsPruned"));
 
   int orientation = this->GetOrientation();
 
@@ -445,7 +407,7 @@ void vtkDendrogramItem::PaintBuffers(vtkContext2D *painter)
 
     double x0 = this->Position[0] + sourcePoint[0] * this->MultiplierX;
     double y0 = this->Position[1] + sourcePoint[1] * this->MultiplierY;
-    double x1 = this->Position[0] +  targetPoint[0] * this->MultiplierX;
+    double x1 = this->Position[0] + targetPoint[0] * this->MultiplierX;
     double y1 = this->Position[1] + targetPoint[1] * this->MultiplierY;
 
     // check if the target vertex is the root of a collapsed tree
@@ -508,29 +470,26 @@ void vtkDendrogramItem::PaintBuffers(vtkContext2D *painter)
           break;
       }
 
-      if (this->LineIsVisible(trianglePoints[0], trianglePoints[1],
-                              trianglePoints[2], trianglePoints[3]) ||
-          this->LineIsVisible(trianglePoints[0], trianglePoints[1],
-                              trianglePoints[4], trianglePoints[5]) ||
-          this->LineIsVisible(trianglePoints[2], trianglePoints[3],
-                              trianglePoints[4], trianglePoints[5]))
+      if (this->LineIsVisible(
+            trianglePoints[0], trianglePoints[1], trianglePoints[2], trianglePoints[3]) ||
+        this->LineIsVisible(
+          trianglePoints[0], trianglePoints[1], trianglePoints[4], trianglePoints[5]) ||
+        this->LineIsVisible(
+          trianglePoints[2], trianglePoints[3], trianglePoints[4], trianglePoints[5]))
       {
         colorKey = static_cast<double>(vertexIsPruned->GetValue(originalId));
         this->TriangleLookupTable->GetColor(colorKey, color);
         painter->GetBrush()->SetColorF(color[0], color[1], color[2]);
         painter->DrawPolygon(trianglePoints, 3);
 
-
         if (this->DisplayNumberOfCollapsedLeafNodes)
         {
-          unsigned int numCollapsedLeafNodes =
-            vertexIsPruned->GetValue(originalId);
+          unsigned int numCollapsedLeafNodes = vertexIsPruned->GetValue(originalId);
           std::stringstream ss;
           ss << numCollapsedLeafNodes;
 
           painter->GetTextProp()->SetVerticalJustificationToCentered();
-          painter->GetTextProp()->SetOrientation(
-            this->GetTextAngleForOrientation(orientation));
+          painter->GetTextProp()->SetOrientation(this->GetTextAngleForOrientation(orientation));
           painter->DrawString(triangleLabelX, triangleLabelY, ss.str());
         }
       }
@@ -582,20 +541,18 @@ void vtkDendrogramItem::PaintBuffers(vtkContext2D *painter)
 
     if (this->LineIsVisible(x0, y0, midpointX, midpointY))
     {
-      painter->DrawLine (x0, y0, midpointX, midpointY);
+      painter->DrawLine(x0, y0, midpointX, midpointY);
     }
     if (!alreadyDrewCollapsedSubTree)
     {
       if (this->LineIsVisible(midpointX, midpointY, x1, y1))
       {
-        painter->DrawLine (midpointX, midpointY, x1, y1);
+        painter->DrawLine(midpointX, midpointY, x1, y1);
       }
 
       // extend leaf nodes so they line up
-      if (this->ExtendLeafNodes &&
-          !(x1 == extendedX && y1 == extendedY) &&
-          this->LayoutTree->IsLeaf(target) &&
-          this->LineIsVisible(x1, y1, extendedX, extendedY))
+      if (this->ExtendLeafNodes && !(x1 == extendedX && y1 == extendedY) &&
+        this->LayoutTree->IsLeaf(target) && this->LineIsVisible(x1, y1, extendedX, extendedY))
       {
         // we draw these extensions as grey lines to distinguish them
         // from the actual lengths of the leaf nodes.
@@ -632,8 +589,7 @@ void vtkDendrogramItem::PaintBuffers(vtkContext2D *painter)
   }
 
   //"Igq" selected for range of height
-  int fontSize = painter->ComputeFontSizeForBoundedString("Igq", VTK_FLOAT_MAX,
-                                                           this->LeafSpacing);
+  int fontSize = painter->ComputeFontSizeForBoundedString("Igq", VTK_FLOAT_MAX, this->LeafSpacing);
   // make sure our current zoom level allows for a legibly-sized font
   if (fontSize < 8)
   {
@@ -647,22 +603,21 @@ void vtkDendrogramItem::PaintBuffers(vtkContext2D *painter)
   painter->GetTextProp()->SetColor(0.0, 0.0, 0.0);
   painter->GetTextProp()->SetJustificationToLeft();
   painter->GetTextProp()->SetVerticalJustificationToCentered();
-  painter->GetTextProp()->SetOrientation(
-    this->GetTextAngleForOrientation(orientation));
+  painter->GetTextProp()->SetOrientation(this->GetTextAngleForOrientation(orientation));
 
   // make sure some of the labels would be visible on screen
   switch (orientation)
   {
     case vtkDendrogramItem::DOWN_TO_UP:
       if (this->SceneBottomLeft[1] > this->MaxY + spacing ||
-          this->SceneTopRight[1] < this->MaxY + spacing)
+        this->SceneTopRight[1] < this->MaxY + spacing)
       {
         return;
       }
       break;
     case vtkDendrogramItem::RIGHT_TO_LEFT:
       if (this->SceneBottomLeft[0] > this->MinX - spacing ||
-          this->SceneTopRight[0] < this->MinX - spacing)
+        this->SceneTopRight[0] < this->MinX - spacing)
       {
         return;
       }
@@ -670,7 +625,7 @@ void vtkDendrogramItem::PaintBuffers(vtkContext2D *painter)
       break;
     case vtkDendrogramItem::UP_TO_DOWN:
       if (this->SceneBottomLeft[1] > this->MinY - spacing ||
-          this->SceneTopRight[1] < this->MinY - spacing)
+        this->SceneTopRight[1] < this->MinY - spacing)
       {
         return;
       }
@@ -679,7 +634,7 @@ void vtkDendrogramItem::PaintBuffers(vtkContext2D *painter)
     case vtkDendrogramItem::LEFT_TO_RIGHT:
     default:
       if (this->SceneBottomLeft[0] > this->MaxX + spacing ||
-          this->SceneTopRight[0] < this->MaxX + spacing)
+        this->SceneTopRight[0] < this->MaxX + spacing)
       {
         return;
       }
@@ -687,13 +642,11 @@ void vtkDendrogramItem::PaintBuffers(vtkContext2D *painter)
   }
 
   // get array of node names from the tree
-  vtkStringArray *vertexNames = vtkArrayDownCast<vtkStringArray>(
-    this->LayoutTree->GetVertexData()->GetAbstractArray(
-    this->VertexNameArrayName));
+  vtkStringArray* vertexNames = vtkArrayDownCast<vtkStringArray>(
+    this->LayoutTree->GetVertexData()->GetAbstractArray(this->VertexNameArrayName.c_str()));
 
   // find our leaf nodes & draw their labels
-  for (vtkIdType vertex = 0; vertex < this->LayoutTree->GetNumberOfVertices();
-       ++vertex)
+  for (vtkIdType vertex = 0; vertex < this->LayoutTree->GetNumberOfVertices(); ++vertex)
   {
     if (!this->LayoutTree->IsLeaf(vertex))
     {
@@ -724,18 +677,16 @@ void vtkDendrogramItem::PaintBuffers(vtkContext2D *painter)
     }
 
     std::string vertexName = vertexNames->GetValue(vertex);
-    if (this->SceneBottomLeft[0] < xStart &&
-        this->SceneTopRight[0] > xStart   &&
-        this->SceneBottomLeft[1] < yStart &&
-        this->SceneTopRight[1] > yStart)
+    if (this->SceneBottomLeft[0]<xStart&& this->SceneTopRight[0]> xStart &&
+      this->SceneBottomLeft[1]<yStart&& this->SceneTopRight[1]> yStart)
     {
       painter->DrawString(xStart, yStart, vertexName);
     }
   }
 }
 
-//-----------------------------------------------------------------------------
-void vtkDendrogramItem::UpdateVisibleSceneExtent(vtkContext2D *painter)
+//------------------------------------------------------------------------------
+void vtkDendrogramItem::UpdateVisibleSceneExtent(vtkContext2D* painter)
 {
   float position[2];
   painter->GetTransform()->GetPosition(position);
@@ -743,10 +694,8 @@ void vtkDendrogramItem::UpdateVisibleSceneExtent(vtkContext2D *painter)
   this->SceneBottomLeft[1] = -position[1];
   this->SceneBottomLeft[2] = 0.0;
 
-  this->SceneTopRight[0] =
-    static_cast<double>(this->GetScene()->GetSceneWidth() - position[0]);
-  this->SceneTopRight[1] =
-    static_cast<double>(this->GetScene()->GetSceneHeight() - position[1]);
+  this->SceneTopRight[0] = static_cast<double>(this->GetScene()->GetSceneWidth() - position[0]);
+  this->SceneTopRight[1] = static_cast<double>(this->GetScene()->GetSceneHeight() - position[1]);
   this->SceneTopRight[2] = 0.0;
   vtkNew<vtkMatrix3x3> inverse;
   painter->GetTransform()->GetInverse(inverse);
@@ -754,10 +703,14 @@ void vtkDendrogramItem::UpdateVisibleSceneExtent(vtkContext2D *painter)
   inverse->MultiplyPoint(this->SceneTopRight, this->SceneTopRight);
 }
 
-//-----------------------------------------------------------------------------
-bool vtkDendrogramItem::LineIsVisible(double x0, double y0,
-                                        double x1, double y1)
+//------------------------------------------------------------------------------
+bool vtkDendrogramItem::LineIsVisible(double x0, double y0, double x1, double y1)
 {
+  // is the line degenerate, if so skip
+  if (x0 == x1 && y0 == y1)
+  {
+    return false;
+  }
   // use local variables to improve readability
   double xMinScene = this->SceneBottomLeft[0];
   double yMinScene = this->SceneBottomLeft[1];
@@ -766,10 +719,8 @@ bool vtkDendrogramItem::LineIsVisible(double x0, double y0,
 
   // if either end point of the line segment falls within the screen,
   // then the line segment is visible.
-  if ( (xMinScene <= x0 && xMaxScene >= x0 &&
-        yMinScene <= y0 && yMaxScene >= y0) ||
-       (xMinScene <= x1 && xMaxScene >= x1 &&
-        yMinScene <= y1 && yMaxScene >= y1) )
+  if ((xMinScene <= x0 && xMaxScene >= x0 && yMinScene <= y0 && yMaxScene >= y0) ||
+    (xMinScene <= x1 && xMaxScene >= x1 && yMinScene <= y1 && yMaxScene >= y1))
   {
     return true;
   }
@@ -799,18 +750,16 @@ bool vtkDendrogramItem::LineIsVisible(double x0, double y0,
 
   // case where the Y range of the line falls within the visible scene
   // and the X range of the line contains the entire visible scene
-  if (yMinScene <= yMinLine && yMaxScene >= yMinLine &&
-      yMinScene <= yMaxLine && yMaxScene >= yMaxLine &&
-      xMinLine <= xMinScene && xMaxLine >= xMaxScene)
+  if (yMinScene <= yMinLine && yMaxScene >= yMinLine && yMinScene <= yMaxLine &&
+    yMaxScene >= yMaxLine && xMinLine <= xMinScene && xMaxLine >= xMaxScene)
   {
     return true;
   }
 
   // case where the X range of the line falls within the visible scene
   // and the Y range of the line contains the entire visible scene
-  if (xMinScene <= xMinLine && xMaxScene >= xMinLine &&
-      xMinScene <= xMaxLine && xMaxScene >= xMaxLine &&
-      yMinLine <= yMinScene && yMaxLine >= yMaxScene)
+  if (xMinScene <= xMinLine && xMaxScene >= xMinLine && xMinScene <= xMaxLine &&
+    xMaxScene >= xMaxLine && yMinLine <= yMinScene && yMaxLine >= yMaxScene)
   {
     return true;
   }
@@ -818,9 +767,8 @@ bool vtkDendrogramItem::LineIsVisible(double x0, double y0,
   return false;
 }
 
-//-----------------------------------------------------------------------------
-bool vtkDendrogramItem::MouseDoubleClickEvent(
-  const vtkContextMouseEvent &event)
+//------------------------------------------------------------------------------
+bool vtkDendrogramItem::MouseDoubleClickEvent(const vtkContextMouseEvent& event)
 {
   // get the position of the double click and convert it to scene coordinates
   double pos[3];
@@ -833,18 +781,16 @@ bool vtkDendrogramItem::MouseDoubleClickEvent(
 
   bool rotatedTree = false;
   int orientation = this->GetOrientation();
-  if (orientation == vtkDendrogramItem::UP_TO_DOWN ||
-      orientation == vtkDendrogramItem::DOWN_TO_UP)
+  if (orientation == vtkDendrogramItem::UP_TO_DOWN || orientation == vtkDendrogramItem::DOWN_TO_UP)
   {
     rotatedTree = true;
   }
 
   // this event is only captured within the tree (not the vertex labels)
-  if ( (!rotatedTree && pos[0] <= this->MaxX && pos[0] >= this->MinX) ||
-       (rotatedTree && pos[1] <= this->MaxY && pos[1] >= this->MinY) )
+  if ((!rotatedTree && pos[0] <= this->MaxX && pos[0] >= this->MinX) ||
+    (rotatedTree && pos[1] <= this->MaxY && pos[1] >= this->MinY))
   {
-    vtkIdType collapsedSubTree =
-      this->GetClickedCollapsedSubTree(pos[0], pos[1]);
+    vtkIdType collapsedSubTree = this->GetClickedCollapsedSubTree(pos[0], pos[1]);
     if (collapsedSubTree != -1)
     {
       // re-expand the subtree rooted at this vertex
@@ -855,7 +801,7 @@ bool vtkDendrogramItem::MouseDoubleClickEvent(
       // collapse the subtree rooted at this vertex
       vtkIdType closestVertex =
         this->GetClosestVertex((pos[0] - this->Position[0]) / this->MultiplierX,
-                               (pos[1] - this->Position[1]) / this->MultiplierY);
+          (pos[1] - this->Position[1]) / this->MultiplierY);
       this->CollapseSubTree(closestVertex);
     }
 
@@ -866,25 +812,23 @@ bool vtkDendrogramItem::MouseDoubleClickEvent(
   return false;
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkIdType vtkDendrogramItem::GetClickedCollapsedSubTree(double x, double y)
 {
   // iterate over all the collapsed subtrees to see if this click refers
   // to one of them.
-  vtkUnsignedIntArray *vertexIsPruned = vtkArrayDownCast<vtkUnsignedIntArray>(
-    this->Tree->GetVertexData()->GetArray("VertexIsPruned"));
-  vtkIdTypeArray *originalIdArray = vtkArrayDownCast<vtkIdTypeArray>(
-    this->PrunedTree->GetVertexData()->GetArray("OriginalId"));
+  vtkUnsignedIntArray* vertexIsPruned =
+    vtkArrayDownCast<vtkUnsignedIntArray>(this->Tree->GetVertexData()->GetArray("VertexIsPruned"));
+  vtkIdTypeArray* originalIdArray =
+    vtkArrayDownCast<vtkIdTypeArray>(this->PrunedTree->GetVertexData()->GetArray("OriginalId"));
   int orientation = this->GetOrientation();
 
-  for (vtkIdType originalId = 0;
-       originalId < vertexIsPruned->GetNumberOfTuples(); ++originalId)
+  for (vtkIdType originalId = 0; originalId < vertexIsPruned->GetNumberOfTuples(); ++originalId)
   {
     if (vertexIsPruned->GetValue(originalId) > 0)
     {
       // Find PrunedTree's vertex that corresponds to this originalId.
-      for (vtkIdType prunedId = 0;
-           prunedId < originalIdArray->GetNumberOfTuples(); ++prunedId)
+      for (vtkIdType prunedId = 0; prunedId < originalIdArray->GetNumberOfTuples(); ++prunedId)
       {
         if (originalIdArray->GetValue(prunedId) == originalId)
         {
@@ -896,12 +840,9 @@ vtkIdType vtkDendrogramItem::GetClickedCollapsedSubTree(double x, double y)
 
           // we also need the location of this node's parent
           double parentPoint[3];
-          this->LayoutTree->GetPoint(
-            this->LayoutTree->GetParent(prunedId), parentPoint);
-          parentPoint[0] = parentPoint[0] * this->MultiplierX +
-            this->Position[0];
-          parentPoint[1] = parentPoint[1] * this->MultiplierY +
-            this->Position[1];
+          this->LayoutTree->GetPoint(this->LayoutTree->GetParent(prunedId), parentPoint);
+          parentPoint[0] = parentPoint[0] * this->MultiplierX + this->Position[0];
+          parentPoint[1] = parentPoint[1] * this->MultiplierY + this->Position[1];
 
           float xMin = 0.0;
           float xMax = 0.0;
@@ -922,7 +863,7 @@ vtkIdType vtkDendrogramItem::GetClickedCollapsedSubTree(double x, double y)
               break;
 
             case vtkDendrogramItem::RIGHT_TO_LEFT:
-              //proper width (X) range: <= parent's X value.
+              // proper width (X) range: <= parent's X value.
               xMin = this->MinX;
               xMax = parentPoint[0];
 
@@ -945,7 +886,7 @@ vtkIdType vtkDendrogramItem::GetClickedCollapsedSubTree(double x, double y)
 
             case vtkDendrogramItem::LEFT_TO_RIGHT:
             default:
-              //proper width (X) range: >= parent's X value.
+              // proper width (X) range: >= parent's X value.
               xMin = parentPoint[0];
               xMax = this->MaxX;
 
@@ -969,13 +910,12 @@ vtkIdType vtkDendrogramItem::GetClickedCollapsedSubTree(double x, double y)
   return -1;
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkIdType vtkDendrogramItem::GetClosestVertex(double x, double y)
 {
   double minDistance = VTK_DOUBLE_MAX;
   vtkIdType closestVertex = -1;
-  for (vtkIdType vertex = 0; vertex < this->LayoutTree->GetNumberOfVertices();
-       ++vertex)
+  for (vtkIdType vertex = 0; vertex < this->LayoutTree->GetNumberOfVertices(); ++vertex)
   {
     if (this->LayoutTree->IsLeaf(vertex))
     {
@@ -983,8 +923,7 @@ vtkIdType vtkDendrogramItem::GetClosestVertex(double x, double y)
     }
     double point[3];
     this->LayoutTree->GetPoint(vertex, point);
-    double distance = sqrt( (x - point[0]) * (x - point[0]) +
-                            (y - point[1]) * (y - point[1]) );
+    double distance = sqrt((x - point[0]) * (x - point[0]) + (y - point[1]) * (y - point[1]));
 
     if (distance < minDistance)
     {
@@ -995,7 +934,7 @@ vtkIdType vtkDendrogramItem::GetClosestVertex(double x, double y)
   return closestVertex;
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkDendrogramItem::CollapseSubTree(vtkIdType vertex)
 {
   // no removing the root of the tree
@@ -1006,8 +945,8 @@ void vtkDendrogramItem::CollapseSubTree(vtkIdType vertex)
   }
 
   // look up the original ID of the vertex that's being collapsed.
-  vtkIdTypeArray *originalIdArray = vtkArrayDownCast<vtkIdTypeArray>(
-    this->PrunedTree->GetVertexData()->GetArray("OriginalId"));
+  vtkIdTypeArray* originalIdArray =
+    vtkArrayDownCast<vtkIdTypeArray>(this->PrunedTree->GetVertexData()->GetArray("OriginalId"));
   vtkIdType originalId = originalIdArray->GetValue(vertex);
 
   // use this value as the index to the original (un-reindexed) tree's
@@ -1029,8 +968,8 @@ void vtkDendrogramItem::CollapseSubTree(vtkIdType vertex)
     return;
   }
 
-  vtkUnsignedIntArray *vertexIsPruned = vtkArrayDownCast<vtkUnsignedIntArray>(
-    this->Tree->GetVertexData()->GetArray("VertexIsPruned"));
+  vtkUnsignedIntArray* vertexIsPruned =
+    vtkArrayDownCast<vtkUnsignedIntArray>(this->Tree->GetVertexData()->GetArray("VertexIsPruned"));
   vertexIsPruned->SetValue(originalId, numLeavesCollapsed);
 
   vtkNew<vtkTree> prunedTreeCopy;
@@ -1042,12 +981,12 @@ void vtkDendrogramItem::CollapseSubTree(vtkIdType vertex)
   this->PrunedTree = this->PruneFilter->GetOutput();
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkDendrogramItem::ExpandSubTree(vtkIdType vertex)
 {
   // mark this vertex as "not pruned"
-  vtkUnsignedIntArray *vertexIsPruned = vtkArrayDownCast<vtkUnsignedIntArray>(
-    this->Tree->GetVertexData()->GetArray("VertexIsPruned"));
+  vtkUnsignedIntArray* vertexIsPruned =
+    vtkArrayDownCast<vtkUnsignedIntArray>(this->Tree->GetVertexData()->GetArray("VertexIsPruned"));
   vtkIdType vertexOriginalId = this->GetOriginalId(vertex);
   vertexIsPruned->SetValue(vertexOriginalId, 0);
 
@@ -1056,17 +995,15 @@ void vtkDendrogramItem::ExpandSubTree(vtkIdType vertex)
 
   // re-prune as necessary.  this->Tree has the list of originalIds that
   // need to be re-pruned.
-  for (vtkIdType originalId = 0;
-       originalId < vertexIsPruned->GetNumberOfTuples(); ++originalId)
+  for (vtkIdType originalId = 0; originalId < vertexIsPruned->GetNumberOfTuples(); ++originalId)
   {
     if (vertexIsPruned->GetValue(originalId) > 0)
     {
       // Find PrunedTree's vertex that corresponds to this originalId.
       // Use this to re-collapse the subtrees that were not just expanded.
-      vtkIdTypeArray *originalIdArray = vtkArrayDownCast<vtkIdTypeArray>(
-        this->PrunedTree->GetVertexData()->GetArray("OriginalId"));
-      for (vtkIdType prunedId = 0;
-           prunedId < originalIdArray->GetNumberOfTuples(); ++prunedId)
+      vtkIdTypeArray* originalIdArray =
+        vtkArrayDownCast<vtkIdTypeArray>(this->PrunedTree->GetVertexData()->GetArray("OriginalId"));
+      for (vtkIdType prunedId = 0; prunedId < originalIdArray->GetNumberOfTuples(); ++prunedId)
       {
         if (originalIdArray->GetValue(prunedId) == originalId)
         {
@@ -1078,19 +1015,19 @@ void vtkDendrogramItem::ExpandSubTree(vtkIdType vertex)
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkIdType vtkDendrogramItem::GetOriginalId(vtkIdType vertex)
 {
-  vtkIdTypeArray *originalIdArray = vtkArrayDownCast<vtkIdTypeArray>(
-    this->PrunedTree->GetVertexData()->GetArray("OriginalId"));
+  vtkIdTypeArray* originalIdArray =
+    vtkArrayDownCast<vtkIdTypeArray>(this->PrunedTree->GetVertexData()->GetArray("OriginalId"));
   return originalIdArray->GetValue(vertex);
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkIdType vtkDendrogramItem::GetPrunedIdForOriginalId(vtkIdType originalId)
 {
-  vtkIdTypeArray *originalIdArray = vtkArrayDownCast<vtkIdTypeArray>(
-    this->PrunedTree->GetVertexData()->GetArray("OriginalId"));
+  vtkIdTypeArray* originalIdArray =
+    vtkArrayDownCast<vtkIdTypeArray>(this->PrunedTree->GetVertexData()->GetArray("OriginalId"));
   for (vtkIdType i = 0; i < originalIdArray->GetNumberOfTuples(); ++i)
   {
     if (originalIdArray->GetValue(i) == originalId)
@@ -1101,7 +1038,7 @@ vtkIdType vtkDendrogramItem::GetPrunedIdForOriginalId(vtkIdType originalId)
   return -1;
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkDendrogramItem::CollapseToNumberOfLeafNodes(unsigned int n)
 {
   // check that the number requested is actually smaller than the number of
@@ -1109,7 +1046,7 @@ void vtkDendrogramItem::CollapseToNumberOfLeafNodes(unsigned int n)
   unsigned int numLeaves = this->CountLeafNodes(this->Tree->GetRoot());
   if (n >= numLeaves)
   {
-    vtkWarningMacro( << "n >= total leaf nodes" );
+    vtkWarningMacro(<< "n >= total leaf nodes");
     return;
   }
 
@@ -1119,16 +1056,15 @@ void vtkDendrogramItem::CollapseToNumberOfLeafNodes(unsigned int n)
   // Initialize a priority queue of vertices based on their weight.
   // Vertices with lower weight (closer to the root) have a higher priority.
   std::priority_queue<vtkDendrogramItem::WeightedVertex,
-                      std::vector<vtkDendrogramItem::WeightedVertex>,
-                      vtkDendrogramItem::CompareWeightedVertices> queue;
+    std::vector<vtkDendrogramItem::WeightedVertex>, vtkDendrogramItem::CompareWeightedVertices>
+    queue;
   std::vector<vtkIdType> verticesToCollapse;
-  vtkDoubleArray *nodeWeights = vtkArrayDownCast<vtkDoubleArray>(
-    this->Tree->GetVertexData()->GetAbstractArray(this->DistanceArrayName));
+  vtkDoubleArray* nodeWeights = vtkArrayDownCast<vtkDoubleArray>(
+    this->Tree->GetVertexData()->GetAbstractArray(this->DistanceArrayName.c_str()));
 
   // initially, the priority queue contains the children of the root node.
   vtkIdType root = this->Tree->GetRoot();
-  for (vtkIdType child = 0; child < this->Tree->GetNumberOfChildren(root);
-       ++child)
+  for (vtkIdType child = 0; child < this->Tree->GetNumberOfChildren(root); ++child)
   {
     vtkIdType childVertex = this->Tree->GetChild(root, child);
 
@@ -1142,7 +1078,7 @@ void vtkDendrogramItem::CollapseToNumberOfLeafNodes(unsigned int n)
       weight = static_cast<double>(this->Tree->GetLevel(childVertex));
     }
 
-    vtkDendrogramItem::WeightedVertex v = {childVertex, weight};
+    vtkDendrogramItem::WeightedVertex v = { childVertex, weight };
     queue.push(v);
   }
 
@@ -1159,8 +1095,7 @@ void vtkDendrogramItem::CollapseToNumberOfLeafNodes(unsigned int n)
       continue;
     }
 
-    for (vtkIdType child = 0; child < this->Tree->GetNumberOfChildren(v.ID);
-         ++child)
+    for (vtkIdType child = 0; child < this->Tree->GetNumberOfChildren(v.ID); ++child)
     {
       vtkIdType childVertex = this->Tree->GetChild(v.ID, child);
 
@@ -1174,7 +1109,7 @@ void vtkDendrogramItem::CollapseToNumberOfLeafNodes(unsigned int n)
         weight = static_cast<double>(this->Tree->GetLevel(childVertex));
       }
 
-      vtkDendrogramItem::WeightedVertex v2 = {childVertex, weight};
+      vtkDendrogramItem::WeightedVertex v2 = { childVertex, weight };
       queue.push(v2);
     }
   }
@@ -1204,11 +1139,11 @@ void vtkDendrogramItem::CollapseToNumberOfLeafNodes(unsigned int n)
   }
 }
 
-//-----------------------------------------------------------------------------
-void vtkDendrogramItem::SetColorArray(const char *arrayName)
+//------------------------------------------------------------------------------
+void vtkDendrogramItem::SetColorArray(const char* arrayName)
 {
-  this->ColorArray = vtkArrayDownCast<vtkDoubleArray>(
-    this->Tree->GetVertexData()->GetArray(arrayName));
+  this->ColorArray =
+    vtkArrayDownCast<vtkDoubleArray>(this->Tree->GetVertexData()->GetArray(arrayName));
   if (!this->ColorArray)
   {
     vtkErrorMacro("Could not downcast " << arrayName << " to a vtkDoubleArray");
@@ -1224,14 +1159,8 @@ void vtkDendrogramItem::SetColorArray(const char *arrayName)
   for (vtkIdType id = 0; id < this->ColorArray->GetNumberOfTuples(); ++id)
   {
     double d = this->ColorArray->GetValue(id);
-    if (d > maxValue)
-    {
-      maxValue = d;
-    }
-    if (d < minValue)
-    {
-      minValue = d;
-    }
+    maxValue = std::max(d, maxValue);
+    minValue = std::min(d, minValue);
   }
 
   // special case: when there is no range of values to display, all edges should
@@ -1263,24 +1192,21 @@ void vtkDendrogramItem::SetColorArray(const char *arrayName)
   }
   for (vtkIdType i = 0; i < 10; ++i)
   {
-    this->TreeLookupTable->SetTableValue(i,
-      1.0, 0.25 + inc * i, 0.25 + inc * i);
+    this->TreeLookupTable->SetTableValue(i, 1.0, 0.25 + inc * i, 0.25 + inc * i);
   }
   this->TreeLookupTable->SetTableValue(10, 0.60, 0.60, 0.60);
   for (vtkIdType i = 11; i < 21; ++i)
   {
-    this->TreeLookupTable->SetTableValue(i,
-      0.85 - inc * (i - 10), 0.85 - inc * (i - 10), 1.0);
+    this->TreeLookupTable->SetTableValue(i, 0.85 - inc * (i - 10), 0.85 - inc * (i - 10), 1.0);
   }
 
   // initialize color legend
-  this->ColorLegend->SetTransferFunction(
-    this->TreeLookupTable);
+  this->ColorLegend->SetTransferFunction(this->TreeLookupTable);
   this->ColorLegend->SetTitle(arrayName);
   this->PositionColorLegend();
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkDendrogramItem::PositionColorLegend()
 {
   // bail out early if we don't have meaningful bounds yet.
@@ -1290,7 +1216,7 @@ void vtkDendrogramItem::PositionColorLegend()
   }
 
   int orientation = this->GetOrientation();
-  switch(orientation)
+  switch (orientation)
   {
     case vtkDendrogramItem::DOWN_TO_UP:
     case vtkDendrogramItem::UP_TO_DOWN:
@@ -1298,11 +1224,9 @@ void vtkDendrogramItem::PositionColorLegend()
       this->ColorLegend->SetVerticalAlignment(vtkChartLegend::CENTER);
       this->ColorLegend->SetOrientation(vtkColorLegend::VERTICAL);
       this->ColorLegend->SetPoint(
-        this->MinX - this->LeafSpacing,
-        this->MinY + (this->MaxY - this->MinY) / 2.0);
+        this->MinX - this->LeafSpacing, this->MinY + (this->MaxY - this->MinY) / 2.0);
       this->ColorLegend->SetTextureSize(
-        this->ColorLegend->GetSymbolWidth(),
-       this->MaxY - this->MinY);
+        this->ColorLegend->GetSymbolWidth(), this->MaxY - this->MinY);
       break;
 
     case vtkDendrogramItem::RIGHT_TO_LEFT:
@@ -1312,11 +1236,9 @@ void vtkDendrogramItem::PositionColorLegend()
       this->ColorLegend->SetVerticalAlignment(vtkChartLegend::TOP);
       this->ColorLegend->SetOrientation(vtkColorLegend::HORIZONTAL);
       this->ColorLegend->SetPoint(
-        this->MinX + (this->MaxX - this->MinX) / 2.0,
-        this->MinY - this->LeafSpacing);
+        this->MinX + (this->MaxX - this->MinX) / 2.0, this->MinY - this->LeafSpacing);
       this->ColorLegend->SetTextureSize(
-        this->MaxX - this->MinX,
-        this->ColorLegend->GetSymbolWidth());
+        this->MaxX - this->MinX, this->ColorLegend->GetSymbolWidth());
       break;
   }
   this->ColorLegend->Update();
@@ -1325,25 +1247,24 @@ void vtkDendrogramItem::PositionColorLegend()
   this->LegendPositionSet = true;
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkDendrogramItem::SetOrientation(int orientation)
 {
   this->SetOrientation(this->Tree, orientation);
 }
 
-//-----------------------------------------------------------------------------
-void vtkDendrogramItem::SetOrientation(vtkTree *tree, int orientation)
+//------------------------------------------------------------------------------
+void vtkDendrogramItem::SetOrientation(vtkTree* tree, int orientation)
 {
-  vtkIntArray *existingArray = vtkArrayDownCast<vtkIntArray>(
-    tree->GetFieldData()->GetArray("orientation"));
+  vtkIntArray* existingArray =
+    vtkArrayDownCast<vtkIntArray>(tree->GetFieldData()->GetArray("orientation"));
   if (existingArray)
   {
     existingArray->SetValue(0, orientation);
   }
   else
   {
-    vtkSmartPointer<vtkIntArray> orientationArray =
-      vtkSmartPointer<vtkIntArray>::New();
+    vtkSmartPointer<vtkIntArray> orientationArray = vtkSmartPointer<vtkIntArray>::New();
     orientationArray->SetNumberOfComponents(1);
     orientationArray->SetName("orientation");
     orientationArray->InsertNextValue(orientation);
@@ -1357,11 +1278,11 @@ void vtkDendrogramItem::SetOrientation(vtkTree *tree, int orientation)
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkDendrogramItem::GetOrientation()
 {
-  vtkIntArray *orientationArray = vtkArrayDownCast<vtkIntArray>(
-    this->Tree->GetFieldData()->GetArray("orientation"));
+  vtkIntArray* orientationArray =
+    vtkArrayDownCast<vtkIntArray>(this->Tree->GetFieldData()->GetArray("orientation"));
   if (orientationArray)
   {
     return orientationArray->GetValue(0);
@@ -1369,10 +1290,10 @@ int vtkDendrogramItem::GetOrientation()
   return vtkDendrogramItem::LEFT_TO_RIGHT;
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 double vtkDendrogramItem::GetAngleForOrientation(int orientation)
 {
-  switch(orientation)
+  switch (orientation)
   {
     case vtkDendrogramItem::DOWN_TO_UP:
       return 180.0;
@@ -1389,10 +1310,10 @@ double vtkDendrogramItem::GetAngleForOrientation(int orientation)
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 double vtkDendrogramItem::GetTextAngleForOrientation(int orientation)
 {
-  switch(orientation)
+  switch (orientation)
   {
     case vtkDendrogramItem::DOWN_TO_UP:
       return 90.0;
@@ -1409,7 +1330,7 @@ double vtkDendrogramItem::GetTextAngleForOrientation(int orientation)
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkDendrogramItem::GetBounds(double bounds[4])
 {
   bounds[0] = this->MinX;
@@ -1445,22 +1366,21 @@ void vtkDendrogramItem::GetBounds(double bounds[4])
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 float vtkDendrogramItem::GetLabelWidth()
 {
   return this->LabelWidth;
 }
 
-//-----------------------------------------------------------------------------
-void vtkDendrogramItem::ComputeLabelWidth(vtkContext2D *painter)
+//------------------------------------------------------------------------------
+void vtkDendrogramItem::ComputeLabelWidth(vtkContext2D* painter)
 {
   this->LabelWidth = 0.0;
   if (!this->DrawLabels)
   {
     return;
   }
-  int fontSize = painter->ComputeFontSizeForBoundedString("Igq", VTK_FLOAT_MAX,
-                                                           this->LeafSpacing);
+  int fontSize = painter->ComputeFontSizeForBoundedString("Igq", VTK_FLOAT_MAX, this->LeafSpacing);
   if (fontSize < 8)
   {
     return;
@@ -1471,31 +1391,25 @@ void vtkDendrogramItem::ComputeLabelWidth(vtkContext2D *painter)
   painter->GetTextProp()->SetOrientation(0.0);
 
   // get array of node names from the tree
-  vtkStringArray *vertexNames = vtkArrayDownCast<vtkStringArray>(
-    this->LayoutTree->GetVertexData()->GetAbstractArray(
-    this->VertexNameArrayName));
+  vtkStringArray* vertexNames = vtkArrayDownCast<vtkStringArray>(
+    this->LayoutTree->GetVertexData()->GetAbstractArray(this->VertexNameArrayName.c_str()));
 
   float bounds[4];
   for (vtkIdType i = 0; i < vertexNames->GetNumberOfTuples(); ++i)
   {
     painter->ComputeStringBounds(vertexNames->GetValue(i), bounds);
-    if (bounds[2] > this->LabelWidth)
-    {
-      this->LabelWidth = bounds[2];
-    }
+    this->LabelWidth = std::max(bounds[2], this->LabelWidth);
   }
 
   // restore orientation
   painter->GetTextProp()->SetOrientation(orientation);
 }
 
-//-----------------------------------------------------------------------------
-bool vtkDendrogramItem::GetPositionOfVertex(const std::string& vertexName,
-                                            double position[2])
+//------------------------------------------------------------------------------
+bool vtkDendrogramItem::GetPositionOfVertex(const std::string& vertexName, double position[2])
 {
-  vtkStringArray *vertexNames = vtkArrayDownCast<vtkStringArray>(
-    this->LayoutTree->GetVertexData()->GetAbstractArray(
-    this->VertexNameArrayName));
+  vtkStringArray* vertexNames = vtkArrayDownCast<vtkStringArray>(
+    this->LayoutTree->GetVertexData()->GetAbstractArray(this->VertexNameArrayName.c_str()));
 
   vtkIdType vertex = vertexNames->LookupValue(vertexName);
   if (vertex == -1)
@@ -1512,16 +1426,16 @@ bool vtkDendrogramItem::GetPositionOfVertex(const std::string& vertexName,
   return true;
 }
 
-//-----------------------------------------------------------------------------
-bool vtkDendrogramItem::Hit(const vtkContextMouseEvent &vtkNotUsed(mouse))
+//------------------------------------------------------------------------------
+bool vtkDendrogramItem::Hit(const vtkContextMouseEvent& vtkNotUsed(mouse))
 {
   // If we are interactive, we want to catch anything that propagates to the
   // background, otherwise we do not want any mouse events.
   return this->Interactive;
 }
 
-//-----------------------------------------------------------------------------
-void vtkDendrogramItem::PrintSelf(ostream &os, vtkIndent indent)
+//------------------------------------------------------------------------------
+void vtkDendrogramItem::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os, indent);
   os << "Tree: " << (this->Tree ? "" : "(null)") << std::endl;
@@ -1530,3 +1444,4 @@ void vtkDendrogramItem::PrintSelf(ostream &os, vtkIndent indent)
     this->Tree->PrintSelf(os, indent.GetNextIndent());
   }
 }
+VTK_ABI_NAMESPACE_END

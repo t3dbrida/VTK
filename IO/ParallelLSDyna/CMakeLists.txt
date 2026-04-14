@@ -1,10 +1,6 @@
-set(Module_SRCS
-  vtkPLSDynaReader.cxx
-  )
+set(classes
+  vtkPLSDynaReader)
 
-include_directories(
-  ${vtkIOLSDyna_SOURCE_DIR}/private
-  ${vtkIOLSDyna_BINARY_DIR}/private
-  )
-
-vtk_module_library(vtkIOParallelLSDyna ${Module_SRCS})
+vtk_module_add_module(VTK::IOParallelLSDyna
+  CLASSES ${classes})
+vtk_add_test_mangling(VTK::IOParallelLSDyna)

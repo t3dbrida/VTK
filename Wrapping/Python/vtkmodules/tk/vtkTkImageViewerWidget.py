@@ -13,12 +13,7 @@ from vtkmodules.vtkCommonExecutionModel import vtkStreamingDemandDrivenPipeline
 from vtkmodules.vtkInteractionImage import vtkImageViewer
 from vtkmodules.vtkRenderingCore import vtkActor2D, vtkTextMapper
 
-if sys.hexversion < 0x03000000:
-    # for Python2
-    import Tkinter as tkinter
-else:
-    # for Python3
-    import tkinter
+import tkinter
 
 from .vtkLoadPythonTkWidgets import vtkLoadPythonTkWidgets
 
@@ -117,7 +112,7 @@ class vtkTkImageViewerWidget(tkinter.Widget):
         actor.GetPositionCoordinate().SetValue(4,22)
         actor.GetProperty().SetColor(1,1,0.5)
         actor.SetVisibility(0)
-        imager.AddActor2D(actor)
+        imager.AddViewProp(actor)
 
         self._LevelActor = actor
 
@@ -137,7 +132,7 @@ class vtkTkImageViewerWidget(tkinter.Widget):
         actor.GetPositionCoordinate().SetValue(4,4)
         actor.GetProperty().SetColor(1,1,0.5)
         actor.SetVisibility(0)
-        imager.AddActor2D(actor)
+        imager.AddViewProp(actor)
 
         self._WindowActor = actor
 
@@ -173,12 +168,6 @@ class vtkTkImageViewerWidget(tkinter.Widget):
                   lambda e,s=self: s.quit())
         self.bind("<KeyPress-r>",
                   lambda e,s=self: s.ResetTkImageViewer())
-
-    def GetImageViewer(self):
-        return self._ImageViewer
-
-    def Render(self):
-        self._ImageViewer.Render()
 
     def _GrabFocus(self):
         self._OldFocus=self.focus_get()
@@ -313,6 +302,9 @@ class vtkTkImageViewerWidget(tkinter.Widget):
 # an example of how to use this widget
 if __name__ == "__main__":
     from vtkmodules.vtkImagingSources import vtkImageCanvasSource2D
+    # load implementations for rendering and interaction factory classes
+    import vtkmodules.vtkRenderingOpenGL2
+    import vtkmodules.vtkInteractionStyle
 
     canvas = vtkImageCanvasSource2D()
     canvas.SetNumberOfScalarComponents(3)

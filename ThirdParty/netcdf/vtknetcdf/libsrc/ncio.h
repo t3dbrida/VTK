@@ -1,5 +1,5 @@
 /*
- *	Copyright 1996, University Corporation for Atmospheric Research
+ *	Copyright 2018, University Corporation for Atmospheric Research
  *	See netcdf/COPYRIGHT file for copying and redistribution conditions.
  */
 /* $Id: ncio.h,v 1.27 2006/01/03 04:56:28 russ Exp $ */
@@ -10,6 +10,10 @@
 #include <stddef.h>	/* size_t */
 #include <sys/types.h>	/* off_t */
 #include "netcdf.h"
+
+/* Define internal use only flags to signal use of byte ranges and S3. */
+#define NC_HTTP  1
+#define NC_S3SDK 2
 
 typedef struct ncio ncio;	/* forward reference */
 

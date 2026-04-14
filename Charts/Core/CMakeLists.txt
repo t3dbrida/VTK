@@ -1,48 +1,53 @@
-set(Module_SRCS
-  vtkAxis.cxx
-  vtkAxisExtended.cxx
-  vtkCategoryLegend.cxx
-  vtkChart.cxx
-  vtkChartBox.cxx
-  vtkChartHistogram2D.cxx
-  vtkChartLegend.cxx
-  vtkChartMatrix.cxx
-  vtkChartParallelCoordinates.cxx
-  vtkChartPie.cxx
-  vtkChartXY.cxx
-  vtkChartXYZ.cxx
-  vtkColorLegend.cxx
-  vtkColorTransferControlPointsItem.cxx
-  vtkColorTransferFunctionItem.cxx
-  vtkCompositeControlPointsItem.cxx
-  vtkCompositeTransferFunctionItem.cxx
-  vtkContextArea.cxx
-  vtkContextPolygon.cxx
-  vtkControlPointsItem.cxx
-  vtkInteractiveArea.cxx
-  vtkLookupTableItem.cxx
-  vtkPiecewiseControlPointsItem.cxx
-  vtkPiecewiseFunctionItem.cxx
-  vtkPiecewisePointHandleItem.cxx
-  vtkPlot.cxx
-  vtkPlot3D.cxx
-  vtkPlotArea.cxx
-  vtkPlotBag.cxx
-  vtkPlotBar.cxx
-  vtkPlotBox.cxx
-  vtkPlotFunctionalBag.cxx
-  vtkPlotGrid.cxx
-  vtkPlotHistogram2D.cxx
-  vtkPlotLine.cxx
-  vtkPlotLine3D.cxx
-  vtkPlotParallelCoordinates.cxx # This adds a vtkInfovisCore dep for one class...
-  vtkPlotPie.cxx
-  vtkPlotPoints.cxx
-  vtkPlotPoints3D.cxx
-  vtkPlotStacked.cxx
-  vtkPlotSurface.cxx
-  vtkScalarsToColorsItem.cxx
-  vtkScatterPlotMatrix.cxx
+set(classes
+  vtkAxis
+  vtkAxisExtended
+  vtkCategoryLegend
+  vtkChart
+  vtkChartBox
+  vtkChartHistogram2D
+  vtkChartLegend
+  vtkChartMatrix
+  vtkChartParallelCoordinates
+  vtkChartPie
+  vtkChartXY
+  vtkChartXYZ
+  vtkColorLegend
+  vtkColorTransferControlPointsItem
+  vtkColorTransferFunctionItem
+  vtkCompositeControlPointsItem
+  vtkCompositeTransferFunctionItem
+  vtkContextArea
+  vtkContextPolygon
+  vtkControlPointsItem
+  vtkInteractiveArea
+  vtkLookupTableItem
+  vtkPiecewiseControlPointsItem
+  vtkPiecewiseFunctionItem
+  vtkPiecewisePointHandleItem
+  vtkPlot
+  vtkPlot3D
+  vtkPlotArea
+  vtkPlotBag
+  vtkPlotBar
+  vtkPlotBarRangeHandlesItem
+  vtkPlotBox
+  vtkPlotFunctionalBag
+  vtkPlotGrid
+  vtkPlotHistogram2D
+  vtkPlotLine
+  vtkPlotLine3D
+  vtkPlotParallelCoordinates # This adds a vtkInfovisCore dep for one class...
+  vtkPlotPie
+  vtkPlotPoints
+  vtkPlotPoints3D
+  vtkPlotRangeHandlesItem
+  vtkPlotStacked
+  vtkPlotSurface
+  vtkRangeHandlesItem
+  vtkScalarsToColorsItem
+  vtkScatterPlotMatrix
   )
 
-vtk_module_library(vtkChartsCore ${Module_SRCS})
+vtk_module_add_module(VTK::ChartsCore
+  CLASSES ${classes})
+vtk_add_test_mangling(VTK::ChartsCore)

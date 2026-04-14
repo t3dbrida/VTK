@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkDistanceRepresentation2D.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkDistanceRepresentation2D
  * @brief   represent the vtkDistanceWidget
@@ -26,90 +14,101 @@
  *
  * @sa
  * vtkDistanceWidget vtkDistanceRepresentation vtkDistanceRepresentation3D
-*/
+ */
 
 #ifndef vtkDistanceRepresentation2D_h
 #define vtkDistanceRepresentation2D_h
 
-#include "vtkInteractionWidgetsModule.h" // For export macro
 #include "vtkDistanceRepresentation.h"
+#include "vtkInteractionWidgetsModule.h" // For export macro
+#include "vtkWrappingHints.h"            // For VTK_MARSHALAUTO
 
+VTK_ABI_NAMESPACE_BEGIN
 class vtkAxisActor2D;
 class vtkProperty2D;
 
-
-class VTKINTERACTIONWIDGETS_EXPORT vtkDistanceRepresentation2D : public vtkDistanceRepresentation
+class VTKINTERACTIONWIDGETS_EXPORT VTK_MARSHALAUTO vtkDistanceRepresentation2D
+  : public vtkDistanceRepresentation
 {
 public:
   /**
    * Instantiate class.
    */
-  static vtkDistanceRepresentation2D *New();
+  static vtkDistanceRepresentation2D* New();
 
-  //@{
+  ///@{
   /**
    * Standard VTK methods.
    */
-  vtkTypeMacro(vtkDistanceRepresentation2D,vtkDistanceRepresentation);
+  vtkTypeMacro(vtkDistanceRepresentation2D, vtkDistanceRepresentation);
   void PrintSelf(ostream& os, vtkIndent indent) override;
-  //@}
+  ///@}
 
   /**
    * Satisfy the superclasses API.
    */
-  double GetDistance() override
-    {return this->Distance;}
+  double GetDistance() override { return this->Distance; }
 
-  //@{
+  ///@{
   /**
    * Methods to Set/Get the coordinates of the two points defining
    * this representation. Note that methods are available for both
    * display and world coordinates.
    */
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
   double* GetPoint1WorldPosition() override;
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
   double* GetPoint2WorldPosition() override;
-  void GetPoint1WorldPosition(double pos[3]) override;
-  void GetPoint2WorldPosition(double pos[3]) override;
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
+  void GetPoint1WorldPosition(double pos[3]) VTK_FUTURE_CONST override;
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
+  void GetPoint2WorldPosition(double pos[3]) VTK_FUTURE_CONST override;
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
   void SetPoint1WorldPosition(double pos[3]) override;
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
   void SetPoint2WorldPosition(double pos[3]) override;
-  //@}
+  ///@}
 
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
   void SetPoint1DisplayPosition(double pos[3]) override;
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
   void SetPoint2DisplayPosition(double pos[3]) override;
-  void GetPoint1DisplayPosition(double pos[3]) override;
-  void GetPoint2DisplayPosition(double pos[3]) override;
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
+  void GetPoint1DisplayPosition(double pos[3]) VTK_FUTURE_CONST override;
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_REDUNDANT)
+  void GetPoint2DisplayPosition(double pos[3]) VTK_FUTURE_CONST override;
 
-  //@{
+  ///@{
   /**
    * Retrieve the vtkAxisActor2D used to draw the measurement axis. With this
    * properties can be set and so on. There is also a convenience method to
    * get the axis property.
    */
-  vtkAxisActor2D *GetAxis();
-  vtkProperty2D  *GetAxisProperty();
-  //@}
+  vtkAxisActor2D* GetAxis();
+  vtkProperty2D* GetAxisProperty();
+  ///@}
 
   /**
    * Method to satisfy superclasses' API.
    */
   void BuildRepresentation() override;
 
-  //@{
+  ///@{
   /**
    * Methods required by vtkProp superclass.
    */
-  void ReleaseGraphicsResources(vtkWindow *w) override;
-  int RenderOverlay(vtkViewport *viewport) override;
-  int RenderOpaqueGeometry(vtkViewport *viewport) override;
-  //@}
+  void ReleaseGraphicsResources(vtkWindow* w) override;
+  int RenderOverlay(vtkViewport* viewport) override;
+  int RenderOpaqueGeometry(vtkViewport* viewport) override;
+  ///@}
 
 protected:
   vtkDistanceRepresentation2D();
   ~vtkDistanceRepresentation2D() override;
 
   // Add a line to the mix
-  vtkAxisActor2D *AxisActor;
-  vtkProperty2D  *AxisProperty;
+  vtkNew<vtkAxisActor2D> AxisActor;
+  vtkProperty2D* AxisProperty;
 
   // The distance between the two points
   double Distance;
@@ -119,4 +118,5 @@ private:
   void operator=(const vtkDistanceRepresentation2D&) = delete;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

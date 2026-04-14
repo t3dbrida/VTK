@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkArrayDispatch.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkArrayDispatch
  * @brief   vtkDataArray code generator/dispatcher.
@@ -22,7 +10,7 @@
  * for a restricted or unrestricted set of vtkDataArray subclasses.
  *
  * A more detailed description of this class and related tools can be found
- * \ref VTK-7-1-ArrayDispatch "here".
+ * [here](https://docs.vtk.org/en/latest/design_documents/array_dispatch.html).
  *
  * The primary goals of this class are to simplify multi-array dispatch
  * implementations, and provide tools to lower compilation time and binary
@@ -35,7 +23,7 @@
  * copy of the array data into an AOS buffer. This is very inefficient and
  * should be avoided.
  *
- * The vtkDataArrayAccessor wrapper is worth mentioning here, as it allows
+ * The vtkDataArrayRange.h utilities are worth mentioning here, as they allow
  * vtkArrayDispatch workers to operate on selected concrete subclasses for
  * 'fast paths', yet fallback to using the slower vtkDataArray API for uncommon
  * array types. This helps mitigate the "template explosion" issues that can
@@ -108,12 +96,12 @@
  * bool result = Dispatcher<...>::Execute(array, worker);
  * @endcode
  *
- * The dispatcher can also be instantiated into an object, e.g.:
+ * For convenience, the dispatcher may be aliased to a shorter name, e.g.:
  *
  * @code
- * vtkArrayDispatch::SomeDispatcher<...> myDispatcher;
+ * using MyDispatcher = vtkArrayDispatch::SomeDispatcher<...>;
  * MyWorker worker;
- * bool result = myDispatcher.Execute(array, worker);
+ * bool result = MyDispatcher::Execute(array, worker);
  * @endcode
  *
  * Return value:
@@ -124,11 +112,12 @@
  *
  * Workers:
  * The dispatch requires a Worker functor that performs the work.
- * For single array, the functor must be callable with the array object as an
- * argument. For 2-array dispatch, the arguments must be (array1, array2).
- * For 3-array dispatch, the arguments must be (array1, array2, array3).
+ * For single array, the functor must be callable where the first parameter is
+ * an array object. For 2-array dispatch, the first two arguments must be (array1, array2).
+ * For 3-array dispatch, the first three arguments must be (array1, array2, array3).
  * Workers are passed by reference, so stateful functors are permitted if
- * additional input/output data is needed.
+ * additional input/output data is needed and not being passed as additional
+ * parameters to the Execute method.
  *
  * A simple worker implementation for triple dispatch:
  * @code
@@ -146,41 +135,77 @@
  * be supported by providing overloads of operator() that have more restrictive
  * template parameters.
  *
+ * A worker's operator() implementation can accept additional parameters that
+ * follow the arrays. These parameters are passed to the dispatcher during
+ * execution. For instance, this worker scales an array by a runtime-value,
+ * writing it into a second array:
+ *
+ * @code
+ * struct ScaleArray
+ * {
+ *   template <typename ArraySrc, typename ArrayDst>
+ *   void operator()(ArraySrc *srcArray, ArrayDst *dstArray,
+ *                   double scaleFactor) const
+ *   {
+ *     using SrcType = vtk::GetAPIType<ArraySrc>;
+ *     using DstType = vtk::GetAPIType<ArrayDst>;
+ *
+ *     const auto srcRange = vtk::DataArrayValueRange(srcArray);
+ *     auto dstRange = vtk::DataArrayValueRange(dstArray);
+ *
+ *     assert(srcRange.size() == dstRange.size());
+ *
+ *     auto dstIter = dstRange.begin();
+ *     for (SrcType srcVal : srcRange)
+ *     {
+ *       *dstIter++ = static_cast<DstType>(srcVal * scaleFactor);
+ *     }
+ *   }
+ * };
+ *
+ * vtkDataArray *src = ...;
+ * vtkDataArray *dst = ...;
+ * // Scale src by 3 (scaleFactor) and store in dst:
+ * if (!vtkArrayDispatch::Dispatch2::Execute(src, dst, ScaleArray, 3))
+ * {
+ *   scaleArray(src, dst, 3);
+ * }
+ * @endcode
+ *
  * Examples:
- * See TestArrayDispatchers.cxx for examples of each dispatch type.
+ * See TestArrayDispatchers.cxx for examples of each dispatch type and
+ * ExampleDataArrayRangeDispatch.cxx for more real-world examples.
  *
  * @sa
  * vtkDataArrayAccessor
-*/
+ */
 
 #ifndef vtkArrayDispatch_h
 #define vtkArrayDispatch_h
 
 #include "vtkArrayDispatchArrayList.h"
-#include "vtkConfigure.h"
 #include "vtkType.h"
 #include "vtkTypeList.h"
 
-namespace vtkArrayDispatch {
+namespace vtkArrayDispatch
+{
+VTK_ABI_NAMESPACE_BEGIN
 
 /**
  * A TypeList containing all real ValueTypes.
  */
-typedef vtkTypeList_Create_2(double, float) Reals;
+using Reals = vtkTypeList::Create<double, float>;
 
 /**
  * A Typelist containing all integral ValueTypes.
  */
-typedef vtkTypeList::Unique<
-  vtkTypeList_Create_12(char, int, long, long long, short, signed char,
-                        unsigned char, unsigned int, unsigned long,
-                        unsigned long long, unsigned short, vtkIdType)
-  >::Result Integrals;
+using Integrals = vtkTypeList::Create<char, int, long, long long, short, signed char, unsigned char,
+  unsigned int, unsigned long, unsigned long long, unsigned short>;
 
 /**
  * A Typelist containing all standard VTK array ValueTypes.
  */
-typedef vtkTypeList::Append<Reals, Integrals>::Result AllTypes;
+using AllTypes = vtkTypeList::Append<Reals, Integrals>::Result;
 
 //------------------------------------------------------------------------------
 /**
@@ -214,6 +239,19 @@ struct DispatchByValueType;
 
 //------------------------------------------------------------------------------
 /**
+ * Dispatch a single array against all array types in ArrayList with the added
+ * restriction that the array must have a type that appears the ValueTypeList TypeList.
+ * The entry point is:
+ * bool DispatchByArrayAndValueType<...>::Execute(vtkDataArray *array, Worker &worker).
+ */
+template <typename ArrayList, typename ValueTypeList>
+struct DispatchByArrayAndValueType;
+template <typename ArrayList, typename ValueTypeList>
+struct VTK_DEPRECATED_IN_9_6_0(
+  "Use DispatchByArrayAndValueType instead.") DispatchByValueTypeUsingArrays;
+
+//------------------------------------------------------------------------------
+/**
  * Dispatch two arrays using all array types in the application-wide
  * vtkArrayDispatch::Arrays list.
  * The entry point is:
@@ -235,6 +273,25 @@ struct Dispatch2SameValueType;
 
 //------------------------------------------------------------------------------
 /**
+ * Dispatch two arrays, restricting the valid code paths to use
+ * ValueType-filtered versions of the ArrayList1 and ArrayList2 TypeLists.
+ * The first array's ValueType must be in the ValueTypeList1 TypeList,
+ * and the second's must be in ValueTypeList2.
+ * If all types are to be considered, use vtkArrayDispatch::AllTypes for the
+ * last two template parameters.
+ * The entry point is:
+ * bool Dispatch2ByArrayAndValueType<...>::Execute(vtkDataArray *a1, vtkDataArray *a2,
+ * Worker &worker).
+ */
+template <typename ArrayList1, typename ArrayList2, typename ValueTypeList1,
+  typename ValueTypeList2>
+struct Dispatch2ByArrayAndValueType;
+template <typename ArrayList, typename ValueTypeList1, typename ValueTypeList2>
+struct VTK_DEPRECATED_IN_9_6_0(
+  "Use Dispatch2ByArrayAndValueType instead.") Dispatch2ByValueTypeUsingArrays;
+
+//------------------------------------------------------------------------------
+/**
  * Dispatch two arrays with the restriction that the type of the first array is
  * in the ArrayList1 TypeList, and the second is in ArrayList2.
  * If all application-wide arrays are desired, use vtkArrayDispatch::Arrays for
@@ -243,10 +300,7 @@ struct Dispatch2SameValueType;
  * bool Dispatch2ByArray<...>::Execute(vtkDataArray *a1, vtkDataArray *a2,
  * Worker &worker).
  */
-template <
-    typename ArrayList1,
-    typename ArrayList2
-    >
+template <typename ArrayList1, typename ArrayList2>
 struct Dispatch2ByArray;
 
 //------------------------------------------------------------------------------
@@ -261,10 +315,7 @@ struct Dispatch2ByArray;
  * bool Dispatch2ByValueType<...>::Execute(vtkDataArray *a1, vtkDataArray *a2,
  * Worker &worker).
  */
-template <
-    typename ValueTypeList1,
-    typename ValueTypeList2
-    >
+template <typename ValueTypeList1, typename ValueTypeList2>
 struct Dispatch2ByValueType;
 
 //------------------------------------------------------------------------------
@@ -278,11 +329,11 @@ struct Dispatch2ByValueType;
  * bool Dispatch2ByArrayWithSameValueType<...>::Execute(
  * vtkDataArray *a1, vtkDataArray *a2, Worker &worker).
  */
-template <
-    typename ArrayList1,
-    typename ArrayList2
-    >
+template <typename ArrayList1, typename ArrayList2>
 struct Dispatch2ByArrayWithSameValueType;
+template <typename ArrayList>
+struct VTK_DEPRECATED_IN_9_6_0(
+  "Use Dispatch2ByArrayWithSameValueType instead.") Dispatch2SameValueTypeUsingArrays;
 
 //------------------------------------------------------------------------------
 /**
@@ -298,6 +349,24 @@ struct Dispatch2ByArrayWithSameValueType;
  */
 template <typename ValueTypeList>
 struct Dispatch2BySameValueType;
+
+//------------------------------------------------------------------------------
+/**
+ * Dispatch two arrays, restricting the valid code paths to use only array types
+ * found in ArrayList that have a
+ * ValueType contained in the ValueTypeList TypeList. This dispatcher also
+ * enforces that all arrays have the same ValueType.
+ * If all types are to be considered, use vtkArrayDispatch::AllTypes for the
+ * last template parameter.
+ * The entry point is:
+ * bool Dispatch2ByArrayAndSameValueType<...>::Execute(
+ * vtkDataArray *a1, vtkDataArray *a2, Worker &worker).
+ */
+template <typename ArrayList, typename ValueTypeList>
+struct Dispatch2ByArrayAndSameValueType;
+template <typename ArrayList, typename ValueTypeList>
+struct VTK_DEPRECATED_IN_9_6_0(
+  "Use Dispatch2ByArrayAndSameValueType instead.") Dispatch2BySameValueTypeUsingArrays;
 
 //------------------------------------------------------------------------------
 /**
@@ -331,11 +400,7 @@ struct Dispatch3SameValueType;
  * bool Dispatch3ByArray::Execute<...>(vtkDataArray *a1, vtkDataArray *a2,
  * vtkDataArray *a3, Worker &worker).
  */
-template <
-    typename ArrayList1,
-    typename ArrayList2,
-    typename ArrayList3
-    >
+template <typename ArrayList1, typename ArrayList2, typename ArrayList3>
 struct Dispatch3ByArray;
 
 //------------------------------------------------------------------------------
@@ -351,12 +416,29 @@ struct Dispatch3ByArray;
  * bool Dispatch3ByValueType<...>::Execute(vtkDataArray *a1, vtkDataArray *a2,
  * vtkDataArray *a3, Worker &worker).
  */
-template <
-    typename ValueTypeList1,
-    typename ValueTypeList2,
-    typename ValueTypeList3
-    >
+template <typename ValueTypeList1, typename ValueTypeList2, typename ValueTypeList3>
 struct Dispatch3ByValueType;
+
+//------------------------------------------------------------------------------
+/**
+ * Dispatch three arrays, restricting the valid code paths to use
+ * ValueType-filtered versions of ArrayList1 , ArrayList2, and ArrayList3
+ * TypeList. The first array's ValueType must be in the ValueTypeList1 TypeList,
+ * the second's must be in ValueTypeList2, and the third's must be in
+ * ValueTypeList3.
+ * If all types are to be considered, use vtkArrayDispatch::AllTypes for the
+ * last three template parameters.
+ * The entry point is:
+ * bool Dispatch3ByValueType<...>::Execute(vtkDataArray *a1, vtkDataArray *a2,
+ * vtkDataArray *a3, Worker &worker).
+ */
+template <typename ArrayList1, typename ArrayList2, typename ArrayList3, typename ValueTypeList1,
+  typename ValueTypeList2, typename ValueTypeList3>
+struct Dispatch3ByArrayAndValueType;
+template <typename ArrayList, typename ValueTypeList1, typename ValueTypeList2,
+  typename ValueTypeList3>
+struct VTK_DEPRECATED_IN_9_6_0(
+  "Use Dispatch3ByArrayAndValueType instead.") Dispatch3ByValueTypeUsingArrays;
 
 //------------------------------------------------------------------------------
 /**
@@ -369,12 +451,11 @@ struct Dispatch3ByValueType;
  * bool Dispatch3ByArrayWithSameValueType<...>::Execute(
  * vtkDataArray *a1, vtkDataArray *a2, vtkDataArray *a3, Worker &worker).
  */
-template <
-    typename ArrayList1,
-    typename ArrayList2,
-    typename ArrayList3
-    >
+template <typename ArrayList1, typename ArrayList2, typename ArrayList3>
 struct Dispatch3ByArrayWithSameValueType;
+template <typename ArrayList>
+struct VTK_DEPRECATED_IN_9_6_0(
+  "Use Dispatch3ByArrayWithSameValueType instead.") Dispatch3SameValueTypeUsingArrays;
 
 //------------------------------------------------------------------------------
 /**
@@ -393,12 +474,47 @@ struct Dispatch3BySameValueType;
 
 //------------------------------------------------------------------------------
 /**
+ * Dispatch three arrays, restricting the valid code paths to use only array
+ * types found in ArrayList TypeList that have a ValueType contained in the
+ * ValueTypeList TypeList. This dispatcher also enforces that all arrays have
+ * the same ValueType.
+ * If all types are to be considered, use vtkArrayDispatch::AllTypes for the
+ * first three template parameters.
+ * The entry point is:
+ * bool Dispatch3ByArraySameValueType<...>::Execute(
+ * vtkDataArray *a1, vtkDataArray *a2, vtkDataArray *a3, Worker &worker).
+ */
+template <typename ArrayList, typename ValueTypeList>
+struct Dispatch3ByArraySameValueType;
+template <typename ArrayList, typename ValueTypeList>
+struct VTK_DEPRECATED_IN_9_6_0(
+  "Use Dispatch3ByArraySameValueType instead.") Dispatch3BySameValueTypeUsingArrays;
+
+//----------------------------------------------------------------------------
+/**
+ * Filter the ArrayList to contain only arrays with ArrayType::ArrayTypeTag that
+ * exist in ArrayTypeTagList. The result TypeList is stored in Result.
+ */
+template <typename ArrayList, typename ArrayTypeTagList>
+struct FilterArraysByArrayTypeTag;
+
+//------------------------------------------------------------------------------
+/**
+ * Filter the ArrayList to contain only arrays with ArrayType::DataTypeTag that
+ * exist in DataTypeTagList. The result TypeList is stored in Result.
+ */
+template <typename ArrayList, typename DataTypeTagList>
+struct FilterArraysByDataTypeTag;
+
+//------------------------------------------------------------------------------
+/**
  * Filter the ArrayList to contain only arrays with ArrayType::ValueType that
  * exist in ValueList. The result TypeList is stored in Result.
  */
 template <typename ArrayList, typename ValueList>
 struct FilterArraysByValueType;
 
+VTK_ABI_NAMESPACE_END
 } // end namespace vtkArrayDispatch
 
 #include "vtkArrayDispatch.txx"

@@ -1,36 +1,9 @@
 /*
- * Copyright (c) 2005-2017 National Technology & Engineering Solutions
+ * Copyright(C) 1999-2020, 2024 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met:
- *
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *
- *     * Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following
- *       disclaimer in the documentation and/or other materials provided
- *       with the distribution.
- *
- *     * Neither the name of NTESS nor the names of its
- *       contributors may be used to endorse or promote products derived
- *       from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
+ * See packages/seacas/LICENSE for details
  */
 /*****************************************************************************
  *
@@ -55,12 +28,7 @@
  *****************************************************************************/
 
 #include "exodusII.h"     // for ex_err, etc
-#include "exodusII_int.h" // for EX_FATAL, ex_get_dimension, etc
-#include "vtk_netcdf.h"       // for NC_NOERR, etc
-#include <inttypes.h>     // for PRId64
-#include <stddef.h>       // for size_t
-#include <stdio.h>
-#include <sys/types.h> // for int64_t
+#include "exodusII_int.h" // for EX_FATAL, exi_get_dimension, etc
 
 /*!
  * reads the specified attribute for a subsect of a block
@@ -89,7 +57,9 @@ int ex_get_partial_attr(int exoid, ex_entity_type obj_type, ex_entity_id obj_id,
   const char *vattrbname;
 
   EX_FUNC_ENTER();
-  ex_check_valid_file_id(exoid, __func__);
+  if (exi_check_valid_file_id(exoid, __func__) == EX_FATAL) {
+    EX_FUNC_LEAVE(EX_FATAL);
+  }
 
 #if !defined(PARALLEL_AWARE_EXODUS)
   if (num_ent == 0) {
@@ -99,7 +69,7 @@ int ex_get_partial_attr(int exoid, ex_entity_type obj_type, ex_entity_id obj_id,
 
   /* Determine index of obj_id in vobjids array */
   if (obj_type != EX_NODAL) {
-    obj_id_ndx = ex_id_lkup(exoid, obj_type, obj_id);
+    obj_id_ndx = exi_id_lkup(exoid, obj_type, obj_id);
     if (obj_id_ndx <= 0) {
       ex_get_err(NULL, NULL, &status);
 
@@ -108,13 +78,13 @@ int ex_get_partial_attr(int exoid, ex_entity_type obj_type, ex_entity_id obj_id,
           snprintf(errmsg, MAX_ERR_LENGTH,
                    "Warning: no attributes found for NULL %s %" PRId64 " in file id %d",
                    ex_name_of_object(obj_type), obj_id, exoid);
-          ex_err(__func__, errmsg, EX_NULLENTITY);
+          ex_err_fn(exoid, __func__, errmsg, EX_NULLENTITY);
           EX_FUNC_LEAVE(EX_WARN); /* no attributes for this object */
         }
         snprintf(errmsg, MAX_ERR_LENGTH,
                  "Warning: failed to locate %s id%" PRId64 " in id array in file id %d",
                  ex_name_of_object(obj_type), obj_id, exoid);
-        ex_err(__func__, errmsg, status);
+        ex_err_fn(exoid, __func__, errmsg, status);
         EX_FUNC_LEAVE(EX_WARN);
       }
     }
@@ -170,26 +140,26 @@ int ex_get_partial_attr(int exoid, ex_entity_type obj_type, ex_entity_id obj_id,
     snprintf(errmsg, MAX_ERR_LENGTH,
              "Internal ERROR: unrecognized object type in switch: %d in file id %d", obj_type,
              exoid);
-    ex_err(__func__, errmsg, EX_BADPARAM);
+    ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
     EX_FUNC_LEAVE(EX_FATAL); /* number of attributes not defined */
   }
 
   /* inquire id's of previously defined dimensions  */
-  if (ex_get_dimension(exoid, dnumobjent, "entries", &num_entries_this_obj, &temp, __func__) !=
+  if (exi_get_dimension(exoid, dnumobjent, "entries", &num_entries_this_obj, &temp, __func__) !=
       NC_NOERR) {
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
-  if (start_num + num_ent - 1 > num_entries_this_obj) {
+  if (start_num + num_ent - 1 > (int64_t)num_entries_this_obj) {
     snprintf(errmsg, MAX_ERR_LENGTH,
              "ERROR: start index (%" PRId64 ") + count (%" PRId64
-             ") is larger than total number of entities (%" ST_ZU ") in file id %d",
+             ") is larger than total number of entities (%zu) in file id %d",
              start_num, num_ent, num_entries_this_obj, exoid);
-    ex_err(__func__, errmsg, EX_BADPARAM);
+    ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
-  if (ex_get_dimension(exoid, dnumobjatt, "attributes", &num_attr, &temp, __func__) != NC_NOERR) {
+  if (exi_get_dimension(exoid, dnumobjatt, "attributes", &num_attr, &temp, __func__) != NC_NOERR) {
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -197,7 +167,7 @@ int ex_get_partial_attr(int exoid, ex_entity_type obj_type, ex_entity_id obj_id,
     snprintf(errmsg, MAX_ERR_LENGTH,
              "ERROR: failed to locate attributes for %s %" PRId64 " in file id %d",
              ex_name_of_object(obj_type), obj_id, exoid);
-    ex_err(__func__, errmsg, status);
+    ex_err_fn(exoid, __func__, errmsg, status);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -211,7 +181,7 @@ int ex_get_partial_attr(int exoid, ex_entity_type obj_type, ex_entity_id obj_id,
     start[0] = 0;
   }
 
-  if (ex_comp_ws(exoid) == 4) {
+  if (exi_comp_ws(exoid) == 4) {
     status = nc_get_vara_float(exoid, attrid, start, count, attrib);
   }
   else {
@@ -222,7 +192,7 @@ int ex_get_partial_attr(int exoid, ex_entity_type obj_type, ex_entity_id obj_id,
     snprintf(errmsg, MAX_ERR_LENGTH,
              "ERROR: failed to get attributes for %s %" PRId64 " in file id %d",
              ex_name_of_object(obj_type), obj_id, exoid);
-    ex_err(__func__, errmsg, status);
+    ex_err_fn(exoid, __func__, errmsg, status);
     EX_FUNC_LEAVE(EX_FATAL);
   }
   EX_FUNC_LEAVE(EX_NOERR);

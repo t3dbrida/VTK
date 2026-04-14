@@ -1,30 +1,39 @@
-include(vtkObjectFactory)
+set(classes
+  vtkOpenGLContextActor
+  vtkOpenGLContextBufferId
+  vtkOpenGLContextDevice2D
+  vtkOpenGLContextDevice3D
+  vtkOpenGLPropItem)
 
-set(module_SRCS
-  vtkOpenGLContextActor.cxx
-  vtkOpenGLContextBufferId.cxx
-  vtkOpenGLContextDevice2D.cxx
-  vtkOpenGLContextDevice3D.cxx
-  vtkOpenGLPropItem.cxx
-  )
+set(private_headers
+  vtkOpenGLContextDevice2DPrivate.h
+  vtkOpenGLContextDeviceBufferObjectBuilder.h)
 
-set(_opengl_overrides
-  "ContextActor"
-  "ContextDevice2D"
-  "ContextDevice3D"
-  "PropItem"
-)
-foreach(_override ${_opengl_overrides})
-  vtk_add_override("vtk${_override}" "vtkOpenGL${_override}")
-endforeach()
-vtk_add_override("vtkAbstractContextBufferId" "vtkOpenGLContextBufferId")
-vtk_object_factory_configure("${vtk_module_overrides}")
+set(extra_sources
+  vtkOpenGLContextDeviceBufferObjectBuilder.cxx)
 
-list(APPEND module_SRCS
-  ${CMAKE_CURRENT_BINARY_DIR}/${vtk-module}ObjectFactory.cxx)
+set(opengl_overrides
+  ContextActor
+  ContextDevice2D
+  ContextDevice3D
+  PropItem)
+foreach (opengl_override IN LISTS opengl_overrides)
+  vtk_object_factory_declare(
+    BASE "vtk${opengl_override}"
+    OVERRIDE "vtkOpenGL${opengl_override}")
+endforeach ()
+vtk_object_factory_declare(
+  BASE vtkAbstractContextBufferId
+  OVERRIDE vtkOpenGLContextBufferId)
 
-vtk_module_library(${vtk-module} ${module_SRCS})
-vtk_module_link_libraries(${vtk-module}
-  LINK_PRIVATE ${GLEW_LIBRARY} ${OPENGL_LIBRARIES})
-include(vtkOpenGL)
-vtk_opengl_link(${vtk-module})
+vtk_object_factory_configure(
+  SOURCE_FILE vtk_object_factory_source
+  HEADER_FILE vtk_object_factory_header
+  EXPORT_MACRO "VTKRENDERINGCONTEXTOPENGL2_EXPORT")
+
+vtk_module_add_module(VTK::RenderingContextOpenGL2
+  CLASSES ${classes}
+  SOURCES ${vtk_object_factory_source} ${extra_sources}
+  PRIVATE_HEADERS ${private_headers} ${vtk_object_factory_header})
+
+vtk_add_test_mangling(VTK::RenderingContextOpenGL2)

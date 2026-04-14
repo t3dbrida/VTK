@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkMultiBlockDataSet.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkMultiBlockDataSet
  * @brief   Composite dataset that organizes datasets into
@@ -34,15 +22,17 @@
  *   * (null)
  *   * ds 1
  * @endverbatim
-*/
+ */
 
 #ifndef vtkMultiBlockDataSet_h
 #define vtkMultiBlockDataSet_h
 
 #include "vtkCommonDataModelModule.h" // For export macro
 #include "vtkDataObjectTree.h"
+#include "vtkWrappingHints.h" // For VTK_MARSHALMANUAL
 
-class VTKCOMMONDATAMODEL_EXPORT vtkMultiBlockDataSet : public vtkDataObjectTree
+VTK_ABI_NAMESPACE_BEGIN
+class VTKCOMMONDATAMODEL_EXPORT VTK_MARSHALMANUAL vtkMultiBlockDataSet : public vtkDataObjectTree
 {
 public:
   static vtkMultiBlockDataSet* New();
@@ -53,7 +43,7 @@ public:
    * Return class name of data type (see vtkType.h for
    * definitions).
    */
-  int GetDataObjectType() override {return VTK_MULTIBLOCK_DATA_SET;}
+  int GetDataObjectType() VTK_FUTURE_CONST override { return VTK_MULTIBLOCK_DATA_SET; }
 
   /**
    * Set the number of blocks. This will cause allocation if the new number of
@@ -76,6 +66,11 @@ public:
   /**
    * Sets the data object as the given block. The total number of blocks will
    * be resized to fit the requested block no.
+   *
+   * @remark while most vtkDataObject subclasses, including vtkMultiBlockDataSet
+   * as acceptable as a block, `vtkPartitionedDataSet`,
+   * `vtkPartitionedDataSetCollection`, and `vtkUniformGridAMR`
+   * are not valid.
    */
   void SetBlock(unsigned int blockno, vtkDataObject* block);
 
@@ -87,8 +82,10 @@ public:
   /**
    * Returns true if meta-data is available for a given block.
    */
-  int HasMetaData(unsigned int blockno)
-    { return this->Superclass::HasChildMetaData(blockno); }
+  vtkTypeBool HasMetaData(unsigned int blockno)
+  {
+    return this->Superclass::HasChildMetaData(blockno);
+  }
 
   /**
    * Returns the meta-data for the block. If none is already present, a new
@@ -96,38 +93,49 @@ public:
    * allocating vtkInformation objects.
    */
   vtkInformation* GetMetaData(unsigned int blockno)
-    { return this->Superclass::GetChildMetaData(blockno); }
+  {
+    return this->Superclass::GetChildMetaData(blockno);
+  }
 
-  //@{
+  ///@{
   /**
    * Retrieve an instance of this class from an information object.
    */
   static vtkMultiBlockDataSet* GetData(vtkInformation* info);
-  static vtkMultiBlockDataSet* GetData(vtkInformationVector* v, int i=0);
-  //@}
+  static vtkMultiBlockDataSet* GetData(vtkInformationVector* v, int i = 0);
+  ///@}
 
   /**
    * Unhiding superclass method.
    */
   vtkInformation* GetMetaData(vtkCompositeDataIterator* iter) override
-    { return this->Superclass::GetMetaData(iter); }
+  {
+    return this->Superclass::GetMetaData(iter);
+  }
 
   /**
    * Unhiding superclass method.
    */
-  int HasMetaData(vtkCompositeDataIterator* iter) override
-    { return this->Superclass::HasMetaData(iter); }
+  vtkTypeBool HasMetaData(vtkCompositeDataIterator* iter) override
+  {
+    return this->Superclass::HasMetaData(iter);
+  }
 
 protected:
   vtkMultiBlockDataSet();
   ~vtkMultiBlockDataSet() override;
 
+  /**
+   * Overridden to create a vtkMultiPieceDataSet whenever a
+   * vtkPartitionedDataSet is encountered. This is necessary since
+   * vtkMultiBlockDataSet cannot contain vtPartitionedDataSets.
+   */
+  vtkDataObjectTree* CreateForCopyStructure(vtkDataObjectTree* other) override;
+
 private:
   vtkMultiBlockDataSet(const vtkMultiBlockDataSet&) = delete;
   void operator=(const vtkMultiBlockDataSet&) = delete;
-
 };
 
+VTK_ABI_NAMESPACE_END
 #endif
-
-

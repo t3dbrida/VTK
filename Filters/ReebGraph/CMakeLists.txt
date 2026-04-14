@@ -1,12 +1,16 @@
-find_package(Boost REQUIRED)
-include_directories(${Boost_INCLUDE_DIRS})
+set(classes
+  vtkReebGraphSimplificationFilter
+  vtkReebGraphSurfaceSkeletonFilter
+  vtkReebGraphToJoinSplitTreeFilter
+  vtkReebGraphVolumeSkeletonFilter
+  vtkUnstructuredGridToReebGraphFilter)
 
-set(Module_SRCS
-  vtkReebGraphSimplificationFilter.cxx
-  vtkReebGraphSurfaceSkeletonFilter.cxx
-  vtkReebGraphToJoinSplitTreeFilter.cxx
-  vtkReebGraphVolumeSkeletonFilter.cxx
-  vtkUnstructuredGridToReebGraphFilter.cxx
-  )
+vtk_module_add_module(VTK::FiltersReebGraph
+  CLASSES ${classes})
 
-vtk_module_library(vtkFiltersReebGraph ${Module_SRCS})
+vtk_module_find_package(PRIVATE
+  PACKAGE Boost)
+vtk_module_link(VTK::FiltersReebGraph
+  PRIVATE
+    "$<BUILD_INTERFACE:Boost::boost>")
+vtk_add_test_mangling(VTK::FiltersReebGraph)

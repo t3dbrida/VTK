@@ -1,39 +1,29 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestReduceTable.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "vtkReduceTable.h"
 
-#include "vtkIntArray.h"
 #include "vtkDoubleArray.h"
+#include "vtkIntArray.h"
 #include "vtkNew.h"
 #include "vtkStringArray.h"
 #include "vtkTable.h"
 
-//----------------------------------------------------------------------------
+#include <iostream>
+
+//------------------------------------------------------------------------------
 int TestReduceTable(int, char*[])
 {
   vtkNew<vtkTable> table;
 
   vtkNew<vtkStringArray> indexColumn;
   indexColumn->SetNumberOfTuples(6);
-  indexColumn->SetValue(0,  "a");
-  indexColumn->SetValue(1,  "b");
-  indexColumn->SetValue(2,  "b");
-  indexColumn->SetValue(3,  "c");
-  indexColumn->SetValue(4,  "c");
-  indexColumn->SetValue(5,  "c");
+  indexColumn->SetValue(0, "a");
+  indexColumn->SetValue(1, "b");
+  indexColumn->SetValue(2, "b");
+  indexColumn->SetValue(3, "c");
+  indexColumn->SetValue(4, "c");
+  indexColumn->SetValue(5, "c");
 
   vtkNew<vtkDoubleArray> meanColumn;
   meanColumn->SetNumberOfTuples(6);
@@ -75,51 +65,51 @@ int TestReduceTable(int, char*[])
   filter->SetReductionMethodForColumn(3, vtkReduceTable::MODE);
   filter->Update();
 
-  vtkTable *output = filter->GetOutput();
+  vtkTable* output = filter->GetOutput();
 
   if (output->GetValue(0, 1) != 1)
   {
-    cout << "ERROR: incorrect value encountered at (0, 1)" << endl;
+    std::cout << "ERROR: incorrect value encountered at (0, 1)" << std::endl;
     return EXIT_FAILURE;
   }
   if (output->GetValue(1, 1) != 2)
   {
-    cout << "ERROR: incorrect value encountered at (1, 1)" << endl;
+    std::cout << "ERROR: incorrect value encountered at (1, 1)" << std::endl;
     return EXIT_FAILURE;
   }
   if (output->GetValue(2, 1) != 3)
   {
-    cout << "ERROR: incorrect value encountered at (2, 1)" << endl;
+    std::cout << "ERROR: incorrect value encountered at (2, 1)" << std::endl;
     return EXIT_FAILURE;
   }
   if (output->GetValue(0, 2) != 2)
   {
-    cout << "ERROR: incorrect value encountered at (0, 2)" << endl;
+    std::cout << "ERROR: incorrect value encountered at (0, 2)" << std::endl;
     return EXIT_FAILURE;
   }
   if (output->GetValue(1, 2) != 4)
   {
-    cout << "ERROR: incorrect value encountered at (1, 2)" << endl;
+    std::cout << "ERROR: incorrect value encountered at (1, 2)" << std::endl;
     return EXIT_FAILURE;
   }
   if (output->GetValue(2, 2) != 6)
   {
-    cout << "ERROR: incorrect value encountered at (2, 2)" << endl;
+    std::cout << "ERROR: incorrect value encountered at (2, 2)" << std::endl;
     return EXIT_FAILURE;
   }
   if (output->GetValue(0, 3) != "a")
   {
-    cout << "ERROR: incorrect value encountered at (0, 3)" << endl;
+    std::cout << "ERROR: incorrect value encountered at (0, 3)" << std::endl;
     return EXIT_FAILURE;
   }
   if (output->GetValue(1, 3) != "b")
   {
-    cout << "ERROR: incorrect value encountered at (1, 3)" << endl;
+    std::cout << "ERROR: incorrect value encountered at (1, 3)" << std::endl;
     return EXIT_FAILURE;
   }
   if (output->GetValue(2, 3) != "c")
   {
-    cout << "ERROR: incorrect value encountered at (2, 3)" << endl;
+    std::cout << "ERROR: incorrect value encountered at (2, 3)" << std::endl;
     return EXIT_FAILURE;
   }
 

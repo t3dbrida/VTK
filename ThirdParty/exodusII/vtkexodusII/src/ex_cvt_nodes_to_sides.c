@@ -1,47 +1,15 @@
 /*
- * Copyright (c) 2005-2017 National Technology & Engineering Solutions
+ * Copyright(C) 1999-2020, 2023, 2024 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met:
- *
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *
- *     * Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following
- *       disclaimer in the documentation and/or other materials provided
- *       with the distribution.
- *
- *     * Neither the name of NTESS nor the names of its
- *       contributors may be used to endorse or promote products derived
- *       from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
+ * See packages/seacas/LICENSE for details
  */
 
 #include "exodusII.h"     // for ex_err, ex_block, etc
 #include "exodusII_int.h" // for elem_blk_parm, EX_FATAL, etc
-#include <ctype.h>        // for toupper
-#include <inttypes.h>     // for PRId64
-#include <stddef.h>       // for size_t
-#include <stdio.h>
-#include <stdlib.h>    // for malloc, NULL, free
-#include <string.h>    // for strncmp, strlen
-#include <sys/types.h> // for int64_t
+#include <assert.h>
+#include <stdbool.h>
 
 static int64_t get_node(void_int *connect, size_t index, size_t int_size)
 {
@@ -62,7 +30,7 @@ static void put_side(void_int *side_list, size_t index, size_t value, size_t int
 }
 
 /*!
-
+\ingroup Utilities
 The function ex_cvt_nodes_to_sides() is used to convert a side set
 node list to a side set side list. This routine is provided for
 application programs that utilize side sets defined by nodes (as was
@@ -117,7 +85,6 @@ LocalNodeIds).
 
 \param[out]  side_sets_side_list  Returned array containing the sides for all
 side sets.
-
 
 The following code segment will convert side sets described
 by nodes to side sets described by local side numbers:
@@ -204,7 +171,6 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
                           void_int *side_sets_elem_list, void_int *side_sets_node_list,
                           void_int *side_sets_side_list)
 {
-  size_t    i, j, k, n;
   int       num_side_sets, num_elem_blks;
   int64_t   tot_num_elem = 0, tot_num_ss_elem = 0, elem_num = 0, ndim;
   void_int *elem_blk_ids     = NULL;
@@ -212,7 +178,7 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
   void_int *ss_elem_ndx      = NULL;
   void_int *ss_elem_node_ndx = NULL;
   void_int *ss_parm_ndx      = NULL;
-  size_t    elem_ctr, node_ctr, elem_num_pos;
+  int64_t   elem_ctr, node_ctr, elem_num_pos;
   int       num_nodes_per_elem, num_node_per_side;
 
   int *same_elem_type = NULL;
@@ -221,7 +187,7 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
   int int_size;
   int ids_size;
 
-  struct elem_blk_parm *elem_blk_parms = NULL;
+  struct exi_elem_blk_parm *elem_blk_parms = NULL;
 
   int err_stat = EX_NOERR;
 
@@ -236,48 +202,15 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
      is also the side number.
   */
 
-  /*    1     2   3    4                                          node 1 */
-  static int shell_table[2][8] = {
-      {2, 4, 3, 1, 4, 2, 1, 3}, /* node 2 */
-      {1, 2, 1, 2, 1, 2, 1, 2}  /* side # */
-  };
-
-  /*    1     2   3    4                                          node 1 */
-  static int shell_edge_table[2][8] = {
-      {2, 4, 3, 1, 4, 2, 1, 3}, /* node 2 */
-      {3, 6, 4, 3, 5, 4, 6, 5}  /* side # */
-  };
-
-  /*    1     2   3                                               node 1 */
-  static int trishell_table[2][6] = {
-      {2, 3, 3, 1, 1, 2}, /* node 2 */
-      {1, 2, 1, 2, 1, 2}  /* side # */
-  };
-
-  /*     1      2      3      4                                   node 1 */
-  static int tetra_table[2][12] = {
-      {2, 3, 4, 1, 3, 4, 4, 1, 2, 1, 2, 3}, /* node 2 */
-      {1, 4, 3, 4, 2, 1, 2, 3, 4, 1, 2, 3}  /* side # */
-  };
-
-#if 0
-  static int wedge_table[2][18]  = {
-    /*     1      2      3      4      5      6                     node 1 */
-    {2,4,3, 5,1,3, 6,1,2, 1,6,5, 6,2,4, 4,3,5},              /* node 2 */
-    {1,3,4, 1,4,2, 2,3,4, 1,3,5, 5,2,1, 5,3,2}               /* side # */
-  };
-#endif
-
-  static int hex_table[2][24] = {
-      /*     1      2      3      4      5      6      7      8       node 1 */
-      {4, 2, 5, 1, 3, 6, 7, 4, 2, 3, 1, 8, 6, 8, 1, 5, 2, 7, 8, 6, 3, 7, 5, 4}, /* node 2 */
-      {5, 1, 4, 5, 2, 1, 2, 3, 5, 5, 4, 3, 6, 4, 1, 1, 2, 6, 6, 2, 3, 3, 6, 4}  /* side # */
-  };
-
   char errmsg[MAX_ERR_LENGTH];
 
   EX_FUNC_ENTER();
-  ex_check_valid_file_id(exoid, __func__);
+  if (exi_check_valid_file_id(exoid, __func__) == EX_FATAL) {
+    EX_FUNC_LEAVE(EX_FATAL);
+  }
+
+  EX_UNUSED(side_sets_elem_index);
+  EX_UNUSED(side_sets_node_index);
 
   /* first check if any side sets are specified */
   /* inquire how many side sets have been stored */
@@ -286,13 +219,13 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
   if (num_side_sets < 0) {
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to get number of side sets in file id %d",
              exoid);
-    ex_err(__func__, errmsg, EX_LASTERR);
+    ex_err_fn(exoid, __func__, errmsg, EX_LASTERR);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
   if (num_side_sets == 0) {
     snprintf(errmsg, MAX_ERR_LENGTH, "Warning: no side sets defined in file id %d", exoid);
-    ex_err(__func__, errmsg, EX_WARN);
+    ex_err_fn(exoid, __func__, errmsg, EX_NOENTITY);
     EX_FUNC_LEAVE(EX_WARN);
   }
 
@@ -300,7 +233,7 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
   if (num_elem_blks < 0) {
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to get number of element blocks in file id %d",
              exoid);
-    ex_err(__func__, errmsg, EX_LASTERR);
+    ex_err_fn(exoid, __func__, errmsg, EX_LASTERR);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -308,7 +241,7 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
   if (tot_num_elem < 0) {
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to get total number of elements in file id %d",
              exoid);
-    ex_err(__func__, errmsg, EX_LASTERR);
+    ex_err_fn(exoid, __func__, errmsg, EX_LASTERR);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -316,19 +249,17 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
      distinguish between 2d TRIs and 3d TRIs */
   ndim = ex_inquire_int(exoid, EX_INQ_DIM);
 
-  int_size = sizeof(int);
-  if (ex_int64_status(exoid) & EX_BULK_INT64_API) {
-    int_size = sizeof(int64_t);
-  }
+  bool ints_64 = ex_int64_status(exoid) & EX_BULK_INT64_API;
+  int_size     = ints_64 ? sizeof(int64_t) : sizeof(int);
 
   /* First count up # of elements in the side sets*/
-  if (ex_int64_status(exoid) & EX_BULK_INT64_API) {
-    for (i = 0; i < num_side_sets; i++) {
+  if (ints_64) {
+    for (int i = 0; i < num_side_sets; i++) {
       tot_num_ss_elem += ((int64_t *)num_elem_per_set)[i];
     }
   }
   else {
-    for (i = 0; i < num_side_sets; i++) {
+    for (int i = 0; i < num_side_sets; i++) {
       tot_num_ss_elem += ((int *)num_elem_per_set)[i];
     }
   }
@@ -339,7 +270,7 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
              "ERROR: failed to allocate space for side set elem sort "
              "array for file id %d",
              exoid);
-    ex_err(__func__, errmsg, EX_MEMFAIL);
+    ex_err_fn(exoid, __func__, errmsg, EX_MEMFAIL);
     err_stat = EX_FATAL;
     goto cleanup;
   }
@@ -347,62 +278,62 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
   if (int_size == sizeof(int64_t)) {
     /* Sort side set element list into index array  - non-destructive */
     int64_t *elems = (int64_t *)ss_elem_ndx;
-    for (i = 0; i < tot_num_ss_elem; i++) {
+    for (int i = 0; i < tot_num_ss_elem; i++) {
       elems[i] = i; /* init index array to current position */
     }
-    ex_iqsort64(side_sets_elem_list, elems, tot_num_ss_elem);
+    exi_iqsort64(side_sets_elem_list, elems, tot_num_ss_elem);
   }
   else {
     /* Sort side set element list into index array  - non-destructive */
     int *elems = (int *)ss_elem_ndx;
-    for (i = 0; i < tot_num_ss_elem; i++) {
+    for (int i = 0; i < tot_num_ss_elem; i++) {
       elems[i] = i; /* init index array to current position */
     }
-    ex_iqsort(side_sets_elem_list, elems, tot_num_ss_elem);
+    exi_iqsort(side_sets_elem_list, elems, tot_num_ss_elem);
   }
 
   /* Allocate space for the element block ids */
   ids_size = sizeof(int);
-  if (ex_int64_status(exoid) & EX_IDS_INT64_API) {
+  if (ints_64) {
     ids_size = sizeof(int64_t);
   }
 
   if (!(elem_blk_ids = malloc(num_elem_blks * ids_size))) {
     snprintf(errmsg, MAX_ERR_LENGTH,
              "ERROR: failed to allocate space for element block ids for file id %d", exoid);
-    ex_err(__func__, errmsg, EX_MEMFAIL);
+    ex_err_fn(exoid, __func__, errmsg, EX_MEMFAIL);
     err_stat = EX_FATAL;
     goto cleanup;
   }
 
   if (ex_get_ids(exoid, EX_ELEM_BLOCK, elem_blk_ids)) {
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to get element block ids in file id %d", exoid);
-    ex_err(__func__, errmsg, EX_MSG);
+    ex_err_fn(exoid, __func__, errmsg, EX_MSG);
     err_stat = EX_FATAL;
     goto cleanup;
   }
 
   /* Allocate space for the element block params */
-  if (!(elem_blk_parms = malloc(num_elem_blks * sizeof(struct elem_blk_parm)))) {
+  if (!(elem_blk_parms = malloc(num_elem_blks * sizeof(struct exi_elem_blk_parm)))) {
     snprintf(errmsg, MAX_ERR_LENGTH,
              "ERROR: failed to allocate space for element block params "
              "for file id %d",
              exoid);
-    ex_err(__func__, errmsg, EX_MEMFAIL);
+    ex_err_fn(exoid, __func__, errmsg, EX_MEMFAIL);
     err_stat = EX_FATAL;
     goto cleanup;
   }
   elem_ctr = 0;
-  for (i = 0; i < num_elem_blks; i++) {
+  for (int i = 0; i < num_elem_blks; i++) {
     ex_entity_id id;
-    if (ex_int64_status(exoid) & EX_IDS_INT64_API) {
+    if (ints_64) {
       id = ((int64_t *)elem_blk_ids)[i];
     }
     else {
       id = ((int *)elem_blk_ids)[i];
     }
 
-    err_stat = ex_int_get_block_param(exoid, id, ndim, &elem_blk_parms[i]);
+    err_stat = exi_get_block_param(exoid, id, ndim, &elem_blk_parms[i]);
     if (err_stat != EX_NOERR) {
       goto cleanup;
     }
@@ -414,10 +345,10 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
   /* Allocate space for the ss element to element block parameter index array */
   if (!(ss_parm_ndx = malloc(tot_num_ss_elem * int_size))) {
     snprintf(errmsg, MAX_ERR_LENGTH,
-             "ERROR: failed to allocate space for side set elem parms "
+             "ERROR: failed to allocate space for side set elem params "
              "index for file id %d",
              exoid);
-    ex_err(__func__, errmsg, EX_MEMFAIL);
+    ex_err_fn(exoid, __func__, errmsg, EX_MEMFAIL);
     err_stat = EX_FATAL;
     goto cleanup;
   }
@@ -428,7 +359,7 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
              "ERROR: failed to allocate space for side set elem to node "
              "index for file id %d",
              exoid);
-    ex_err(__func__, errmsg, EX_MEMFAIL);
+    ex_err_fn(exoid, __func__, errmsg, EX_MEMFAIL);
     err_stat = EX_FATAL;
     goto cleanup;
   }
@@ -438,22 +369,23 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
   */
 
   /* Allocate space for same element type flag array*/
-  if (!(same_elem_type = malloc(num_side_sets * sizeof(int)))) {
+  if (!(same_elem_type = calloc(num_side_sets, sizeof(int)))) {
     snprintf(errmsg, MAX_ERR_LENGTH,
              "ERROR: failed to allocate space for element type flag "
              "array for file id %d",
              exoid);
-    ex_err(__func__, errmsg, EX_MEMFAIL);
+    ex_err_fn(exoid, __func__, errmsg, EX_MEMFAIL);
     err_stat = EX_FATAL;
     goto cleanup;
   }
 
-  same_elem_type[0] = EX_TRUE;
-  if (ex_int64_status(exoid) & EX_BULK_INT64_API) {
+  same_elem_type[0] = true;
+  if (ints_64) {
     elem_ctr = ((int64_t *)num_elem_per_set)[0];
-    for (i = 0, k = 0; i < tot_num_ss_elem; i++) {
+    for (int64_t i = 0, k = 0; i < tot_num_ss_elem; i++) {
       int64_t elem = ((int64_t *)side_sets_elem_list)[i];
-      for (j = 0; j < num_elem_blks; j++) {
+      int     j    = 0;
+      for (; j < num_elem_blks; j++) {
         if (elem <= elem_blk_parms[j].elem_ctr) {
           break;
         }
@@ -461,7 +393,7 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
 
       if (j >= num_elem_blks) {
         snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: internal logic error for file id %d", exoid);
-        ex_err(__func__, errmsg, EX_INTERNAL);
+        ex_err_fn(exoid, __func__, errmsg, EX_INTERNAL);
         err_stat = EX_FATAL;
         goto cleanup;
       }
@@ -475,11 +407,11 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
         elem_ctr += ((int64_t *)num_elem_per_set)[++k];
 
         el_type           = elem_blk_parms[j].elem_type_val;
-        same_elem_type[k] = EX_TRUE;
+        same_elem_type[k] = true;
       }
 
       if (el_type != elem_blk_parms[j].elem_type_val) {
-        same_elem_type[k] = EX_FALSE;
+        same_elem_type[k] = false;
       }
     }
 
@@ -488,17 +420,19 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
     */
     node_ctr = 0;
     elem_ctr = ((int64_t *)num_elem_per_set)[0];
-    for (i = 0, k = 0; i < tot_num_ss_elem; i++) {
+    int i    = 0;
+    for (int k = 0; i < tot_num_ss_elem; i++) {
       int64_t elem = ((int64_t *)side_sets_elem_list)[i];
 
-      for (j = 0; j < num_elem_blks; j++) {
+      int j = 0;
+      for (; j < num_elem_blks; j++) {
         if (elem <= elem_blk_parms[j].elem_ctr) {
           break;
         }
       }
       if (j >= num_elem_blks) {
         snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: internal logic error for file id %d", exoid);
-        ex_err(__func__, errmsg, EX_INTERNAL);
+        ex_err_fn(exoid, __func__, errmsg, EX_INTERNAL);
         err_stat = EX_FATAL;
         goto cleanup;
       }
@@ -517,7 +451,7 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
 
       /* determine number of nodes per side */
       if (((((int64_t *)num_nodes_per_set)[k] % ((int64_t *)num_elem_per_set)[k]) == 0) &&
-          (same_elem_type[k] == EX_TRUE)) { /* all side set elements are same type */
+          (same_elem_type[k] == true)) { /* all side set elements are same type */
         node_ctr += ((int64_t *)num_nodes_per_set)[k] / ((int64_t *)num_elem_per_set)[k];
       }
       else {
@@ -528,10 +462,11 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
   }
   else {
     elem_ctr = ((int *)num_elem_per_set)[0];
-    for (i = 0, k = 0; i < tot_num_ss_elem; i++) {
+    for (int i = 0, k = 0; i < tot_num_ss_elem; i++) {
       int elem = ((int *)side_sets_elem_list)[i];
 
-      for (j = 0; j < num_elem_blks; j++) {
+      int j = 0;
+      for (; j < num_elem_blks; j++) {
         if (elem <= elem_blk_parms[j].elem_ctr) {
           break;
         }
@@ -539,7 +474,7 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
 
       if (j >= num_elem_blks) {
         snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: internal logic error for file id %d", exoid);
-        ex_err(__func__, errmsg, EX_INTERNAL);
+        ex_err_fn(exoid, __func__, errmsg, EX_INTERNAL);
         err_stat = EX_FATAL;
         goto cleanup;
       }
@@ -553,11 +488,11 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
         elem_ctr += ((int *)num_elem_per_set)[++k];
 
         el_type           = elem_blk_parms[j].elem_type_val;
-        same_elem_type[k] = EX_TRUE;
+        same_elem_type[k] = true;
       }
 
       if (el_type != elem_blk_parms[j].elem_type_val) {
-        same_elem_type[k] = EX_FALSE;
+        same_elem_type[k] = false;
       }
     }
 
@@ -566,17 +501,19 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
     */
     node_ctr = 0;
     elem_ctr = ((int *)num_elem_per_set)[0];
-    for (i = 0, k = 0; i < tot_num_ss_elem; i++) {
+    int i    = 0;
+    for (int k = 0; i < tot_num_ss_elem; i++) {
       int elem = ((int *)side_sets_elem_list)[i];
 
-      for (j = 0; j < num_elem_blks; j++) {
+      int j = 0;
+      for (; j < num_elem_blks; j++) {
         if (elem <= elem_blk_parms[j].elem_ctr) {
           break;
         }
       }
       if (j >= num_elem_blks) {
         snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: internal logic error for file id %d", exoid);
-        ex_err(__func__, errmsg, EX_INTERNAL);
+        ex_err_fn(exoid, __func__, errmsg, EX_INTERNAL);
         err_stat = EX_FATAL;
         goto cleanup;
       }
@@ -609,7 +546,7 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
 
   elem_ctr = 0;
 
-  for (j = 0; j < tot_num_ss_elem; j++) {
+  for (int j = 0; j < tot_num_ss_elem; j++) {
     int64_t elem;
     int64_t idx;
     int64_t ss_node0, ss_node1;
@@ -643,7 +580,7 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
                  "ERROR: failed to allocate space for connectivity "
                  "array for file id %d",
                  exoid);
-        ex_err(__func__, errmsg, EX_MEMFAIL);
+        ex_err_fn(exoid, __func__, errmsg, EX_MEMFAIL);
         err_stat = EX_FATAL;
         goto cleanup;
       }
@@ -654,7 +591,7 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
         snprintf(errmsg, MAX_ERR_LENGTH,
                  "ERROR: failed to get connectivity array for elem blk %" PRId64 " for file id %d",
                  elem_blk_parms[p_ndx].elem_blk_id, exoid);
-        ex_err(__func__, errmsg, EX_LASTERR);
+        ex_err_fn(exoid, __func__, errmsg, EX_LASTERR);
         err_stat = EX_FATAL;
         goto cleanup;
       }
@@ -671,7 +608,7 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
                "ERROR: logic error. Connect pointer is null for elem blk %" PRId64
                " for file id %d",
                elem_blk_parms[p_ndx].elem_blk_id, exoid);
-      ex_err(__func__, errmsg, EX_LASTERR);
+      ex_err_fn(exoid, __func__, errmsg, EX_LASTERR);
       err_stat = EX_FATAL;
       goto cleanup;
     }
@@ -685,7 +622,8 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
 
     num_nodes_per_elem = elem_blk_parms[p_ndx].num_nodes_per_elem;
 
-    for (n = 0; n < num_nodes_per_elem; n++) {
+    int n = 0;
+    for (; n < num_nodes_per_elem; n++) {
       /* find node in connectivity array that matches first node in side set */
       if (((int_size == sizeof(int64_t)) &&
            (ss_node0 == ((int64_t *)connect)[num_nodes_per_elem * (elem_num_pos) + n])) ||
@@ -708,6 +646,13 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
         }
         case EX_EL_TRISHELL: {
           /* use table to find which node to compare to next */
+          /*   1     2     3                                               node 1 */
+          static const int trishell_table[2][6] = {
+              {2, 3, 3, 1, 1, 2}, /* node 2 */
+              {1, 2, 1, 2, 1, 2}  /* side # */
+          };
+
+          assert(n < 3);
           if (ss_node1 ==
               get_node(connect,
                        num_nodes_per_elem * (elem_num_pos) + (trishell_table[0][2 * n] - 1),
@@ -722,19 +667,12 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
             /* Assume only front or back, no edges... */
             put_side(side_sets_side_list, idx, trishell_table[1][2 * n + 1], int_size);
           }
-          else if (ss_node1 == get_node(connect,
-                                        num_nodes_per_elem * (elem_num_pos) +
-                                            (trishell_table[0][2 * n + 2] - 1),
-                                        int_size)) {
-            /* Assume only front or back, no edges... */
-            put_side(side_sets_side_list, idx, trishell_table[1][2 * n + 2], int_size);
-          }
           else {
             snprintf(errmsg, MAX_ERR_LENGTH,
                      "ERROR: failed to find TRIANGULAR SHELL element %" PRId64 ", node %" PRId64
                      " in connectivity array %" PRId64 " for file id %d",
                      elem_num + 1, ss_node1, elem_blk_parms[p_ndx].elem_blk_id, exoid);
-            ex_err(__func__, errmsg, EX_BADPARAM);
+            ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
             err_stat = EX_FATAL;
             goto cleanup;
           }
@@ -742,8 +680,9 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
         }
         case EX_EL_SHELL: {
           /* use table to find which node to compare to next */
+          assert(n < 4);
 
-          if (ex_int64_status(exoid) & EX_BULK_INT64_API) {
+          if (ints_64) {
             num_node_per_side =
                 ((int64_t *)ss_elem_node_ndx)[idx + 1] - ((int64_t *)ss_elem_node_ndx)[idx];
           }
@@ -751,57 +690,81 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
             num_node_per_side = ((int *)ss_elem_node_ndx)[idx + 1] - ((int *)ss_elem_node_ndx)[idx];
           }
 
-          if (ss_node1 ==
-              get_node(connect, num_nodes_per_elem * (elem_num_pos) + (shell_table[0][2 * n] - 1),
-                       int_size)) {
-            if (num_node_per_side >= 4) {
+          if (num_node_per_side >= 4) {
+            /*   1     2     3     4                                          node 1 */
+            static const int shell_table[2][8] = {
+                {2, 4, 3, 1, 4, 2, 1, 3}, /* node 2 */
+                {1, 2, 1, 2, 1, 2, 1, 2}  /* side # */
+            };
+
+            /* Front or Back side of shell */
+            if (ss_node1 ==
+                get_node(connect, num_nodes_per_elem * (elem_num_pos) + (shell_table[0][2 * n] - 1),
+                         int_size)) {
               /* 4- or 8-node side (front or back face) */
               put_side(side_sets_side_list, idx, shell_table[1][2 * n], int_size);
             }
-            else {
-              /* 2- or 3-node side (edge of shell) */
-              put_side(side_sets_side_list, idx, shell_edge_table[1][2 * n], int_size);
-            }
-          }
-          else if (ss_node1 ==
-                   get_node(connect,
-                            num_nodes_per_elem * (elem_num_pos) + (shell_table[0][2 * n + 1] - 1),
-                            int_size)) {
-            if (num_node_per_side >= 4) {
+            else if (ss_node1 ==
+                     get_node(connect,
+                              num_nodes_per_elem * (elem_num_pos) + (shell_table[0][2 * n + 1] - 1),
+                              int_size)) {
               /* 4- or 8-node side (front or back face) */
               put_side(side_sets_side_list, idx, shell_table[1][2 * n + 1], int_size);
             }
             else {
-              /* 2- or 3-node side (edge of shell) */
-              put_side(side_sets_side_list, idx, shell_edge_table[1][2 * n + 1], int_size);
-            }
-          }
-          else if (ss_node1 ==
-                   get_node(connect,
-                            num_nodes_per_elem * (elem_num_pos) + (shell_table[0][2 * n + 2] - 1),
-                            int_size)) {
-            if (num_node_per_side >= 4) {
-              /* 4- or 8-node side (front or back face) */
-              put_side(side_sets_side_list, idx, shell_table[1][2 * n + 2], int_size);
-            }
-            else {
-              /* 2- or 3-node side (edge of shell) */
-              put_side(side_sets_side_list, idx, shell_edge_table[1][2 * n + 2], int_size);
+              snprintf(errmsg, MAX_ERR_LENGTH,
+                       "ERROR: failed to find SHELL element %" PRId64 ", node %" PRId64
+                       " in connectivity array %" PRId64 " for file id %d",
+                       elem_num + 1, ss_node1, elem_blk_parms[p_ndx].elem_blk_id, exoid);
+              ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
+              err_stat = EX_FATAL;
+              goto cleanup;
             }
           }
           else {
-            snprintf(errmsg, MAX_ERR_LENGTH,
-                     "ERROR: failed to find SHELL element %" PRId64 ", node %" PRId64
-                     " in connectivity array %" PRId64 " for file id %d",
-                     elem_num + 1, ss_node1, elem_blk_parms[p_ndx].elem_blk_id, exoid);
-            ex_err(__func__, errmsg, EX_BADPARAM);
-            err_stat = EX_FATAL;
-            goto cleanup;
+            /* Edge sides of shell */
+            /*    1     2   3    4                                          node 1 */
+            static const int shell_edge_table[2][8] = {
+                {2, 4, 3, 1, 4, 2, 1, 3}, /* node 2 */
+                {3, 6, 4, 3, 5, 4, 6, 5}  /* side # */
+            };
+
+            if (ss_node1 ==
+                get_node(connect,
+                         num_nodes_per_elem * (elem_num_pos) + (shell_edge_table[0][2 * n] - 1),
+                         int_size)) {
+              /* 2- or 3-node side (edge of shell) */
+              put_side(side_sets_side_list, idx, shell_edge_table[1][2 * n], int_size);
+            }
+            else if (ss_node1 == get_node(connect,
+                                          num_nodes_per_elem * (elem_num_pos) +
+                                              (shell_edge_table[0][2 * n + 1] - 1),
+                                          int_size)) {
+              /* 2- or 3-node side (edge of shell) */
+              put_side(side_sets_side_list, idx, shell_edge_table[1][2 * n + 1], int_size);
+            }
+            else {
+              snprintf(errmsg, MAX_ERR_LENGTH,
+                       "ERROR: failed to find SHELL element %" PRId64 ", node %" PRId64
+                       " in connectivity array %" PRId64 " for file id %d",
+                       elem_num + 1, ss_node1, elem_blk_parms[p_ndx].elem_blk_id, exoid);
+              ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
+              err_stat = EX_FATAL;
+              goto cleanup;
+            }
           }
           break;
         }
         case EX_EL_HEX: {
           /* use table to find which node to compare to next */
+          static const int hex_table[2][24] = {
+              /*     1        2        3        4        5        6        7        8       node 1
+               */
+              {4, 2, 5, 1, 3, 6, 7, 4, 2, 3, 1, 8, 6, 8, 1, 5, 2, 7, 8, 6, 3, 7, 5, 4}, /* node 2 */
+              {5, 1, 4, 5, 2, 1, 2, 3, 5, 5, 4, 3, 6, 4, 1, 1, 2, 6, 6, 2, 3, 3, 6, 4}  /* side # */
+          };
+
+          assert(n < 8);
 
           if (ss_node1 == get_node(connect,
                                    num_nodes_per_elem * (elem_num_pos) + (hex_table[0][3 * n] - 1),
@@ -825,7 +788,7 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
                      "ERROR: failed to find HEX element %" PRId64 ", node %" PRId64
                      " in connectivity array %" PRId64 " for file id %d",
                      elem_num + 1, ss_node1, elem_blk_parms[p_ndx].elem_blk_id, exoid);
-            ex_err(__func__, errmsg, EX_BADPARAM);
+            ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
             err_stat = EX_FATAL;
             goto cleanup;
           }
@@ -833,6 +796,13 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
         }
         case EX_EL_TETRA: {
           /* use table to find which node to compare to next */
+          /*  1         2          3          4            node 1 */
+          static const int tetra_table[2][12] = {
+              {2, 3, 4, 1, 3, 4, 4, 1, 2, 1, 2, 3}, /* node 2 */
+              {1, 4, 3, 4, 2, 1, 2, 3, 4, 1, 2, 3}  /* side # */
+          };
+
+          assert(n < 4);
 
           if (ss_node1 ==
               get_node(connect, num_nodes_per_elem * (elem_num_pos) + (tetra_table[0][3 * n] - 1),
@@ -856,7 +826,7 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
                      "ERROR: failed to find TETRA element %" PRId64 ", node %" PRId64
                      " in connectivity array %" PRId64 " for file id %d",
                      elem_num + 1, ss_node1, elem_blk_parms[p_ndx].elem_blk_id, exoid);
-            ex_err(__func__, errmsg, EX_BADPARAM);
+            ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
             err_stat = EX_FATAL;
             goto cleanup;
           }
@@ -869,25 +839,33 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
                    "ERROR: unsupported PYRAMID element found in side "
                    "set node list in file id %d",
                    exoid);
-          ex_err(__func__, errmsg, EX_BADPARAM);
+          ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
           err_stat = EX_FATAL;
           goto cleanup;
         }
         case EX_EL_WEDGE: {
           /* NOTE: WEDGE elements in side set node lists are currently not
            * supported */
+#if 0
+	  static const int wedge_table[2][18]  = {
+	    /*     1      2      3      4      5      6                     node 1 */
+	    {2,4,3, 5,1,3, 6,1,2, 1,6,5, 6,2,4, 4,3,5},              /* node 2 */
+	    {1,3,4, 1,4,2, 2,3,4, 1,3,5, 5,2,1, 5,3,2}               /* side # */
+	  };
+#endif
+
           snprintf(errmsg, MAX_ERR_LENGTH,
                    "ERROR: unsupported WEDGE element found in side set "
                    "node list in file id %d",
                    exoid);
-          ex_err(__func__, errmsg, EX_BADPARAM);
+          ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
           err_stat = EX_FATAL;
           goto cleanup;
         }
         default: {
           snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: %s is an unsupported element type",
                    elem_blk_parms[p_ndx].elem_type);
-          ex_err(__func__, errmsg, EX_BADPARAM);
+          ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
           err_stat = EX_FATAL;
           goto cleanup;
         }
@@ -901,7 +879,7 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
                "ERROR: failed to find element %" PRId64 ", node %" PRId64
                " in element block %" PRId64 " for file id %d",
                elem_num + 1, ss_node0, elem_blk_parms[p_ndx].elem_blk_id, exoid);
-      ex_err(__func__, errmsg, EX_BADPARAM);
+      ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
       err_stat = EX_FATAL;
       goto cleanup;
     }

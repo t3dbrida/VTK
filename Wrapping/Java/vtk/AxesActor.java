@@ -53,9 +53,9 @@ public class AxesActor extends vtkAssembly {
     zactor.GetTextProperty().ItalicOn();
     zactor.GetTextProperty().BoldOff();
 
-    xactor.SetMaximumLineHeight(0.25);
-    yactor.SetMaximumLineHeight(0.25);
-    zactor.SetMaximumLineHeight(0.25);
+    xactor.SetMaximumLineHeight(0.25f);
+    yactor.SetMaximumLineHeight(0.25f);
+    zactor.SetMaximumLineHeight(0.25f);
 
     vtkTubeFilter tube = new vtkTubeFilter();
     tube.SetInputConnection(axes.GetOutputPort());
@@ -107,9 +107,9 @@ public class AxesActor extends vtkAssembly {
     zconeActor.SetScale(coneScale, coneScale, coneScale);
     zconeActor.SetPosition(0.0, 0.0, axisLength);
 
-    ren.AddActor2D(xactor);
-    ren.AddActor2D(yactor);
-    ren.AddActor2D(zactor);
+    ren.AddViewProp(xactor);
+    ren.AddViewProp(yactor);
+    ren.AddViewProp(zactor);
 
     this.AddPart(tubeActor);
     this.AddPart(xconeActor);

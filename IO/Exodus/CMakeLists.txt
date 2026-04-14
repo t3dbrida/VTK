@@ -1,26 +1,20 @@
-set(Module_SRCS
-  vtkCPExodusIIElementBlock.cxx
-  vtkCPExodusIIInSituReader.cxx
-  vtkCPExodusIINodalCoordinatesTemplate.txx
-  vtkCPExodusIIResultsArrayTemplate.txx
-  vtkExodusIICache.cxx
-  vtkExodusIIReader.cxx
-  vtkExodusIIReaderParser.cxx
-  vtkExodusIIReaderVariableCheck.cxx
-  vtkExodusIIWriter.cxx
-  vtkModelMetadata.cxx
-  )
+set(classes
+  vtkCPExodusIIElementBlock
+  vtkCPExodusIIInSituReader
+  vtkExodusIICache
+  vtkExodusIIReader
+  vtkExodusIIReaderParser
+  vtkExodusIIWriter
+  vtkModelMetadata)
 
-set_source_files_properties(
-  vtkExodusIIReaderVariableCheck
-  PROPERTIES
-    SKIP_HEADER_INSTALL 1
-)
+set(nowrap_classes
+  vtkExodusIIReaderVariableCheck)
 
-set(vtkIOExodus_HDRS
-  vtkCPExodusIINodalCoordinatesTemplate.h
-  vtkCPExodusIIResultsArrayTemplate.h
-)
+set(nowrap_headers
+  vtkExodusIIReaderPrivate.h)
 
-
-vtk_module_library(vtkIOExodus ${Module_SRCS})
+vtk_module_add_module(VTK::IOExodus
+  CLASSES ${classes}
+  NOWRAP_CLASSES ${nowrap_classes}
+  NOWRAP_HEADERS ${nowrap_headers})
+vtk_add_test_mangling(VTK::IOExodus)

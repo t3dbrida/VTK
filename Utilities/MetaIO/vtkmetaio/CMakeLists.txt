@@ -12,22 +12,27 @@
 
 if(METAIO_FOR_VTK)
   set(METAIO_NAMESPACE "vtkmetaio")
-  set(METAIO_ZLIB_LIBRARIES ${VTK_ZLIB_LIBRARIES})
-  set(METAIO_INSTALL_EXPORT_NAME ${VTK_INSTALL_EXPORT_NAME})
-  set(METAIO_INSTALL_RUNTIME_DIR ${VTK_INSTALL_RUNTIME_DIR})
-  set(METAIO_INSTALL_LIBRARY_DIR ${VTK_INSTALL_LIBRARY_DIR})
-  set(METAIO_INSTALL_ARCHIVE_DIR ${VTK_INSTALL_ARCHIVE_DIR})
-  set(METAIO_INSTALL_NO_LIBRARIES ${VTK_INSTALL_NO_LIBRARIES})
-  set(METAIO_INSTALL_NO_DEVELOPMENT ${VTK_INSTALL_NO_DEVELOPMENT})
-  set(METAIO_INSTALL_INCLUDE_DIR ${VTK_INSTALL_INCLUDE_DIR}/vtkmetaio)
-  set(METAIO_LIBRARY_PROPERTIES ${VTK_LIBRARY_PROPERTIES})
+  set(METAIO_TARGET "vtkmetaio")
+  set(METAIO_INSTALL_NO_LIBRARIES TRUE)
+  set(METAIO_INSTALL_NO_DEVELOPMENT TRUE)
   if(BUILD_SHARED_LIBS)
     add_definitions(-Dvtkmetaio_BUILD_SHARED_LIBS)
   endif()
 elseif("${METAIO_NAMESPACE}" STREQUAL "ITKMetaIO")
   set(METAIO_FOR_ITK 1)
-elseif(NOT METAIO_NAMESPACE)
+  if(BUILD_SHARED_LIBS)
+      add_definitions(-Ditkmetaio_BUILD_SHARED_LIBS)
+  endif()
+elseif("${METAIO_NAMESPACE}" STREQUAL "MetaIO" OR NOT METAIO_NAMESPACE)
   set(METAIO_NAMESPACE MetaIO)
+  set(METAIO_FOR_METAIO 1)
+  if(BUILD_SHARED_LIBS)
+      add_definitions(-Dmetaio_BUILD_SHARED_LIBS)
+  endif()
+endif()
+
+if(NOT DEFINED METAIO_TARGET)
+  set(METAIO_TARGET "${METAIO_NAMESPACE}")
 endif()
 
 if(NOT DEFINED METAIO_PROJECT_NAME)
@@ -55,17 +60,17 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/metaIOConfig.h.in
                ${CMAKE_CURRENT_BINARY_DIR}/metaIOConfig.h @ONLY)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-add_library(${METAIO_NAMESPACE}
-  metaTypes.h
+set(sources
   metaUtils.cxx
+  metaArray.cxx
   metaArrow.cxx
   metaBlob.cxx
-  metaCommand.h
   metaCommand.cxx
-  metaContour.h
   metaContour.cxx
   metaDTITube.cxx
   metaEllipse.cxx
+  metaFEMObject.cxx
+  metaForm.cxx
   metaGroup.cxx
   metaGaussian.cxx
   metaImage.cxx
@@ -73,65 +78,101 @@ add_library(${METAIO_NAMESPACE}
   metaLandmark.cxx
   metaLine.cxx
   metaMesh.cxx
-  metaMesh.h
   metaObject.cxx
-  metaOutput.h
-  metaOutput.cxx
   metaScene.cxx
   metaSurface.cxx
   metaTube.cxx
-  metaVesselTube.cxx
   metaTransform.cxx
   metaTubeGraph.cxx
-  metaForm.h
-  metaForm.cxx
+  metaVesselTube.cxx
+  )
+
+set(headers
+  localMetaConfiguration.h
   metaArray.h
-  metaArray.cxx
+  metaArrow.h
+  metaBlob.h
+  metaCommand.h
+  metaContour.h
+  metaDTITube.h
+  metaEllipse.h
+  metaEvent.h
   metaFEMObject.h
-  metaFEMObject.cxx
+  metaForm.h
+  metaGaussian.h
+  metaGroup.h
+  metaImage.h
+  metaImageTypes.h
+  metaImageUtils.h
+  metaLandmark.h
+  metaLine.h
+  metaMesh.h
+  metaObject.h
+  metaScene.h
+  metaSurface.h
+  metaTube.h
+  metaTransform.h
+  metaTubeGraph.h
+  metaTypes.h
+  metaUtils.h
+  metaVesselTube.h
+  "${CMAKE_CURRENT_BINARY_DIR}/metaIOConfig.h"
 )
 
-INCLUDE_REGULAR_EXPRESSION("^.*$")
+if (METAIO_FOR_VTK)
+  vtk_module_add_module(VTK::metaio
+    SOURCES ${sources}
+    HEADERS ${headers}
+    HEADERS_SUBDIR "vtkmetaio")
+  vtk_module_set_property(VTK::metaio
+    PROPERTY  DEFINE_SYMBOL
+    VALUE     metaio_EXPORTS)
+else ()
+  add_library(${METAIO_TARGET}
+    ${sources}
+    ${headers}
+  )
+  if (METAIO_FOR_ITK)
+    target_link_libraries(${METAIO_TARGET} PUBLIC
+      itksys
+    )
+  endif (METAIO_FOR_ITK)
+endif ()
 
-# Need nsl to resolve gethostbyname on SunOS-5.8
-# and socket also
-IF(CMAKE_SYSTEM MATCHES "SunOS.*")
-  TARGET_LINK_LIBRARIES(${METAIO_NAMESPACE} socket nsl)
-ENDIF(CMAKE_SYSTEM MATCHES "SunOS.*")
+include_regular_expression("^.*$")
 
-target_link_libraries(${METAIO_NAMESPACE}
+target_link_libraries(${METAIO_TARGET} PUBLIC
   ${METAIO_LIBXML2_LIBRARIES}
   ${METAIO_ZLIB_LIBRARIES}
   )
 if(METAIO_LIBRARY_PROPERTIES)
-  set_target_properties(${METAIO_NAMESPACE}
+  set_target_properties(${METAIO_TARGET}
                         PROPERTIES ${METAIO_LIBRARY_PROPERTIES})
 endif()
 
-IF(WIN32)
-  IF(BORLAND)
-    TARGET_LINK_LIBRARIES(${METAIO_NAMESPACE} import32)
-  ELSE(BORLAND)
-    TARGET_LINK_LIBRARIES(${METAIO_NAMESPACE} comctl32 wsock32)
-  ENDIF(BORLAND)
-ENDIF(WIN32)
+if(WIN32)
+  if(BORLAND)
+    target_link_libraries(${METAIO_TARGET} PRIVATE import32)
+  else()
+    target_link_libraries(${METAIO_TARGET} PRIVATE comctl32 wsock32)
+  endif()
+endif()
 
-
-#ADD_SUBDIRECTORY(tests)
+if(BUILD_TESTING)
+  add_subdirectory(tests)
+endif()
 
 if(NOT METAIO_INSTALL_NO_LIBRARIES)
-  install(TARGETS ${METAIO_NAMESPACE}
+  install(TARGETS ${METAIO_TARGET}
     EXPORT ${METAIO_INSTALL_EXPORT_NAME}
     RUNTIME DESTINATION ${METAIO_INSTALL_RUNTIME_DIR} COMPONENT RuntimeLibraries
     LIBRARY DESTINATION ${METAIO_INSTALL_LIBRARY_DIR} COMPONENT RuntimeLibraries
     ARCHIVE DESTINATION ${METAIO_INSTALL_ARCHIVE_DIR} COMPONENT Development
     )
-endif(NOT METAIO_INSTALL_NO_LIBRARIES)
+endif()
 # TODO: Install Copyright.txt
 if(NOT METAIO_INSTALL_NO_DEVELOPMENT)
-  file(GLOB __files "${CMAKE_CURRENT_SOURCE_DIR}/*.h")
-  install(FILES ${__files}
-                ${CMAKE_CURRENT_BINARY_DIR}/metaIOConfig.h
+  install(FILES ${headers}
     DESTINATION ${METAIO_INSTALL_INCLUDE_DIR} COMPONENT Development
     )
 endif()

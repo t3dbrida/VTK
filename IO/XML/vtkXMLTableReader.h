@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkXMLTableReader.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkXMLTableReader
  * @brief   Read VTK XML Table files.
@@ -19,7 +7,7 @@
  * vtkXMLTableReader provides a functionality for reading .vtt files as
  * vtkTable
  *
-*/
+ */
 
 #ifndef vtkXMLTableReader_h
 #define vtkXMLTableReader_h
@@ -27,6 +15,9 @@
 #include "vtkIOXMLModule.h" // For export macro
 #include "vtkXMLReader.h"
 
+#include <map> // needed for std::map
+
+VTK_ABI_NAMESPACE_BEGIN
 class vtkCellArray;
 class vtkIdTypeArray;
 class vtkUnsignedCharArray;
@@ -39,13 +30,13 @@ public:
   void PrintSelf(ostream& os, vtkIndent indent) override;
   static vtkXMLTableReader* New();
 
-  //@{
+  ///@{
   /**
    * Get the reader's output.
    */
   vtkTable* GetOutput();
   vtkTable* GetOutput(int idx);
-  //@}
+  ///@}
 
   /**
    * Get the number of rows in the output.
@@ -76,15 +67,15 @@ protected:
   ~vtkXMLTableReader() override;
 
   /**
-  * Check whether the given array element is an enabled array.
-  */
+   * Check whether the given array element is an enabled array.
+   */
   int ColumnIsEnabled(vtkXMLDataElement* eRowData);
 
   void DestroyPieces();
 
   /**
-  * Get the name of the data set being read.
-  */
+   * Get the name of the data set being read.
+   */
   const char* GetDataSetName() override;
 
   /**
@@ -93,8 +84,8 @@ protected:
   void GetOutputUpdateExtent(int& piece, int& numberOfPieces);
 
   /**
-  * Specify the last time step read, useful to know if we need to read data
-  */
+   * Specify the last time step read, useful to know if we need to read data
+   */
   int RowDataNeedToReadTimeStep(vtkXMLDataElement* eNested);
 
   /**
@@ -118,8 +109,8 @@ protected:
   void SetupOutputData() override;
 
   /**
-  * Setup the output's information.
-  */
+   * Setup the output's information.
+   */
   void SetupOutputInformation(vtkInformation* outInfo) override;
 
   /**
@@ -128,8 +119,8 @@ protected:
   void SetupPieces(int numPieces);
 
   /**
-  * Pipeline execute data driver.  Called by vtkXMLReader.
-  */
+   * Pipeline execute data driver.  Called by vtkXMLReader.
+   */
   void ReadXMLData() override;
 
   /**
@@ -155,51 +146,52 @@ protected:
   int FillOutputPortInformation(int, vtkInformation*) override;
 
   /**
-  * The update request.
-  */
+   * The update request.
+   */
   int UpdatedPiece;
   int UpdateNumberOfPieces;
   /**
-  * The range of pieces from the file that will form the UpdatedPiece.
-  */
+   * The range of pieces from the file that will form the UpdatedPiece.
+   */
   int StartPiece;
   int EndPiece;
   vtkIdType TotalNumberOfRows;
   vtkIdType StartPoint;
 
   /**
-  * The Points element for each piece.
-  */
+   * The Points element for each piece.
+   */
   vtkXMLDataElement** RowElements;
   vtkIdType* NumberOfRows;
 
   /**
-  * The number of Pieces of data found in the file.
-  */
+   * The number of Pieces of data found in the file.
+   */
   int NumberOfPieces;
 
   /**
-  * The piece currently being read.
-  */
+   * The piece currently being read.
+   */
   int Piece;
 
   /**
-  * The RowData element representations for each piece.
-  */
+   * The RowData element representations for each piece.
+   */
   vtkXMLDataElement** RowDataElements;
 
   /**
-  * The number of columns arrays in the output. Valid after
-  * SetupOutputData has been called.
-  */
+   * The number of columns arrays in the output. Valid after
+   * SetupOutputData has been called.
+   */
   int NumberOfColumns;
 
-  int* RowDataTimeStep;
-  vtkTypeInt64* RowDataOffset;
-
 private:
+  std::map<std::string, int> RowDataTimeStep;
+  std::map<std::string, vtkTypeInt64> RowDataOffset;
+
   vtkXMLTableReader(const vtkXMLTableReader&) = delete;
   void operator=(const vtkXMLTableReader&) = delete;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

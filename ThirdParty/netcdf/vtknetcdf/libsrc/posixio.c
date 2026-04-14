@@ -1,5 +1,5 @@
 /*
- *	Copyright 1996, University Corporation for Atmospheric Research
+ *	Copyright 2018, University Corporation for Atmospheric Research
  *	See netcdf/COPYRIGHT file for copying and redistribution conditions.
  */
 /* $Id: posixio.c,v 1.89 2010/05/22 21:59:08 dmh Exp $ */
@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
+#include <stdint.h>
 
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h>
@@ -41,16 +42,13 @@
 #define NC_NOERR 0
 #endif
 
-#ifndef HAVE_SSIZE_T
-typedef int ssize_t;
-#endif
-
 #ifndef SEEK_SET
 #define SEEK_SET 0
 #define SEEK_CUR 1
 #define SEEK_END 2
 #endif
 
+#include "ncpathmgr.h"
 #include "ncio.h"
 #include "fbits.h"
 #include "rnd.h"
@@ -65,7 +63,7 @@ typedef int ssize_t;
 #undef MIN  /* system may define MIN somewhere and complain */
 #define MIN(mm,nn) (((mm) < (nn)) ? (mm) : (nn))
 
-#if !defined(NDEBUG) && !defined(X_INT_MAX)
+#if /*!defined(NDEBUG) &&*/ !defined(X_INT_MAX)
 #define  X_INT_MAX 2147483647
 #endif
 
@@ -123,7 +121,7 @@ static off_t nc_get_filelen(const int fd) {
   off_t flen;
 
 #ifdef HAVE_FILE_LENGTH_I64
-  __int64 file_len = 0;
+  int64_t file_len = 0;
   if ((file_len = _filelengthi64(fd)) < 0) {
     return file_len;
   }
@@ -188,7 +186,11 @@ blksize(int fd)
 		return 8192;
 	}
 	/* else, silent in the face of error */
+#else
+	NC_UNUSED(fd);
 #endif
+#else
+	NC_UNUSED(fd);
 #endif
 	return (size_t) 2 * pagesize();
 }
@@ -213,7 +215,7 @@ fgrow(const int fd, const off_t len)
 	    const off_t pos = lseek(fd, 0, SEEK_CUR);
 	    if(pos < 0)
 		return errno;
-	    if (lseek(fd, len-sizeof(dumb), SEEK_SET) < 0)
+	    if (lseek(fd, len-(off_t)sizeof(dumb), SEEK_SET) < 0)
 		return errno;
 	    if(write(fd, &dumb, sizeof(dumb)) < 0)
 		return errno;
@@ -311,11 +313,11 @@ px_pgout(ncio *const nciop,
 	    if(partial == nextent)
 		break;
 	    nvp += partial;
-	    nextent -= partial;
+	    nextent -= (size_t)partial;
 	}
 	if(partial == -1)
 	    return errno;
-	*posp += extent;
+	*posp += (off_t)extent;
 
 	return NC_NOERR;
 }
@@ -338,9 +340,6 @@ px_pgin(ncio *const nciop,
 {
 	int status;
 	ssize_t nread;
-    size_t read_count = 0;
-    ssize_t bytes_xfered = 0;
-    void *p = vp;
 #ifdef X_ALIGN
 	assert(offset % X_ALIGN == 0);
 	assert(extent % X_ALIGN == 0);
@@ -391,13 +390,13 @@ px_pgin(ncio *const nciop,
       if( nread == -1 || (status != EINTR && status != NC_NOERR))
         return status;
       /* else it's okay we read less than asked for */
-      (void) memset((char *)vp + nread, 0, (ssize_t)extent - nread);
+      (void) memset((char *)vp + nread, 0, (size_t)((ssize_t)extent - nread));
     }
 
-    *nreadp = nread;
-	*posp += nread;
+    *nreadp = (size_t)nread;
+    *posp += nread;
 
-	return NC_NOERR;
+    return NC_NOERR;
 }
 
 /* This struct is for POSIX systems, with NC_SHARE not in effect. If
@@ -452,6 +451,7 @@ px_rel(ncio_px *const pxp, off_t offset, int rflags)
 		 && offset < pxp->bf_offset + (off_t) pxp->bf_extent);
 	assert(pIf(fIsSet(rflags, RGN_MODIFIED),
 		fIsSet(pxp->bf_rflags, RGN_WRITE)));
+	NC_UNUSED(offset);
 
 	if(fIsSet(rflags, RGN_MODIFIED))
 	{
@@ -470,7 +470,7 @@ px_rel(ncio_px *const pxp, off_t offset, int rflags)
    RGN_MODIFIED.
 
    For POSIX system, without NC_SHARE, this becomes the rel function
-   pointed to by the ncio rel function pointer. It mearly checks for
+   pointed to by the ncio rel function pointer. It merely checks for
    file write permission, then calls px_rel to do everything.
 
    nciop - pointer to ncio struct.
@@ -517,7 +517,7 @@ ncio_px_rel(ncio *const nciop, off_t offset, int rflags)
    * The blkextent can't be more than twice the pxp->blksz. That's
    because the pxp->blksize is the sizehint, and in ncio_px_init2 the
    buffer (pointed to by pxp->bf-base) is allocated with 2 *
-   *sizehintp. This is checked (unneccesarily) more than once in
+   *sizehintp. This is checked (unnecessarily) more than once in
    asserts.
 
    * If this is called on a newly opened file, pxp->bf_offset will be
@@ -533,12 +533,11 @@ px_get(ncio *const nciop, ncio_px *const pxp,
 	int status = NC_NOERR;
 
 	const off_t blkoffset = _RNDDOWN(offset, (off_t)pxp->blksz);
-	off_t diff = (size_t)(offset - blkoffset);
-	off_t blkextent = _RNDUP(diff + extent, pxp->blksz);
+	off_t diff = offset - blkoffset;
+	size_t blkextent = _RNDUP((size_t)diff + extent, pxp->blksz);
 
-	assert(extent != 0);
-	assert(extent < X_INT_MAX); /* sanity check */
-	assert(offset >= 0); /* sanity check */
+	if(!(extent != 0 && extent < X_INT_MAX && offset >= 0)) /* sanity check */
+	    return NC_ENOTNC;
 
 	if(2 * pxp->blksz < blkextent)
 		return E2BIG; /* TODO: temporary kludge */
@@ -589,7 +588,7 @@ px_get(ncio *const nciop, ncio_px *const pxp,
 		if(blkextent == pxp->blksz)
 		{
 			/* all in upper half, no fault needed */
-			diff += pxp->blksz;
+			diff += (off_t)pxp->blksz;
 			goto done;
 		}
 		/* else */
@@ -731,11 +730,11 @@ pgin:
 		 &pxp->pos);
 	if(status != NC_NOERR)
 		return status;
-	 pxp->bf_offset = blkoffset;
-	 pxp->bf_extent = blkextent;
+        pxp->bf_offset = blkoffset;
+        pxp->bf_extent = blkextent;
 
 done:
-	extent += diff;
+	extent += (size_t)diff;
 	if(pxp->bf_cnt < extent)
 		pxp->bf_cnt = extent;
 	assert(pxp->bf_cnt <= pxp->bf_extent);
@@ -804,6 +803,7 @@ px_double_buffer(ncio *const nciop, off_t to, off_t from,
 	int status = NC_NOERR;
 	void *src;
 	void *dest;
+	NC_UNUSED(rflags);
 
 #if INSTRUMENT
 fprintf(stderr, "\tdouble_buffr %ld %ld %ld\n",
@@ -913,13 +913,13 @@ fprintf(stderr, "ncio_px_move %ld %ld %ld %ld %ld\n",
 
 if(to > from)
 {
-		off_t frm = from + nbytes;
-		off_t toh = to + nbytes;
+		off_t frm = from + (off_t)nbytes;
+		off_t toh = to + (off_t)nbytes;
 		for(;;)
 		{
 			size_t loopextent = MIN(remaining, pxp->blksz);
-			frm -= loopextent;
-			toh -= loopextent;
+			frm -= (off_t)loopextent;
+                        toh -= (off_t)loopextent;
 
 			status = px_double_buffer(nciop, toh, frm,
 				 	loopextent, rflags) ;
@@ -945,8 +945,8 @@ else
 
 			if(remaining == 0)
 				break; /* normal loop exit */
-			to += loopextent;
-			from += loopextent;
+			to += (off_t)loopextent;
+                        from += (off_t)loopextent;
 		}
 }
 		return NC_NOERR;
@@ -1133,7 +1133,7 @@ typedef struct ncio_spx {
 /* This function releases the region specified by offset.
 
    For POSIX system, with NC_SHARE, this becomes the rel function
-   pointed to by the ncio rel function pointer. It mearly checks for
+   pointed to by the ncio rel function pointer. It merely checks for
    file write permission, then calls px_rel to do everything.
 
    nciop - pointer to ncio struct.
@@ -1159,6 +1159,7 @@ ncio_spx_rel(ncio *const nciop, off_t offset, int rflags)
 	assert(offset < pxp->bf_offset + X_ALIGN);
 	assert(pxp->bf_cnt % X_ALIGN == 0 );
 #endif
+	NC_UNUSED(offset);
 
 	if(fIsSet(rflags, RGN_MODIFIED))
 	{
@@ -1407,6 +1408,7 @@ ncio_spx_move(ncio *const nciop, off_t to, off_t from,
 static int
 ncio_spx_sync(ncio *const nciop)
 {
+	NC_UNUSED(nciop);
 	/* NOOP */
 	return NC_NOERR;
 }
@@ -1461,7 +1463,7 @@ ncio_spx_init2(ncio *const nciop, const size_t *const sizehintp)
 
 
 /* First half of init for ncio_spx struct, setting the rel, get, move,
-   snyc, and free function pointers to the NC_SHARE versions of these
+   sync, and free function pointers to the NC_SHARE versions of these
    functions (i.e. the ncio_spx_* functions).
 */
 static void
@@ -1599,6 +1601,7 @@ posixio_create(const char *path, int ioflags,
 	int oflags = (O_RDWR|O_CREAT);
 	int fd;
 	int status;
+	NC_UNUSED(parameters);
 
 	if(initialsz < (size_t)igeto + igetsz)
 		initialsz = (size_t)igeto + igetsz;
@@ -1620,10 +1623,10 @@ posixio_create(const char *path, int ioflags,
 	fSet(oflags, O_BINARY);
 #endif
 #ifdef vms
-	fd = open(path, oflags, NC_DEFAULT_CREAT_MODE, "ctx=stm");
+	fd = NCopen3(path, oflags, NC_DEFAULT_CREAT_MODE, "ctx=stm");
 #else
 	/* Should we mess with the mode based on NC_SHARE ?? */
-	fd = open(path, oflags, NC_DEFAULT_CREAT_MODE);
+	fd = NCopen3(path, oflags, NC_DEFAULT_CREAT_MODE);
 #endif
 #if 0
 	(void) fprintf(stderr, "ncio_create(): path=\"%s\"\n", path);
@@ -1631,7 +1634,7 @@ posixio_create(const char *path, int ioflags,
 #endif
 	if(fd < 0)
 	{
-		status = errno;
+		status = errno ? errno : ENOENT;
 		goto unwind_new;
 	}
 	*((int *)&nciop->fd) = fd; /* cast away const */
@@ -1729,7 +1732,7 @@ unwind_new:
    nciopp - pointer to pointer that will get address of newly created
    and inited ncio struct.
 
-   igetvpp - handle to pass back pointer to data from inital page
+   igetvpp - handle to pass back pointer to data from initial page
    read, if this were ever used, which it isn't.
 */
 int
@@ -1743,6 +1746,7 @@ posixio_open(const char *path,
 	int oflags = fIsSet(ioflags, NC_WRITE) ? O_RDWR : O_RDONLY;
 	int fd = -1;
 	int status = 0;
+	NC_UNUSED(parameters);
 
 	if(path == NULL || *path == 0)
 		return EINVAL;
@@ -1757,13 +1761,13 @@ posixio_open(const char *path,
 #endif
 
 #ifdef vms
-	fd = open(path, oflags, 0, "ctx=stm");
+	fd = NCopen3(path, oflags, 0, "ctx=stm");
 #else
-	fd = open(path, oflags, 0);
+	fd = NCopen3(path, oflags, 0);
 #endif
 	if(fd < 0)
 	{
-		status = errno;
+		status = errno ? errno : ENOENT;
 		goto unwind_new;
 	}
 	*((int *)&nciop->fd) = fd; /* cast away const */
@@ -1825,7 +1829,7 @@ ncio_px_filesize(ncio *nciop, off_t *filesizep)
 		Use _filelengthi64 isntead. */
 #ifdef HAVE_FILE_LENGTH_I64
 
-	__int64 file_len = 0;
+	int64_t file_len = 0;
 	if( (file_len = _filelengthi64(nciop->fd)) < 0) {
 		return errno;
 	}

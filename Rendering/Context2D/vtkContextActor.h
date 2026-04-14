@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkContextActor.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkContextActor
  * @brief   provides a vtkProp derived object.
@@ -19,58 +7,61 @@
  * This object provides the entry point for the vtkContextScene to be rendered
  * in a vtkRenderer. Uses the RenderOverlay pass to render the 2D
  * vtkContextScene.
-*/
+ */
 
 #ifndef vtkContextActor_h
 #define vtkContextActor_h
 
-#include "vtkRenderingContext2DModule.h" // For export macro
+#include "vtkNew.h" // For ivars
 #include "vtkProp.h"
-#include "vtkNew.h"          // For ivars
-#include "vtkSmartPointer.h" // For ivars
+#include "vtkRenderingContext2DModule.h" // For export macro
+#include "vtkSmartPointer.h"             // For ivars
+#include "vtkWrappingHints.h"            // For VTK_MARSHALAUTO
 
+VTK_ABI_NAMESPACE_BEGIN
 class vtkContext2D;
 class vtkContext3D;
 class vtkContextDevice2D;
 class vtkContextScene;
 
-class VTKRENDERINGCONTEXT2D_EXPORT vtkContextActor : public vtkProp
+class VTKRENDERINGCONTEXT2D_EXPORT VTK_MARSHALAUTO vtkContextActor : public vtkProp
 {
 public:
   void PrintSelf(ostream& os, vtkIndent indent) override;
-  vtkTypeMacro(vtkContextActor,vtkProp);
+  vtkTypeMacro(vtkContextActor, vtkProp);
 
   static vtkContextActor* New();
 
   /**
    * We only render in the overlay for the context scene.
    */
-  int RenderOverlay(vtkViewport *viewport) override;
+  int RenderOverlay(vtkViewport* viewport) override;
 
-  //@{
+  ///@{
   /**
    * Get the vtkContext2D for the actor.
    */
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_INTERNAL)
   vtkGetNewMacro(Context, vtkContext2D);
-  //@}
+  ///@}
 
   /**
    * Get the chart object for the actor.
    */
-  vtkContextScene * GetScene();
+  vtkContextScene* GetScene();
 
   /**
    * Set the scene for the actor.
    */
-  void SetScene(vtkContextScene *scene);
+  void SetScene(vtkContextScene* scene);
 
   /**
    * Force rendering to a specific device. If left NULL, a default
    * device will be created.
    * @{
    */
-  void SetForceDevice(vtkContextDevice2D *dev);
-  vtkGetObjectMacro(ForceDevice, vtkContextDevice2D)
+  void SetForceDevice(vtkContextDevice2D* dev);
+  vtkGetObjectMacro(ForceDevice, vtkContextDevice2D);
   /**@}*/
 
   /**
@@ -78,7 +69,7 @@ public:
    * The parameter window could be used to determine which graphic
    * resources to release.
    */
-  void ReleaseGraphicsResources(vtkWindow *window) override;
+  void ReleaseGraphicsResources(vtkWindow* window) override;
 
 protected:
   vtkContextActor();
@@ -92,7 +83,7 @@ protected:
   vtkSmartPointer<vtkContextScene> Scene;
   vtkNew<vtkContext2D> Context;
   vtkNew<vtkContext3D> Context3D;
-  vtkContextDevice2D *ForceDevice;
+  vtkContextDevice2D* ForceDevice;
   bool Initialized;
 
 private:
@@ -100,4 +91,5 @@ private:
   void operator=(const vtkContextActor&) = delete;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

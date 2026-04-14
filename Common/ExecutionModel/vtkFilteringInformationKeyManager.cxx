@@ -1,64 +1,65 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkFilteringInformationKeyManager.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkFilteringInformationKeyManager.h"
 
+#include "vtkCellMetadata.h"
 #include "vtkInformationKey.h"
 
 #include <vector>
 
+VTK_ABI_NAMESPACE_BEGIN
+std::vector<std::function<void()>>* vtkFilteringInformationKeyManager::Finalizers = nullptr;
+
 // Subclass vector so we can directly call constructor.  This works
 // around problems on Borland C++.
-struct vtkFilteringInformationKeyManagerKeysType:
-  public std::vector<vtkInformationKey*>
+struct vtkFilteringInformationKeyManagerKeysType : public std::vector<vtkInformationKey*>
 {
   typedef std::vector<vtkInformationKey*> Superclass;
   typedef Superclass::iterator iterator;
 };
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // Must NOT be initialized.  Default initialization to zero is
 // necessary.
 static unsigned int vtkFilteringInformationKeyManagerCount;
 static vtkFilteringInformationKeyManagerKeysType* vtkFilteringInformationKeyManagerKeys;
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkFilteringInformationKeyManager::vtkFilteringInformationKeyManager()
 {
-  if(++vtkFilteringInformationKeyManagerCount == 1)
+  if (++vtkFilteringInformationKeyManagerCount == 1)
   {
     vtkFilteringInformationKeyManager::ClassInitialize();
   }
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkFilteringInformationKeyManager::~vtkFilteringInformationKeyManager()
 {
-  if(--vtkFilteringInformationKeyManagerCount == 0)
+  if (--vtkFilteringInformationKeyManagerCount == 0)
   {
     vtkFilteringInformationKeyManager::ClassFinalize();
   }
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkFilteringInformationKeyManager::Register(vtkInformationKey* key)
 {
   // Register this instance for deletion by the singleton.
   vtkFilteringInformationKeyManagerKeys->push_back(key);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+void vtkFilteringInformationKeyManager::AddFinalizer(std::function<void()> finalizer)
+{
+  if (!vtkFilteringInformationKeyManager::Finalizers)
+  {
+    vtkFilteringInformationKeyManager::Finalizers = new std::vector<std::function<void()>>();
+  }
+  vtkFilteringInformationKeyManager::Finalizers->push_back(finalizer);
+}
+
+//------------------------------------------------------------------------------
 void vtkFilteringInformationKeyManager::ClassInitialize()
 {
   // Allocate the singleton storing pointers to information keys.
@@ -68,19 +69,34 @@ void vtkFilteringInformationKeyManager::ClassInitialize()
   // initialization to occur in other translation units immediately,
   // which then may try to access the vector before it is set here.
   void* keys = malloc(sizeof(vtkFilteringInformationKeyManagerKeysType));
-  vtkFilteringInformationKeyManagerKeys =
-    new (keys) vtkFilteringInformationKeyManagerKeysType;
+  vtkFilteringInformationKeyManagerKeys = new (keys) vtkFilteringInformationKeyManagerKeysType;
+
+  // The cell-metadata class cannot register its finalizer upon construction
+  // of the registrar since CommonDataModel cannot depend on CommonExecutionModel.
+  // So, we always register a finalizer for cell-grid responders.
+  vtkFilteringInformationKeyManager::AddFinalizer([]() { vtkCellMetadata::ClearResponders(); });
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkFilteringInformationKeyManager::ClassFinalize()
 {
-  if(vtkFilteringInformationKeyManagerKeys)
+  // Allow persistent objects to be cleaned up before debugging leaks.
+  if (vtkFilteringInformationKeyManager::Finalizers)
+  {
+    for (const auto& finalizer : *vtkFilteringInformationKeyManager::Finalizers)
+    {
+      finalizer();
+    }
+    delete vtkFilteringInformationKeyManager::Finalizers;
+    vtkFilteringInformationKeyManager::Finalizers = nullptr;
+  }
+
+  if (vtkFilteringInformationKeyManagerKeys)
   {
     // Delete information keys.
-    for(vtkFilteringInformationKeyManagerKeysType::iterator i =
-          vtkFilteringInformationKeyManagerKeys->begin();
-        i != vtkFilteringInformationKeyManagerKeys->end(); ++i)
+    for (vtkFilteringInformationKeyManagerKeysType::iterator i =
+           vtkFilteringInformationKeyManagerKeys->begin();
+         i != vtkFilteringInformationKeyManagerKeys->end(); ++i)
     {
       vtkInformationKey* key = *i;
       delete key;
@@ -94,3 +110,4 @@ void vtkFilteringInformationKeyManager::ClassFinalize()
     vtkFilteringInformationKeyManagerKeys = nullptr;
   }
 }
+VTK_ABI_NAMESPACE_END

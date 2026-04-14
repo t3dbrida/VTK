@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkTextureUnitManager.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkTextureUnitManager
  * @brief   allocate/free texture units.
@@ -25,35 +13,30 @@
  *
  * @sa
  * vtkOpenGLRenderWindow
-*/
+ */
 
 #ifndef vtkTextureUnitManager_h
 #define vtkTextureUnitManager_h
 
-#include "vtkRenderingOpenGL2Module.h" // For export macro
 #include "vtkObject.h"
+#include "vtkRenderingOpenGL2Module.h" // For export macro
 
+VTK_ABI_NAMESPACE_BEGIN
 class vtkOpenGLRenderWindow;
 
 class VTKRENDERINGOPENGL2_EXPORT vtkTextureUnitManager : public vtkObject
 {
 public:
-  vtkTypeMacro(vtkTextureUnitManager,vtkObject);
+  vtkTypeMacro(vtkTextureUnitManager, vtkObject);
 
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
-  static vtkTextureUnitManager *New();
+  static vtkTextureUnitManager* New();
 
-  //@{
   /**
-   * Get/Set the context. This does not increase the reference count of the
-   * context to avoid reference loops.
-   * SetContext() may raise an error is the OpenGL context does not support the
-   * required OpenGL extensions.
+   * Update the number of hardware texture units for the current context
    */
-  void SetContext(vtkOpenGLRenderWindow *context);
-  vtkGetObjectMacro(Context,vtkOpenGLRenderWindow);
-  //@}
+  void Initialize();
 
   /**
    * Number of texture units supported by the OpenGL context.
@@ -84,7 +67,8 @@ public:
 
   /**
    * Tell if texture unit `textureUnitId' is already allocated.
-   * \pre valid_textureUnitId_range : textureUnitId>=0 && textureUnitId<this->GetNumberOfTextureUnits()
+   * \pre valid_textureUnitId_range : textureUnitId>=0 &&
+   * textureUnitId<this->GetNumberOfTextureUnits()
    */
   bool IsAllocated(int textureUnitId);
 
@@ -112,14 +96,13 @@ protected:
    */
   void DeleteTable();
 
-  vtkOpenGLRenderWindow *Context;
-
   int NumberOfTextureUnits;
-  bool *TextureUnits;
+  bool* TextureUnits;
 
 private:
   vtkTextureUnitManager(const vtkTextureUnitManager&) = delete;
   void operator=(const vtkTextureUnitManager&) = delete;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

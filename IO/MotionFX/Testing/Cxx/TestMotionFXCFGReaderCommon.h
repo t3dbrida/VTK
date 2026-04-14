@@ -1,23 +1,11 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestMotionFXCFGReaderCommon.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #ifndef TestMotionFXCFGReaderCommon_h
 #define TestMotionFXCFGReaderCommon_h
 
 #include <vtkActor.h>
 #include <vtkCallbackCommand.h>
-#include <vtkCompositePolyDataMapper2.h>
+#include <vtkCompositePolyDataMapper.h>
 #include <vtkInformation.h>
 #include <vtkMotionFXCFGReader.h>
 #include <vtkNew.h>
@@ -31,6 +19,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <iostream>
 #include <vector>
 
 namespace impl
@@ -40,13 +29,13 @@ struct ClientData
 {
   vtkSmartPointer<vtkRenderWindow> Window;
   vtkSmartPointer<vtkMotionFXCFGReader> Reader;
-  vtkSmartPointer<vtkCompositePolyDataMapper2> Mapper;
+  vtkSmartPointer<vtkCompositePolyDataMapper> Mapper;
   std::vector<double> TimeSteps;
   int CurrentIndex;
 
   void GoToNext()
   {
-    cout << "Go to next" << endl;
+    std::cout << "Go to next" << std::endl;
     this->CurrentIndex =
       std::min(static_cast<int>(this->TimeSteps.size()) - 1, this->CurrentIndex + 1);
     this->Render();
@@ -54,27 +43,28 @@ struct ClientData
 
   void GoToPrev()
   {
-    cout << "Go to prev" << endl;
+    std::cout << "Go to prev" << std::endl;
     this->CurrentIndex = std::max(0, this->CurrentIndex - 1);
     this->Render();
   }
 
   void Play()
   {
-    cout << "Playing";
+    std::cout << "Playing";
     for (size_t cc = 0; cc < this->TimeSteps.size(); ++cc)
     {
-      cout << ".";
-      cout.flush();
+      std::cout << ".";
+      std::cout.flush();
       this->CurrentIndex = static_cast<int>(cc);
       this->Render();
     }
-    cout << endl;
+    std::cout << std::endl;
   }
 
   void Render()
   {
-    assert(this->CurrentIndex >= 0 && this->CurrentIndex < static_cast<int>(this->TimeSteps.size()));
+    assert(
+      this->CurrentIndex >= 0 && this->CurrentIndex < static_cast<int>(this->TimeSteps.size()));
     this->Reader->UpdateTimeStep(this->TimeSteps[this->CurrentIndex]);
     this->Mapper->SetInputDataObject(this->Reader->GetOutputDataObject(0));
     this->Window->Render();
@@ -121,7 +111,7 @@ int Test(int argc, char* argv[], const char* dfile, const InitializationCallback
 
   if (numTimeSteps != 100)
   {
-    cerr << "ERROR: missing timesteps. Potential issue reading the CFG file." << endl;
+    std::cerr << "ERROR: missing timesteps. Potential issue reading the CFG file." << std::endl;
     return EXIT_FAILURE;
   }
 
@@ -133,7 +123,7 @@ int Test(int argc, char* argv[], const char* dfile, const InitializationCallback
   vtkNew<vtkRenderWindowInteractor> iren;
   iren->SetRenderWindow(renWin);
 
-  vtkNew<vtkCompositePolyDataMapper2> mapper;
+  vtkNew<vtkCompositePolyDataMapper> mapper;
   mapper->SetInputConnection(reader->GetOutputPort());
 
   vtkNew<vtkActor> actor;
@@ -143,7 +133,7 @@ int Test(int argc, char* argv[], const char* dfile, const InitializationCallback
   initCallback(renWin, renderer, reader);
 
   std::vector<double> ts(numTimeSteps);
-  outInfo->Get(SDDP::TIME_STEPS(), &ts[0]);
+  outInfo->Get(SDDP::TIME_STEPS(), ts.data());
 
   // for baseline comparison, we'll jump to the middle of the
   // time sequence and do a capture.
@@ -166,12 +156,12 @@ int Test(int argc, char* argv[], const char* dfile, const InitializationCallback
     observer->SetCallback(&CharEventCallback);
     iren->AddObserver(vtkCommand::CharEvent, observer);
 
-    cout << "Entering interactive mode......" << endl
-         << "Supported operations:" << endl
-         << "   'z' or 'Z' : go to next time step" << endl
-         << "   'x' or 'X' : go to previous time step" << endl
-         << "   'c' or 'C' : play animation from start to end" << endl
-         << "   'q' or 'Q' : quit" << endl;
+    std::cout << "Entering interactive mode......" << std::endl
+              << "Supported operations:" << std::endl
+              << "   'z' or 'Z' : go to next time step" << std::endl
+              << "   'x' or 'X' : go to previous time step" << std::endl
+              << "   'c' or 'C' : play animation from start to end" << std::endl
+              << "   'q' or 'Q' : quit" << std::endl;
     iren->Start();
     return EXIT_SUCCESS;
   }

@@ -1,62 +1,102 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkHyperTreeGridCellCenters.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkHyperTreeGridCellCenters.h"
 
+#include "vtkAlgorithm.h"
 #include "vtkBitArray.h"
 #include "vtkCellArray.h"
 #include "vtkCellData.h"
-#include "vtkDataSetAttributes.h"
 #include "vtkHyperTree.h"
-#include "vtkHyperTreeCursor.h"
 #include "vtkHyperTreeGrid.h"
-#include "vtkHyperTreeGridCursor.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
 #include "vtkObjectFactory.h"
-#include "vtkPoints.h"
 #include "vtkPointData.h"
-#include "vtkPolyData.h"
+#include "vtkPoints.h"
+#include "vtkStreamingDemandDrivenPipeline.h"
 
+#include "vtkHyperTreeGridNonOrientedGeometryCursor.h"
+
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkHyperTreeGridCellCenters);
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkHyperTreeGridCellCenters::vtkHyperTreeGridCellCenters()
 {
-  // Create storage for centers of leaf cells
-  this->Points = vtkPoints::New();
+  this->Input = nullptr;
+  this->Output = nullptr;
+
+  this->InData = nullptr;
+  this->OutData = nullptr;
+
+  this->Points = nullptr;
 }
 
-//-----------------------------------------------------------------------------
-vtkHyperTreeGridCellCenters::~vtkHyperTreeGridCellCenters()
+//------------------------------------------------------------------------------
+vtkHyperTreeGridCellCenters::~vtkHyperTreeGridCellCenters() = default;
+
+//------------------------------------------------------------------------------
+vtkTypeBool vtkHyperTreeGridCellCenters::ProcessRequest(
+  vtkInformation* request, vtkInformationVector** inputVector, vtkInformationVector* outputVector)
 {
-  if ( this->Points )
+  // generate the data
+  if (request->Has(vtkDemandDrivenPipeline::REQUEST_DATA()))
   {
-    this->Points->Delete();
-    this->Points = nullptr;
+
+    return this->RequestData(request, inputVector, outputVector);
   }
+
+  if (request->Has(vtkStreamingDemandDrivenPipeline::REQUEST_UPDATE_EXTENT()))
+  {
+    return this->RequestUpdateExtent(request, inputVector, outputVector);
+  }
+
+  // execute information
+  if (request->Has(vtkDemandDrivenPipeline::REQUEST_INFORMATION()))
+  {
+    return this->RequestInformation(request, inputVector, outputVector);
+  }
+
+  return this->Superclass::ProcessRequest(request, inputVector, outputVector);
 }
 
-//----------------------------------------------------------------------------
-void vtkHyperTreeGridCellCenters::PrintSelf( ostream& os, vtkIndent indent )
+//------------------------------------------------------------------------------
+int vtkHyperTreeGridCellCenters::FillInputPortInformation(
+  int vtkNotUsed(port), vtkInformation* info)
 {
-  this->Superclass::PrintSelf( os, indent );
+  info->Set(vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkHyperTreeGrid");
+  return 1;
+}
 
-  if( this->Points )
+//------------------------------------------------------------------------------
+void vtkHyperTreeGridCellCenters::PrintSelf(ostream& os, vtkIndent indent)
+{
+  this->Superclass::PrintSelf(os, indent);
+
+  if (this->Input)
+  {
+    os << indent << "Input:\n";
+    this->Input->PrintSelf(os, indent.GetNextIndent());
+  }
+  else
+  {
+    os << indent << "Input: ( none )\n";
+  }
+
+  if (this->Output)
+  {
+    os << indent << "Output:\n";
+    this->Output->PrintSelf(os, indent.GetNextIndent());
+  }
+  else
+  {
+    os << indent << "Output: ( none )\n";
+  }
+
+  if (this->Points)
   {
     os << indent << "Points:\n";
-    this->Points->PrintSelf( os, indent.GetNextIndent() );
+    this->Points->PrintSelf(os, indent.GetNextIndent());
   }
   else
   {
@@ -64,118 +104,152 @@ void vtkHyperTreeGridCellCenters::PrintSelf( ostream& os, vtkIndent indent )
   }
 }
 
-//----------------------------------------------------------------------------
-int vtkHyperTreeGridCellCenters::FillOutputPortInformation( int,
-                                                            vtkInformation* info )
+//------------------------------------------------------------------------------
+int vtkHyperTreeGridCellCenters::RequestData(
+  vtkInformation*, vtkInformationVector** inputVector, vtkInformationVector* outputVector)
 {
-  info->Set( vtkDataObject::DATA_TYPE_NAME(), "vtkPolyData" );
+  // Get the information objects
+  vtkInformation* inInfo = inputVector[0]->GetInformationObject(0);
+  vtkInformation* outInfo = outputVector->GetInformationObject(0);
+
+  // Retrieve input and output
+  this->Input = vtkHyperTreeGrid::SafeDownCast(inInfo->Get(vtkDataObject::DATA_OBJECT()));
+  this->Output = vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+
+  // Initialize output cell data
+  this->InData = this->Input->GetCellData();
+  this->OutData = this->Output->GetPointData();
+  this->OutData->CopyAllocate(this->InData);
+
+  // General cell centers of hyper tree grid
+  this->ProcessTrees();
+
+  // Squeeze output data
+  this->OutData->Squeeze();
+
+  // Clean up
+  this->Input = nullptr;
+  this->Output = nullptr;
+  this->InData = nullptr;
+  this->OutData = nullptr;
+
+  this->UpdateProgress(1.);
+
   return 1;
 }
 
-//----------------------------------------------------------------------------
-int vtkHyperTreeGridCellCenters::ProcessTrees( vtkHyperTreeGrid* input,
-                                               vtkDataObject* outputDO )
+//------------------------------------------------------------------------------
+void vtkHyperTreeGridCellCenters::ProcessTrees()
 {
-  // Downcast output data object to polygonal data set
-  vtkPolyData* output = vtkPolyData::SafeDownCast( outputDO );
-  if ( ! output )
-  {
-    vtkErrorMacro( "Incorrect type of output: "
-                   << outputDO->GetClassName() );
-    return 0;
-  }
-
-  // Initialize output cell data
-  this->InData = input->GetPointData();
-  this->OutData = output->GetPointData();
-  this->OutData->CopyAllocate( this->InData );
+  // Create storage for corners of leaf cells
+  this->Points = vtkPoints::New();
 
   // Retrieve material mask
-  vtkBitArray* mask
-    = input->HasMaterialMask() ? input->GetMaterialMask() : nullptr;
+  this->InMask = this->Input->HasMask() ? this->Input->GetMask() : nullptr;
 
   // Iterate over all hyper trees
   vtkIdType index;
   vtkHyperTreeGrid::vtkHyperTreeGridIterator it;
-  input->InitializeTreeIterator( it );
-  while ( it.GetNextTree( index ) )
+  this->Input->InitializeTreeIterator(it);
+  vtkNew<vtkHyperTreeGridNonOrientedGeometryCursor> cursor;
+  while (it.GetNextTree(index))
   {
+    if (this->CheckAbort())
+    {
+      break;
+    }
     // Initialize new geometric cursor at root of current tree
-    vtkHyperTreeGridCursor* cursor = input->NewGeometricCursor( index );
-
+    this->Input->InitializeNonOrientedGeometryCursor(cursor, index);
     // Generate leaf cell centers recursively
-    this->RecursivelyProcessTree( cursor, mask );
-
-    // Clean up
-    cursor->Delete();
+    this->RecursivelyProcessTree(cursor);
   } // it
 
   // Set output geometry and topology if required
-  output->SetPoints( this->Points );
-  if ( this->VertexCells )
+  this->Output->SetPoints(this->Points);
+  if (this->VertexCells)
   {
     vtkIdType np = this->Points->GetNumberOfPoints();
     vtkCellArray* vertices = vtkCellArray::New();
-    vertices->Allocate(np * 2);
-    for( vtkIdType i = 0; i < np ; ++ i )
+    vertices->AllocateEstimate(np, 1);
+    for (vtkIdType i = 0; i < np; ++i)
     {
-      vertices->InsertNextCell( 1, &i );
+      vertices->InsertNextCell(1, &i);
     } // i
-    output->SetVerts( vertices );
+    this->Output->SetVerts(vertices);
     vertices->Delete();
   } // this->VertexCells
 
-  return 1;
+  if (this->VertexCells)
+  {
+    vtkIdType numPoints = this->Points->GetNumberOfPoints();
+    vtkNew<vtkIdTypeArray> iArray;
+    iArray->SetNumberOfComponents(1);
+    iArray->SetNumberOfTuples(numPoints * 2);
+    for (vtkIdType i = 0; i < numPoints; i++)
+    {
+      iArray->SetValue(2 * i, 1);
+      iArray->SetValue(2 * i + 1, i);
+    }
+
+    vtkNew<vtkCellArray> verts;
+    verts->AllocateEstimate(numPoints, 1);
+    verts->ImportLegacyFormat(iArray);
+    this->Output->SetVerts(verts);
+    this->Output->GetCellData()->ShallowCopy(this->OutData);
+  }
+
+  // Clean up
+  this->Points->Delete();
+  this->Points = nullptr;
 }
 
-//----------------------------------------------------------------------------
-void vtkHyperTreeGridCellCenters::RecursivelyProcessTree( vtkHyperTreeGridCursor* cursor,
-                                                          vtkBitArray* mask )
+//------------------------------------------------------------------------------
+void vtkHyperTreeGridCellCenters::RecursivelyProcessTree(
+  vtkHyperTreeGridNonOrientedGeometryCursor* cursor)
 {
-  // Retrieve input grid
-  vtkHyperTreeGrid* input = cursor->GetGrid();
+  // Skip masked cells
+  if (cursor->IsMasked())
+  {
+    return;
+  }
 
   // Create cell center if cursor is at leaf
-  if ( cursor->IsLeaf() )
+  if (cursor->IsLeaf())
   {
     // Cursor is at leaf, retrieve its global index
     vtkIdType id = cursor->GetGlobalNodeIndex();
 
     // If leaf is masked, skip it
-    if ( mask && mask->GetValue( id ) )
+    if (this->InMask && this->InMask->GetValue(id))
     {
       return;
     }
 
     // Retrieve cell center coordinates
     double pt[3];
-    cursor->GetPoint( pt );
+    cursor->GetPoint(pt);
 
     // Insert next point
-    vtkIdType outId = this->Points->InsertNextPoint( pt );
+    vtkIdType outId = this->Points->InsertNextPoint(pt);
 
     // Copy cell center data from leaf data, when needed
-    if ( this->VertexCells )
-    {
-      this->OutData->CopyData( this->InData, id, outId );
-    }
+    this->OutData->CopyData(this->InData, id, outId);
   }
   else
   {
     // Cursor is not at leaf, recurse to all children
-    int numChildren = input->GetNumberOfChildren();
-    for ( int child = 0; child < numChildren; ++ child )
+    int numChildren = this->Input->GetNumberOfChildren();
+    for (int child = 0; child < numChildren; ++child)
     {
-      // Create child cursor from parent
-      vtkHyperTreeGridCursor* childCursor = cursor->Clone();
-      childCursor->ToChild( child );
-
+      if (this->CheckAbort())
+      {
+        break;
+      }
+      cursor->ToChild(child);
       // Recurse
-      this->RecursivelyProcessTree( childCursor, mask );
-
-      // Clean up
-      childCursor->Delete();
-      childCursor = nullptr;
+      this->RecursivelyProcessTree(cursor);
+      cursor->ToParent();
     } // child
-  } // else
+  }   // else
 }
+VTK_ABI_NAMESPACE_END

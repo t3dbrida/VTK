@@ -1,5 +1,5 @@
 /*
- *	Copyright 1996, Unuiversity Corporation for Atmospheric Research
+ *	Copyright 2018, Unuiversity Corporation for Atmospheric Research
  *      See netcdf/COPYRIGHT file for copying and redistribution conditions.
  */
 
@@ -10,17 +10,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#if defined(LOCKNUMREC) /* && _CRAYMPP */
-#  include <mpp/shmem.h>
-#  include <intrinsics.h>
-#endif
+#include <sys/types.h>
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 
 #include "nc3internal.h"
+#include "netcdf_mem.h"
 #include "rnd.h"
 #include "ncx.h"
+#include "ncrc.h"
 
 /* These have to do with version numbers. */
 #define MAGIC_NUM_LEN 4
@@ -35,6 +34,9 @@
 /* For cdf5 */
 #define NC_NUMRECS_EXTENT5 8
 
+/* Internal function; breaks ncio abstraction */
+extern int memio_extract(ncio* const nciop, size_t* sizep, void** memoryp);
+
 static void
 free_NC3INFO(NC3_INFO *nc3)
 {
@@ -43,11 +45,7 @@ free_NC3INFO(NC3_INFO *nc3)
 	free_NC_dimarrayV(&nc3->dims);
 	free_NC_attrarrayV(&nc3->attrs);
 	free_NC_vararrayV(&nc3->vars);
-#if _CRAYMPP && defined(LOCKNUMREC)
-	shfree(nc3);
-#else
 	free(nc3);
-#endif /* _CRAYMPP && LOCKNUMREC */
 }
 
 static NC3_INFO *
@@ -95,7 +93,7 @@ err:
 int
 nc3_cktype(int mode, nc_type type)
 {
-#ifdef USE_CDF5
+#ifdef NETCDF_ENABLE_CDF5
     if (mode & NC_CDF5) { /* CDF-5 format */
         if (type >= NC_BYTE && type < NC_STRING) return NC_NOERR;
     } else
@@ -156,8 +154,9 @@ NC_begins(NC3_INFO* ncp,
 	size_t v_minfree, size_t r_align)
 {
 	size_t ii, j;
-	int sizeof_off_t;
+	size_t sizeof_off_t;
 	off_t index = 0;
+	off_t old_ncp_begin_var;
 	NC_var **vpp;
 	NC_var *last = NULL;
 	NC_var *first_var = NULL;       /* first "non-record" var */
@@ -179,6 +178,8 @@ NC_begins(NC3_INFO* ncp,
 	if(ncp->vars.nelems == 0)
 		return NC_NOERR;
 
+        old_ncp_begin_var = ncp->begin_var;
+
 	/* only (re)calculate begin_var if there is not sufficient space in header
 	   or start of non-record variables is not aligned as requested by valign */
 	if (ncp->begin_var < ncp->xsz + h_minfree ||
@@ -186,7 +187,7 @@ NC_begins(NC3_INFO* ncp,
 	{
 	  index = (off_t) ncp->xsz;
 	  ncp->begin_var = D_RNDUP(index, v_align);
-	  if(ncp->begin_var < index + h_minfree)
+	  if(ncp->begin_var < index + (off_t)h_minfree)
 	  {
 	    ncp->begin_var = D_RNDUP(index + (off_t)h_minfree, v_align);
 	  }
@@ -217,6 +218,7 @@ fprintf(stderr, "    VAR %d %s: %ld\n", ii, (*vpp)->name->cp, (long)index);
 #endif
                 if( sizeof_off_t == 4 && (index > X_OFF_MAX || index < 0) )
 		{
+                    ncp->begin_var = old_ncp_begin_var;
 		    return NC_EVARSIZE;
                 }
 		(*vpp)->begin = index;
@@ -252,11 +254,11 @@ fprintf(stderr, "    VAR %d %s: %ld\n", ii, (*vpp)->name->cp, (long)index);
 	/* only (re)calculate begin_rec if there is not sufficient
 	   space at end of non-record variables or if start of record
 	   variables is not aligned as requested by r_align */
-	if (ncp->begin_rec < index + v_minfree ||
+	if (ncp->begin_rec < index + (off_t)v_minfree ||
 	    ncp->begin_rec != D_RNDUP(ncp->begin_rec, r_align) )
 	{
 	  ncp->begin_rec = D_RNDUP(index, r_align);
-	  if(ncp->begin_rec < index + v_minfree)
+	  if(ncp->begin_rec < index + (off_t)v_minfree)
 	  {
 	    ncp->begin_rec = D_RNDUP(index + (off_t)v_minfree, r_align);
 	  }
@@ -287,6 +289,7 @@ fprintf(stderr, "    REC %d %s: %ld\n", ii, (*vpp)->name->cp, (long)index);
 #endif
                 if( sizeof_off_t == 4 && (index > X_OFF_MAX || index < 0) )
 		{
+                    ncp->begin_var = old_ncp_begin_var;
 		    return NC_EVARSIZE;
                 }
 		(*vpp)->begin = index;
@@ -309,24 +312,27 @@ fprintf(stderr, "    REC %d %s: %ld\n", ii, (*vpp)->name->cp, (long)index);
 #if SIZEOF_OFF_T == SIZEOF_SIZE_T && SIZEOF_SIZE_T == 4
 		if( ncp->recsize > X_UINT_MAX - (*vpp)->len )
 		{
+                    ncp->begin_var = old_ncp_begin_var;
 		    return NC_EVARSIZE;
 		}
 #endif
-		if((*vpp)->len != UINT32_MAX) /* flag for vars >= 2**32 bytes */
-		    ncp->recsize += (*vpp)->len;
+		ncp->recsize += (*vpp)->len;
 		last = (*vpp);
 	}
 
-	/*
-	 * for special case of
-	 */
-	if(last != NULL) {
-	    if(ncp->recsize == last->len) { /* exactly one record variable, pack value */
-		ncp->recsize = *last->dsizes * last->xsz;
-	    } else if(last->len == UINT32_MAX) { /* huge last record variable */
-		ncp->recsize += *last->dsizes * last->xsz;
-	    }
-	}
+    /*
+     * for special case (Check CDF-1 and CDF-2 file format specifications.)
+     * "A special case: Where there is exactly one record variable, we drop the
+     * requirement that each record be four-byte aligned, so in this case there
+     * is no record padding."
+     */
+    if (last != NULL) {
+        if (ncp->recsize == last->len) {
+            /* exactly one record variable, pack value */
+            ncp->recsize = *last->dsizes * last->xsz;
+        }
+    }
+
 	if(NC_IsNew(ncp))
 		NC_set_numrecs(ncp, 0);
 	return NC_NOERR;
@@ -408,7 +414,7 @@ write_numrecs(NC3_INFO *ncp)
 	(void) ncio_rel(ncp->nciop, NC_NUMRECS_OFFSET, RGN_MODIFIED);
 
 	if(status == NC_NOERR)
-		fClr(ncp->flags, NC_NDIRTY);
+		fClr(ncp->state, NC_NDIRTY);
 
 	return status;
 }
@@ -430,7 +436,7 @@ read_NC(NC3_INFO *ncp)
 	status = nc_get_NC(ncp);
 
 	if(status == NC_NOERR)
-		fClr(ncp->flags, NC_NDIRTY | NC_HDIRTY);
+		fClr(ncp->state, NC_NDIRTY | NC_HDIRTY);
 
 	return status;
 }
@@ -449,7 +455,7 @@ write_NC(NC3_INFO *ncp)
 	status = ncx_put_NC(ncp, NULL, 0, 0);
 
 	if(status == NC_NOERR)
-		fClr(ncp->flags, NC_NDIRTY | NC_HDIRTY);
+		fClr(ncp->state, NC_NDIRTY | NC_HDIRTY);
 
 	return status;
 }
@@ -490,12 +496,13 @@ fillerup(NC3_INFO *ncp)
 	NC_var **varpp;
 
 	assert(!NC_readonly(ncp));
-	assert(NC_dofill(ncp));
 
 	/* loop thru vars */
 	varpp = ncp->vars.value;
 	for(ii = 0; ii < ncp->vars.nelems; ii++, varpp++)
 	{
+		if ((*varpp)->no_fill) continue;
+
 		if(IS_RECVAR(*varpp))
 		{
 			/* skip record variables */
@@ -518,8 +525,8 @@ fill_added_recs(NC3_INFO *gnu, NC3_INFO *old)
 {
 	NC_var ** const gnu_varpp = (NC_var **)gnu->vars.value;
 
-	const int old_nrecs = (int) NC_get_numrecs(old);
-	int recno = 0;
+	const size_t old_nrecs = NC_get_numrecs(old);
+	size_t recno = 0;
 	NC_var **vpp = gnu_varpp;
 	NC_var *const *const end = &vpp[gnu->vars.nelems];
 	int numrecvars = 0;
@@ -538,6 +545,9 @@ fill_added_recs(NC3_INFO *gnu, NC3_INFO *old)
 		for(; varid < (int)gnu->vars.nelems; varid++)
 		    {
 			const NC_var *const gnu_varp = *(gnu_varpp + varid);
+
+			if (gnu_varp->no_fill) continue;
+
 			if(!IS_RECVAR(gnu_varp))
 			    {
 				/* skip non-record variables */
@@ -545,7 +555,7 @@ fill_added_recs(NC3_INFO *gnu, NC3_INFO *old)
 			    }
 			/* else */
 			{
-			    size_t varsize = numrecvars == 1 ? gnu->recsize :  gnu_varp->len;
+			    long long varsize = numrecvars == 1 ? gnu->recsize :  gnu_varp->len;
 			    const int status = fill_NC_var(gnu, gnu_varp, varsize, recno);
 			    if(status != NC_NOERR)
 				return status;
@@ -566,6 +576,9 @@ fill_added(NC3_INFO *gnu, NC3_INFO *old)
 	for(; varid < (int)gnu->vars.nelems; varid++)
 	{
 		const NC_var *const gnu_varp = *(gnu_varpp + varid);
+
+		if (gnu_varp->no_fill) continue;
+
 		if(IS_RECVAR(gnu_varp))
 		{
 			/* skip record variables */
@@ -617,8 +630,8 @@ move_recs_r(NC3_INFO *gnu, NC3_INFO *old)
 
 		/* else, a pre-existing variable */
 		old_varp = *(old_varpp + varid);
-		gnu_off = gnu_varp->begin + (off_t)(gnu->recsize * recno);
-		old_off = old_varp->begin + (off_t)(old->recsize * recno);
+		gnu_off = gnu_varp->begin + (off_t)(gnu->recsize * (size_t)recno);
+		old_off = old_varp->begin + (off_t)(old->recsize * (size_t)recno);
 
 		if(gnu_off == old_off)
 			continue; 	/* nothing to do */
@@ -693,7 +706,7 @@ NC_check_vlens(NC3_INFO *ncp)
     /* maximum permitted variable size (or size of one record's worth
        of a record variable) in bytes.  This is different for format 1
        and format 2. */
-    size_t vlen_max;
+    long long vlen_max;
     size_t ii;
     size_t large_vars_count;
     size_t rec_vars_count;
@@ -702,25 +715,25 @@ NC_check_vlens(NC3_INFO *ncp)
     if(ncp->vars.nelems == 0)
 	return NC_NOERR;
 
-    if (fIsSet(ncp->flags,NC_64BIT_DATA)) {
-	/* CDF5 format allows many large vars */
-        return NC_NOERR;
-    }
-    if (fIsSet(ncp->flags,NC_64BIT_OFFSET) && sizeof(off_t) > 4) {
+    if (fIsSet(ncp->flags,NC_64BIT_DATA)) /* CDF-5 */
+	vlen_max = X_INT64_MAX - 3; /* "- 3" handles rounded-up size */
+    else if (fIsSet(ncp->flags,NC_64BIT_OFFSET) && sizeof(off_t) > 4)
 	/* CDF2 format and LFS */
 	vlen_max = X_UINT_MAX - 3; /* "- 3" handles rounded-up size */
-    } else {
-	/* CDF1 format */
+    else /* CDF1 format */
 	vlen_max = X_INT_MAX - 3;
-    }
+
     /* Loop through vars, first pass is for non-record variables.   */
     large_vars_count = 0;
     rec_vars_count = 0;
     vpp = ncp->vars.value;
     for (ii = 0; ii < ncp->vars.nelems; ii++, vpp++) {
+	assert(vpp != NULL && *vpp != NULL);
 	if( !IS_RECVAR(*vpp) ) {
 	    last = 0;
 	    if( NC_check_vlen(*vpp, vlen_max) == 0 ) {
+                if (fIsSet(ncp->flags,NC_64BIT_DATA)) /* too big for CDF-5 */
+                    return NC_EVARSIZE;
 		large_vars_count++;
 		last = 1;
 	    }
@@ -749,6 +762,8 @@ NC_check_vlens(NC3_INFO *ncp)
 	    if( IS_RECVAR(*vpp) ) {
 		last = 0;
 		if( NC_check_vlen(*vpp, vlen_max) == 0 ) {
+                    if (fIsSet(ncp->flags,NC_64BIT_DATA)) /* too big for CDF-5 */
+                        return NC_EVARSIZE;
 		    large_vars_count++;
 		    last = 1;
 		}
@@ -767,6 +782,59 @@ NC_check_vlens(NC3_INFO *ncp)
     return NC_NOERR;
 }
 
+/*----< NC_check_voffs() >---------------------------------------------------*/
+/*
+ * Given a valid ncp, check whether the file starting offsets (begin) of all
+ * variables follows the same increasing order as they were defined.
+ */
+int
+NC_check_voffs(NC3_INFO *ncp)
+{
+    size_t i;
+    off_t prev_off;
+    NC_var *varp;
+
+    if (ncp->vars.nelems == 0) return NC_NOERR;
+
+    /* Loop through vars, first pass is for non-record variables */
+    prev_off = ncp->begin_var;
+    for (i=0; i<ncp->vars.nelems; i++) {
+        varp = ncp->vars.value[i];
+        if (IS_RECVAR(varp)) continue;
+
+        if (varp->begin < prev_off) {
+#if 0
+            fprintf(stderr,"Variable \"%s\" begin offset (%lld) is less than previous variable end offset (%lld)\n", varp->name->cp, varp->begin, prev_off);
+#endif
+            return NC_ENOTNC;
+        }
+        prev_off = varp->begin + varp->len;
+    }
+
+    if (ncp->begin_rec < prev_off) {
+#if 0
+        fprintf(stderr,"Record variable section begin offset (%lld) is less than fix-sized variable section end offset (%lld)\n", varp->begin, prev_off);
+#endif
+        return NC_ENOTNC;
+    }
+
+    /* Loop through vars, second pass is for record variables */
+    prev_off = ncp->begin_rec;
+    for (i=0; i<ncp->vars.nelems; i++) {
+        varp = ncp->vars.value[i];
+        if (!IS_RECVAR(varp)) continue;
+
+        if (varp->begin < prev_off) {
+#if 0
+            fprintf(stderr,"Variable \"%s\" begin offset (%lld) is less than previous variable end offset (%lld)\n", varp->name->cp, varp->begin, prev_off);
+#endif
+            return NC_ENOTNC;
+        }
+        prev_off = varp->begin + varp->len;
+    }
+
+    return NC_NOERR;
+}
 
 /*
  *  End define mode.
@@ -789,12 +857,15 @@ NC_endef(NC3_INFO *ncp,
 	status = NC_begins(ncp, h_minfree, v_align, v_minfree, r_align);
 	if(status != NC_NOERR)
 	    return status;
+	status = NC_check_voffs(ncp);
+	if(status != NC_NOERR)
+	    return status;
 
 	if(ncp->old != NULL)
 	{
 		/* a plain redef, not a create */
 		assert(!NC_IsNew(ncp));
-		assert(fIsSet(ncp->flags, NC_INDEF));
+		assert(fIsSet(ncp->state, NC_INDEF));
 		assert(ncp->begin_rec >= ncp->old->begin_rec);
 		assert(ncp->begin_var >= ncp->old->begin_var);
 
@@ -840,7 +911,7 @@ NC_endef(NC3_INFO *ncp,
 	if(status != NC_NOERR)
 		return status;
 
-	if(NC_dofill(ncp))
+	/* fill mode is now per variable */
 	{
 		if(NC_IsNew(ncp))
 		{
@@ -867,25 +938,10 @@ NC_endef(NC3_INFO *ncp,
 		ncp->old = NULL;
 	}
 
-	fClr(ncp->flags, NC_CREAT | NC_INDEF);
+	fClr(ncp->state, NC_CREAT | NC_INDEF);
 
 	return ncio_sync(ncp->nciop);
 }
-
-#ifdef LOCKNUMREC
-static int
-NC_init_pe(NC *ncp, int basepe) {
-	if (basepe < 0 || basepe >= _num_pes()) {
-		return NC_EINVAL; /* invalid base pe */
-	}
-	/* initialize common values */
-	ncp->lock[LOCKNUMREC_VALUE] = 0;
-	ncp->lock[LOCKNUMREC_LOCK] = 0;
-	ncp->lock[LOCKNUMREC_SERVING] = 0;
-	ncp->lock[LOCKNUMREC_BASEPE] =  basepe;
-	return NC_NOERR;
-}
-#endif
 
 
 /*
@@ -895,22 +951,25 @@ int
 NC_calcsize(const NC3_INFO *ncp, off_t *calcsizep)
 {
 	NC_var **vpp = (NC_var **)ncp->vars.value;
-	NC_var *const *const end = &vpp[ncp->vars.nelems];
 	NC_var *last_fix = NULL;	/* last "non-record" var */
 	int numrecvars = 0;	/* number of record variables */
 
 	if(ncp->vars.nelems == 0) { /* no non-record variables and
 				       no record variables */
-	    *calcsizep = ncp->xsz; /* size of header */
+	    *calcsizep = (off_t)ncp->xsz; /* size of header */
 	    return NC_NOERR;
 	}
 
-	for( /*NADA*/; vpp < end; vpp++) {
-	    if(IS_RECVAR(*vpp)) {
-		numrecvars++;
-	    } else {
-		last_fix = *vpp;
-	    }
+	if (vpp)
+	{
+		NC_var *const *const end = &vpp[ncp->vars.nelems];
+		for( /*NADA*/; vpp < end; vpp++) {
+		    if(IS_RECVAR(*vpp)) {
+			numrecvars++;
+		    } else {
+			last_fix = *vpp;
+		    }
+		}
 	}
 
 	if(numrecvars == 0) {
@@ -918,16 +977,15 @@ NC_calcsize(const NC3_INFO *ncp, off_t *calcsizep)
 	    assert(last_fix != NULL);
 	    varsize = last_fix->len;
 	    if(last_fix->len == X_UINT_MAX) { /* huge last fixed var */
-		int i;
 		varsize = 1;
-  	        for(i = 0; i < last_fix->ndims; i++ ) {
-                varsize *= (last_fix->shape ? last_fix->shape[i] : 1);
-		    }
+		for(size_t i = 0; i < last_fix->ndims; i++ ) {
+		    varsize *= (last_fix->shape ? last_fix->shape[i] : 1);
+		}
 	    }
 	    *calcsizep = last_fix->begin + varsize;
 	    /*last_var = last_fix;*/
 	} else {       /* we have at least one record variable */
-	    *calcsizep = ncp->begin_rec + ncp->numrecs * ncp->recsize;
+	    *calcsizep = ncp->begin_rec + (off_t)(ncp->numrecs * ncp->recsize);
 	}
 
 	return NC_NOERR;
@@ -941,11 +999,7 @@ int NC3_new_nc(NC3_INFO** ncpp)
 	NC *nc;
 	NC3_INFO* nc3;
 
-#if _CRAYMPP && defined(LOCKNUMREC)
-	ncp = (NC *) shmalloc(sizeof(NC));
-#else
 	ncp = (NC *) malloc(sizeof(NC));
-#endif /* _CRAYMPP && LOCKNUMREC */
 	if(ncp == NULL)
 		return NC_ENOMEM;
 	(void) memset(ncp, 0, sizeof(NC));
@@ -961,16 +1015,19 @@ int NC3_new_nc(NC3_INFO** ncpp)
 
 /* WARNING: SIGNATURE CHANGE */
 int
-NC3_create(const char *path, int ioflags,
-		size_t initialsz, int basepe,
-		size_t *chunksizehintp,
-		int use_parallel, void* parameters,
-                NC_Dispatch* dispatch, NC* nc)
+NC3_create(const char *path, int ioflags, size_t initialsz, int basepe,
+           size_t *chunksizehintp, void *parameters,
+           const NC_Dispatch *dispatch, int ncid)
 {
-	int status;
+	int status = NC_NOERR;
 	void *xp = NULL;
-	int sizeof_off_t = 0;
+	size_t sizeof_off_t = 0;
+        NC *nc;
 	NC3_INFO* nc3 = NULL;
+
+        /* Find NC struct for this file. */
+        if ((status = NC_check_id(ncid, &nc)))
+            return status;
 
 	/* Create our specific NC3_INFO instance */
 	nc3 = new_NC3INFO(chunksizehintp);
@@ -979,27 +1036,14 @@ NC3_create(const char *path, int ioflags,
 	fSet(ioflags, NC_SHARE);
 #endif
 
-#if defined(LOCKNUMREC) /* && _CRAYMPP */
-	if (status = NC_init_pe(nc3, basepe)) {
-		return status;
-	}
-#else
 	/*
-	 * !_CRAYMPP, only pe 0 is valid
+	 * Only pe 0 is valid
 	 */
 	if(basepe != 0) {
-      if(nc3) free(nc3);
-      return NC_EINVAL;
-    }
-#endif
-
+            if(nc3) free(nc3);
+            return NC_EINVAL;
+        }
 	assert(nc3->flags == 0);
-
-	/* Apply default create format. */
-	if (nc_get_default_format() == NC_FORMAT_64BIT_OFFSET)
-	  ioflags |= NC_64BIT_OFFSET;
-	else if (nc_get_default_format() == NC_FORMAT_CDF5)
-	  ioflags |= NC_64BIT_DATA;
 
 	/* Now we can set min size */
 	if (fIsSet(ioflags, NC_64BIT_DATA))
@@ -1030,7 +1074,7 @@ NC3_create(const char *path, int ioflags,
 		goto unwind_alloc;
 	}
 
-	fSet(nc3->flags, NC_CREAT);
+	fSet(nc3->state, NC_CREAT);
 
 	if(fIsSet(nc3->nciop->ioflags, NC_SHARE))
 	{
@@ -1041,7 +1085,7 @@ NC3_create(const char *path, int ioflags,
 		 * automatically.  Some sort of IPC (external to this package)
 		 * would be used to trigger a call to nc_sync().
 		 */
-		fSet(nc3->flags, NC_NSYNC);
+		fSet(nc3->state, NC_NSYNC);
 	}
 
 	status = ncx_put_NC(nc3, &xp, sizeof_off_t, nc3->xsz);
@@ -1090,7 +1134,7 @@ nc_set_default_format(int format, int *old_formatp)
       return NC_EINVAL;
 #else
     if (format != NC_FORMAT_CLASSIC && format != NC_FORMAT_64BIT_OFFSET
-#ifdef USE_CDF5
+#ifdef NETCDF_ENABLE_CDF5
         && format != NC_FORMAT_CDF5
 #endif
         )
@@ -1102,13 +1146,16 @@ nc_set_default_format(int format, int *old_formatp)
 #endif
 
 int
-NC3_open(const char * path, int ioflags,
-               int basepe, size_t *chunksizehintp,
-	       int use_parallel,void* parameters,
-               NC_Dispatch* dispatch, NC* nc)
+NC3_open(const char *path, int ioflags, int basepe, size_t *chunksizehintp,
+         void *parameters, const NC_Dispatch *dispatch, int ncid)
 {
 	int status;
 	NC3_INFO* nc3 = NULL;
+        NC *nc;
+
+        /* Find NC struct for this file. */
+        if ((status = NC_check_id(ncid, &nc)))
+            return status;
 
 	/* Create our specific NC3_INFO instance */
 	nc3 = new_NC3INFO(chunksizehintp);
@@ -1117,27 +1164,24 @@ NC3_open(const char * path, int ioflags,
 	fSet(ioflags, NC_SHARE);
 #endif
 
-#if defined(LOCKNUMREC) /* && _CRAYMPP */
-	if (status = NC_init_pe(nc3, basepe)) {
-	    goto unwind_alloc;
-	}
-#else
 	/*
-	 * !_CRAYMPP, only pe 0 is valid
+	 * Only pe 0 is valid.
 	 */
 	if(basepe != 0) {
-        if(nc3) free(nc3);
-        status = NC_EINVAL;
-	goto unwind_alloc;
-    }
-#endif
+            if(nc3) {
+                free(nc3);
+                nc3 = NULL;
+            }
+            status = NC_EINVAL;
+            goto unwind_alloc;
+        }
 
         status = ncio_open(path, ioflags, 0, 0, &nc3->chunk, parameters,
 			       &nc3->nciop, NULL);
 	if(status)
 		goto unwind_alloc;
 
-	assert(nc3->flags == 0);
+	assert(nc3->state == 0);
 
 	if(fIsSet(nc3->nciop->ioflags, NC_SHARE))
 	{
@@ -1148,7 +1192,7 @@ NC3_open(const char * path, int ioflags,
 		 * automatically.  Some sort of IPC (external to this package)
 		 * would be used to trigger a call to nc_sync().
 		 */
-		fSet(nc3->flags, NC_NSYNC);
+		fSet(nc3->state, NC_NSYNC);
 	}
 
 	status = nc_get_NC(nc3);
@@ -1221,10 +1265,10 @@ NC3_abort(int ncid)
 	{
 		/* a plain redef, not a create */
 		assert(!NC_IsNew(nc3));
-		assert(fIsSet(nc3->flags, NC_INDEF));
+		assert(fIsSet(nc3->state, NC_INDEF));
 		free_NC3INFO(nc3->old);
 		nc3->old = NULL;
-		fClr(nc3->flags, NC_INDEF);
+		fClr(nc3->state, NC_INDEF);
 	}
 	else if(!NC_readonly(nc3))
 	{
@@ -1245,7 +1289,7 @@ NC3_abort(int ncid)
 }
 
 int
-NC3_close(int ncid)
+NC3_close(int ncid, void* params)
 {
 	int status = NC_NOERR;
 	NC *nc;
@@ -1293,6 +1337,12 @@ NC3_close(int ncid)
 	    }
 	}
 
+	if(params != NULL && (nc->mode & NC_INMEMORY) != 0) {
+	    NC_memio* memio = (NC_memio*)params;
+            /* Extract the final memory size &/or contents */
+            status = memio_extract(nc3->nciop,&memio->size,&memio->memory);
+        }
+
 	(void) ncio_close(nc3->nciop, 0);
 	nc3->nciop = NULL;
 
@@ -1333,7 +1383,7 @@ NC3_redef(int ncid)
 	if(nc3->old == NULL)
 		return NC_ENOMEM;
 
-	fSet(nc3->flags, NC_INDEF);
+	fSet(nc3->state, NC_INDEF);
 
 	return NC_NOERR;
 }
@@ -1417,11 +1467,11 @@ NC3_sync(int ncid)
 #ifdef USE_FSYNC
 	/* may improve concurrent access, but slows performance if
 	 * called frequently */
-#ifndef WIN32
+#ifndef _WIN32
 	status = fsync(nc3->nciop->fd);
 #else
 	status = _commit(nc3->nciop->fd);
-#endif	/* WIN32 */
+#endif	/* _WIN32 */
 #endif	/* USE_FSYNC */
 
 	return status;
@@ -1432,7 +1482,7 @@ int
 NC3_set_fill(int ncid,
 	int fillmode, int *old_mode_ptr)
 {
-	int status;
+	int i, status;
 	NC *nc;
 	NC3_INFO* nc3;
 	int oldmode;
@@ -1445,15 +1495,15 @@ NC3_set_fill(int ncid,
 	if(NC_readonly(nc3))
 		return NC_EPERM;
 
-	oldmode = fIsSet(nc3->flags, NC_NOFILL) ? NC_NOFILL : NC_FILL;
+	oldmode = fIsSet(nc3->state, NC_NOFILL) ? NC_NOFILL : NC_FILL;
 
 	if(fillmode == NC_NOFILL)
 	{
-		fSet(nc3->flags, NC_NOFILL);
+		fSet(nc3->state, NC_NOFILL);
 	}
 	else if(fillmode == NC_FILL)
 	{
-		if(fIsSet(nc3->flags, NC_NOFILL))
+		if(fIsSet(nc3->state, NC_NOFILL))
 		{
 			/*
 			 * We are changing back to fill mode
@@ -1463,7 +1513,7 @@ NC3_set_fill(int ncid,
 			if(status != NC_NOERR)
 				return status;
 		}
-		fClr(nc3->flags, NC_NOFILL);
+		fClr(nc3->state, NC_NOFILL);
 	}
 	else
 	{
@@ -1473,190 +1523,120 @@ NC3_set_fill(int ncid,
 	if(old_mode_ptr != NULL)
 		*old_mode_ptr = oldmode;
 
+	/* loop thru all variables to set/overwrite its fill mode */
+	for (i=0; i<nc3->vars.nelems; i++)
+		nc3->vars.value[i]->no_fill = (fillmode == NC_NOFILL);
+
+	/* once the file's fill mode is set, any new variables defined after
+	 * this call will check NC_dofill(nc3) and set their no_fill accordingly.
+	 * See NC3_def_var() */
+
 	return NC_NOERR;
 }
 
-#ifdef LOCKNUMREC
+/**
+ * Return the file format.
+ *
+ * \param ncid the ID of the open file.
 
-/* create function versions of the NC_*_numrecs macros */
-size_t
-NC_get_numrecs(const NC *nc3) {
-	shmem_t numrec;
-	shmem_short_get(&numrec, (shmem_t *) nc3->lock + LOCKNUMREC_VALUE, 1,
-		nc3->lock[LOCKNUMREC_BASEPE]);
-	return (size_t) numrec;
-}
-
-void
-NC_set_numrecs(NC *nc3, size_t nrecs)
-{
-    shmem_t numrec = (shmem_t) nrecs;
-    /* update local value too */
-    nc3->lock[LOCKNUMREC_VALUE] = (ushmem_t) numrec;
-    shmem_short_put((shmem_t *) nc3->lock + LOCKNUMREC_VALUE, &numrec, 1,
-    nc3->lock[LOCKNUMREC_BASEPE]);
-}
-
-void NC_increase_numrecs(NC *nc3, size_t nrecs)
-{
-    /* this is only called in one place that's already protected
-     * by a lock ... so don't worry about it */
-    if (nrecs > NC_get_numrecs(nc3))
-	NC_set_numrecs(nc3, nrecs);
-}
-
-#endif /* LOCKNUMREC */
-
-/* everyone in communicator group will be executing this */
-/*ARGSUSED*/
-int
-NC3_set_base_pe(int ncid, int pe)
-{
-#if _CRAYMPP && defined(LOCKNUMREC)
-	int status;
-	NC *nc;
-	NC3_INFO* nc3;
-	shmem_t numrecs;
-
-	if ((status = NC_check_id(ncid, &nc) != NC_NOERR) {
-		return status;
-	}
-	if (pe < 0 || pe >= _num_pes()) {
-		return NC_EINVAL; /* invalid base pe */
-	}
-	nc3 = NC3_DATA(nc);
-
-	numrecs = (shmem_t) NC_get_numrecs(nc3);
-
-	nc3->lock[LOCKNUMREC_VALUE] = (ushmem_t) numrecs;
-
-	/* update serving & lock values for a "smooth" transition */
-	/* note that the "real" server will being doing this as well */
-	/* as all the rest in the group */
-	/* must have synchronization before & after this step */
-	shmem_short_get(
-		(shmem_t *) nc3->lock + LOCKNUMREC_SERVING,
-		(shmem_t *) nc3->lock + LOCKNUMREC_SERVING,
-		1, nc3->lock[LOCKNUMREC_BASEPE]);
-
-	shmem_short_get(
-		(shmem_t *) nc3->lock + LOCKNUMREC_LOCK,
-		(shmem_t *) nc3->lock + LOCKNUMREC_LOCK,
-		1, nc3->lock[LOCKNUMREC_BASEPE]);
-
-	/* complete transition */
-	nc3->lock[LOCKNUMREC_BASEPE] = (ushmem_t) pe;
-
-#endif /* _CRAYMPP && LOCKNUMREC */
-	return NC_NOERR;
-}
-
-/*ARGSUSED*/
-int
-NC3_inq_base_pe(int ncid, int *pe)
-{
-#if _CRAYMPP && defined(LOCKNUMREC)
-	int status;
-	NC *nc;
-	NC3_INFO* nc3;
-
-	if ((status = NC_check_id(ncid, &nc)) != NC_NOERR) {
-		return status;
-	}
-
-	*pe = (int) nc3->lock[LOCKNUMREC_BASEPE];
-	nc3 = NC3_DATA(nc);
-#else
-	/*
-	 * !_CRAYMPP, only pe 0 is valid
-	 */
-	*pe = 0;
-#endif /* _CRAYMPP && LOCKNUMREC */
-	return NC_NOERR;
-}
-
+ * \param formatp a pointer that gets the format. Ignored if NULL.
+ *
+ * \returns NC_NOERR No error.
+ * \returns NC_EBADID Bad ncid.
+ * \internal
+ * \author Ed Hartnett, Dennis Heimbigner
+ */
 int
 NC3_inq_format(int ncid, int *formatp)
 {
-	int status;
-	NC *nc;
-	NC3_INFO* nc3;
+   int status;
+   NC *nc;
+   NC3_INFO* nc3;
 
-	status = NC_check_id(ncid, &nc);
-	if(status != NC_NOERR)
-		return status;
-	nc3 = NC3_DATA(nc);
+   status = NC_check_id(ncid, &nc);
+   if(status != NC_NOERR)
+      return status;
+   nc3 = NC3_DATA(nc);
 
-	/* only need to check for netCDF-3 variants, since this is never called for netCDF-4 files */
-#ifdef USE_CDF5
-	if (fIsSet(nc3->flags, NC_64BIT_DATA))
-	    *formatp = NC_FORMAT_CDF5;
-	else
+   /* Why even call this function with no format pointer? */
+   if (!formatp)
+      return NC_NOERR;
+
+   /* only need to check for netCDF-3 variants, since this is never called for netCDF-4 files */
+#ifdef NETCDF_ENABLE_CDF5
+   if (fIsSet(nc3->flags, NC_64BIT_DATA))
+      *formatp = NC_FORMAT_CDF5;
+   else
 #endif
       if (fIsSet(nc3->flags, NC_64BIT_OFFSET))
-	    *formatp = NC_FORMAT_64BIT_OFFSET;
-	else
-	    *formatp = NC_FORMAT_CLASSIC;
-	return NC_NOERR;
+         *formatp = NC_FORMAT_64BIT_OFFSET;
+      else
+         *formatp = NC_FORMAT_CLASSIC;
+   return NC_NOERR;
 }
 
+/**
+ * Return the extended format (i.e. the dispatch model), plus the mode
+ * associated with an open file.
+ *
+ * \param ncid the ID of the open file.
+ * \param formatp a pointer that gets the extended format. Note that
+ * this is not the same as the format provided by nc_inq_format(). The
+ * extended format indicates the dispatch layer model. Classic, 64-bit
+ * offset, and CDF5 files all have an extended format of
+ * ::NC_FORMATX_NC3. Ignored if NULL.
+ * \param modep a pointer that gets the open/create mode associated with
+ * this file. Ignored if NULL.
+ *
+ * \returns NC_NOERR No error.
+ * \returns NC_EBADID Bad ncid.
+ * \internal
+ * \author Dennis Heimbigner
+ */
 int
 NC3_inq_format_extended(int ncid, int *formatp, int *modep)
 {
-	int status;
-	NC *nc;
+   int status;
+   NC *nc;
 
-	status = NC_check_id(ncid, &nc);
-	if(status != NC_NOERR)
-		return status;
-        if(formatp) *formatp = NC_FORMATX_NC3;
-	if(modep) *modep = nc->mode;
-	return NC_NOERR;
+   status = NC_check_id(ncid, &nc);
+   if(status != NC_NOERR)
+      return status;
+   if(formatp) *formatp = NC_FORMATX_NC3;
+   if(modep) *modep = nc->mode;
+   return NC_NOERR;
 }
 
-/* The sizes of types may vary from platform to platform, but within
- * netCDF files, type sizes are fixed. */
-#define NC_BYTE_LEN 1
-#define NC_CHAR_LEN 1
-#define NC_SHORT_LEN 2
-#define NC_INT_LEN 4
-#define NC_FLOAT_LEN 4
-#define NC_DOUBLE_LEN 8
-#define NUM_ATOMIC_TYPES 6
-
-/* This netCDF-4 function proved so popular that a netCDF-classic
- * version is provided. You're welcome. */
+/**
+ * Determine name and size of netCDF type. This netCDF-4 function
+ * proved so popular that a netCDF-classic version is provided. You're
+ * welcome.
+ *
+ * \param ncid The ID of an open file.
+ * \param typeid The ID of a netCDF type.
+ * \param name Pointer that will get the name of the type. Maximum
+ * size will be NC_MAX_NAME. Ignored if NULL.
+ * \param size Pointer that will get size of type in bytes. Ignored if
+ * null.
+ *
+ * \returns NC_NOERR No error.
+ * \returns NC_EBADID Bad ncid.
+ * \returns NC_EBADTYPE Bad typeid.
+ * \internal
+ * \author Ed Hartnett
+ */
 int
 NC3_inq_type(int ncid, nc_type typeid, char *name, size_t *size)
 {
-#if 0
-   int atomic_size[NUM_ATOMIC_TYPES] = {NC_BYTE_LEN, NC_CHAR_LEN, NC_SHORT_LEN,
-					NC_INT_LEN, NC_FLOAT_LEN, NC_DOUBLE_LEN};
-   char atomic_name[NUM_ATOMIC_TYPES][NC_MAX_NAME + 1] = {"byte", "char", "short",
-							  "int", "float", "double"};
-#endif
-
    NC *ncp;
    int stat = NC_check_id(ncid, &ncp);
    if (stat != NC_NOERR)
-	return stat;
+      return stat;
 
-   /* Only netCDF classic model and CDF-5 need to be handled. */
-   /* After discussion, this seems like an artificial limitation.
-      See https://github.com/Unidata/netcdf-c/issues/240 for more
-      discussion. */
-   /*
-   if((ncp->mode & NC_CDF5) != 0) {
-	if (typeid < NC_BYTE || typeid > NC_STRING)
-            return NC_EBADTYPE;
-   } else if (typeid < NC_BYTE || typeid > NC_DOUBLE)
-      return NC_EBADTYPE;
-   */
    if(typeid < NC_BYTE || typeid > NC_STRING)
-     return NC_EBADTYPE;
+      return NC_EBADTYPE;
 
-   /* Give the user the values they want. Subtract one because types
-    * are numbered starting at 1, not 0. */
+   /* Give the user the values they want. */
    if (name)
       strcpy(name, NC_atomictypename(typeid));
    if (size)
@@ -1665,66 +1645,36 @@ NC3_inq_type(int ncid, nc_type typeid, char *name, size_t *size)
    return NC_NOERR;
 }
 
-/**************************************************/
-#if 0
-int
-NC3_set_content(int ncid, size_t size, void* memory)
-{
-    int status = NC_NOERR;
-    NC *nc;
-    NC3_INFO* nc3;
-
-    status = NC_check_id(ncid, &nc);
-    if(status != NC_NOERR)
-        return status;
-    nc3 = NC3_DATA(nc);
-
-#ifdef USE_DISKLESS
-    fClr(nc3->flags, NC_CREAT);
-    status = memio_set_content(nc3->nciop, size, memory);
-    if(status != NC_NOERR) goto done;
-    status = nc_get_NC(nc3);
-    if(status != NC_NOERR) goto done;
-#else
-    status = NC_EDISKLESS;
-#endif
-
-done:
-    return status;
-}
-#endif
-
-/**************************************************/
-
+/**
+ * This is an obsolete form of nc_delete(), supported for backwards
+ * compatibility.
+ *
+ * @param path Filename to delete.
+ * @param basepe Must be 0.
+ *
+ * @return ::NC_NOERR No error.
+ * @return ::NC_EIO Couldn't delete file.
+ * @return ::NC_EINVAL Invaliod basepe. Must be 0.
+ * @author Glenn Davis, Ed Hartnett
+ */
 int
 nc_delete_mp(const char * path, int basepe)
 {
 	NC *nc;
-	NC3_INFO* nc3;
 	int status;
 	int ncid;
-	size_t chunk = 512;
 
 	status = nc_open(path,NC_NOWRITE,&ncid);
         if(status) return status;
 
 	status = NC_check_id(ncid,&nc);
         if(status) return status;
-	nc3 = NC3_DATA(nc);
 
-	nc3->chunk = chunk;
-
-#if defined(LOCKNUMREC) /* && _CRAYMPP */
-	if (status = NC_init_pe(nc3, basepe)) {
-		return status;
-	}
-#else
 	/*
-	 * !_CRAYMPP, only pe 0 is valid
+	 * Only pe 0 is valid.
 	 */
 	if(basepe != 0)
 		return NC_EINVAL;
-#endif
 
 	(void) nc_close(ncid);
 	if(unlink(path) == -1) {
@@ -1776,13 +1726,14 @@ NC3_inq_var_fill(const NC_var *varp, void *fill_value)
     /*
      * find fill value
      */
-    attrpp = NC_findattr(&varp->attrs, _FillValue);
+    attrpp = NC_findattr(&varp->attrs, NC_FillValue);
     if ( attrpp != NULL ) {
+        const void *xp;
         /* User defined fill value */
         if ( (*attrpp)->type != varp->type || (*attrpp)->nelems != 1 )
             return NC_EBADTYPE;
 
-        const void *xp = (*attrpp)->xvalue;
+        xp = (*attrpp)->xvalue;
         /* value stored in xvalue is in external representation, may need byte-swap */
         switch(varp->type) {
             case NC_CHAR:   return ncx_getn_text               (&xp, 1,               (char*)fill_value);

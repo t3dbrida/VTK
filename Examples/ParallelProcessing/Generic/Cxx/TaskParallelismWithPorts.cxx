@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TaskParallelismWithPorts.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 // This example demonstrates how to write a task parallel application
 // with VTK. It creates two different pipelines and assigns each to
 // one processor. These pipelines are:
@@ -23,6 +11,8 @@
 
 #include "TaskParallelismWithPorts.h"
 
+#include <iostream>
+
 // This function sets up properties common to both processes
 // and executes the task corresponding to the current process
 void process(vtkMultiProcessController* controller, void* vtkNotUsed(arg))
@@ -31,7 +21,7 @@ void process(vtkMultiProcessController* controller, void* vtkNotUsed(arg))
   int myId = controller->GetLocalProcessId();
 
   // Chose the appropriate task (see task3.cxx and task4.cxx)
-  if ( myId == 0 )
+  if (myId == 0)
   {
     task = task3;
   }
@@ -44,8 +34,7 @@ void process(vtkMultiProcessController* controller, void* vtkNotUsed(arg))
   (*task)(EXTENT);
 }
 
-
-int main( int argc, char* argv[] )
+int main(int argc, char* argv[])
 {
 
   // Note that this will create a vtkMPIController if MPI
@@ -65,12 +54,11 @@ int main( int argc, char* argv[] )
 
   if (numProcs != 2)
   {
-    cerr << "This example requires two processes." << endl;
+    std::cerr << "This example requires two processes." << endl;
     controller->Finalize();
     controller->Delete();
     return 1;
   }
-
 
   // Execute the function named "process" on both processes
   controller->SetSingleMethod(process, 0);
@@ -82,12 +70,3 @@ int main( int argc, char* argv[] )
 
   return 0;
 }
-
-
-
-
-
-
-
-
-

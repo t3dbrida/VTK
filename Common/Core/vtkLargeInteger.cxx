@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkLargeInteger.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 // code taken from
 // Arbitrarily large numbers
@@ -21,17 +9,11 @@
 
 #include "vtkLargeInteger.h"
 
-const unsigned int BIT_INCREMENT = 32;
+#include <algorithm>
+#include <cmath>
 
-static int maximum(int a, int b)
-{
-  return a > b ? a : b;
-}
-
-static int minimum(int a, int b)
-{
-  return a < b ? a : b;
-}
+VTK_ABI_NAMESPACE_BEGIN
+constexpr unsigned int BIT_INCREMENT = 32;
 
 void vtkLargeInteger::Contract()
 {
@@ -41,20 +23,19 @@ void vtkLargeInteger::Contract()
   }
 }
 
-
-vtkLargeInteger::vtkLargeInteger(void)
+vtkLargeInteger::vtkLargeInteger()
 {
-    this->Number = new char[BIT_INCREMENT];
-    this->Number[0] = 0;
-    this->Negative = 0;
-    this->Max = BIT_INCREMENT - 1;
-    this->Sig = 0;
+  this->Number = new char[BIT_INCREMENT];
+  this->Number[0] = 0;
+  this->Negative = 0;
+  this->Max = BIT_INCREMENT - 1;
+  this->Sig = 0;
 }
 
 vtkLargeInteger::vtkLargeInteger(long long n)
 {
   this->Negative = n < 0 ? 1 : 0;
-  n = n < 0 ? -n : n; // strip of sign
+  n = std::abs(n); // strip of sign
   this->Number = new char[BIT_INCREMENT];
   for (unsigned int i = 0; i < BIT_INCREMENT; i++)
   {
@@ -83,7 +64,7 @@ vtkLargeInteger::vtkLargeInteger(unsigned long long n)
 vtkLargeInteger::vtkLargeInteger(long n)
 {
   this->Negative = n < 0 ? 1 : 0;
-  n = n < 0 ? -n : n; // strip of sign
+  n = std::abs(n); // strip of sign
   this->Number = new char[BIT_INCREMENT];
   for (unsigned int i = 0; i < BIT_INCREMENT; i++)
   {
@@ -126,7 +107,7 @@ vtkLargeInteger::vtkLargeInteger(unsigned int n)
 vtkLargeInteger::vtkLargeInteger(int n)
 {
   this->Negative = n < 0 ? 1 : 0;
-  n = n < 0 ? -n : n; // strip of sign
+  n = std::abs(n); // strip of sign
   this->Number = new char[BIT_INCREMENT];
   for (unsigned int i = 0; i < BIT_INCREMENT; i++)
   {
@@ -150,27 +131,27 @@ vtkLargeInteger::vtkLargeInteger(const vtkLargeInteger& n)
   }
 }
 
-vtkLargeInteger::~vtkLargeInteger(void)
+vtkLargeInteger::~vtkLargeInteger()
 {
-  delete []this->Number;
+  delete[] this->Number;
 }
 
-char vtkLargeInteger::CastToChar(void) const
-{
-  return this->CastToLong();
-}
-
-short vtkLargeInteger::CastToShort(void) const
+char vtkLargeInteger::CastToChar() const
 {
   return this->CastToLong();
 }
 
-int vtkLargeInteger::CastToInt(void) const
+short vtkLargeInteger::CastToShort() const
 {
   return this->CastToLong();
 }
 
-long vtkLargeInteger::CastToLong(void) const
+int vtkLargeInteger::CastToInt() const
+{
+  return this->CastToLong();
+}
+
+long vtkLargeInteger::CastToLong() const
 {
   long n = 0;
 
@@ -188,13 +169,13 @@ long vtkLargeInteger::CastToLong(void) const
 }
 
 // convert to an unsigned long, return max if bigger than unsigned long
-unsigned long vtkLargeInteger::CastToUnsignedLong(void) const
+unsigned long vtkLargeInteger::CastToUnsignedLong() const
 {
   unsigned long n = 0;
 
-  if (this->Sig >= (8*sizeof(unsigned long)))
+  if (this->Sig >= (8 * sizeof(unsigned long)))
   {
-    for (int i = (8*sizeof(unsigned long)); i > 0; i--)
+    for (int i = (8 * sizeof(unsigned long)); i > 0; i--)
     {
       n <<= 1;
       n |= 1;
@@ -212,17 +193,17 @@ unsigned long vtkLargeInteger::CastToUnsignedLong(void) const
   return n;
 }
 
-int vtkLargeInteger::IsEven(void) const
+int vtkLargeInteger::IsEven() const
 {
   return this->Number[0] == 0;
 }
 
-int vtkLargeInteger::IsOdd(void) const
+int vtkLargeInteger::IsOdd() const
 {
   return this->Number[0] == 1;
 }
 
-int vtkLargeInteger::GetLength(void) const
+int vtkLargeInteger::GetLength() const
 {
   return this->Sig + 1;
 }
@@ -237,12 +218,12 @@ int vtkLargeInteger::GetBit(unsigned int p) const
   return 0;
 }
 
-int vtkLargeInteger::IsZero(void) const
+int vtkLargeInteger::IsZero() const
 {
   return (this->Sig == 0 && this->Number[0] == 0);
 }
 
-int vtkLargeInteger::GetSign(void) const
+int vtkLargeInteger::GetSign() const
 {
   return this->Negative;
 }
@@ -262,7 +243,7 @@ void vtkLargeInteger::Truncate(unsigned int n)
   }
 }
 
-void vtkLargeInteger::Complement(void)
+void vtkLargeInteger::Complement()
 {
   if (!this->IsZero()) // can't have negative zeros
   {
@@ -352,14 +333,14 @@ bool vtkLargeInteger::IsGreater(const vtkLargeInteger& n) const
 
 bool vtkLargeInteger::operator<(const vtkLargeInteger& n) const
 {
-    if (this->Negative && !n.Negative) // try to make judgement using signs
-        return true;
-    else if ((!this->Negative) && n.Negative)
-        return false;
-    else if (this->Negative)
-        return !this->IsSmaller(n);
-    else
-        return this->IsSmaller(n);
+  if (this->Negative && !n.Negative) // try to make judgment using signs
+    return true;
+  else if ((!this->Negative) && n.Negative)
+    return false;
+  else if (this->Negative)
+    return !this->IsSmaller(n);
+  else
+    return this->IsSmaller(n);
 }
 
 bool vtkLargeInteger::operator<=(const vtkLargeInteger& n) const
@@ -390,7 +371,7 @@ void vtkLargeInteger::Expand(unsigned int n)
     {
       new_number[i] = this->Number[i];
     }
-    delete []this->Number;
+    delete[] this->Number;
     this->Number = new_number;
     this->Max = n;
   }
@@ -409,7 +390,7 @@ vtkLargeInteger& vtkLargeInteger::operator=(const vtkLargeInteger& n)
     return *this;
   }
   this->Expand(n.Sig); // make equal sizes
-  this->Sig = n.Sig; // might have been larger
+  this->Sig = n.Sig;   // might have been larger
   for (int i = this->Sig; i >= 0; i--)
   {
     this->Number[i] = n.Number[i];
@@ -420,7 +401,7 @@ vtkLargeInteger& vtkLargeInteger::operator=(const vtkLargeInteger& n)
 
 void vtkLargeInteger::Plus(const vtkLargeInteger& n)
 {
-  int m = maximum(this->Sig + 1, n.Sig + 1);
+  int m = std::max(this->Sig + 1, n.Sig + 1);
   this->Expand(m); // allow for overflow
   unsigned int i = 0;
   int carry = 0;
@@ -441,7 +422,7 @@ void vtkLargeInteger::Plus(const vtkLargeInteger& n)
 
 void vtkLargeInteger::Minus(const vtkLargeInteger& n)
 {
-  int m = maximum(this->Sig, n.Sig);
+  int m = std::max(this->Sig, n.Sig);
   this->Expand(m);
   unsigned int i = 0;
   int carry = 0;
@@ -557,20 +538,14 @@ vtkLargeInteger& vtkLargeInteger::operator>>=(int n)
 
   // then clear the other values to be safe
   int start = (this->Sig - n + 1);
-  if (start < 0)
-  {
-    start = 0;
-  }
+  start = std::max(start, 0);
   for (i = start; i <= this->Sig; i++)
   {
     this->Number[i] = 0;
   }
 
   start = start - 1;
-  if (start < 0)
-  {
-    start = 0;
-  }
+  start = std::max(start, 0);
   this->Sig = start;
   if (this->IsZero())
   {
@@ -579,12 +554,12 @@ vtkLargeInteger& vtkLargeInteger::operator>>=(int n)
   return *this;
 }
 
-vtkLargeInteger& vtkLargeInteger::operator++(void)
+vtkLargeInteger& vtkLargeInteger::operator++()
 {
   return (*this += 1);
 }
 
-vtkLargeInteger& vtkLargeInteger::operator--(void)
+vtkLargeInteger& vtkLargeInteger::operator--()
 {
   return (*this -= 1);
 }
@@ -655,7 +630,7 @@ vtkLargeInteger& vtkLargeInteger::operator/=(const vtkLargeInteger& n)
 
   vtkLargeInteger c;
   vtkLargeInteger m = n;
-  m <<= maximum(this->Sig - n.Sig, 0); // vtkpower of two multiple of n
+  m <<= std::max<int>(this->Sig - n.Sig, 0); // vtkpower of two multiple of n
   vtkLargeInteger i = 1;
   i = i << (this->Sig - n.Sig);
   for (; i > 0; i = i >> 1)
@@ -688,7 +663,7 @@ vtkLargeInteger& vtkLargeInteger::operator%=(const vtkLargeInteger& n)
   }
 
   vtkLargeInteger m = n;
-  m <<= maximum(this->Sig - n.Sig, 0); // power of two multiple of n
+  m <<= std::max<int>(this->Sig - n.Sig, 0); // power of two multiple of n
   for (int i = this->Sig - n.Sig; i >= 0; i--)
   {
     if (!m.IsGreater(*this))
@@ -706,9 +681,9 @@ vtkLargeInteger& vtkLargeInteger::operator%=(const vtkLargeInteger& n)
 
 vtkLargeInteger& vtkLargeInteger::operator&=(const vtkLargeInteger& n)
 {
-  int m = maximum(this->Sig, n.Sig);
+  int m = std::max(this->Sig, n.Sig);
   this->Expand(m); // match sizes
-  for (int i = minimum(this->Sig, n.Sig); i >= 0; i--)
+  for (int i = std::min(this->Sig, n.Sig); i >= 0; i--)
   {
     this->Number[i] &= n.Number[i];
   }
@@ -718,9 +693,9 @@ vtkLargeInteger& vtkLargeInteger::operator&=(const vtkLargeInteger& n)
 
 vtkLargeInteger& vtkLargeInteger::operator|=(const vtkLargeInteger& n)
 {
-  int m = maximum(this->Sig, n.Sig);
+  int m = std::max(this->Sig, n.Sig);
   this->Expand(m); // match sizes
-  for (int i = minimum(this->Sig, n.Sig); i >= 0; i--)
+  for (int i = std::min(this->Sig, n.Sig); i >= 0; i--)
   {
     this->Number[i] |= n.Number[i];
   }
@@ -730,9 +705,9 @@ vtkLargeInteger& vtkLargeInteger::operator|=(const vtkLargeInteger& n)
 
 vtkLargeInteger& vtkLargeInteger::operator^=(const vtkLargeInteger& n)
 {
-  int m = maximum(this->Sig, n.Sig);
+  int m = std::max(this->Sig, n.Sig);
   this->Expand(m); // match sizes
-  for (int i = minimum(this->Sig, n.Sig); i >= 0; i--)
+  for (int i = std::min(this->Sig, n.Sig); i >= 0; i--)
   {
     this->Number[i] ^= n.Number[i];
   }
@@ -825,7 +800,7 @@ ostream& operator<<(ostream& s, const vtkLargeInteger& n)
 
 istream& operator>>(istream& s, vtkLargeInteger& n)
 {
-  char c=0;
+  char c = 0;
   while (s.get(c)) // strip any leading spaces
     if (c != ' ' && c != '\n' && c != '\r')
     {
@@ -850,9 +825,10 @@ istream& operator>>(istream& s, vtkLargeInteger& n)
       s.putback(c);
       break;
     }
-    if (n.Sig > n.Max) {
-    n.Expand(n.Sig + BIT_INCREMENT);
-    n.Sig -= BIT_INCREMENT;
+    if (n.Sig > n.Max)
+    {
+      n.Expand(n.Sig + BIT_INCREMENT);
+      n.Sig -= BIT_INCREMENT;
     }
     n.Number[n.Sig++] = c - '0';
   }
@@ -869,3 +845,4 @@ istream& operator>>(istream& s, vtkLargeInteger& n)
   }
   return s;
 }
+VTK_ABI_NAMESPACE_END

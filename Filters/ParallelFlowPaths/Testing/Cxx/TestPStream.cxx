@@ -1,40 +1,31 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestPStream.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkActor.h"
 #include "vtkCamera.h"
+#include "vtkCellData.h"
 #include "vtkCompositeRenderManager.h"
 #include "vtkDebugLeaks.h"
+#include "vtkGeometryFilter.h"
 #include "vtkLineSource.h"
 #include "vtkLookupTable.h"
 #include "vtkMPIController.h"
-#include "vtkObjectFactory.h"
-#include "vtkPStreamTracer.h"
 #include "vtkMultiBlockDataSet.h"
 #include "vtkMultiBlockPLOT3DReader.h"
-#include "vtkGeometryFilter.h"
+#include "vtkObjectFactory.h"
+#include "vtkPStreamTracer.h"
 #include "vtkPolyData.h"
 #include "vtkPolyDataMapper.h"
 #include "vtkProperty.h"
-#include "vtkTestUtilities.h"
 #include "vtkRegressionTestImage.h"
 #include "vtkRenderWindow.h"
 #include "vtkRenderWindowInteractor.h"
 #include "vtkRenderer.h"
 #include "vtkStructuredGrid.h"
 #include "vtkStructuredGridOutlineFilter.h"
+#include "vtkTestUtilities.h"
 #include "vtkTrivialProducer.h"
+
+#include <iostream>
 
 struct PStreamArgs_tmp
 {
@@ -44,11 +35,10 @@ struct PStreamArgs_tmp
 };
 
 // This will be called by all processes
-void MyMain( vtkMultiProcessController *controller, void *arg )
+void MyMain(vtkMultiProcessController* controller, void* arg)
 {
 
-  PStreamArgs_tmp* args =
-    reinterpret_cast<PStreamArgs_tmp*>(arg);
+  PStreamArgs_tmp* args = reinterpret_cast<PStreamArgs_tmp*>(arg);
 
   int myId = controller->GetLocalProcessId();
   int numProcs = controller->GetNumberOfProcesses();
@@ -61,7 +51,7 @@ void MyMain( vtkMultiProcessController *controller, void *arg )
   renWin->SetSize(400, 300);
   renWin->SetPosition(0, 350 * myId);
 
-  //camera parameters
+  // camera parameters
   vtkCamera* camera = ren->GetActiveCamera();
   camera->SetPosition(-5.86786, 49.2857, 51.597);
   camera->SetFocalPoint(8.255, -3.17482e-16, 29.7631);
@@ -72,13 +62,11 @@ void MyMain( vtkMultiProcessController *controller, void *arg )
 
   // Create the reader, the data file name might have
   // to be changed depending on where the data files are.
-  char* fname1 = vtkTestUtilities::ExpandDataFileName(args->argc, args->argv,
-                                                     "Data/combxyz.bin");
-  char* fname2 = vtkTestUtilities::ExpandDataFileName(args->argc, args->argv,
-                                                     "Data/combq.bin");
+  char* fname1 = vtkTestUtilities::ExpandDataFileName(args->argc, args->argv, "Data/combxyz.bin");
+  char* fname2 = vtkTestUtilities::ExpandDataFileName(args->argc, args->argv, "Data/combq.bin");
   vtkMultiBlockPLOT3DReader* Plot3D0 = vtkMultiBlockPLOT3DReader::New();
   Plot3D0->SetFileName(fname1);
-  Plot3D0->SetQFileName (fname2);
+  Plot3D0->SetQFileName(fname2);
   Plot3D0->SetBinaryFile(1);
   Plot3D0->SetMultiGrid(0);
   Plot3D0->SetHasByteCount(0);
@@ -90,14 +78,12 @@ void MyMain( vtkMultiProcessController *controller, void *arg )
   delete[] fname2;
   Plot3D0->Update();
 
-  vtkStructuredGrid* sg = vtkStructuredGrid::SafeDownCast(
-    Plot3D0->GetOutput()->GetBlock(0));
+  vtkStructuredGrid* sg = vtkStructuredGrid::SafeDownCast(Plot3D0->GetOutput()->GetBlock(0));
 
   vtkTrivialProducer* tv = vtkTrivialProducer::New();
   tv->SetOutput(sg);
 
-  vtkStructuredGridOutlineFilter* Geometry5 =
-    vtkStructuredGridOutlineFilter::New();
+  vtkStructuredGridOutlineFilter* Geometry5 = vtkStructuredGridOutlineFilter::New();
   Geometry5->SetInputConnection(tv->GetOutputPort());
 
   vtkPolyDataMapper* Mapper5 = vtkPolyDataMapper::New();
@@ -120,18 +106,29 @@ void MyMain( vtkMultiProcessController *controller, void *arg )
 
   ren->AddActor(Actor5);
 
-  vtkLineSource* LineSourceWidget0 = vtkLineSource::New();
-  LineSourceWidget0->SetPoint1(13.9548, -0.47371, 31.7642);
-  LineSourceWidget0->SetPoint2(6.3766, -0.5886, 26.6274);
-  LineSourceWidget0->SetResolution(20);
+  // Make the seed source not available on every ranks on purpose :
+  // tests the `UseLocalSeedSource = false` property of the stream tracer
+  vtkNew<vtkPolyData> lineSource;
+  constexpr int LINE_SOURCE_RESOLUTION = 20;
+  if (myId == 0)
+  {
+    vtkNew<vtkLineSource> LineSourceWidget0;
+    LineSourceWidget0->SetPoint1(13.9548, -0.47371, 31.7642);
+    LineSourceWidget0->SetPoint2(6.3766, -0.5886, 26.6274);
+    LineSourceWidget0->SetResolution(LINE_SOURCE_RESOLUTION);
+    LineSourceWidget0->Update();
+
+    lineSource->ShallowCopy(LineSourceWidget0->GetOutput());
+  }
 
   vtkPStreamTracer* Stream0 = vtkPStreamTracer::New();
+  Stream0->UseLocalSeedSourceOff();
   Stream0->SetInputConnection(tv->GetOutputPort());
-  Stream0->SetSourceConnection(LineSourceWidget0->GetOutputPort());
+  Stream0->SetSourceData(lineSource);
   Stream0->SetIntegrationStepUnit(2);
   Stream0->SetMaximumPropagation(5);
   Stream0->SetInitialIntegrationStep(0.5);
-  Stream0->SetIntegrationDirection(2);
+  Stream0->SetIntegrationDirectionToBoth();
   Stream0->SetIntegratorType(0);
   Stream0->SetMaximumNumberOfSteps(2000);
   Stream0->SetTerminalSpeed(1e-12);
@@ -169,7 +166,7 @@ void MyMain( vtkMultiProcessController *controller, void *arg )
 
   ren->AddActor(Actor6);
 
-  vtkRenderWindowInteractor *iren = vtkRenderWindowInteractor::New();
+  vtkRenderWindowInteractor* iren = vtkRenderWindowInteractor::New();
   iren->SetRenderWindow(renWin);
 
   vtkCompositeRenderManager* compManager = vtkCompositeRenderManager::New();
@@ -186,8 +183,7 @@ void MyMain( vtkMultiProcessController *controller, void *arg )
   else
   {
     renWin->Render();
-    *(args->retVal) =
-      vtkRegressionTester::Test(args->argc, args->argv, renWin, 10);
+    *(args->retVal) = vtkRegressionTester::Test(args->argc, args->argv, renWin, 10);
     for (int i = 1; i < numProcs; i++)
     {
       controller->TriggerRMI(i, vtkMultiProcessController::BREAK_RMI_TAG);
@@ -195,10 +191,32 @@ void MyMain( vtkMultiProcessController *controller, void *arg )
     }
   }
 
-  if ( *(args->retVal) == vtkRegressionTester::DO_INTERACTOR)
+  if (*(args->retVal) == vtkRegressionTester::DO_INTERACTOR)
   {
     compManager->StartInteractor();
   }
+
+  // ensure that the stream tracer doesn't use different ids for backwards and
+  // forward streamlines. we can check that by ensure that the seed ids is less
+  // than the original seed points (i.e. < 20).
+  if (auto seedIds =
+        vtkIntArray::SafeDownCast(Stream0->GetOutput()->GetCellData()->GetArray("SeedIds")))
+  {
+    const auto numPts = LINE_SOURCE_RESOLUTION + 1;
+    for (vtkIdType cc = 0; cc < seedIds->GetNumberOfTuples(); ++cc)
+    {
+      auto id = seedIds->GetTypedComponent(cc, 0);
+      if (id >= numPts)
+      {
+        std::cerr << "ERROR: invalid seed id received: " << id << std::endl;
+      }
+    }
+  }
+  else
+  {
+    std::cerr << "ERROR: missing 'SeedIds' array!" << std::endl;
+  }
+
   renWin->Delete();
   ren->Delete();
   iren->Delete();
@@ -207,7 +225,6 @@ void MyMain( vtkMultiProcessController *controller, void *arg )
   tv->Delete();
   Stream0->Delete();
   LookupTable1->Delete();
-  LineSourceWidget0->Delete();
   Geometry5->Delete();
   Geometry6->Delete();
   Actor5->Delete();
@@ -216,7 +233,7 @@ void MyMain( vtkMultiProcessController *controller, void *arg )
   Mapper6->Delete();
 }
 
-int TestPStream( int argc, char* argv[] )
+int TestPStream(int argc, char* argv[])
 {
   vtkMPIController* contr = vtkMPIController::New();
   contr->Initialize(&argc, &argv);

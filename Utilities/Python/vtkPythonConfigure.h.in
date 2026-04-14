@@ -1,24 +1,14 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkPythonConfigure.h.in
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #ifndef vtkPythonConfigure_h
 #define vtkPythonConfigure_h
 
 /* This header is configured by VTK's build process.  */
 
-/* E.g. on BlueGene and Cray there is no multithreading */
+/* For platforms that don't support Python threads */
 #cmakedefine VTK_NO_PYTHON_THREADS
+
+/* This adds the locks that allow Python thread concurrency */
 #cmakedefine VTK_PYTHON_FULL_THREADSAFE
 
 /* Whether the real python debug library has been provided.  */

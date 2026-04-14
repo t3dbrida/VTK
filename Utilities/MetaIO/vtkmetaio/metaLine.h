@@ -12,16 +12,16 @@
 #include "metaTypes.h"
 
 #ifndef ITKMetaIO_METALINE_H
-#define ITKMetaIO_METALINE_H
+#  define ITKMetaIO_METALINE_H
 
-#include "metaUtils.h"
-#include "metaObject.h"
+#  include "metaUtils.h"
+#  include "metaObject.h"
 
-#ifdef _MSC_VER
-#pragma warning ( disable: 4251 )
-#endif
+#  ifdef _MSC_VER
+#    pragma warning(disable : 4251)
+#  endif
 
-#include <list>
+#  include <list>
 
 
 /*!    MetaLine (.h and .cxx)
@@ -35,111 +35,113 @@
  *
  */
 
-#if (METAIO_USE_NAMESPACE)
-namespace METAIO_NAMESPACE {
-#endif
+#  if (METAIO_USE_NAMESPACE)
+namespace METAIO_NAMESPACE
+{
+#  endif
 
-class LinePnt
+class METAIO_EXPORT LinePnt
 {
 public:
-
-  LinePnt(int dim);
+  explicit LinePnt(int dim);
 
   ~LinePnt();
 
   unsigned int m_Dim;
-  float*   m_X;
-  float**  m_V;
-  float    m_Color[4];
+  float *      m_X;
+  float **     m_V;
+  float        m_Color[4]{};
 };
-
-
 
 
 class METAIO_EXPORT MetaLine : public MetaObject
-  {
+{
 
-  /////
-  //
   // PUBLIC
-  //
-  ////
-  public:
+public:
+  typedef std::list<LinePnt *> PointListType;
+  // Constructors & Destructor
+  MetaLine();
 
-   typedef METAIO_STL::list<LinePnt*> PointListType;
-    ////
-    //
-    // Constructors & Destructor
-    //
-    ////
-    MetaLine(void);
+  explicit MetaLine(const char * _headerName);
 
-    MetaLine(const char *_headerName);
+  explicit MetaLine(const MetaLine * _line);
 
-    MetaLine(const MetaLine *_line);
+  explicit MetaLine(unsigned int dim);
 
-    MetaLine(unsigned int dim);
+  ~MetaLine() override;
 
-    ~MetaLine(void) MET_OVERRIDE;
+  void
+  PrintInfo() const override;
 
-    void PrintInfo(void) const MET_OVERRIDE;
-
-    void CopyInfo(const MetaObject * _object) MET_OVERRIDE;
+  void
+  CopyInfo(const MetaObject * _object) override;
 
 
-    //    NPoints(...)
-    //       Required Field
-    //       Number of points wich compose the line
-    void  NPoints(int npnt);
-    int   NPoints(void) const;
+  //    NPoints(...)
+  //       Required Field
+  //       Number of points which compose the line
+  void
+  NPoints(int npnt);
+  int
+  NPoints() const;
 
-    //    PointDim(...)
-    //       Required Field
-    //       Definition of points
-    void        PointDim(const char* pointDim);
-    const char* PointDim(void) const;
+  //    PointDim(...)
+  //       Required Field
+  //       Definition of points
+  void
+  PointDim(const char * pointDim);
+  const char *
+  PointDim() const;
 
 
-    void  Clear(void) MET_OVERRIDE;
+  void
+  Clear() override;
 
-    PointListType & GetPoints(void) {return m_PointList;}
-    const PointListType & GetPoints(void) const {return m_PointList;}
+  PointListType &
+  GetPoints()
+  {
+    return m_PointList;
+  }
+  const PointListType &
+  GetPoints() const
+  {
+    return m_PointList;
+  }
 
-    MET_ValueEnumType ElementType(void) const;
-    void  ElementType(MET_ValueEnumType _elementType);
+  MET_ValueEnumType
+  ElementType() const;
+  void
+  ElementType(MET_ValueEnumType _elementType);
 
-  ////
-  //
   // PROTECTED
-  //
-  ////
-  protected:
+protected:
+  bool m_ElementByteOrderMSB{};
 
-    bool  m_ElementByteOrderMSB;
+  void
+  M_SetupReadFields() override;
 
-    void  M_Destroy(void) MET_OVERRIDE;
+  void
+  M_SetupWriteFields() override;
 
-    void  M_SetupReadFields(void) MET_OVERRIDE;
+  bool
+  M_Read() override;
 
-    void  M_SetupWriteFields(void) MET_OVERRIDE;
+  bool
+  M_Write() override;
 
-    bool  M_Read(void) MET_OVERRIDE;
+  int m_NPoints{}; // "NPoints = "         0
 
-    bool  M_Write(void) MET_OVERRIDE;
+  char m_PointDim[255]{}; // "PointDim = "       "x y z r"
 
-    int   m_NPoints;      // "NPoints = "         0
+  PointListType m_PointList;
 
-    char m_PointDim[255]; // "PointDim = "       "x y z r"
-
-    PointListType m_PointList;
-
-    MET_ValueEnumType m_ElementType;
-
-  };
-
-#if (METAIO_USE_NAMESPACE)
+  MET_ValueEnumType m_ElementType;
 };
-#endif
+
+#  if (METAIO_USE_NAMESPACE)
+};
+#  endif
 
 
 #endif

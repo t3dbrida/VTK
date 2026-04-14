@@ -3,8 +3,9 @@ import sys
 import os
 import time
 
-import vtk
-from vtk.util.misc import vtkGetTempDir
+from vtkmodules.vtkIOAsynchronous import vtkThreadedImageWriter
+from vtkmodules.vtkImagingCore import vtkRTAnalyticSource
+from vtkmodules.util.misc import vtkGetTempDir
 
 VTK_TEMP_DIR = vtkGetTempDir()
 
@@ -21,12 +22,12 @@ fileNames = [
 ]
 
 # Generate Data
-source = vtk.vtkRTAnalyticSource()
+source = vtkRTAnalyticSource()
 source.Update()
 image = source.GetOutput()
 
 # Initialize writer
-writer = vtk.vtkThreadedImageWriter()
+writer = vtkThreadedImageWriter()
 
 # Reduce the number of worker threads
 writer.SetMaxThreads(2)
@@ -39,14 +40,7 @@ for i in range(10):
     for fileName in fileNames:
         filePath = '%s/%s-%s' % (VTK_TEMP_DIR, i, fileName)
         wroteFiles.append(filePath)
-        # making a deepcopy only because we have the same image
-        # shared among all threads in this test, and that causes
-        # problems when many threads Delete it at the same time.
-        # TODO: rework writer to manage pointer better to address
-        # this corner case better while not resorting to any copy.
-        icopy = vtk.vtkImageData()
-        icopy.DeepCopy(image)
-        writer.EncodeAndWrite(icopy, filePath)
+        writer.EncodeAndWrite(image, filePath)
 
 t1 = time.time()
 

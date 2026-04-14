@@ -1,4 +1,4 @@
-// This is a ragel file for generating a paser for MTL files
+// This is a ragel file for generating a parser for MTL files
 // Note that some MTL files are whitespace sensitive
 // Mainly with unquoted string names with spaces
 // ala
@@ -76,7 +76,7 @@
       currentNum.clear(); recentString.clear(); recentSpace.clear();
     };
 
-    default => { std::string value = "Error unknown text: "; value += std::string(ts, te-ts); cerr << value << "\n"; };
+    default => { std::string value = "Error unknown text: "; value += std::string(ts, te-ts); std::cerr << value << "\n"; };
 
   *|;
 

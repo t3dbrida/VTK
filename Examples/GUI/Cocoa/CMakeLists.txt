@@ -1,18 +1,21 @@
-#--////////////////////////////////////////////////////////////////////////////
-#--  Copyright (c) 2010, Michael A. Jackson. BlueQuartz Software
-#--  All rights reserved.
-#--  BSD License: http://www.opensource.org/licenses/bsd-license.html
-#--////////////////////////////////////////////////////////////////////////////
-cmake_minimum_required(VERSION 3.3...3.12 FATAL_ERROR)
+# SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+# SPDX-FileCopyrightText: Copyright (c) 2010-2019, Michael A. Jackson. BlueQuartz Software
+# SPDX-License-Identifier: BSD-2-Clause
+cmake_minimum_required(VERSION 3.8...3.12 FATAL_ERROR)
 
 project(SimpleCocoaVTK)
 
 if(NOT VTK_BINARY_DIR)
-  find_package(VTK)
+  find_package(VTK COMPONENTS
+    RenderingOpenGL2
+    InteractionStyle
+    RenderingFreeType
+    FiltersSources
+    RenderingGL2PSOpenGL2
+  )
   if(NOT VTK_DIR)
     message(FATAL_ERROR "Please set VTK_DIR.")
   endif()
-  include(${VTK_USE_FILE})
 endif()
 
 # This is needed in case we are building this project separate from the VTK build
@@ -25,6 +28,8 @@ endif()
 set (SimpleCocoaVTK_SRCS
   ${SimpleCocoaVTK_SOURCE_DIR}/main.mm
   ${SimpleCocoaVTK_SOURCE_DIR}/BasicVTKView.mm
+  ${SimpleCocoaVTK_SOURCE_DIR}/CustomLayer.mm
+  ${SimpleCocoaVTK_SOURCE_DIR}/CustomView.mm
   ${SimpleCocoaVTK_SOURCE_DIR}/MyDocument.mm
   ${SimpleCocoaVTK_SOURCE_DIR}/MyWindowController.mm
 )
@@ -32,6 +37,8 @@ set (SimpleCocoaVTK_SRCS
 # Build all Objective-C as ARC.
 set_source_files_properties(main.mm
                             BasicVTKView.mm
+                            CustomLayer.mm
+                            CustomView.mm
                             MyDocument.mm
                             MyWindowController.mm
                             PROPERTIES COMPILE_FLAGS "-fobjc-arc")
@@ -39,6 +46,8 @@ set_source_files_properties(main.mm
 # The Headers
 set (SimpleCocoaVTK_HDRS
   ${SimpleCocoaVTK_SOURCE_DIR}/BasicVTKView.h
+  ${SimpleCocoaVTK_SOURCE_DIR}/CustomLayer.h
+  ${SimpleCocoaVTK_SOURCE_DIR}/CustomView.h
   ${SimpleCocoaVTK_SOURCE_DIR}/MyDocument.h
   ${SimpleCocoaVTK_SOURCE_DIR}/MyWindowController.h
 )
@@ -62,8 +71,8 @@ set(MACOSX_BUNDLE_NSPRINCIPAL_CLASS "NSApplication")
 add_executable(SimpleCocoaVTK MACOSX_BUNDLE ${SimpleCocoaVTK_SRCS} ${SimpleCocoaVTK_HDRS})
 
 # Probably a better way to set the framework link libraries.
-target_link_libraries(SimpleCocoaVTK "-framework Cocoa -framework OpenGL"
-                      vtkRenderingOpenGL2 vtkInteractionStyle vtkRenderingFreeType vtkFiltersSources vtkRenderingGL2PSOpenGL2 )
+target_link_libraries(SimpleCocoaVTK "-framework Cocoa -framework OpenGL -framework QuartzCore"
+                      ${VTK_LIBRARIES})
 
 # Set a custom plist file for the app bundle
 set_target_properties(SimpleCocoaVTK PROPERTIES MACOSX_BUNDLE_INFO_PLIST ${SimpleCocoaVTK_SOURCE_DIR}/Info-CMake.plist)
@@ -86,3 +95,8 @@ foreach(xib ${SimpleCocoaVTK_XIBS})
                       COMMENT "Compiling ${SimpleCocoaVTK_SOURCE_DIR}/${xib}.xib")
 
 endforeach()
+
+vtk_module_autoinit(
+  TARGETS SimpleCocoaVTK
+  MODULES ${VTK_LIBRARIES}
+)

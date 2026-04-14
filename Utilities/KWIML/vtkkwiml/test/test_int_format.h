@@ -14,10 +14,20 @@
 
 #ifdef __cplusplus
 # define LANG "C++ "
-# define STATIC_CAST(t,v) static_cast<t>(v)
 #else
 # define LANG "C "
+#endif
+
+#if defined(__cplusplus) && !defined(__BORLANDC__)
+# define STATIC_CAST(t,v) static_cast<t>(v)
+#else
 # define STATIC_CAST(t,v) (t)(v)
+#endif
+
+#if defined(_MSC_VER) && _MSC_VER < 1900
+# define SNPRINTF(buf, sz, fmt, x) sprintf(buf, fmt, x)
+#else
+# define SNPRINTF(buf, sz, fmt, x) snprintf(buf, sz, fmt, x)
 #endif
 
 #define VALUE(T, U) STATIC_CAST(T, STATIC_CAST(U, 0xab) << ((sizeof(T)-1)<<3))
@@ -44,7 +54,7 @@
   {                                                                     \
   T const x = VALUE(T, U);                                              \
   char const* str = STR;                                                \
-  sprintf(buf, "%" KWIML_INT_PRI##PRI, x);                              \
+  SNPRINTF(buf, sizeof(buf), "%" KWIML_INT_PRI##PRI, x);                \
   printf(LANG "KWIML_INT_PRI" #PRI ":"                                  \
          " expected [%s], got [%s]", str, buf);                         \
   if(strcmp(str, buf) == 0)                                             \

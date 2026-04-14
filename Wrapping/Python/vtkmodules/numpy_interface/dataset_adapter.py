@@ -61,25 +61,28 @@ and arrays. The classes implement many useful operators. However,
 to make best use of these classes, take a look at the algorithms
 module.
 """
-try:
-    import numpy
-except ImportError:
-    raise RuntimeError("This module depends on the numpy module. Please make\
-sure that it is installed properly.")
+import numpy
 
-import itertools
+# version 2 has many API changes from version 1
+NUMPY_MAJOR_VERSION = int(numpy.__version__.split('.')[0])
+
+from typing import Generator, Tuple, Union, List
 import operator
 import sys
-from ..vtkCommonCore import buffer_shared
+from ..vtkCommonCore import buffer_shared, vtkCommand
 from ..util import numpy_support
 from ..vtkCommonDataModel import vtkDataObject
-from ..vtkCommonCore import vtkWeakReference
+from ..vtkCommonCore import vtkWeakReference, vtkObject
 import weakref
+from math import ceil
 
-if sys.hexversion < 0x03000000:
-    izip = itertools.izip
-else:
-    izip = zip
+COMPOSITE_OVERRIDE = {}
+def _override_numpy(numpy_function):
+    """Register an __array_function__ implementation for VTKCompositeDataArray objects."""
+    def decorator(func):
+        COMPOSITE_OVERRIDE[numpy_function] = func
+        return func
+    return decorator
 
 def reshape_append_ones (a1, a2):
     """Returns a list with the two arguments, any of them may be
@@ -96,7 +99,7 @@ def reshape_append_ones (a1, a2):
         len2 = len(a2.shape)
         if (len1 == len2 or len1 == 0 or len2 == 0 or
             a1.shape[0] != a2.shape[0]):
-            return l;
+            return l
         elif (len1 < len2):
             d = len1
             maxLength = len2
@@ -220,8 +223,6 @@ class VTKArrayMetaClass(type):
         add_default_numeric_ops("add")
         add_default_numeric_ops("sub")
         add_default_numeric_ops("mul")
-        if sys.hexversion < 0x03000000:
-            add_default_numeric_ops("div")
         add_default_numeric_ops("truediv")
         add_default_numeric_ops("floordiv")
         add_default_numeric_ops("mod")
@@ -266,9 +267,53 @@ class VTKArray(numpy.ndarray):
         obj.Association = ArrayAssociation.FIELD
         # add the new attributes to the created instance
         obj.VTKObject = array
+        obj._observer_id = None
+        obj._observer_array = None
+        obj._stale = False
+        obj._postarrival = None
+        # Store a reference to the buffer to ensure the memory stays valid
+        # even if the VTK array reallocates (copy-on-reallocate pattern).
+        # This keeps the buffer alive as long as this VTKArray exists.
+        if array is not None and hasattr(array, 'GetBuffer'):
+            obj._buffer = array.GetBuffer()
+            # Add observer to detect buffer changes. If the VTK array
+            # reallocates, raise an exception immediately.
+            # Store observer_id in a list so the callback can access and clear it.
+            observer_id_holder = [None]
+            def on_buffer_changed(vtk_obj, event):
+                # Remove the observer so we only warn once
+                if observer_id_holder[0] is not None:
+                    vtk_obj.RemoveObserver(observer_id_holder[0])
+                    observer_id_holder[0] = None
+                raise RuntimeError(
+                    "The underlying VTK array has reallocated its buffer. "
+                    "The VTKArray wrapping it is now stale and points to invalid memory. "
+                    "Please retrieve a fresh VTKArray from the data source.")
+            observer_id = array.AddObserver(
+                vtkCommand.BufferChangedEvent, on_buffer_changed)
+            observer_id_holder[0] = observer_id
+            obj._observer_id = observer_id_holder
+            obj._observer_array = array
+            # Use weakref.finalize for reliable cleanup - more robust than __del__
+            # for numpy array subclasses. Use weak ref to array to avoid preventing
+            # its garbage collection.
+            weak_array = weakref.ref(array)
+            def cleanup(weak_arr, obs_id_holder):
+                arr = weak_arr()
+                if arr is not None and obs_id_holder[0] is not None:
+                    try:
+                        arr.RemoveObserver(obs_id_holder[0])
+                    except:
+                        pass
+            obj._postarrival = weakref.finalize(obj, cleanup, weak_array, observer_id_holder)
         if dataset:
             obj._dataset = vtkWeakReference()
-            obj._dataset.Set(dataset.VTKObject)
+            if issubclass(type(dataset), vtkObject):
+                # New dataset API.
+                obj._dataset.Set(dataset)
+            else:
+                # Old dataset type object with WrapDataObject
+                obj._dataset.Set(dataset.VTKObject)
         # Finally, we must return the newly created object:
         return obj
 
@@ -278,11 +323,21 @@ class VTKArray(numpy.ndarray):
         obj2 = _make_tensor_array_contiguous(obj)
 
         self.VTKObject = None
+        self._buffer = None
+        self._observer_id = None
+        self._observer_array = None
+        self._stale = False
+        self._postarrival = None
         try:
             # This line tells us that they are referring to the same buffer.
             # Much like two pointers referring to same memory location in C/C++.
             if buffer_shared(slf, obj2):
                 self.VTKObject = getattr(obj, 'VTKObject', None)
+                self._buffer = getattr(obj, '_buffer', None)
+                # Copy stale flag - if original is stale, so is the slice.
+                self._stale = getattr(obj, '_stale', False)
+                # Don't copy observer info - slices don't own the observer.
+                # Only the original VTKArray should remove the observer.
         except TypeError:
             pass
 
@@ -300,8 +355,8 @@ class VTKArray(numpy.ndarray):
                                  (self.__class__.__name__, name))
         return getattr(o, name)
 
-    def __array_wrap__(self, out_arr, context=None):
-        if out_arr.shape == ():
+    def __array_wrap__(self, out_arr, context=None, return_scalar=False):
+        if return_scalar or (NUMPY_MAJOR_VERSION < 2 and out_arr.shape == ()):
             # Convert to scalar value
             return out_arr[()]
         else:
@@ -362,8 +417,6 @@ class VTKNoneArrayMetaClass(type):
         _add_default_ops("add")
         _add_default_ops("sub")
         _add_default_ops("mul")
-        if sys.hexversion < 0x03000000:
-            _add_default_ops("div")
         _add_default_ops("truediv")
         _add_default_ops("floordiv")
         _add_default_ops("mod")
@@ -410,6 +463,11 @@ class VTKNoneArray(object):
         """Implements numpy array's astype method."""
         return NoneArray
 
+    @property
+    def shape(self) -> Tuple[int, ...]:
+        """Return a tuple representing the shape of the none array."""
+        return (0,)
+
 NoneArray = VTKNoneArray()
 
 class VTKCompositeDataArrayMetaClass(type):
@@ -447,8 +505,6 @@ class VTKCompositeDataArrayMetaClass(type):
         add_default_numeric_ops("add")
         add_default_numeric_ops("sub")
         add_default_numeric_ops("mul")
-        if sys.hexversion < 0x03000000:
-            add_default_numeric_ops("div")
         add_default_numeric_ops("truediv")
         add_default_numeric_ops("floordiv")
         add_default_numeric_ops("mod")
@@ -529,7 +585,7 @@ class VTKCompositeDataArray(object):
         size = numpy.int64(0)
         for a in self._Arrays:
             try:
-                size += a.size
+                size += a.GetNumberOfValues()
             except AttributeError:
                 pass
         return size
@@ -544,28 +600,208 @@ class VTKCompositeDataArray(object):
 
     Arrays = property(GetArrays)
 
-    def __getitem__(self, index):
-        """Overwritten to refer indexing to underlying VTKArrays.
-        For the most part, this will behave like Numpy. Note
-        that indexing is done per array - arrays are never treated
-        as forming a bigger array. If the index is another composite
-        array, a one-to-one mapping between arrays is assumed.
-        """
+    def __setitem__(self, index, value) -> None:
+        """Setter overwritten to defer indexing to underlying VTKArrays.
+        For the most part, this will behave like Numpy."""
         self.__init_from_composite()
-        res = []
-        if type(index) == VTKCompositeDataArray:
-            for a, idx in izip(self._Arrays, index.Arrays):
-                if a is not NoneArray:
-                    res.append(a.__getitem__(idx))
-                else:
-                    res.append(NoneArray)
+
+        partition_sizes = [len(a) if a is not NoneArray else 0 for a in self._Arrays]
+        offsets = numpy.cumsum([0] + partition_sizes)
+        total_size = offsets[-1]
+
+        if isinstance(index, VTKCompositeDataArray):
+            for array, idx in zip(self._Arrays, index._Arrays):
+                if array is not NoneArray:
+                    array[idx] = value
+        elif isinstance(index, (numpy.ndarray, list)):
+            index = numpy.asarray(index)
+            if index.dtype == bool and index.shape == self.shape:
+                for array_id, array in enumerate(self._Arrays):
+                    if array is NoneArray:
+                        continue
+                    start = offsets[array_id]
+                    end   = offsets[array_id + 1]
+                    local_mask = index[start:end]
+                    array[local_mask] = value
+            elif index.ndim == 0:
+                self.__setitem__(int(index), value)
+            elif index.ndim == 1:
+                index = numpy.where(index < 0, index + total_size, index)
+                for i, array in enumerate(self._Arrays):
+                    if array is NoneArray:
+                        continue
+                    idx_mask = numpy.logical_and(index >= offsets[i], index < offsets[i+1])
+                    whr = numpy.nonzero(idx_mask)
+                    array[index[whr]-offsets[i]] = value
+            else:
+              raise IndexError(f"Unsupported index type: {type(index)}")
         else:
-            for a in self._Arrays:
-                if a is not NoneArray:
-                    res.append(a.__getitem__(index))
+          if not isinstance(index, tuple):
+              index = (index,)
+          global_index = index[0]
+          remaining_indices = index[1:]
+
+          if isinstance(global_index, int):
+              chunk_idx, local_idx = self._global_to_local_id(global_index, total_size, offsets)
+              self._Arrays[chunk_idx][local_idx][tuple(remaining_indices)] = value
+          elif isinstance(global_index, slice):
+              for array, offset, size in zip(self._Arrays, offsets, partition_sizes):
+                  if array is NoneArray:
+                      continue
+                  local_slice = self._slice_intersection(global_index, offset, size, total_size)
+                  if local_slice is not None:
+                      array[(local_slice,) + remaining_indices] = value
+          else:
+              raise TypeError(f"Unsupported index type: {type(index)}")
+
+    def __getitem__(self, index) -> Union[List, "VTKCompositeDataArray", numpy.ndarray]:
+        """Getter overwritten to refer indexing to underlying VTKArrays.
+        For the most part, this will behave like Numpy."""
+        self.__init_from_composite()
+
+        empty = True
+        for a in self._Arrays:
+            if a is not NoneArray:
+                empty = False
+                dtype = a.dtype
+                output_shape = a.shape[1:]
+                break
+        if len(self._Arrays) == 0 or empty:
+            raise IndexError("Index out of bounds")
+
+        partition_sizes = [len(a) if a is not NoneArray else 0 for a in self._Arrays]
+        offsets = numpy.cumsum([0] + partition_sizes)
+        total_size = offsets[-1]
+
+        if isinstance(index, VTKCompositeDataArray):
+            res = []
+            for array, idx in zip(self._Arrays, index._Arrays):
+                if array is not NoneArray:
+                    res.append(array.__getitem__(idx))
                 else:
                     res.append(NoneArray)
-        return VTKCompositeDataArray(res, dataset=self.DataSet)
+            return VTKCompositeDataArray(res, dataset=self.DataSet)
+
+        if isinstance(index, (numpy.ndarray, list)):
+            index = numpy.asarray(index)
+            if index.ndim == 0:
+                return self[int(index)]
+            elif index.ndim == 1:
+                index = numpy.where(index < 0, index + total_size, index)
+                res = numpy.empty(index.shape + output_shape, dtype=dtype)
+                for i, array in enumerate(self._Arrays):
+                    if array is NoneArray:
+                        continue
+                    idx_mask = numpy.logical_and(index >= offsets[i], index < offsets[i+1])
+                    whr = numpy.nonzero(idx_mask)
+                    res[whr] = array[index[whr]-offsets[i]]
+                return res
+            else:
+                raise IndexError("Only 1D Numpy or list indexing is supported for now")
+
+        if not isinstance(index, tuple):
+            index = (index,)
+
+        global_index = index[0]
+        remaining_indices = index[1:]
+
+        if isinstance(global_index, int):
+            chunk_idx, local_idx = self._global_to_local_id(global_index, total_size, offsets)
+            result = self._Arrays[chunk_idx][local_idx]
+            if remaining_indices:
+                result = result[tuple(remaining_indices)]
+            return result
+
+        if isinstance(global_index, slice):
+            step = global_index.step if global_index.step is not None else 1
+            result = [NoneArray] * len(self._Arrays)
+            i = 0
+            for (array, offset, size) in zip(self._Arrays, offsets, partition_sizes):
+                if array is NoneArray:
+                    i += 1
+                    continue
+                local_slice = self._slice_intersection(global_index, offset, size, total_size)
+                if local_slice is not None:
+                    part = array[local_slice]
+                    if remaining_indices:
+                        # Slice all dimensions of the array except the first one
+                        part = part[(slice(0, None, None),) + remaining_indices]
+                    if step > 0:
+                        result[i] = part
+                    if step < 0:
+                        result[-i-1] = part
+                    i += 1
+            return self.__class__(result, dataset=self.DataSet, association=self.Association)
+
+        if isinstance(global_index, numpy.ndarray):
+            return self[numpy.concatenate([array for array in index])]
+
+        raise TypeError(f"Unsupported index type: {type(index)}")
+
+    def _global_to_local_id(self, global_index, total_size, offsets):
+        """Returns the chunk index and the local index of the chunk from the global index"""
+        if global_index < 0:
+            global_index += total_size
+        if not (0 <= global_index < total_size):
+            raise IndexError("Index out of bounds")
+        i = numpy.searchsorted(offsets, global_index, side='right') - 1
+        return i, global_index - offsets[i]
+
+    def _slice_intersection(self, global_slice, chunk_offset, chunk_size, total_length):
+        """Returns a local slice into the chunk for the global_slice, or None if no overlap.
+        Handles both positive and negative steps."""
+        start, stop, step = global_slice.indices(total_length)
+        chunk_start = chunk_offset
+        chunk_end   = chunk_offset + chunk_size
+
+        if step > 0:
+            # Find the first global index in the slice that is in the chunk.
+            if start < chunk_start:
+                offset_steps = (chunk_start - start + step - 1) // step
+                first = start + offset_steps * step
+            else:
+                first = start
+            if first >= stop or first >= chunk_end:
+                return None
+
+            # Find the last global index in the slice that is in the chunk.
+            max_possible = min(stop, chunk_end)
+            if first > max_possible:
+                last = first
+            else:
+                num_steps = ceil((max_possible - first) / step)
+                last = first + num_steps * step
+
+        else:
+            # Find the first global index in the slice that is in the chunk.
+            if start >= chunk_end:
+                first = chunk_end - 1
+                remainder = (start - first) % (-step)
+                if remainder != 0:
+                    first = first - ( (-step) - remainder )
+            else:
+                first = start
+            if first < chunk_start or first <= stop:
+                return None
+
+            # Find the last global index in the slice that is in the chunk.
+            if chunk_start > stop:
+                last = chunk_start - 1
+            else:
+                num_steps = ceil((start - chunk_start) / (-step))
+                last = start + num_steps * step
+                if last <= chunk_start:
+                    last = chunk_start
+            if last > first or last < stop:
+                return None
+
+        # Global to local indices
+        local_first = first - chunk_offset
+        local_last = last - chunk_offset
+        local_last = local_last if local_last != -1 else None # For negative steps
+
+        return slice(local_first, local_last, step)
+
 
     def _numeric_op(self, other, op):
         """Used to implement numpy-style numerical operations such as __add__,
@@ -573,7 +809,7 @@ class VTKCompositeDataArray(object):
         self.__init_from_composite()
         res = []
         if type(other) == VTKCompositeDataArray:
-            for a1, a2 in izip(self._Arrays, other.Arrays):
+            for a1, a2 in zip(self._Arrays, other.Arrays):
                 if a1 is not NoneArray and a2 is not NoneArray:
                     l = reshape_append_ones(a1, a2)
                     res.append(op(l[0],l[1]))
@@ -595,8 +831,8 @@ class VTKCompositeDataArray(object):
         self.__init_from_composite()
         res = []
         if type(other) == VTKCompositeDataArray:
-            for a1, a2 in izip(self._Arrays, other.Arrays):
-                if a1 is not NoneArray and a2 is notNoneArray:
+            for a1, a2 in zip(self._Arrays, other.Arrays):
+                if a1 is not NoneArray and a2 is not NoneArray:
                     l = reshape_append_ones(a2,a1)
                     res.append(op(l[0],l[1]))
                 else:
@@ -626,10 +862,98 @@ class VTKCompositeDataArray(object):
         return VTKCompositeDataArray(
             res, dataset = self.DataSet, association = self.Association)
 
+    @property
+    def shape(self) -> Tuple[int, ...]:
+        """Return a tuple representing the shape of the composite array."""
+        if not self.Arrays:
+            return (0,)
+        return numpy.shape(self)
+
+    def __len__(self) -> int:
+        """Return the total number of elements in the composite array."""
+        return self.shape[0]
+
+    def __contains__(self, item) -> bool:
+        """Check if the item exists in any of the non-null sub-arrays."""
+        return any(item in array for array in self.Arrays if array is not NoneArray)
+
+    def __reversed__(self) -> Generator[numpy.ndarray, None, None]:
+        """Iterate over all subarrays in the composite array in backward order."""
+        for array in reversed(self.Arrays):
+            if array is not NoneArray:
+                for subarray in reversed(array):
+                    yield subarray
+
+    def __iter__(self) -> Generator[numpy.ndarray, None, None]:
+        """Iterate over all subarrays in the composite array in forward order."""
+        for array in self.Arrays:
+            if array is not NoneArray:
+                for subarray in array:
+                    yield subarray
+
+    def __array__(self, dtype=None, copy=None) -> numpy.ndarray:
+        """Convert the composite array into a single NumPy array."""
+        if copy is False:
+            raise RuntimeError("VTKCompositeDataArray must create a copy to be converted into a Numpy array.")
+        return numpy.concatenate([numpy.asarray(a) for a in self.Arrays if a is not NoneArray], axis=0, dtype=dtype)
+
+    def __array_function__(self, func, types, args, kwargs):
+        """Implements Numpy dispatch mechanism. Functions registered in COMPOSITE_OVERRIDE
+        are captured here. See:
+        https://numpy.org/doc/stable/user/basics.interoperability.html#the-array-function-protocol"""
+
+        if func not in COMPOSITE_OVERRIDE:
+            return NotImplemented
+        return COMPOSITE_OVERRIDE[func](*args, **kwargs)
+
+    def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
+        """Handles Numpy functions calls that takes a fixed number of specific inputs and outputs."""
+        if method != '__call__':
+            raise NotImplementedError(f"Method {method} is not supported by __array_ufunc__")
+
+        num_chunks = len(self.Arrays)
+        partition_sizes = [sub.shape[0] for sub in self.Arrays]
+        total_size = sum(partition_sizes) if partition_sizes else 0
+        global_indices = numpy.cumsum(partition_sizes)[:-1]
+
+        # Split inputs arguments to each chunk
+        # Basically, this returns a 2D array where the first dimension represents each chunck of the
+        # composite array and the second dimension represents the data associated for each chunk
+        def process_input(input_):
+            if isinstance(input_, type(self)):
+                if len(input_.Arrays) != num_chunks:
+                    raise ValueError("Composite operands must have the same number of subarrays")
+                return input_.Arrays
+            elif numpy.isscalar(input_):
+                return [input_] * num_chunks
+            elif isinstance(input_, numpy.ndarray):
+                if input_.ndim >= 1 and input_.shape[0] == total_size:
+                    return list(numpy.split(input_, global_indices, axis=0))
+                else:
+                    return [input_] * num_chunks
+            else:
+                return [input_] * num_chunks
+
+        splitted_inputs = [process_input(input_) for input_ in inputs]
+
+        results = []
+        for i in range(num_chunks):
+            arg0 = splitted_inputs[0][i]
+            args = [lst[i] for lst in splitted_inputs[1:]]
+            if arg0 is NoneArray or (args and args[0] is NoneArray):
+                results.append(NoneArray)
+                continue
+            result = ufunc(arg0, *args, **kwargs)
+            results.append(result)
+
+        return self.__class__(results, dataset=self.DataSet, association=self.Association)
 
 class DataSetAttributes(VTKObjectWrapper):
     """This is a python friendly wrapper of vtkDataSetAttributes. It
-    returns VTKArrays. It also provides the dictionary interface."""
+    returns VTKArrays. It also provides the dictionary interface.
+    Note that the stored array should have a shape that matches the number
+    of elements. E.g. for a PointData, narray.shape[0] should be equal
+    to dataset.GetNumberOfPoints()"""
 
     def __init__(self, vtkobject, dataset, association):
         super(DataSetAttributes, self).__init__(vtkobject)
@@ -684,7 +1008,14 @@ class DataSetAttributes(VTKObjectWrapper):
             self.VTKObject.PassData(other.VTKObject)
 
     def append(self, narray, name):
-        """Appends a new array to the dataset attributes."""
+        """Appends narray to the dataset attributes.
+
+        If narray is a scalar, create an array with this scalar for each element.
+        If narray is an array with a size not matching the array association
+        (e.g. size should be equal to GetNumberOfPoints() for PointData),
+        copy the input narray for each element. This is intended to ease
+        initialization, typically using same 3d vector for each element.
+        In any case, be careful about memory explosion."""
         if narray is NoneArray:
             # if NoneArray, nothing to do.
             return
@@ -693,22 +1024,39 @@ class DataSetAttributes(VTKObjectWrapper):
             arrLength = self.DataSet.GetNumberOfPoints()
         elif self.Association == ArrayAssociation.CELL:
             arrLength = self.DataSet.GetNumberOfCells()
+        elif self.Association == ArrayAssociation.ROW \
+          and self.DataSet.GetNumberOfColumns() > 0:
+            arrLength = self.DataSet.GetNumberOfRows()
         else:
             if not isinstance(narray, numpy.ndarray):
                 arrLength = 1
             else:
                 arrLength = narray.shape[0]
 
-        # Fixup input array length:
+        # if input is not a valid array (i.e. unexpected shape[0]),
+        # create a new array and copy input for each element
         if not isinstance(narray, numpy.ndarray) or numpy.ndim(narray) == 0: # Scalar input
-            tmparray = numpy.empty(arrLength)
+            dtype = narray.dtype if isinstance(narray, numpy.ndarray) else type(narray)
+            tmparray = numpy.empty(arrLength, dtype=dtype)
             tmparray.fill(narray)
             narray = tmparray
         elif narray.shape[0] != arrLength: # Vector input
             components = 1
             for l in narray.shape:
                 components *= l
-            tmparray = numpy.empty((arrLength, components))
+            try:
+                tmparray = numpy.empty((arrLength, components), dtype=narray.dtype)
+            except numpy.core._exceptions._ArrayMemoryError as npErr:
+                sys.stderr.write("Fail to copy input array for each dataset element: array is too big to be duplicated.\n"
+                "Input should either be small enough to be duplicated for each element, or shape[0] should "
+                "match number of element.\n"
+                "Example of correct usage: to add a point PointData array, it is common to have\n"
+                "array.shape[0] == 3 or array.shape[0] == dataset.GetNumberOfPoints()\n"
+                )
+                sys.stderr.write(str(type(npErr)) + "\n")
+                sys.stderr.write(str(npErr))
+                return
+
             tmparray[:] = narray.flatten()
             narray = tmparray
 
@@ -747,8 +1095,8 @@ class DataSetAttributes(VTKObjectWrapper):
 
 class CompositeDataSetAttributes():
     """This is a python friendly wrapper for vtkDataSetAttributes for composite
-    datsets. Since composite datasets themselves don't have attribute data, but
-    the attribute data is associated with the leaf nodes in the composite
+    datasets. Since composite datasets themselves don't have attribute data,
+    but the attribute data is associated with the leaf nodes in the composite
     dataset, this class simulates a DataSetAttributes interface by taking a
     union of DataSetAttributes associated with all leaf nodes."""
 
@@ -800,7 +1148,7 @@ class CompositeDataSetAttributes():
                 # don't add the narray since it's a scalar. GetArray() will create a
                 # VTKCompositeArray on-demand.
         else:
-            for ds, array in izip(self.DataSet, narray.Arrays):
+            for ds, array in zip(self.DataSet, narray.Arrays):
                 if array is not None:
                     ds.GetAttributes(self.Association).append(array, name)
                     added = True
@@ -824,8 +1172,9 @@ class CompositeDataSetAttributes():
     def PassData(self, other):
         """Emulate PassData for composite datasets."""
         for this,that in zip(self.DataSet, other.DataSet):
-            for assoc in [ArrayAssociation.POINT, ArrayAssociation.CELL]:
-                this.GetAttributes(assoc).PassData(that.GetAttributes(assoc))
+            for assoc in [ArrayAssociation.POINT, ArrayAssociation.CELL, ArrayAssociation.ROW]:
+                if this.HasAttributes(assoc) and that.HasAttributes(assoc):
+                    this.GetAttributes(assoc).PassData(that.GetAttributes(assoc))
 
 class CompositeDataIterator(object):
     """Wrapper for a vtkCompositeDataIterator class to satisfy
@@ -898,8 +1247,12 @@ class DataObject(VTKObjectWrapper):
         """Returns the attributes specified by the type as a DataSetAttributes
          instance."""
         if type == ArrayAssociation.FIELD:
-            return DataSetAttributes(self.VTKObject.GetFieldData(), self, type)
-        return DataSetAttributes(self.VTKObject.GetAttributes(type), self, type)
+            return self.GetFieldData()
+        return DataSetAttributes(self.VTKObject.GetAttributesAsFieldData(type), self, type)
+
+    def HasAttributes(self, type):
+        "Returns if current object support this attributes type"
+        return type == ArrayAssociation.FIELD
 
     def GetFieldData(self):
         "Returns the field data as a DataSetAttributes instance."
@@ -908,14 +1261,32 @@ class DataObject(VTKObjectWrapper):
     FieldData = property(GetFieldData, None, None, "This property returns the field data of a data object.")
 
 class Table(DataObject):
-    """A wrapper for vtkFielData that makes it easier to access RowData array as
+    """A wrapper for vtkTable that makes it easier to access RowData array as
     VTKArrays
     """
     def GetRowData(self):
         "Returns the row data as a DataSetAttributes instance."
         return self.GetAttributes(ArrayAssociation.ROW)
 
+    def HasAttributes(self, type):
+        "Returns if current object support this attributes type"
+        return type == ArrayAssociation.ROW or DataObject.HasAttributes(self, type)
+
     RowData = property(GetRowData, None, None, "This property returns the row data of the table.")
+
+class HyperTreeGrid(DataObject):
+    """A wrapper for vtkHyperTreeGrid that makes it easier to access CellData
+    arrays as VTKArrays.
+    """
+    def GetCellData(self):
+        "Returns the cell data as DataSetAttributes instance."
+        return self.GetAttributes(ArrayAssociation.CELL)
+
+    def HasAttributes(self, type):
+        "Returns if current object support this attributes type"
+        return type == ArrayAssociation.CELL or DataObject.HasAttributes(self, type)
+
+    CellData = property(GetCellData, None, None, "This property returns the cell data of the hypertree grid.")
 
 class CompositeDataSet(DataObject):
     """A wrapper for vtkCompositeData and subclasses that makes it easier
@@ -927,6 +1298,7 @@ class CompositeDataSet(DataObject):
         self._PointData = None
         self._CellData = None
         self._FieldData = None
+        self._GlobalData = None
         self._Points = None
 
     def __iter__(self):
@@ -961,26 +1333,43 @@ class CompositeDataSet(DataObject):
         CompositeDataSetAttributes instance."""
         return CompositeDataSetAttributes(self, type)
 
+    def HasAttributes(self, type):
+        "Returns true if every leaves of current composite object support this attributes type"
+        for dataset in self:
+            if not dataset.HasAttributes(type):
+                return False
+
+        return True
+
     def GetPointData(self):
-        "Returns the point data as a DataSetAttributes instance."
+        "Returns the point data as a CompositeDataSetAttributes instance."
         if self._PointData is None or self._PointData() is None:
             pdata = self.GetAttributes(ArrayAssociation.POINT)
             self._PointData = weakref.ref(pdata)
         return self._PointData()
 
     def GetCellData(self):
-        "Returns the cell data as a DataSetAttributes instance."
+        "Returns the cell data as a CompositeDataSetAttributes instance."
         if self._CellData is None or self._CellData() is None:
             cdata = self.GetAttributes(ArrayAssociation.CELL)
             self._CellData = weakref.ref(cdata)
         return self._CellData()
 
     def GetFieldData(self):
-        "Returns the field data as a DataSetAttributes instance."
+        """
+        "Returns the field data as a CompositeDataSetAttributes instance."
+        """
         if self._FieldData is None or self._FieldData() is None:
             fdata = self.GetAttributes(ArrayAssociation.FIELD)
             self._FieldData = weakref.ref(fdata)
         return self._FieldData()
+
+    def GetGlobalData(self):
+        "Returns the global data (field data of the root) as a DataSetAttributes instance."
+        if self._GlobalData is None or self._GlobalData() is None:
+            gdata = super(CompositeDataSet, self).GetFieldData()
+            self._GlobalData = weakref.ref(gdata)
+        return self._GlobalData()
 
     def GetPoints(self):
         "Returns the points as a VTKCompositeDataArray instance."
@@ -1003,9 +1392,10 @@ class CompositeDataSet(DataObject):
             self._Points = weakref.ref(cpts)
         return self._Points()
 
-    PointData = property(GetPointData, None, None, "This property returns the point data of the dataset.")
-    CellData = property(GetCellData, None, None, "This property returns the cell data of a dataset.")
-    FieldData = property(GetFieldData, None, None, "This property returns the field data of a dataset.")
+    PointData = property(GetPointData, None, None, "This property returns the point data of the leafs of a composite dataset.")
+    CellData = property(GetCellData, None, None, "This property returns the cell data of the leafs of a composite dataset.")
+    FieldData = property(GetFieldData, None, None, "This property returns the field data of the leafs of a composite dataset.")
+    GlobalData = property(GetGlobalData, None, None, "This property returns the global data, i.e. field data of the root of a composite dataset.")
     Points = property(GetPoints, None, None, "This property returns the points of the dataset.")
 
 class DataSet(DataObject):
@@ -1019,6 +1409,10 @@ class DataSet(DataObject):
     def GetCellData(self):
         "Returns the cell data as a DataSetAttributes instance."
         return self.GetAttributes(ArrayAssociation.CELL)
+
+    def HasAttributes(self, type):
+        "Returns if current object support this attributes type"
+        return type == ArrayAssociation.POINT or type == ArrayAssociation.CELL or DataObject.HasAttributes(self, type)
 
     PointData = property(GetPointData, None, None, "This property returns the point data of the dataset.")
     CellData = property(GetCellData, None, None, "This property returns the cell data of a dataset.")
@@ -1068,10 +1462,10 @@ class UnstructuredGrid(PointSet):
 
     def GetCellTypes(self):
         """Returns the cell types as a VTKArray instance."""
-        if not self.VTKObject.GetCellTypesArray():
+        if not self.VTKObject.GetCellTypes():
             return None
         return vtkDataArrayToVTKArray(
-            self.VTKObject.GetCellTypesArray(), self)
+            self.VTKObject.GetCellTypes(), self)
 
     def GetCellLocations(self):
         """Returns the cell locations as a VTKArray instance."""
@@ -1090,7 +1484,7 @@ class UnstructuredGrid(PointSet):
     def SetCells(self, cellTypes, cellLocations, cells):
         """Given cellTypes, cellLocations, cells as VTKArrays,
         populates the unstructured grid data structures."""
-        from .. import VTK_ID_TYPE
+        from ..util.vtkConstants import VTK_ID_TYPE
         from ..vtkCommonDataModel import vtkCellArray
         cellTypes = numpyTovtkDataArray(cellTypes)
         cellLocations = numpyTovtkDataArray(cellLocations, array_type=VTK_ID_TYPE)
@@ -1150,5 +1544,7 @@ def WrapDataObject(ds):
         return Molecule(ds)
     elif ds.IsA("vtkGraph"):
         return Table(ds)
+    elif ds.IsA("vtkHyperTreeGrid"):
+        return HyperTreeGrid(ds)
     elif ds.IsA("vtkDataObject"):
         return DataObject(ds)

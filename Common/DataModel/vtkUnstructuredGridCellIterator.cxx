@@ -1,177 +1,120 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkUnstructuredGridCellIterator.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "vtkUnstructuredGridCellIterator.h"
 
 #include "vtkCellArray.h"
 #include "vtkIdList.h"
+#include "vtkIdTypeArray.h"
 #include "vtkObjectFactory.h"
 #include "vtkPoints.h"
 #include "vtkUnsignedCharArray.h"
 #include "vtkUnstructuredGrid.h"
 
-#include <cassert>
-
-vtkStandardNewMacro(vtkUnstructuredGridCellIterator)
+VTK_ABI_NAMESPACE_BEGIN
+vtkStandardNewMacro(vtkUnstructuredGridCellIterator);
 
 //------------------------------------------------------------------------------
-void vtkUnstructuredGridCellIterator::PrintSelf(ostream &os, vtkIndent indent)
+void vtkUnstructuredGridCellIterator::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os, indent);
-  // Cast the 'unsigned char*' members to void* to prevent the compiler from
-  // interpreting them as strings.
-  os << indent << "CellTypeBegin: "
-     << static_cast<void*>(this->CellTypeBegin) << endl;
-  os << indent << "CellTypePtr: "
-     << static_cast<void*>(this->CellTypePtr) << endl;
-  os << indent << "CellTypeEnd: "
-     << static_cast<void*>(this->CellTypeEnd) << endl;
-  os << indent << "ConnectivityBegin: " << this->ConnectivityBegin << endl;
-  os << indent << "ConnectivityPtr: " << this->ConnectivityPtr << endl;
-  os << indent << "FacesBegin: " << this->FacesBegin<< endl;
-  os << indent << "FacesLocsBegin: " << this->FacesLocsBegin << endl;
-  os << indent << "FacesLocsPtr: " << this->FacesLocsPtr << endl;
-  os << indent << "SkippedCells: " << this->SkippedCells << endl;
-  os << indent << "UnstructuredGridPoints: " <<
-        this->UnstructuredGridPoints << endl;
+
+  if (this->Cells)
+  {
+    os << indent << "Cells:\n";
+    this->Cells->PrintSelf(os, indent.GetNextIndent());
+  }
+  else
+  {
+    os << indent << "Cells: (none)" << endl;
+  }
+
+  if (this->Types)
+  {
+    os << indent << "Types:\n";
+    this->Types->PrintSelf(os, indent.GetNextIndent());
+  }
+  else
+  {
+    os << indent << "Types: (none)" << endl;
+  }
+
+  if (this->PolyFaceConn)
+  {
+    os << indent << "FaceConn:\n";
+    this->PolyFaceConn->PrintSelf(os, indent.GetNextIndent());
+  }
+  else
+  {
+    os << indent << "FaceConn: (none)" << endl;
+  }
+
+  if (this->PolyFaceLocs)
+  {
+    os << indent << "FaceLocs:\n";
+    this->PolyFaceLocs->PrintSelf(os, indent.GetNextIndent());
+  }
+  else
+  {
+    os << indent << "FaceLocs: (none)" << endl;
+  }
+
+  if (this->Coords)
+  {
+    os << indent << "Coords:\n";
+    this->Coords->PrintSelf(os, indent.GetNextIndent());
+  }
+  else
+  {
+    os << indent << "Coords: (none)" << endl;
+  }
 }
 
 //------------------------------------------------------------------------------
-void vtkUnstructuredGridCellIterator::SetUnstructuredGrid(
-    vtkUnstructuredGrid *ug)
+void vtkUnstructuredGridCellIterator::SetUnstructuredGrid(vtkUnstructuredGrid* ug)
 {
   // If the unstructured grid has not been initialized yet, these may not exist:
-  vtkUnsignedCharArray *cellTypeArray = ug ? ug->GetCellTypesArray() : nullptr;
-  vtkCellArray *cellArray = ug ? ug->GetCells() : nullptr;
-  vtkPoints *points = ug ? ug->GetPoints() : nullptr;
+  vtkDataArray* cellTypeArray = ug ? ug->GetCellTypes() : nullptr;
+  vtkCellArray* cellArray = ug ? ug->GetCells() : nullptr;
+  vtkPoints* points = ug ? ug->GetPoints() : nullptr;
 
-  if(points)
+  if (points)
   {
     this->Points->SetDataType(points->GetDataType());
   }
 
   if (ug && cellTypeArray && cellArray && points)
   {
-    // Cell types
-    this->CellTypeBegin = this->CellTypeEnd = this->CellTypePtr
-        = cellTypeArray ? cellTypeArray->GetPointer(0) : nullptr;
-    this->CellTypeEnd += cellTypeArray ? cellTypeArray->GetNumberOfTuples() : 0;
+    this->Cells = vtk::TakeSmartPointer(cellArray->NewIterator());
+    this->Cells->GoToFirstCell();
 
-    // CellArray
-    this->ConnectivityBegin = this->ConnectivityPtr = cellArray->GetPointer();
-
-    // Point
-    this->UnstructuredGridPoints = points;
-
-    // Faces
-    vtkIdTypeArray *faces = ug->GetFaces();
-    vtkIdTypeArray *facesLocs = ug->GetFaceLocations();
-    if (faces && facesLocs)
-    {
-      this->FacesBegin = faces->GetPointer(0);
-      this->FacesLocsBegin = this->FacesLocsPtr = facesLocs->GetPointer(0);
-    }
-    else
-    {
-      this->FacesBegin = nullptr;
-      this->FacesLocsBegin = nullptr;
-      this->FacesLocsPtr = nullptr;
-    }
-  }
-  else
-  {
-    this->CellTypeBegin = nullptr;
-    this->CellTypePtr = nullptr;
-    this->CellTypeEnd = nullptr;
-    this->FacesBegin = nullptr;
-    this->FacesLocsBegin = nullptr;
-    this->FacesLocsPtr = nullptr;
-    this->ConnectivityBegin= nullptr;
-    this->ConnectivityPtr = nullptr;
-    this->UnstructuredGridPoints = nullptr;
-  }
-
-  this->SkippedCells = 0;
-}
-
-//------------------------------------------------------------------------------
-void vtkUnstructuredGridCellIterator::CatchUpSkippedCells()
-{
-  // catch up on skipped cells -- cache misses make incrementing Connectivity
-  // in IncrementToNextCell() too expensive, so we delay it until here. Special
-  // cases are used for 0 or 1 skipped cells to reduce the number of jumps.
-  switch (this->SkippedCells)
-  {
-    default:
-      while (this->SkippedCells > 1)
-      {
-        this->ConnectivityPtr += *this->ConnectivityPtr + 1;
-        this->SkippedCells--;
-      }
-      assert(this->SkippedCells == 1);
-      VTK_FALLTHROUGH;
-    case 1:
-      this->ConnectivityPtr += *this->ConnectivityPtr + 1;
-      --this->SkippedCells;
-      VTK_FALLTHROUGH;
-    case 0:
-      // do nothing.
-      break;
+    this->Types = cellTypeArray;
+    this->PolyFaceConn = ug->GetPolyhedronFaces();
+    this->PolyFaceLocs = ug->GetPolyhedronFaceLocations();
+    this->Coords = points;
   }
 }
 
 //------------------------------------------------------------------------------
 bool vtkUnstructuredGridCellIterator::IsDoneWithTraversal()
 {
-  return this->CellTypePtr >= this->CellTypeEnd;
+  return this->Cells ? this->Cells->IsDoneWithTraversal() : true;
 }
 
 //------------------------------------------------------------------------------
 vtkIdType vtkUnstructuredGridCellIterator::GetCellId()
 {
-  return static_cast<vtkIdType>(this->CellTypePtr - this->CellTypeBegin);
+  return this->Cells->GetCurrentCellId();
 }
 
 //------------------------------------------------------------------------------
 void vtkUnstructuredGridCellIterator::IncrementToNextCell()
 {
-  ++this->CellTypePtr;
-
-  // Bookkeeping for ConnectivityPtr
-  ++this->SkippedCells;
-
-  // Note that we may be incrementing an invalid pointer here...check
-  // if FacesLocsBegin is nullptr before dereferencing this!
-  ++this->FacesLocsPtr;
+  this->Cells->GoToNextCell();
 }
 
 //------------------------------------------------------------------------------
-vtkUnstructuredGridCellIterator::vtkUnstructuredGridCellIterator()
-  : vtkCellIterator(),
-    CellTypeBegin(nullptr),
-    CellTypePtr(nullptr),
-    CellTypeEnd(nullptr),
-    ConnectivityBegin(nullptr),
-    ConnectivityPtr(nullptr),
-    FacesBegin(nullptr),
-    FacesLocsBegin(nullptr),
-    FacesLocsPtr(nullptr),
-    SkippedCells(0),
-    UnstructuredGridPoints(nullptr)
-{
-}
+vtkUnstructuredGridCellIterator::vtkUnstructuredGridCellIterator() = default;
 
 //------------------------------------------------------------------------------
 vtkUnstructuredGridCellIterator::~vtkUnstructuredGridCellIterator() = default;
@@ -179,67 +122,142 @@ vtkUnstructuredGridCellIterator::~vtkUnstructuredGridCellIterator() = default;
 //------------------------------------------------------------------------------
 void vtkUnstructuredGridCellIterator::ResetToFirstCell()
 {
-  this->CellTypePtr = this->CellTypeBegin;
-  this->FacesLocsPtr = this->FacesLocsBegin;
-  this->ConnectivityPtr = this->ConnectivityBegin;
-  this->SkippedCells = 0;
+  if (this->Cells)
+  {
+    this->Cells->GoToFirstCell();
+  }
 }
 
 //------------------------------------------------------------------------------
 void vtkUnstructuredGridCellIterator::FetchCellType()
 {
-  this->CellType = *this->CellTypePtr;
+  const vtkIdType cellId = this->Cells->GetCurrentCellId();
+  this->CellType = static_cast<int>(this->Types->GetComponent(cellId, 0));
 }
 
 //------------------------------------------------------------------------------
 void vtkUnstructuredGridCellIterator::FetchPointIds()
 {
-  CatchUpSkippedCells();
-  const vtkIdType *connPtr = this->ConnectivityPtr;
-  vtkIdType numCellPoints = *(connPtr++);
-  this->PointIds->SetNumberOfIds(numCellPoints);
-  vtkIdType *cellPtr = this->PointIds->GetPointer(0);
-  std::copy(connPtr, connPtr + numCellPoints, cellPtr);
+  this->Cells->GetCurrentCell(this->PointIds);
 }
 
 //------------------------------------------------------------------------------
 void vtkUnstructuredGridCellIterator::FetchPoints()
 {
-  this->UnstructuredGridPoints->GetPoints(this->GetPointIds(), this->Points);
+  this->Coords->GetPoints(this->GetPointIds(), this->Points);
 }
 
-//------------------------------------------------------------------------------
-// Given a pointer into a set of faces, traverse the faces and return the total
-// number of ids (including size hints) in the face set.
-namespace {
-inline vtkIdType FaceSetSize(vtkIdType *begin)
+//----------------------------------------------------------------------------
+// Supporting functions for FetchFaces()
+namespace
 {
-  vtkIdType *result = begin;
-  vtkIdType numFaces = *(result++);
-  while (numFaces-- > 0)
+struct GetPolyhedronNPts : public vtkCellArray::DispatchUtilities
+{
+  // Insert full cell
+  template <class OffsetsT, class ConnectivityT>
+  void operator()(OffsetsT* offsets, ConnectivityT* conn, const vtkIdType cellId,
+    const vtkCellArray* faces, vtkIdType& npts) const
   {
-    result += *result + 1;
+    auto offsetsRange = GetRange(offsets);
+    const auto& beginOffset = offsetsRange[cellId];
+    const auto& endOffset = offsetsRange[cellId + 1];
+    const vtkIdType NumberOfFaces = static_cast<vtkIdType>(endOffset - beginOffset);
+    const auto cellFaces = GetRange(conn).begin() + beginOffset;
+
+    npts = 0;
+    for (vtkIdType faceNum = 0; faceNum < NumberOfFaces; ++faceNum)
+    {
+      npts += faces->GetCellSize(static_cast<vtkIdType>(cellFaces[faceNum]));
+    }
   }
-  return result - begin;
-}
+};
+
+template <typename PointTypeIter>
+struct InsertNextCellPoints : public vtkCellArray::DispatchUtilities
+{
+  // Insert full cell
+  template <class OffsetsT, class ConnectivityT>
+  vtkIdType operator()(
+    OffsetsT* offsets, ConnectivityT* conn, const vtkIdType npts, const PointTypeIter pts)
+  {
+    using ValueType = GetAPIType<OffsetsT>;
+    using OffsetsAccessorType = vtkDataArrayAccessor<OffsetsT>;
+    using ConnectivityAccessorType = vtkDataArrayAccessor<ConnectivityT>;
+    ConnectivityAccessorType connAccessor(conn);
+    OffsetsAccessorType offsetsAccessor(offsets);
+
+    const vtkIdType cellId = offsets->GetNumberOfValues() - 1;
+
+    offsetsAccessor.InsertNext(static_cast<ValueType>(conn->GetNumberOfValues() + npts));
+
+    for (vtkIdType i = 0; i < npts; ++i)
+    {
+      connAccessor.InsertNext(static_cast<ValueType>(pts[i]));
+    }
+
+    return cellId;
+  }
+};
+
+template <typename FaceIdTypeIter>
+struct CopyPolyhedronFaces : public vtkCellArray::DispatchUtilities
+{
+  // Insert full cell
+  template <class OffsetsT, class ConnectivityT>
+  void operator()(OffsetsT* offsets, ConnectivityT* conn, const vtkIdType NumberOfFaces,
+    const FaceIdTypeIter cellFaces, vtkCellArray* faces)
+  {
+    auto offsetsRange = GetRange(offsets);
+    auto connRange = GetRange(conn);
+    for (vtkIdType faceNum = 0; faceNum < NumberOfFaces; ++faceNum)
+    {
+      const auto& beginOffset = offsetsRange[cellFaces[faceNum]];
+      const auto& endOffset = offsetsRange[cellFaces[faceNum] + 1];
+      const vtkIdType NumberOfPoints = static_cast<vtkIdType>(endOffset - beginOffset);
+      const auto cellPoints = connRange.begin() + beginOffset;
+      using TInsertNextCellPoints = InsertNextCellPoints<decltype(cellPoints)>;
+
+      faces->Dispatch(TInsertNextCellPoints{}, NumberOfPoints, cellPoints);
+    }
+  }
+};
+
+struct CopyPolyhedronCell : public vtkCellArray::DispatchUtilities
+{
+  // Insert full cell
+  template <class OffsetsT, class ConnectivityT>
+  void operator()(OffsetsT* offsets, ConnectivityT* conn, const vtkIdType cellId, vtkCellArray* src,
+    vtkCellArray* tgt)
+  {
+    auto offsetsRange = GetRange(offsets);
+    const auto& beginOffset = offsetsRange[cellId];
+    const auto& endOffset = offsetsRange[cellId + 1];
+    const vtkIdType NumberOfFaces = static_cast<vtkIdType>(endOffset - beginOffset);
+    const auto cellFaces = GetRange(conn).begin() + beginOffset;
+    using TCopyPolyhedronFaces = CopyPolyhedronFaces<decltype(cellFaces)>;
+
+    src->Dispatch(TCopyPolyhedronFaces{}, NumberOfFaces, cellFaces, tgt);
+  }
+};
+
 } // end anon namespace
 
 //------------------------------------------------------------------------------
 void vtkUnstructuredGridCellIterator::FetchFaces()
 {
-  // FacesLocsPtr may be non-null and invalid (this is done to prevent branching
-  // in IncrementToNextCell()). Check FacesLocsBegin to determine validity of
-  // the pointer.
-  if (this->FacesLocsBegin && *this->FacesLocsPtr >= 0)
+  if (this->PolyFaceLocs)
   {
-    vtkIdType *faceSet = this->FacesBegin + *this->FacesLocsPtr;
-    vtkIdType facesSize = FaceSetSize(faceSet);
-    this->Faces->SetNumberOfIds(facesSize);
-    vtkIdType *tmpPtr = this->Faces->GetPointer(0);
-    std::copy(faceSet, faceSet + facesSize, tmpPtr);
+    const vtkIdType cellId = this->Cells->GetCurrentCellId();
+    vtkIdType nfaces = 0;
+    vtkIdType npts = 0;
+    nfaces = this->PolyFaceLocs->GetCellSize(cellId);
+    this->PolyFaceLocs->Dispatch(GetPolyhedronNPts{}, cellId, this->PolyFaceConn, npts);
+    this->Faces->AllocateExact(nfaces, npts);
+    this->PolyFaceLocs->Dispatch(CopyPolyhedronCell{}, cellId, this->PolyFaceConn, this->Faces);
   }
   else
   {
-    this->Faces->SetNumberOfIds(0);
+    this->Faces->Reset();
   }
 }
+VTK_ABI_NAMESPACE_END

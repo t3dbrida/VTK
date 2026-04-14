@@ -1,34 +1,6 @@
-/*=========================================================================
-
-   Program: ParaView
-   Module:    vtkDepthImageProcessingPass.cxx
-
-   Copyright (c) 2005-2008 Sandia Corporation, Kitware Inc.
-   All rights reserved.
-
-   ParaView is a free software; you can redistribute it and/or modify it
-   under the terms of the ParaView license version 1.2.
-
-   See License_v1.2.txt for the full ParaView license.
-   A copy of this license can be obtained by contacting
-   Kitware Inc.
-   28 Corporate Drive
-   Clifton Park, NY 12065
-   USA
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHORS OR
-CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-FileCopyrightText: Copyright (c) Sandia Corporation, Kitware Inc
+// SPDX-License-Identifier: BSD-3-Clause
 /*----------------------------------------------------------------------
 Acknowledgement:
 This algorithm is the result of joint work by Electricité de France,
@@ -38,19 +10,20 @@ Ph.D. thesis of Christian BOUCHENY.
 
 #include "vtkDepthImageProcessingPass.h"
 #include "vtkObjectFactory.h"
-#include <cassert>
+#include "vtkOpenGLFramebufferObject.h"
+#include "vtkOpenGLRenderUtilities.h"
+#include "vtkOpenGLRenderWindow.h"
 #include "vtkRenderState.h"
 #include "vtkRenderer.h"
-#include "vtkOpenGLFramebufferObject.h"
 #include "vtkTextureObject.h"
-#include "vtkOpenGLRenderWindow.h"
-#include "vtkOpenGLRenderUtilities.h"
+#include <cassert>
 
-#include "vtkPixelBufferObject.h"
 #include "vtkCamera.h"
 #include "vtkMath.h"
+#include "vtkPixelBufferObject.h"
 
-// ----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+VTK_ABI_NAMESPACE_BEGIN
 vtkDepthImageProcessingPass::vtkDepthImageProcessingPass()
 {
   this->Origin[0] = 0;
@@ -62,16 +35,16 @@ vtkDepthImageProcessingPass::vtkDepthImageProcessingPass()
   this->ExtraPixels = 0;
 }
 
-// ----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkDepthImageProcessingPass::~vtkDepthImageProcessingPass() = default;
 
-// ----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkDepthImageProcessingPass::PrintSelf(ostream& os, vtkIndent indent)
 {
-  this->Superclass::PrintSelf(os,indent);
+  this->Superclass::PrintSelf(os, indent);
 }
 
-// ----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // Description:
 // Render delegate with a image of different dimensions than the
 // original one.
@@ -80,114 +53,103 @@ void vtkDepthImageProcessingPass::PrintSelf(ostream& os, vtkIndent indent)
 // \pre fbo_has_context: fbo->GetContext()!=0
 // \pre target_exists: target!=0
 // \pre target_has_context: target->GetContext()!=0
-void vtkDepthImageProcessingPass::RenderDelegate(const vtkRenderState *s,
-                                            int width,
-                                            int height,
-                                            int newWidth,
-                                            int newHeight,
-                                            vtkOpenGLFramebufferObject *fbo,
-                                            vtkTextureObject *colortarget,
-                                            vtkTextureObject *depthtarget)
+void vtkDepthImageProcessingPass::RenderDelegate(const vtkRenderState* s, int width, int height,
+  int newWidth, int newHeight, vtkOpenGLFramebufferObject* fbo, vtkTextureObject* colortarget,
+  vtkTextureObject* depthtarget)
 {
-  assert("pre: s_exists" && s!=nullptr);
-  assert("pre: fbo_exists" && fbo!=nullptr);
-  assert("pre: fbo_has_context" && fbo->GetContext()!=nullptr);
-  assert("pre: colortarget_exists" && colortarget!=nullptr);
-  assert("pre: colortarget_has_context" && colortarget->GetContext()!=nullptr);
-  assert("pre: depthtarget_exists" && depthtarget!=nullptr);
-  assert("pre: depthtarget_has_context" && depthtarget->GetContext()!=nullptr);
+  assert("pre: s_exists" && s != nullptr);
+  assert("pre: fbo_exists" && fbo != nullptr);
+  assert("pre: fbo_has_context" && fbo->GetContext() != nullptr);
+  assert("pre: colortarget_exists" && colortarget != nullptr);
+  assert("pre: colortarget_has_context" && colortarget->GetContext() != nullptr);
+  assert("pre: depthtarget_exists" && depthtarget != nullptr);
+  assert("pre: depthtarget_has_context" && depthtarget->GetContext() != nullptr);
 
-  vtkRenderer *r=s->GetRenderer();
+  vtkRenderer* r = s->GetRenderer();
   vtkRenderState s2(r);
-  s2.SetPropArrayAndCount(s->GetPropArray(),s->GetPropArrayCount());
+  s2.SetPropArrayAndCount(s->GetPropArray(), s->GetPropArrayCount());
 
   // Adapt camera to new window size
-  vtkCamera *savedCamera=r->GetActiveCamera();
+  vtkCamera* savedCamera = r->GetActiveCamera();
   savedCamera->Register(this);
-  vtkCamera *newCamera=vtkCamera::New();
+  vtkCamera* newCamera = vtkCamera::New();
   newCamera->DeepCopy(savedCamera);
 
   r->SetActiveCamera(newCamera);
 
-  if(newCamera->GetParallelProjection())
+  if (newCamera->GetParallelProjection())
   {
     newCamera->SetParallelScale(
-      newCamera->GetParallelScale()*newHeight/static_cast<double>(height));
+      newCamera->GetParallelScale() * newHeight / static_cast<double>(height));
   }
   else
   {
     double large;
     double small;
-    if(newCamera->GetUseHorizontalViewAngle())
+    if (newCamera->GetUseHorizontalViewAngle())
     {
-      large=newWidth;
-      small=width;
+      large = newWidth;
+      small = width;
     }
     else
     {
-      large=newHeight;
-      small=height;
-
+      large = newHeight;
+      small = height;
     }
-    double angle=vtkMath::RadiansFromDegrees(newCamera->GetViewAngle());
-    angle = 2.0*atan(tan(angle/2.0)*large/static_cast<double>(small));
+    double angle = vtkMath::RadiansFromDegrees(newCamera->GetViewAngle());
+    angle = 2.0 * atan(tan(angle / 2.0) * large / small);
 
     newCamera->SetViewAngle(vtkMath::DegreesFromRadians(angle));
   }
 
   s2.SetFrameBuffer(fbo);
-
-  fbo->AddColorAttachment(
-    fbo->GetDrawMode(), 0,colortarget);
+  fbo->Bind();
+  fbo->AddColorAttachment(0, colortarget);
 
   // because the same FBO can be used in another pass but with several color
   // buffers, force this pass to use 1, to avoid side effects from the
   // render of the previous frame.
   fbo->ActivateDrawBuffer(0);
 
-  fbo->AddDepthAttachment(fbo->GetDrawMode(), depthtarget);
+  fbo->AddDepthAttachment(depthtarget);
   fbo->StartNonOrtho(newWidth, newHeight);
 
   // 2. Delegate render in FBO
-  //glEnable(GL_DEPTH_TEST);
-  vtkOpenGLRenderUtilities::MarkDebugEvent(
-        "Start vtkDepthImageProcessingPass delegate render");
+  // glEnable(GL_DEPTH_TEST);
+  vtkOpenGLRenderUtilities::MarkDebugEvent("Start vtkDepthImageProcessingPass delegate render");
   this->DelegatePass->Render(&s2);
-  vtkOpenGLRenderUtilities::MarkDebugEvent(
-        "End vtkDepthImageProcessingPass delegate render");
+  vtkOpenGLRenderUtilities::MarkDebugEvent("End vtkDepthImageProcessingPass delegate render");
 
-  this->NumberOfRenderedProps+=
-    this->DelegatePass->GetNumberOfRenderedProps();
+  this->NumberOfRenderedProps += this->DelegatePass->GetNumberOfRenderedProps();
 
   newCamera->Delete();
   r->SetActiveCamera(savedCamera);
   savedCamera->UnRegister(this);
 }
 
-// ----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // Description:
 // Read window size from parent
 // \pre s_exists: s!=0
 //
 void vtkDepthImageProcessingPass::ReadWindowSize(const vtkRenderState* s)
 {
-    assert("pre: s_exists" && s!=nullptr);
+  assert("pre: s_exists" && s != nullptr);
 
-    vtkOpenGLFramebufferObject *fbo=vtkOpenGLFramebufferObject::SafeDownCast
-      (s->GetFrameBuffer());
-    vtkRenderer *r = s->GetRenderer();
-    if(fbo==nullptr)
-    {
-      r->GetTiledSizeAndOrigin(&this->Width, &this->Height,
-                               &this->Origin[0], &this->Origin[1]);
-    }
-    else
-    {
-      int size[2];
-      fbo->GetLastSize(size);
-      this->Origin[0] = 0;
-      this->Origin[1] = 0;
-      this->Width=size[0];
-      this->Height=size[1];
-    }
+  vtkOpenGLFramebufferObject* fbo = vtkOpenGLFramebufferObject::SafeDownCast(s->GetFrameBuffer());
+  vtkRenderer* r = s->GetRenderer();
+  if (fbo == nullptr)
+  {
+    r->GetTiledSizeAndOrigin(&this->Width, &this->Height, &this->Origin[0], &this->Origin[1]);
+  }
+  else
+  {
+    int size[2];
+    fbo->GetLastSize(size);
+    this->Origin[0] = 0;
+    this->Origin[1] = 0;
+    this->Width = size[0];
+    this->Height = size[1];
+  }
 }
+VTK_ABI_NAMESPACE_END

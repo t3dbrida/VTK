@@ -1,14 +1,23 @@
-set(Module_SRCS
-  vtkAMRBaseParticlesReader.cxx
-  vtkAMRBaseReader.cxx
-  vtkAMRDataSetCache.cxx
-  vtkAMREnzoParticlesReader.cxx
-  vtkAMREnzoReader.cxx
-  vtkAMREnzoReaderInternal.cxx
-  vtkAMReXParticlesReader.cxx
-  vtkAMRFlashParticlesReader.cxx
-  vtkAMRFlashReader.cxx
-  vtkAMRFlashReaderInternal.cxx
-  )
+set(classes
+  vtkAMRBaseParticlesReader
+  vtkAMRBaseReader
+  vtkAMRDataSetCache
+  vtkAMREnzoParticlesReader
+  vtkAMREnzoReader
+  vtkAMReXGridReader
+  vtkAMReXParticlesReader
+  vtkAMRFlashParticlesReader
+  vtkAMRFlashReader
+  vtkAMRVelodyneReader)
 
-vtk_module_library(vtkIOAMR ${Module_SRCS})
+set(private_classes
+  vtkAMREnzoReaderInternal
+  vtkAMReXGridReaderInternal
+  vtkAMRFlashReaderInternal
+  vtkAMRVelodyneReaderInternal)
+
+vtk_module_add_module(VTK::IOAMR
+  CLASSES ${classes}
+  SOURCES ${sources}
+  PRIVATE_CLASSES ${private_classes})
+vtk_add_test_mangling(VTK::IOAMR)

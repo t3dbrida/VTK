@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkAMRDataInternals.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkAMRDataInternals
  * @brief   container of vtkUniformGrid for an AMR data set
@@ -21,18 +9,22 @@
  *
  * @sa
  * vtkOverlappingAMR, vtkAMRBox
-*/
+ */
 
 #ifndef vtkAMRDataInternals_h
 #define vtkAMRDataInternals_h
 
 #include "vtkCommonDataModelModule.h" // For export macro
+#include "vtkDeprecation.h"           //for VTK_DEPRECATED_IN_9_6_0
 #include "vtkObject.h"
 #include "vtkSmartPointer.h" //for storing smart pointers to blocks
+
 #include <vector> //for storing blocks
 
+VTK_ABI_NAMESPACE_BEGIN
 class vtkUniformGrid;
-class VTKCOMMONDATAMODEL_EXPORT vtkAMRDataInternals : public vtkObject
+class VTK_DEPRECATED_IN_9_6_0("This class is not used anymore and will be removed.")
+  VTKCOMMONDATAMODEL_EXPORT vtkAMRDataInternals : public vtkObject
 {
 public:
   struct Block
@@ -52,24 +44,25 @@ public:
   void Insert(unsigned int index, vtkUniformGrid* grid);
   vtkUniformGrid* GetDataSet(unsigned int compositeIndex);
 
-  virtual void ShallowCopy(vtkObject *src);
+  void CompositeShallowCopy(vtkObject* src);
+  void ShallowCopy(vtkObject* src);
+  void DeepCopy(vtkObject* src);
 
-  bool Empty()const{ return this->GetNumberOfBlocks()==0;}
+  bool Empty() const { return this->GetNumberOfBlocks() == 0; }
 
 public:
-  unsigned int GetNumberOfBlocks() const{ return static_cast<unsigned int>(this->Blocks.size());}
-  const Block& GetBlock(unsigned int i) { return this->Blocks[i];}
-  const BlockList& GetAllBlocks() const{ return this->Blocks;}
+  unsigned int GetNumberOfBlocks() const { return static_cast<unsigned int>(this->Blocks.size()); }
+  const Block& GetBlock(unsigned int i) { return this->Blocks[i]; }
+  const BlockList& GetAllBlocks() const { return this->Blocks; }
 
 protected:
-
   vtkAMRDataInternals();
   ~vtkAMRDataInternals() override;
 
-  void GenerateIndex(bool force=false);
+  void GenerateIndex(bool force = false);
 
   std::vector<Block> Blocks;
-  std::vector<int>* InternalIndex; //map from the composite index to internal index
+  std::vector<int>* InternalIndex; // map from the composite index to internal index
   bool GetInternalIndex(unsigned int compositeIndex, unsigned int& internalIndex);
 
 private:
@@ -77,4 +70,5 @@ private:
   void operator=(const vtkAMRDataInternals&) = delete;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

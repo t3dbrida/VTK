@@ -3,70 +3,77 @@ set(NATIVE_NAME "natives-@MAVEN_LOCAL_NATIVE_NAME@")
 
 message("Package VTK for Java - ${NATIVE_NAME}")
 
-# Create the natives directory
+set(install_prefix_dir "${CMAKE_INSTALL_PREFIX}")
+
+if (DEFINED ENV{DESTDIR} AND UNIX)
+  string(PREPEND cmake_install_prefix "$ENV{DESTDIR}")
+endif()
 
 # Only for windows but no harm to do it always
-file (COPY "${CMAKE_INSTALL_PREFIX}/bin/"
-      DESTINATION "${CMAKE_INSTALL_PREFIX}/${NATIVE_NAME}"
+file (INSTALL "${install_prefix_dir}/bin/"
+      DESTINATION "${install_prefix_dir}/${NATIVE_NAME}"
       FILES_MATCHING
       PATTERN *.dll
-      PATTERN *.jnilib
       PATTERN *.cmake
       PATTERN *.txt
       PATTERN *.in
+      PATTERN *Test* EXCLUDE
+      PATTERN *test* EXCLUDE
 )
 
-# For Apple and Linux
-file (COPY "${CMAKE_INSTALL_PREFIX}/@VTK_INSTALL_LIBRARY_DIR@/"
-      DESTINATION "${CMAKE_INSTALL_PREFIX}/${NATIVE_NAME}"
+# If LIBDIR already contains JNILIBDIR do not install JNI libs again
+set(install_jni_libs_separately TRUE)
+string(REGEX MATCH "^@CMAKE_INSTALL_LIBDIR@" matched_libdir_path "@CMAKE_INSTALL_JNILIBDIR@")
+if (matched_libdir_path STREQUAL "@CMAKE_INSTALL_LIBDIR@")
+  set(install_jni_libs_separately FALSE)
+endif()
+
+# Install native VTK libs
+file (INSTALL
+      "${install_prefix_dir}/@CMAKE_INSTALL_LIBDIR@/"
+      DESTINATION "${install_prefix_dir}/${NATIVE_NAME}"
+      FOLLOW_SYMLINK_CHAIN
       FILES_MATCHING
+      PATTERN *.dll
       PATTERN *.so
       PATTERN *.dylib
-      PATTERN *.jnilib
       PATTERN *.cmake
       PATTERN *.in
       PATTERN *.txt
+      PATTERN *Test* EXCLUDE
+      PATTERN *test* EXCLUDE
 )
 
+if (install_jni_libs_separately)
+  # Install native VTK JAVA libs
+  file (INSTALL
+        "${install_prefix_dir}/@CMAKE_INSTALL_JNILIBDIR@/"
+        DESTINATION "${install_prefix_dir}/${NATIVE_NAME}/@CMAKE_INSTALL_JNILIBDIR@"
+        FILES_MATCHING
+        PATTERN *.dll
+        PATTERN *.so
+        PATTERN *.dylib
+        PATTERN *Test* EXCLUDE
+        PATTERN *test* EXCLUDE
+  )
+endif()
+
 # Rename vtk.jar with version number
-execute_process(
-  COMMAND "${CMAKE_COMMAND}" -E rename
-     "${CMAKE_INSTALL_PREFIX}/@VTK_INSTALL_LIBRARY_DIR@/vtk.jar"
-     "${CMAKE_INSTALL_PREFIX}/vtk-@VTK_MAJOR_VERSION@.@VTK_MINOR_VERSION@.jar"
+file(RENAME
+  "${install_prefix_dir}/@CMAKE_INSTALL_JARDIR@/vtk.jar"
+  "${install_prefix_dir}/vtk-@VTK_VERSION@.jar"
 )
 
 # Create the jar file
 execute_process(
-    COMMAND "@JAVA_ARCHIVE@" -cf "@CMAKE_INSTALL_PREFIX@/vtk-@VTK_MAJOR_VERSION@.@VTK_MINOR_VERSION@-${NATIVE_NAME}.jar" -C "@CMAKE_INSTALL_PREFIX@/${NATIVE_NAME}" .
+  COMMAND "@JAVA_ARCHIVE@" -cf "${install_prefix_dir}/vtk@MAVEN_VTK_ARTIFACT_SUFFIX@-@VTK_VERSION@-${NATIVE_NAME}.jar" -C "${install_prefix_dir}/${NATIVE_NAME}" .
 )
 
-set(VTK_JAVA_CLEANUP_INSTALL "@VTK_JAVA_CLEANUP_INSTALL@")
-set(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT "@CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT@")
-
-if (NOT VTK_JAVA_CLEANUP_INSTALL AND NOT CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-  # Remove un-wanted files
-  execute_process(
-    COMMAND "${CMAKE_COMMAND}" -E remove_directory "${CMAKE_INSTALL_PREFIX}/bin"
-    )
-  execute_process(
-    COMMAND "${CMAKE_COMMAND}" -E remove_directory "${CMAKE_INSTALL_PREFIX}/lib"
-    )
-  execute_process(
-    COMMAND "${CMAKE_COMMAND}" -E remove_directory "${CMAKE_INSTALL_PREFIX}/share"
-    )
-  execute_process(
-    COMMAND "${CMAKE_COMMAND}" -E remove_directory "${CMAKE_INSTALL_PREFIX}/include"
-    )
-  execute_process(
-    COMMAND "${CMAKE_COMMAND}" -E remove_directory "${CMAKE_INSTALL_PREFIX}/www"
-    )
-endif()
-
-execute_process(
-  COMMAND "${CMAKE_COMMAND}" -E copy pom.xml "${CMAKE_INSTALL_PREFIX}/pom.xml"
-)
-execute_process(
-  COMMAND "${CMAKE_COMMAND}" -E copy MAVEN-README.txt "${CMAKE_INSTALL_PREFIX}/README.txt"
+# Copy maven files
+file(INSTALL "@CMAKE_CURRENT_BINARY_DIR@/pom.xml" "@CMAKE_CURRENT_BINARY_DIR@/MAVEN-README.txt" DESTINATION "${install_prefix_dir}")
+file(RENAME
+  "${install_prefix_dir}/MAVEN-README.txt"
+  "${install_prefix_dir}/README.txt"
 )
 
 message("Java repackaging done")

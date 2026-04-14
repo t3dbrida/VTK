@@ -1,24 +1,13 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestXdmf3Parallel.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 // This test exercises xdmf3 reading and writing in parallel.
 //
 
-#include <mpi.h>
+#include <vtk_mpi.h>
 
 #include "vtkMPICommunicator.h"
 #include "vtkMPIController.h"
+#include "vtkNew.h"
 #include "vtkObjectFactory.h"
 #include "vtkProcess.h"
 #include "vtkSmartPointer.h"
@@ -29,22 +18,22 @@
 
 #include <vtksys/SystemTools.hxx>
 
+#include <iostream>
+
 class MyProcess : public vtkProcess
 {
 public:
-  static MyProcess *New();
+  static MyProcess* New();
   vtkTypeMacro(MyProcess, vtkProcess);
 
-  virtual void Execute() override;
+  void Execute() override;
 
-  void SetArgs(int argc, char *argv[],
-               const std::string& ifname,
-               const std::string& ofname)
+  void SetArgs(int argc, char* argv[], const std::string& ifname, const std::string& ofname)
   {
-      this->Argc = argc;
-      this->Argv = argv;
-      this->InFileName = ifname;
-      this->OutFileName = ofname;
+    this->Argc = argc;
+    this->Argv = argv;
+    this->InFileName = ifname;
+    this->OutFileName = ofname;
   }
 
   void CreatePipeline()
@@ -56,9 +45,9 @@ public:
     this->Reader->SetFileName(this->InFileName.c_str());
     if (my_id == 0)
     {
-      cerr << my_id << "/" << num_procs << endl;
-      cerr << "IFILE " << this->InFileName << endl;
-      cerr << "OFILE " << this->OutFileName << endl;
+      std::cerr << my_id << "/" << num_procs << std::endl;
+      std::cerr << "IFILE " << this->InFileName << std::endl;
+      std::cerr << "OFILE " << this->OutFileName << std::endl;
     }
 
     this->Writer = vtkXdmf3Writer::New();
@@ -67,14 +56,18 @@ public:
   }
 
 protected:
-  MyProcess() { this->Argc = 0; this->Argv = nullptr;}
+  MyProcess()
+  {
+    this->Argc = 0;
+    this->Argv = nullptr;
+  }
 
   int Argc;
-  char **Argv;
+  char** Argv;
   std::string InFileName;
   std::string OutFileName;
-  vtkXdmf3Reader *Reader;
-  vtkXdmf3Writer *Writer;
+  vtkXdmf3Reader* Reader;
+  vtkXdmf3Writer* Writer;
 };
 
 vtkStandardNewMacro(MyProcess);
@@ -94,8 +87,7 @@ void MyProcess::Execute()
   this->ReturnValue = 1;
 }
 
-
-int main(int argc, char *argv[])
+int TestXdmf3Parallel(int argc, char** argv)
 {
   // This is here to avoid false leak messages from vtkDebugLeaks when
   // using mpich. It appears that the root process which spawns all the
@@ -106,24 +98,21 @@ int main(int argc, char *argv[])
 
   // Note that this will create a vtkMPIController if MPI
   // is configured, vtkThreadedController otherwise.
-  vtkMPIController *contr = vtkMPIController::New();
+  vtkNew<vtkMPIController> contr;
   contr->Initialize(&argc, &argv, 1);
-
-  int retVal = 1; // 1 == failed
 
   int numProcs = contr->GetNumberOfProcesses();
 
-  if (numProcs < 2 && false)
+  if (numProcs < 2)
   {
-    cout << "This test requires at least 2 processes" << endl;
-    contr->Delete();
-    return retVal;
+    std::cout << "This test requires at least 2 processes" << std::endl;
+    return EXIT_FAILURE;
   }
 
   vtkMultiProcessController::SetGlobalController(contr);
 
-  vtkTesting *testHelper = vtkTesting::New();
-  testHelper->AddArguments(argc,const_cast<const char **>(argv));
+  vtkTesting* testHelper = vtkTesting::New();
+  testHelper->AddArguments(argc, const_cast<const char**>(argv));
   std::string datadir = testHelper->GetDataRoot();
   std::string ifile = datadir + "/Data/XDMF/Iron/Iron_Protein.ImageData.xmf";
   std::string tempdir = testHelper->GetTempDirectory();
@@ -132,31 +121,30 @@ int main(int argc, char *argv[])
   std::string ofile = tempdir + "/Iron_Protein.ImageData.xmf";
   testHelper->Delete();
 
-  //allow caller to use something else
-  for (int i = 0; i<argc; i++)
+  // allow caller to use something else
+  for (int i = 0; i < argc; i++)
   {
     if (!strncmp(argv[i], "--file=", 11))
     {
-      ifile=argv[i]+11;
+      ifile = argv[i] + 11;
     }
   }
-  MyProcess *p = MyProcess::New();
-  p->SetArgs(argc, argv, ifile.c_str(), ofile.c_str());
+  MyProcess* p = MyProcess::New();
+  p->SetArgs(argc, argv, ifile, ofile);
 
   contr->SetSingleProcessObject(p);
   contr->SingleMethodExecute();
 
-  retVal = p->GetReturnValue();
+  int retVal = p->GetReturnValue();
 
   p->Delete();
   contr->Finalize();
-  contr->Delete();
-  vtkMultiProcessController::SetGlobalController(0);
+  vtkMultiProcessController::SetGlobalController(nullptr);
 
   if (retVal)
   {
-    //test passed, remove the files we wrote
-    vtksys::SystemTools::RemoveADirectory(tempdir.c_str());
+    // test passed, remove the files we wrote
+    vtksys::SystemTools::RemoveADirectory(tempdir);
   }
   return !retVal;
 }

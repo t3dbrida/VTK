@@ -1,18 +1,19 @@
 #!/usr/bin/env python
-import vtk
-from vtk.util.misc import vtkGetDataRoot
+from vtkmodules.vtkDomainsMicroscopy import vtkOpenSlideReader
+import vtkmodules.test.Testing
+from vtkmodules.util.misc import vtkGetDataRoot
 VTK_DATA_ROOT = vtkGetDataRoot()
 import sys
 
-class TestOpenSlideReader(Testing.vtkTest):
+class TestOpenSlideReader(vtkmodules.test.Testing.vtkTest):
 
     def testCanReadFile(self):
-        reader = vtk.vtkOpenSlideReader()
+        reader = vtkOpenSlideReader()
         self.assertEqual(reader.CanReadFile(VTK_DATA_ROOT + "/Data/RectGrid2.vtk"), 0)
 
     def testCanNotReadFile(self):
-        reader = vtk.vtkOpenSlideReader()
+        reader = vtkOpenSlideReader()
         self.assertEqual(reader.CanReadFile(VTK_DATA_ROOT + "/Data/Microscopy/small2.ndpi"), 2)
 
 if __name__ == "__main__":
-    Testing.main([(TestOpenSlideReader, 'test')])
+    vtkmodules.test.Testing.main([(TestOpenSlideReader, 'test')])

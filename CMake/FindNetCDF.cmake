@@ -1,119 +1,143 @@
-# - Find NetCDF
-# Find the native NetCDF includes and library
-#
-#  NETCDF_INCLUDE_DIR  - user modifiable choice of where netcdf headers are
-#  NETCDF_LIBRARY      - user modifiable choice of where netcdf libraries are
-#
-# Your package can require certain interfaces to be FOUND by setting these
-#
-#  NETCDF_CXX         - require the C++ interface and link the C++ library
-#  NETCDF_F77         - require the F77 interface and link the fortran library
-#  NETCDF_F90         - require the F90 interface and link the fortran library
-#
-# Or equivalently by calling FindNetCDF with a COMPONENTS argument containing one or
-# more of "CXX;F77;F90".
-#
-# When interfaces are requested the user has access to interface specific hints:
-#
-#  NETCDF_${LANG}_INCLUDE_DIR - where to search for interface header files
-#  NETCDF_${LANG}_LIBRARY     - where to search for interface libraries
-#
-# This module returns these variables for the rest of the project to use.
-#
-#  NETCDF_FOUND          - True if NetCDF found including required interfaces (see below)
-#  NETCDF_LIBRARIES      - All netcdf related libraries.
-#  NETCDF_INCLUDE_DIRS   - All directories to include.
-#  NETCDF_HAS_INTERFACES - Whether requested interfaces were found or not.
-#  NETCDF_${LANG}_INCLUDE_DIRS/NETCDF_${LANG}_LIBRARIES - C/C++/F70/F90 only interface
-#
-# Normal usage would be:
-#  set (NETCDF_F90 "YES")
-#  find_package (NetCDF REQUIRED)
-#  target_link_libraries (uses_everthing ${NETCDF_LIBRARIES})
-#  target_link_libraries (only_uses_f90 ${NETCDF_F90_LIBRARIES})
+#[==[
+Provides the following variables:
 
-#search starting from user editable cache var
-if (NETCDF_INCLUDE_DIR AND NETCDF_LIBRARY)
-  # Already in cache, be silent
-  set (NETCDF_FIND_QUIETLY TRUE)
-endif ()
+  * `NetCDF_FOUND`: Whether NetCDF was found or not.
+  * `NetCDF_INCLUDE_DIRS`: Include directories necessary to use NetCDF.
+  * `NetCDF_LIBRARIES`: Libraries necessary to use NetCDF.
+  * `NetCDF_VERSION`: The version of NetCDF found.
+  * `NetCDF::NetCDF`: A target to use with `target_link_libraries`.
+  * `NetCDF_HAS_PNETCDF`: Whether or not NetCDF has PnetCDF support.
+  * `NetCDF_HAS_PARALLEL4`: Whether or not NetCDF has arallel IO support via HDF5.
+  * `NetCDF_HAS_PARALLEL`: Whether or not NetCDF has parallel IO support via HDF5 and/or PnetCDF.
+#]==]
 
-set(USE_DEFAULT_PATHS "NO_DEFAULT_PATH")
-if(NETCDF_USE_DEFAULT_PATHS)
-  set(USE_DEFAULT_PATHS "")
-endif()
-
-find_path (NETCDF_INCLUDE_DIR netcdf.h
-  PATHS "${NETCDF_DIR}/include")
-mark_as_advanced (NETCDF_INCLUDE_DIR)
-set (NETCDF_C_INCLUDE_DIRS ${NETCDF_INCLUDE_DIR})
-
-find_library (NETCDF_LIBRARY NAMES netcdf
-  PATHS "${NETCDF_DIR}/lib"
-  HINTS "${NETCDF_INCLUDE_DIR}/../lib")
-mark_as_advanced (NETCDF_LIBRARY)
-
-set (NETCDF_C_LIBRARIES ${NETCDF_LIBRARY})
-
-#start finding requested language components
-set (NetCDF_libs "")
-set (NetCDF_includes "${NETCDF_INCLUDE_DIR}")
-
-get_filename_component (NetCDF_lib_dirs "${NETCDF_LIBRARY}" PATH)
-set (NETCDF_HAS_INTERFACES "YES") # will be set to NO if we're missing any interfaces
-
-macro (NetCDF_check_interface lang header libs)
-  if (NETCDF_${lang})
-    #search starting from user modifiable cache var
-    find_path (NETCDF_${lang}_INCLUDE_DIR NAMES ${header}
-      HINTS "${NETCDF_INCLUDE_DIR}"
-      HINTS "${NETCDF_${lang}_ROOT}/include"
-      ${USE_DEFAULT_PATHS})
-
-    find_library (NETCDF_${lang}_LIBRARY NAMES ${libs}
-      HINTS "${NetCDF_lib_dirs}"
-      HINTS "${NETCDF_${lang}_ROOT}/lib"
-      ${USE_DEFAULT_PATHS})
-
-    mark_as_advanced (NETCDF_${lang}_INCLUDE_DIR NETCDF_${lang}_LIBRARY)
-
-    #export to internal varS that rest of project can use directly
-    set (NETCDF_${lang}_LIBRARIES ${NETCDF_${lang}_LIBRARY})
-    set (NETCDF_${lang}_INCLUDE_DIRS ${NETCDF_${lang}_INCLUDE_DIR})
-
-    if (NETCDF_${lang}_INCLUDE_DIR AND NETCDF_${lang}_LIBRARY)
-      list (APPEND NetCDF_libs ${NETCDF_${lang}_LIBRARY})
-      list (APPEND NetCDF_includes ${NETCDF_${lang}_INCLUDE_DIR})
+function(FindNetCDF_get_parallel_features include_dir)
+  set(_features
+    "PNETCDF"
+    "PARALLEL4"
+    "PARALLEL"
+  )
+  foreach (_feature IN LISTS _features)
+    set(_nc_has_feature "NC_HAS_${_feature}")
+    file(STRINGS "${include_dir}/netcdf_meta.h" _netcdf_lines
+      REGEX "#define[ \t]+${_nc_has_feature}[ \t]")
+    string(REGEX REPLACE ".*${_nc_has_feature}[ \t]*([0-1]+).*" "\\1" _nc_has_feature_value "${_netcdf_lines}")
+    if (_nc_has_feature_value)
+      set(NetCDF_HAS_${_feature} TRUE PARENT_SCOPE)
     else ()
-      set (NETCDF_HAS_INTERFACES "NO")
-      message (STATUS "Failed to find NetCDF interface for ${lang}")
+      set(NetCDF_HAS_${_feature} FALSE PARENT_SCOPE)
+    endif ()
+    unset(_netcdf_lines)
+    unset(_nc_has_feature_value)
+  endforeach ()
+endfunction()
+
+# Try to find a CMake-built NetCDF.
+find_package(netCDF CONFIG QUIET)
+if (netCDF_FOUND)
+  # Forward the variables in a consistent way.
+  set(NetCDF_FOUND "${netCDF_FOUND}")
+  set(NetCDF_INCLUDE_DIRS "${netCDF_INCLUDE_DIR}")
+  set(NetCDF_LIBRARIES "${netCDF_LIBRARIES}")
+  set(NetCDF_VERSION "${NetCDFVersion}")
+
+  include(FindPackageHandleStandardArgs)
+  find_package_handle_standard_args(NetCDF
+    REQUIRED_VARS NetCDF_INCLUDE_DIRS NetCDF_LIBRARIES
+    VERSION_VAR NetCDF_VERSION)
+
+  if (NOT TARGET NetCDF::NetCDF)
+    add_library(NetCDF::NetCDF INTERFACE IMPORTED)
+    if (TARGET "netCDF::netcdf")
+      # 4.7.3
+      set_target_properties(NetCDF::NetCDF PROPERTIES
+        INTERFACE_LINK_LIBRARIES "netCDF::netcdf")
+    elseif (TARGET "netcdf")
+      set_target_properties(NetCDF::NetCDF PROPERTIES
+        INTERFACE_LINK_LIBRARIES "netcdf")
+    else ()
+      set_target_properties(NetCDF::NetCDF PROPERTIES
+        INTERFACE_LINK_LIBRARIES "${netCDF_LIBRARIES}")
     endif ()
   endif ()
-endmacro ()
 
-list (FIND NetCDF_FIND_COMPONENTS "CXX" _nextcomp)
-if (_nextcomp GREATER -1)
-  set (NETCDF_CXX 1)
+  FindNetCDF_get_parallel_features("${NetCDF_INCLUDE_DIRS}")
+  # Skip the rest of the logic in this file.
+  return ()
 endif ()
-list (FIND NetCDF_FIND_COMPONENTS "F77" _nextcomp)
-if (_nextcomp GREATER -1)
-  set (NETCDF_F77 1)
-endif ()
-list (FIND NetCDF_FIND_COMPONENTS "F90" _nextcomp)
-if (_nextcomp GREATER -1)
-  set (NETCDF_F90 1)
-endif ()
-NetCDF_check_interface (CXX netcdfcpp.h netcdf_c++)
-NetCDF_check_interface (F77 netcdf.inc  netcdff)
-NetCDF_check_interface (F90 netcdf.mod  netcdff)
 
-#export accumulated results to internal varS that rest of project can depend on
-list (APPEND NetCDF_libs "${NETCDF_C_LIBRARIES}")
-set (NETCDF_LIBRARIES ${NetCDF_libs})
-set (NETCDF_INCLUDE_DIRS ${NetCDF_includes})
+find_package(PkgConfig QUIET)
+if (PkgConfig_FOUND)
+  pkg_check_modules(_NetCDF QUIET netcdf IMPORTED_TARGET)
+  if (_NetCDF_FOUND)
+    # Forward the variables in a consistent way.
+    set(NetCDF_FOUND "${_NetCDF_FOUND}")
+    set(NetCDF_INCLUDE_DIRS "${_NetCDF_INCLUDE_DIRS}")
+    set(NetCDF_LIBRARIES "${_NetCDF_LIBRARIES}")
+    set(NetCDF_VERSION "${_NetCDF_VERSION}")
 
-# handle the QUIETLY and REQUIRED arguments and set NETCDF_FOUND to TRUE if
-# all listed variables are TRUE
-include (FindPackageHandleStandardArgs)
-find_package_handle_standard_args (NetCDF
-  DEFAULT_MSG NETCDF_LIBRARIES NETCDF_INCLUDE_DIRS NETCDF_HAS_INTERFACES)
+    include(FindPackageHandleStandardArgs)
+    find_package_handle_standard_args(NetCDF
+      REQUIRED_VARS NetCDF_LIBRARIES
+      # This is not required because system-default include paths are not
+      # reported by `FindPkgConfig`, so this might be empty. Assume that if we
+      # have a library, the include directories are fine (if any) since
+      # PkgConfig reported that the package was found.
+      # NetCDF_INCLUDE_DIRS
+      VERSION_VAR NetCDF_VERSION)
+
+    if (NOT TARGET NetCDF::NetCDF)
+      add_library(NetCDF::NetCDF INTERFACE IMPORTED)
+      set_target_properties(NetCDF::NetCDF PROPERTIES
+        INTERFACE_LINK_LIBRARIES "PkgConfig::_NetCDF")
+    endif ()
+
+    FindNetCDF_get_parallel_features("${_NetCDF_INCLUDEDIR}")
+    # Skip the rest of the logic in this file.
+    return ()
+  endif ()
+endif ()
+
+find_path(NetCDF_INCLUDE_DIR
+  NAMES netcdf.h
+  DOC "netcdf include directories")
+mark_as_advanced(NetCDF_INCLUDE_DIR)
+
+find_library(NetCDF_LIBRARY
+  NAMES netcdf
+  DOC "netcdf library")
+mark_as_advanced(NetCDF_LIBRARY)
+
+if (NetCDF_INCLUDE_DIR)
+  file(STRINGS "${NetCDF_INCLUDE_DIR}/netcdf_meta.h" _netcdf_version_lines
+    REGEX "#define[ \t]+NC_VERSION_(MAJOR|MINOR|PATCH|NOTE)")
+  string(REGEX REPLACE ".*NC_VERSION_MAJOR *\([0-9]*\).*" "\\1" _netcdf_version_major "${_netcdf_version_lines}")
+  string(REGEX REPLACE ".*NC_VERSION_MINOR *\([0-9]*\).*" "\\1" _netcdf_version_minor "${_netcdf_version_lines}")
+  string(REGEX REPLACE ".*NC_VERSION_PATCH *\([0-9]*\).*" "\\1" _netcdf_version_patch "${_netcdf_version_lines}")
+  string(REGEX REPLACE ".*NC_VERSION_NOTE *\"\([^\"]*\)\".*" "\\1" _netcdf_version_note "${_netcdf_version_lines}")
+  set(NetCDF_VERSION "${_netcdf_version_major}.${_netcdf_version_minor}.${_netcdf_version_patch}${_netcdf_version_note}")
+  unset(_netcdf_version_major)
+  unset(_netcdf_version_minor)
+  unset(_netcdf_version_patch)
+  unset(_netcdf_version_note)
+  unset(_netcdf_version_lines)
+
+  FindNetCDF_get_parallel_features("${NetCDF_INCLUDE_DIR}")
+endif ()
+
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(NetCDF
+  REQUIRED_VARS NetCDF_LIBRARY NetCDF_INCLUDE_DIR
+  VERSION_VAR NetCDF_VERSION)
+
+if (NetCDF_FOUND)
+  set(NetCDF_INCLUDE_DIRS "${NetCDF_INCLUDE_DIR}")
+  set(NetCDF_LIBRARIES "${NetCDF_LIBRARY}")
+
+  if (NOT TARGET NetCDF::NetCDF)
+    add_library(NetCDF::NetCDF UNKNOWN IMPORTED)
+    set_target_properties(NetCDF::NetCDF PROPERTIES
+      IMPORTED_LOCATION "${NetCDF_LIBRARY}"
+      INTERFACE_INCLUDE_DIRECTORIES "${NetCDF_INCLUDE_DIR}")
+  endif ()
+endif ()

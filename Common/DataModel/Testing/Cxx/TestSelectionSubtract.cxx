@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestSelectionSubtract
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 // .NAME
 // .SECTION Description
@@ -24,13 +12,10 @@
 #include "vtkSmartPointer.h"
 
 #include <iostream>
-using namespace std;
 
-#define VTK_CREATE(type, name) \
-  vtkSmartPointer<type> name = vtkSmartPointer<type>::New()
+#define VTK_CREATE(type, name) vtkSmartPointer<type> name = vtkSmartPointer<type>::New()
 
 #define DEBUG 0
-
 
 #if DEBUG
 // ------------------------------------------------------------------------------------------------
@@ -38,28 +23,30 @@ static void PrintSelectionNodes(vtkSmartPointer<vtkSelection>& sel, const char* 
 {
   vtkIdType numNodes = sel->GetNumberOfNodes();
 
-  if(tag)
+  if (tag)
   {
-    cout << tag << endl;
+    std::cout << tag << std::endl;
   }
 
-  for(int iNode=0; iNode < numNodes; iNode++)
+  for (int iNode = 0; iNode < numNodes; iNode++)
   {
-    if(tag) cout << "\t";
-    cout << "Node: " << iNode << endl;
+    if (tag)
+      std::cout << "\t";
+    std::cout << "Node: " << iNode << std::endl;
     vtkIdType listSize = sel->GetNode(iNode)->GetSelectionList()->GetNumberOfTuples();
-    for(int iVal=0; iVal < listSize; iVal++)
+    for (int iVal = 0; iVal < listSize; iVal++)
     {
-      if(tag) cout << "\t";
-      cout << "\t" << iVal << "\t" << sel->GetNode(iNode)->GetSelectionList()->GetVariantValue(iVal) << endl;
+      if (tag)
+        std::cout << "\t";
+      std::cout << "\t" << iVal << "\t"
+                << sel->GetNode(iNode)->GetSelectionList()->GetVariantValue(iVal) << std::endl;
     }
   }
 }
 #endif
 
-
 // ------------------------------------------------------------------------------------------------
-int TestSelectionSubtract(int,char *[])
+int TestSelectionSubtract(int, char*[])
 {
   // Create a selection, sel1, of PEDIGREEIDS containing {1, 2, 3}
   VTK_CREATE(vtkSelection, sel1);
@@ -92,7 +79,7 @@ int TestSelectionSubtract(int,char *[])
 
   // Subtract sel2 from sel1
 #if DEBUG
-  cout << endl << "Subtract sel2 from sel1 ..." << endl << endl;
+  std::cout << std::endl << "Subtract sel2 from sel1 ..." << std::endl << std::endl;
 #endif
   sel1->Subtract(sel2);
 
@@ -103,37 +90,37 @@ int TestSelectionSubtract(int,char *[])
 
   // Correctness check.
   bool failed = false;
-  cout << "Check # of nodes == 1 ....... ";
-  if(sel1->GetNumberOfNodes() != 1)
+  std::cout << "Check # of nodes == 1 ....... ";
+  if (sel1->GetNumberOfNodes() != 1)
   {
-    cout << "FAILED" << endl;
+    std::cout << "FAILED" << std::endl;
     failed = true;
   }
   else
   {
-    cout << "OK" << endl;
+    std::cout << "OK" << std::endl;
   }
 
-  cout << "Check # of tuples == 1 ...... ";
-  if(sel1->GetNode(0)->GetSelectionList()->GetNumberOfTuples() != 1)
+  std::cout << "Check # of tuples == 1 ...... ";
+  if (sel1->GetNode(0)->GetSelectionList()->GetNumberOfTuples() != 1)
   {
-    cout << "FAILED" << endl;
+    std::cout << "FAILED" << std::endl;
     failed = true;
   }
   else
   {
-    cout << "OK" << endl;
+    std::cout << "OK" << std::endl;
   }
 
-  cout << "Check selection value is 2 .. ";
-  if(sel1->GetNode(0)->GetSelectionList()->GetVariantValue(0) != 2)
+  std::cout << "Check selection value is 2 .. ";
+  if (sel1->GetNode(0)->GetSelectionList()->GetVariantValue(0) != 2)
   {
-    cout << "FAILED" << endl;
+    std::cout << "FAILED" << std::endl;
     failed = true;
   }
   else
   {
-    cout << "OK" << endl;
+    std::cout << "OK" << std::endl;
   }
 
   return failed ? EXIT_FAILURE : EXIT_SUCCESS;

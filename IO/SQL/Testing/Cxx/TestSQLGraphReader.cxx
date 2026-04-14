@@ -1,40 +1,24 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestSQLGraphReader.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-/*-------------------------------------------------------------------------
-  Copyright 2008 Sandia Corporation.
-  Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-  the U.S. Government retains certain rights in this software.
--------------------------------------------------------------------------*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-FileCopyrightText: Copyright 2008 Sandia Corporation
+// SPDX-License-Identifier: LicenseRef-BSD-3-Clause-Sandia-USGov
 
 #include "vtkActor.h"
 #include "vtkGraphMapper.h"
 #include "vtkMath.h"
 #include "vtkRegressionTestImage.h"
-#include "vtkRenderer.h"
 #include "vtkRenderWindow.h"
 #include "vtkRenderWindowInteractor.h"
+#include "vtkRenderer.h"
 #include "vtkSQLGraphReader.h"
-#include "vtkSQLiteDatabase.h"
 #include "vtkSQLQuery.h"
+#include "vtkSQLiteDatabase.h"
 #include "vtkSmartPointer.h"
-#include "vtkStdString.h"
 
 #include <sstream>
 
-#define VTK_CREATE(type, name) \
-  vtkSmartPointer<type> name = vtkSmartPointer<type>::New()
+#include <iostream>
+
+#define VTK_CREATE(type, name) vtkSmartPointer<type> name = vtkSmartPointer<type>::New()
 
 int TestSQLGraphReader(int argc, char* argv[])
 {
@@ -47,8 +31,8 @@ int TestSQLGraphReader(int argc, char* argv[])
   bool ok = database->Open("");
   if (!ok)
   {
-    cerr << "Could not open database!" << endl;
-    cerr << database->GetLastErrorText() << endl;
+    std::cerr << "Could not open database!" << std::endl;
+    std::cerr << database->GetLastErrorText() << std::endl;
     return 1;
   }
 
@@ -66,8 +50,8 @@ int TestSQLGraphReader(int argc, char* argv[])
   {
     oss.str("");
     oss << "INSERT INTO vertices VALUES(" << i << ", "
-      << 0.5*cos(i*2.0*vtkMath::Pi()/vertices) << ", "
-      << 0.5*sin(i*2.0*vtkMath::Pi()/vertices) << ")" << endl;
+        << 0.5 * cos(i * 2.0 * vtkMath::Pi() / vertices) << ", "
+        << 0.5 * sin(i * 2.0 * vtkMath::Pi() / vertices) << ")" << std::endl;
     q->SetQuery(oss.str().c_str());
     q->Execute();
   }
@@ -80,13 +64,13 @@ int TestSQLGraphReader(int argc, char* argv[])
   for (int i = 0; i < vertices; i++)
   {
     oss.str("");
-    oss << "INSERT INTO edges VALUES(" << 2*i+0 << ", "
-      << i << ", " << (i+1)%vertices << ")" << endl;
+    oss << "INSERT INTO edges VALUES(" << 2 * i + 0 << ", " << i << ", " << (i + 1) % vertices
+        << ")" << std::endl;
     q->SetQuery(oss.str().c_str());
     q->Execute();
     oss.str("");
-    oss << "INSERT INTO edges VALUES(" << 2*i+1 << ", "
-      << (i+3)%vertices << ", " << i << ")" << endl;
+    oss << "INSERT INTO edges VALUES(" << 2 * i + 1 << ", " << (i + 3) % vertices << ", " << i
+        << ")" << std::endl;
     q->SetQuery(oss.str().c_str());
     q->Execute();
   }

@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestCellDataToPointData.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include <vtkImageDataToPointSet.h>
 
@@ -20,6 +8,8 @@
 #include <vtkStructuredGrid.h>
 
 #include <vtkNew.h>
+
+#include <iostream>
 
 int TestImageDataToPointSet(int, char*[])
 {
@@ -35,13 +25,19 @@ int TestImageDataToPointSet(int, char*[])
   wavelet->SetYMag(18);
   wavelet->SetZMag(5);
   wavelet->SetSubsampleRate(1);
+  wavelet->Update();
+
+  vtkImageData* image = wavelet->GetOutput();
+  image->SetDirectionMatrix(1, 0, 0, 0, -1, 0, 0, 0, -1);
+  image->SetSpacing(0.5, 1, 1.2);
+  image->SetOrigin(100, -3.3, 0);
 
   vtkNew<vtkImageDataToPointSet> image2points;
-  image2points->SetInputConnection(wavelet->GetOutputPort());
+  image2points->SetInputData(image);
   image2points->Update();
 
-  vtkDataSet *inData = wavelet->GetOutput();
-  vtkDataSet *outData = image2points->GetOutput();
+  vtkDataSet* inData = wavelet->GetOutput();
+  vtkDataSet* outData = image2points->GetOutput();
 
   vtkIdType numPoints = inData->GetNumberOfPoints();
   if (numPoints != outData->GetNumberOfPoints())
@@ -54,8 +50,8 @@ int TestImageDataToPointSet(int, char*[])
   vtkIdType numCells = inData->GetNumberOfCells();
   if (numCells != outData->GetNumberOfCells())
   {
-    std::cout << "Got wrong number of cells: " << numCells << " vs "
-              << outData->GetNumberOfCells() << std::endl;
+    std::cout << "Got wrong number of cells: " << numCells << " vs " << outData->GetNumberOfCells()
+              << std::endl;
     return EXIT_FAILURE;
   }
 
@@ -67,13 +63,13 @@ int TestImageDataToPointSet(int, char*[])
     inData->GetPoint(pointId, inPoint);
     outData->GetPoint(pointId, outPoint);
 
-    if (   (inPoint[0] != outPoint[0])
-        || (inPoint[1] != outPoint[1])
-        || (inPoint[2] != outPoint[2]) )
+    if ((inPoint[0] != outPoint[0]) || (inPoint[1] != outPoint[1]) || (inPoint[2] != outPoint[2]))
     {
       std::cout << "Got mismatched point coordinates." << std::endl;
       std::cout << "Input: " << inPoint[0] << " " << inPoint[1] << " " << inPoint[2] << std::endl;
-      std::cout << "Output: " << outPoint[0] << " " << outPoint[1] << " " << outPoint[2] << std::endl;
+      std::cout << "Output: " << outPoint[0] << " " << outPoint[1] << " " << outPoint[2]
+                << std::endl;
+      return EXIT_FAILURE;
     }
   }
 

@@ -1,13 +1,15 @@
-find_package(ODBC REQUIRED)
+set(classes
+  vtkODBCDatabase
+  vtkODBCQuery)
 
-set(ODBC_SRCS
-  vtkODBCDatabase.cxx
-  vtkODBCQuery.cxx
-  vtkIOODBC_AutoInit.cxx
-  )
+vtk_module_add_module(VTK::IOODBC
+  CLASSES ${classes}
+  SOURCES vtkIOODBC_AutoInit.cxx)
 
-include_directories(${ODBC_INCLUDE_DIRECTORIES})
-
-vtk_module_library(vtkIOODBC ${ODBC_SRCS})
-
-vtk_module_link_libraries(vtkIOODBC LINK_PRIVATE ${ODBC_LIBRARIES})
+vtk_module_find_package(PRIVATE_IF_SHARED
+  PACKAGE ODBC)
+vtk_module_link(VTK::IOODBC
+  NO_KIT_EXPORT_IF_SHARED
+  PRIVATE
+    ODBC::ODBC)
+vtk_add_test_mangling(VTK::IOODBC)

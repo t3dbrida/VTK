@@ -1,13 +1,18 @@
-set(Module_SRCS
-  vtk3DSImporter.cxx
-  vtkImporter.cxx
-  vtkVRMLImporter.cxx
-  vtkOBJImporter.cxx
-  vtkOBJImporterInternals.cxx
-)
+set(classes
+  vtk3DSImporter
+  vtkGLTFImporter
+  vtkImporter
+  vtkVRMLImporter
+  vtkOBJImporter)
 
-set (${vtk-module}_HDRS
-  vtk3DS.h
-)
+set(nowrap_classes
+  vtkOBJImporterInternals)
 
-vtk_module_library(vtkIOImport ${Module_SRCS})
+set(headers
+  vtk3DS.h)
+
+vtk_module_add_module(VTK::IOImport
+  CLASSES ${classes}
+  NOWRAP_CLASSES  ${nowrap_classes}
+  HEADERS ${headers})
+vtk_add_test_mangling(VTK::IOImport)

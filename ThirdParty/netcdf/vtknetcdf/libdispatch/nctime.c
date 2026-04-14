@@ -1,10 +1,10 @@
 /*********************************************************************
- *   Copyright 2008, University Corporation for Atmospheric Research
+ *   Copyright 2018, University Corporation for Atmospheric Research
  *   See netcdf/COPYRIGHT file for copying and redistribution conditions.
  *   $Id: nctime.c,v 1.9 2010/05/05 22:15:39 dmh Exp $
  *********************************************************************/
 
-/* 
+/*
  * This code was extracted with permission from the CDMS time
  * conversion and arithmetic routines developed by Bob Drach, Lawrence
  * Livermore National Laboratory as part of the cdtime library.  Russ
@@ -16,6 +16,7 @@
  * the CDMS library, get the original sources from LLNL.
  */
 
+#include "config.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
@@ -24,6 +25,9 @@
 #include <stdarg.h>
 #include <assert.h>
 #include "nctime.h"
+
+static const cdCompTime ZA = {1582, 10, 5, 0.0};
+static const cdCompTime ZB = {1582, 10, 15, 0.0};
 
 static int cuErrOpts;			     /* Error options */
 static int cuErrorOccurred = 0;		     /* True iff cdError was called */
@@ -51,14 +55,13 @@ cdTrim(char* s, int n)
 		return;
 	for(c=s; *c && c<s+n-1 && !isspace((int)*c); c++);
 	*c='\0';
-	return;
 }
 
 static void
 cdError(char *fmt, ...)
 {
 	va_list args;
-	
+
 	cuErrorOccurred = 1;
 	if(cuErrOpts & CU_VERBOSE){
 		va_start(args,fmt);
@@ -69,13 +72,15 @@ cdError(char *fmt, ...)
 	}
 	if(cuErrOpts & CU_FATAL)
 		exit(1);
-	return;
 }
 
 #define ISLEAP(year,timeType)	((timeType & Cd366) || (((timeType) & CdHasLeap) && (!((year) % 4) && (((timeType) & CdJulianType) || (((year) % 100) || !((year) % 400))))))
 
-static int mon_day_cnt[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
-static int days_sum[12] = {0,31,59,90,120,151,181,212,243,273,304,334};
+static const int mon_day_cnt_normal[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
+static const int mon_day_cnt_leap[12] = {31,29,31,30,31,30,31,31,30,31,30,31};
+static const int days_sum[12] = {0,31,59,90,120,151,181,212,243,273,304,334};
+
+static const int* mon_day_cnt;
 
 /* Compute month and day from year and day-of-year.
  *
@@ -84,11 +89,11 @@ static int days_sum[12] = {0,31,59,90,120,151,181,212,243,273,304,334};
  *		date->year   (long)  (year since 0 BC)
  *              date->timeType (CdTimetype) (time type)
  *              date->baseYear   base year for relative times
- *	Output: 
- *		date->month  (short)  (month in year) 
+ *	Output:
+ *		date->month  (short)  (month in year)
  *		date->day    (short)  (day in month)
  *
- * 
+ *
  * Derived from NRL NEONS V3.6.
  */
 
@@ -113,9 +118,9 @@ CdMonthDay(int *doy, CdTime *date)
 		year = date->year;
 
 	if (ISLEAP(year,date->timeType)) {
-		mon_day_cnt[1] = 29;
+		mon_day_cnt = mon_day_cnt_leap;
 	} else {
-		mon_day_cnt[1] = 28;
+		mon_day_cnt = mon_day_cnt_normal;
 	}
 	date->month	= 0;
 	for (i = 0; i < 12; i++) {
@@ -127,18 +132,17 @@ CdMonthDay(int *doy, CdTime *date)
 		if(idoy <= 0)
 		    return;
 	}
-	return;
 }
 
 /* Compute day-of-year from year, month and day
- * 
+ *
  *	Input:
  *		date->year  (long)  (year since 0 BC)
  *		date->month (short)  (month in year)
  *		date->day   (short)  (day in month)
  *              date->baseYear   base year for relative times
  *	Output: doy         (int)  (day-of-year)
- * 
+ *
  * Derived from NRL NEONS V3.6
  */
 
@@ -152,7 +156,7 @@ CdDayOfYear(CdTime *date, int *doy)
    	month	= date->month;
 	if (month < 1 || month > 12) {
 		cdError( "Day-of-year error; month: %d\n", month);
-		month = 1;	
+		month = 1;
 	}
 
 	if(!(date->timeType & CdChronCal))   /* Ignore year for Clim calendar */
@@ -168,19 +172,18 @@ CdDayOfYear(CdTime *date, int *doy)
 	} else {		/* date->timeType & Cd360 */
 	    *doy = 30*(month-1) + date->day + leap_add ;
 	}
-	return;
 }
 
 /* Convert epochal time (hours since 00 jan 1, 1970)
  *   to human time (structured)
- * 
- * Input: 
+ *
+ * Input:
  *   etime = epochal time representation
  *   timeType = time type (e.g., CdChron, CdClim, etc.) as defined in cdms.h
  *   baseYear = base real, used for relative time types only
- * 
+ *
  * Output: htime = human (structured) time representation
- * 
+ *
  * Derived from NRL Neons V3.6
  */
 void
@@ -228,8 +231,6 @@ Cde2h(double etime, CdTimeType timeType, long baseYear, CdTime *htime)
 	if(!(timeType & CdChronCal)) htime->year = 0; /* Set year to 0 for Clim */
 	htime->timeType = timeType;
 	CdMonthDay(&doy,htime);
-
-        return;
 }
 
 /* Add 'nDel' times 'delTime' to epochal time 'begEtm',
@@ -242,9 +243,6 @@ CdAddDelTime(double begEtm, long nDel, CdDeltaTime delTime, CdTimeType timeType,
 	double delHours;
 	long delMonths, delYears;
 	CdTime bhtime, ehtime;
-
-	extern void Cde2h(double etime, CdTimeType timeType, long baseYear, CdTime *htime);
-	extern void Cdh2e(CdTime *htime, double *etime);
 
 	switch(delTime.units){
 	  case CdYear:
@@ -298,7 +296,6 @@ CdAddDelTime(double begEtm, long nDel, CdDeltaTime delTime, CdTimeType timeType,
 		break;
 	  default: break;
 	}
-	return;
 }
 
 /* Parse relative units, returning the unit and base component time. */
@@ -309,50 +306,48 @@ cdParseRelunits(cdCalenType timetype, char* relunits, cdUnitTime* unit, cdCompTi
 	char charunits[CD_MAX_RELUNITS];
 	char basetime_1[CD_MAX_CHARTIME];
 	char basetime_2[CD_MAX_CHARTIME];
-	char basetime[CD_MAX_CHARTIME];
-	int nconv1, nconv2, nconv;
+	char basetime[2 * CD_MAX_CHARTIME + 1];
+	int nconv;
 
-					     /* Parse the relunits */
-	/* Allow ISO-8601 "T" date-time separator as well as blank separator */
-	nconv1 = sscanf(relunits,"%s since %[^T]T%s",charunits,basetime_1,basetime_2);
-	if(nconv1==EOF || nconv1==0){
+	/* Parse the relunits.  First parse assuming white space only. */
+	nconv = sscanf(relunits,"%s since %s %s",charunits,basetime_1,basetime_2);
+
+	/* Handle ISO-8601 "T" date-time separator in place of blank separator. */
+	if (nconv!=EOF && nconv>=2) {
+	    if (strchr (basetime_1, 'T') != NULL) {
+		nconv = sscanf(relunits,"%s since %[^T]T%s",charunits,basetime_1,basetime_2);
+	    }
+	}
+
+	if(nconv==EOF || nconv==0){
 		cdError("Error on relative units conversion, string = %s\n",relunits);
 		return 1;
 	}
-	nconv2 = sscanf(relunits,"%s since %s %s",charunits,basetime_1,basetime_2);
-	if(nconv2==EOF || nconv2==0){
-		cdError("Error on relative units conversion, string = %s\n",relunits);
-		return 1;
-	}
-	if(nconv1 < nconv2) {
-	    nconv = nconv2;
-	} else {
-	    nconv = sscanf(relunits,"%s since %[^T]T%s",charunits,basetime_1,basetime_2);
-	}
+
 					     /* Get the units */
 	cdTrim(charunits,CD_MAX_RELUNITS);
-	if(!strncmp(charunits,"sec",3) || !strcmp(charunits,"s")){
+	if(!strncasecmp(charunits,"sec",3) || !strcasecmp(charunits,"s")){
 		*unit = cdSecond;
 	}
-	else if(!strncmp(charunits,"min",3) || !strcmp(charunits,"mn")){
+	else if(!strncasecmp(charunits,"min",3) || !strcasecmp(charunits,"mn")){
 		*unit = cdMinute;
 	}
-	else if(!strncmp(charunits,"hour",4) || !strcmp(charunits,"hr")){
+	else if(!strncasecmp(charunits,"hour",4) || !strcasecmp(charunits,"hr")){
 		*unit = cdHour;
 	}
-	else if(!strncmp(charunits,"day",3) || !strcmp(charunits,"dy")){
+	else if(!strncasecmp(charunits,"day",3) || !strcasecmp(charunits,"dy")){
 		*unit = cdDay;
 	}
-	else if(!strncmp(charunits,"week",4) || !strcmp(charunits,"wk")){
+	else if(!strncasecmp(charunits,"week",4) || !strcasecmp(charunits,"wk")){
 		*unit = cdWeek;
 	}
-	else if(!strncmp(charunits,"month",5) || !strcmp(charunits,"mo")){
+	else if(!strncasecmp(charunits,"month",5) || !strcasecmp(charunits,"mo")){
 		*unit = cdMonth;
 	}
-	else if(!strncmp(charunits,"season",6)){
+	else if(!strncasecmp(charunits,"season",6)){
 		*unit = cdSeason;
 	}
-	else if(!strncmp(charunits,"year",4) || !strcmp(charunits,"yr")){
+	else if(!strncasecmp(charunits,"year",4) || !strcasecmp(charunits,"yr")){
 		if(!(timetype & cdStandardCal)){
 			cdError("Error on relative units conversion: climatological units cannot be 'years'.\n");
 			return 1;
@@ -381,7 +376,7 @@ cdParseRelunits(cdCalenType timetype, char* relunits, cdUnitTime* unit, cdCompTi
 		else{
 			cdTrim(basetime_1,CD_MAX_CHARTIME);
 			cdTrim(basetime_2,CD_MAX_CHARTIME);
-			sprintf(basetime,"%s %s",basetime_1,basetime_2);
+			snprintf(basetime,sizeof(basetime),"%s %s",basetime_1,basetime_2);
 		}
 	}
 
@@ -404,7 +399,7 @@ cdDiffGregorian(cdCompTime ca, cdCompTime cb){
 
 /* Return -1, 0, 1 as ca is less than, equal to, */
 /* or greater than cb, respectively. */
-static int 
+static int
 cdCompCompare(cdCompTime ca, cdCompTime cb){
 
 	int test;
@@ -433,10 +428,8 @@ cdDiffJulian(cdCompTime ca, cdCompTime cb){
 /* ca - cb in mixed Julian/Gregorian calendar. */
 /* Result is in hours. */
 static double
-cdDiffMixed(cdCompTime ca, cdCompTime cb){
-
-	static cdCompTime ZA = {1582, 10, 5, 0.0};
-	static cdCompTime ZB = {1582, 10, 15, 0.0};
+cdDiffMixed(cdCompTime ca, cdCompTime cb)
+{
 	double result;
 
 	if (cdCompCompare(cb, ZB) == -1){
@@ -469,8 +462,6 @@ CdDivDelTime(double begEtm, double endEtm, CdDeltaTime delTime, CdTimeType timeT
 	long delMonths, range;
 	CdTime bhtime, ehtime;
 	int hoursInYear;
-	
-	extern void Cde2h(double etime, CdTimeType timeType, long baseYear, CdTime *htime);
 
 	switch(delTime.units){
 	  case CdYear:
@@ -538,7 +529,6 @@ CdDivDelTime(double begEtm, double endEtm, CdDeltaTime delTime, CdTimeType timeT
 		break;
 	    default: break;
 	}
-	return;
 }
 
 /* Value is in hours. Translate to units. */
@@ -610,11 +600,11 @@ cdToOldTimetype(cdCalenType newtype, CdTimeType* oldtype)
 }
 
 /* Convert human time to epochal time (hours since 00 jan 1, 1970)
- * 
+ *
  * Input: htime = human time representation
- * 
+ *
  * Output: etime = epochal time representation
- * 
+ *
  * Derived from NRL Neons V3.6
  */
 void
@@ -628,7 +618,7 @@ Cdh2e(CdTime *htime, double *etime)
 	int     daysInYear;		     /* days in non-leap year */
 
 	CdDayOfYear(htime,&doy);
-	
+
 	day_cnt	= 0;
 
 	baseYear = ((htime->timeType) & CdBase1970) ? 1970 : htime->baseYear;
@@ -641,7 +631,7 @@ Cdh2e(CdTime *htime, double *etime)
 	    daysInLeapYear = ((htime->timeType) & Cd365) ? 366 : 360;
 	    daysInYear = ((htime->timeType) & Cd365) ? 365 : 360;
 	}
-	
+
 	if (year > baseYear) {
 		for (ytemp = year - 1; ytemp >= baseYear; ytemp--) {
 			day_cnt += ISLEAP(ytemp,htime->timeType) ? daysInLeapYear : daysInYear;
@@ -650,15 +640,15 @@ Cdh2e(CdTime *htime, double *etime)
 		for (ytemp = year; ytemp < baseYear; ytemp++) {
 			day_cnt -= ISLEAP(ytemp,htime->timeType) ? daysInLeapYear : daysInYear;
 		}
-	}	
+	}
 	*etime	= (double) (day_cnt + doy - 1) * 24. + htime->hour;
-        return;
 }
 
 /* Validate the component time, return 0 if valid, 1 if not */
 static int
 cdValidateTime(cdCalenType timetype, cdCompTime comptime)
 {
+	NC_UNUSED(timetype);
 	if(comptime.month<1 || comptime.month>12){
 		cdError("Error on time conversion: invalid month = %hd\n",comptime.month);
 		return 1;
@@ -687,7 +677,7 @@ cdChar2Comp(cdCalenType timetype, char* chartime, cdCompTime* comptime)
 	comptime->month = CD_NULL_MONTH;
 	comptime->day = CD_NULL_DAY;
 	comptime->hour = CD_NULL_HOUR;
-	
+
 	if(timetype & cdStandardCal){
 		nconv = sscanf(chartime,"%ld-%hd-%hd %d:%d:%lf",&year,&month,&day,&ihr,&imin,&sec);
 		if(nconv==EOF || nconv==0){
@@ -760,7 +750,6 @@ cdChar2Comp(cdCalenType timetype, char* chartime, cdCompTime* comptime)
 		}
 	}
 	(void)cdValidateTime(timetype,*comptime);
-	return;
 }
 
 /* Convert ct to relunits (unit, basetime) */
@@ -774,7 +763,6 @@ cdComp2RelMixed(cdCompTime ct, cdUnitTime unit, cdCompTime basetime, double *rel
 
 	hourdiff = cdDiffMixed(ct, basetime);
 	*reltime = cdFromHours(hourdiff, unit);
-	return;
 }
 
 static void
@@ -787,7 +775,7 @@ cdComp2Rel(cdCalenType timetype, cdCompTime comptime, char* relunits, double* re
 	cdUnitTime unit;
 	double base_etm, etm, delta;
 	long ndel, hoursInYear;
-	
+
 					     /* Parse the relunits */
 	if(cdParseRelunits(timetype, relunits, &unit, &base_comptime))
 		return;
@@ -807,7 +795,7 @@ cdComp2Rel(cdCalenType timetype, cdCompTime comptime, char* relunits, double* re
 		default: break;
 		}
 	}
-	
+
 					     /* Convert basetime to epochal */
 	humantime.year = base_comptime.year;
 	humantime.month = base_comptime.month;
@@ -880,8 +868,6 @@ cdComp2Rel(cdCalenType timetype, cdCompTime comptime, char* relunits, double* re
 		cdError("invalid unit in conversion");
 		break;
 	}
-
-	return;
 }
 
 /* Add (value,unit) to comptime. */
@@ -895,7 +881,6 @@ cdCompAdd(cdCompTime comptime, double value, cdCalenType calendar, cdCompTime *r
 	cdComp2Rel(calendar, comptime, "hours", &reltime);
 	reltime += value;
 	cdRel2Comp(calendar, "hours", reltime, result);
-	return;
 }
 
 /* Add value in hours to ct, in the mixed Julian/Gregorian
@@ -903,8 +888,6 @@ cdCompAdd(cdCompTime comptime, double value, cdCalenType calendar, cdCompTime *r
 static void
 cdCompAddMixed(cdCompTime ct, double value, cdCompTime *result){
 
-	static cdCompTime ZA = {1582, 10, 5, 0.0};
-	static cdCompTime ZB = {1582, 10, 15, 0.0};
 	double xj, xg;
 
 	if (cdCompCompare(ct, ZB) == -1){
@@ -925,7 +908,6 @@ cdCompAddMixed(cdCompTime ct, double value, cdCompTime *result){
 			cdCompAdd(ZA, value-xg, cdJulian, result);
 		}
 	}
-	return;
 }
 
 /* Return value expressed in hours. */
@@ -967,7 +949,6 @@ cdRel2CompMixed(double reltime, cdUnitTime unit, cdCompTime basetime, cdCompTime
 
 	reltime = cdToHours(reltime, unit);
 	cdCompAddMixed(basetime, reltime, comptime);
-	return;
 }
 
 
@@ -1071,34 +1052,36 @@ cdRel2Comp(cdCalenType timetype, char* relunits, double reltime, cdCompTime* com
 					     /* Convert back to human, then comptime. */
 	else if(baseunits == cdHour){
 		Cde2h(base_etm+delta, old_timetype, 1970, &humantime);
-		
+
 	}
 	comptime->year = humantime.year;
 	comptime->month = humantime.month;
 	comptime->day = humantime.day;
 	comptime->hour = humantime.hour;
-
-	return;
 }
 
 /* rkr: output as ISO 8601 strings */
 static void
-cdComp2Iso(cdCalenType timetype, int separator, cdCompTime comptime, char* time)
+cdComp2Iso(cdCalenType timetype, int separator, cdCompTime comptime, char* time, size_t time_size)
 {
 	double dtmp, sec;
 	int ihr, imin, isec;
 	int nskip;
+        const double epssec = 0.5e-6;  /* microsecond*/
+        const double epsmin = epssec / 60.; /*maximum error for comptime.hour < 24 , in hour */
+        const double epshr  = epsmin / 60.; /*maximum error for comptime.hour < 24 , in hour */
+
 
 	if(cdValidateTime(timetype,comptime))
 		return;
-	
-	ihr = (int)comptime.hour;
-	dtmp = 60.0 * (comptime.hour - (double)ihr);
-	imin = (int)dtmp;
-	sec = 60.0 * (dtmp - (double)imin);
-	isec = (int)sec;
 
-	if(sec == isec)
+	ihr = (int)(comptime.hour + epshr);
+	dtmp = 60.0 * (comptime.hour - (double)ihr);
+	imin = (int)(dtmp + epsmin);
+	sec = 60.0 * (dtmp - (double)imin);
+	isec = (int)(sec + epssec);
+
+	if( sec - isec < epssec)
 	    if(isec == 0)
 		if(imin == 0)
 		    if(ihr == 0)
@@ -1115,23 +1098,23 @@ cdComp2Iso(cdCalenType timetype, int separator, cdCompTime comptime, char* time)
 	if(timetype & cdStandardCal){
 	    switch (nskip) {
 	    case 0:		/* sec != 0 && (int)sec != sec */
-		sprintf(time,"%4.4ld-%2.2hd-%2.2hd%c%2.2d:%2.2d:%lf",
+		snprintf(time,time_size,"%4.4ld-%2.2hd-%2.2hd%c%2.2d:%2.2d:%lf",
 			comptime.year,comptime.month,comptime.day,separator,ihr,imin,sec);
 		break;
 	    case 1:
-		sprintf(time,"%4.4ld-%2.2hd-%2.2hd%c%2.2d:%2.2d:%2.2d",
+		snprintf(time,time_size,"%4.4ld-%2.2hd-%2.2hd%c%2.2d:%2.2d:%2.2d",
 			comptime.year,comptime.month,comptime.day,separator,ihr,imin,isec);
 		break;
 	    case 2:
-		sprintf(time,"%4.4ld-%2.2hd-%2.2hd%c%2.2d:%2.2d",
+		snprintf(time,time_size,"%4.4ld-%2.2hd-%2.2hd%c%2.2d:%2.2d",
 			comptime.year,comptime.month,comptime.day,separator,ihr,imin);
 		break;
 	    case 3:
-		sprintf(time,"%4.4ld-%2.2hd-%2.2hd%c%2.2d",
+		snprintf(time,time_size,"%4.4ld-%2.2hd-%2.2hd%c%2.2d",
 			comptime.year,comptime.month,comptime.day,separator,ihr);
 		break;
 	    case 4:
-		sprintf(time,"%4.4ld-%2.2hd-%2.2hd",
+		snprintf(time,time_size,"%4.4ld-%2.2hd-%2.2hd",
 			comptime.year,comptime.month,comptime.day);
 		break;
 	    }
@@ -1139,40 +1122,37 @@ cdComp2Iso(cdCalenType timetype, int separator, cdCompTime comptime, char* time)
 	else {				     /* Climatological */
 	    switch (nskip) {
 	    case 0:		/* sec != 0 && (int)sec != sec */
-		sprintf(time,"%2.2hd-%2.2hd%c%2.2d:%2.2d:%lf",
+		snprintf(time,time_size,"%2.2hd-%2.2hd%c%2.2d:%2.2d:%lf",
 			comptime.month,comptime.day,separator,ihr,imin,sec);
 		break;
 	    case 1:
-		sprintf(time,"%2.2hd-%2.2hd%c%2.2d:%2.2d:%2.2d",
+		snprintf(time,time_size,"%2.2hd-%2.2hd%c%2.2d:%2.2d:%2.2d",
 			comptime.month,comptime.day,separator,ihr,imin,isec);
 		break;
 	    case 2:
-		sprintf(time,"%2.2hd-%2.2hd%c%2.2d:%2.2d",
+		snprintf(time,time_size,"%2.2hd-%2.2hd%c%2.2d:%2.2d",
 			comptime.month,comptime.day,separator,ihr,imin);
 		break;
 	    case 3:
-		sprintf(time,"%2.2hd-%2.2hd%c%2.2d",
+		snprintf(time,time_size,"%2.2hd-%2.2hd%c%2.2d",
 			comptime.month,comptime.day,separator,ihr);
 		break;
 	    case 4:
-		sprintf(time,"%2.2hd-%2.2hd",
+		snprintf(time,time_size,"%2.2hd-%2.2hd",
 			comptime.month,comptime.day);
 		break;
 	    }
 	}
-	return;
 }
 
 /* rkr: added for output closer to ISO 8601 */
 void
-cdRel2Iso(cdCalenType timetype, char* relunits, int separator, double reltime, char* chartime)
+cdRel2Iso(cdCalenType timetype, char* relunits, int separator, double reltime, char* chartime, size_t chartime_size)
 {
 	cdCompTime comptime;
 
 	cdRel2Comp(timetype, relunits, reltime, &comptime);
-	cdComp2Iso(timetype, separator, comptime, chartime);
-
-	return;
+	cdComp2Iso(timetype, separator, comptime, chartime, chartime_size);
 }
 
 int

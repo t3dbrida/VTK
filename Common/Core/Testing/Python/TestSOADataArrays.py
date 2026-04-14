@@ -1,9 +1,8 @@
 #!/usr/bin/env python
 
 import array
-import vtk
-from vtk.util.misc import vtkGetDataRoot
-VTK_DATA_ROOT = vtkGetDataRoot()
+import vtkmodules.vtkCommonCore
+from vtkmodules.vtkCommonCore import vtkSOADataArrayTemplate
 
 # types can be specified either with one of the strings listed below,
 # or with a numpy dtype.  You can get a list of types by calling the
@@ -12,9 +11,10 @@ types = ['char', 'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32',
          'int64', 'uint64', 'float32', 'float64']
 formats = ['c', 'b', 'B', 'h', 'H', 'i', 'I', 'q', 'Q', 'f', 'd']
 
+
 for T in types:
     # instantiate the class for type T
-    a = vtk.vtkSOADataArrayTemplate[T]()
+    a = vtkSOADataArrayTemplate[T]()
     a.SetNumberOfComponents(3)
     # do a simple set/get test
     a.SetNumberOfTuples(2)

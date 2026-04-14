@@ -6,7 +6,7 @@ import java.util.StringTokenizer;
 public class vtkSettings
 {
   private static String GetVTKBuildLibDir() { return "@CMAKE_LIBRARY_OUTPUT_DIRECTORY@"; }
-  private static String GetVTKInstallLibDir() { return "@CMAKE_INSTALL_PREFIX@/@VTK_INSTALL_LIB_DIR@"; }
+  private static String GetVTKInstallLibDir() { return "@CMAKE_INSTALL_PREFIX@/@VTK_INSTALL_LIBDIR@"; }
 
   private static String[] Split(String str, String sep)
     {
@@ -34,7 +34,8 @@ public class vtkSettings
       {
       if ( paths[cc].endsWith("vtk.jar") )
         {
-        lpath = paths[cc].substring(0, paths[cc].length()-"vtk.jar".length()-1);
+        lpath = paths[cc].substring(0, paths[cc].length()-"vtk.jar".length());
+        lpath = lpath + "@jnilib_relative_path@";
         }
       }
     if ( lpath == null )
@@ -46,6 +47,6 @@ public class vtkSettings
 
   public static String[] GetKits()
     {
-    return vtkSettings.Split("@KITS@", ";");
+    return vtkSettings.Split("@vtk_java_wrapped_module_libraries@", ";");
     }
 }

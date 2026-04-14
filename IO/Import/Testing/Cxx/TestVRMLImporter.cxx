@@ -1,29 +1,19 @@
-/*=========================================================================
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
-  Program:   Visualization Toolkit
-  Module:    TestVRMLImporter.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-
-#include "vtkVRMLImporter.h"
-#include "vtkRenderer.h"
 #include "vtkRenderWindow.h"
 #include "vtkRenderWindowInteractor.h"
+#include "vtkRenderer.h"
+#include "vtkVRMLImporter.h"
 
 #include "vtkTestUtilities.h"
+
+#include <iostream>
 
 // This is testing a bug in vtkVRMLImporter where the importer
 // would delete static data and any future importer would fail
 // The test is defined to pass if it doesn't segfault.
-int TestVRMLImporter( int argc, char * argv [] )
+int TestVRMLImporter(int argc, char* argv[])
 {
   // Now create the RenderWindow, Renderer and Interactor
   vtkRenderer* ren1 = vtkRenderer::New();
@@ -38,21 +28,55 @@ int TestVRMLImporter( int argc, char * argv [] )
 
   char* fname = vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/WineGlass.wrl");
   importer->SetFileName(fname);
-  importer->Read();
+  if (!importer->Update())
+  {
+    std::cerr << "ERROR: Importer failed to update\n";
+    return EXIT_FAILURE;
+  }
+  if (importer->GetImportedActors()->GetNumberOfItems() != 1)
+  {
+    std::cerr << "ERROR: Unexpected number of imported actors\n";
+    return EXIT_FAILURE;
+  }
+
+  // Test default animation behavior
+  if (importer->GetAnimationSupportLevel() != vtkImporter::AnimationSupportLevel::NONE)
+  {
+    std::cerr << "ERROR: Unexpected animation support level\n";
+    return EXIT_FAILURE;
+  }
+  if (importer->GetNumberOfAnimations() != -1)
+  {
+    std::cerr << "ERROR: Unexpected number of animations\n";
+    return EXIT_FAILURE;
+  }
+
+  vtkDataAssembly* sceneHierarchy = importer->GetSceneHierarchy();
+
+  if (sceneHierarchy->GetNumberOfChildren(vtkDataAssembly::GetRootNode()) != 1)
+  {
+    std::cout << "expected a single scene hierarchy node\n";
+    return EXIT_FAILURE;
+  }
+
   // delete the importer and see if it can be run again
   importer->Delete();
 
   importer = vtkVRMLImporter::New();
   importer->SetRenderWindow(renWin);
   importer->SetFileName(fname);
-  importer->Read();
+  if (!importer->Update())
+  {
+    std::cerr << "ERROR: Importer failed to update\n";
+    return EXIT_FAILURE;
+  }
   importer->Delete();
 
-  delete [] fname;
+  delete[] fname;
 
   iren->Delete();
   renWin->Delete();
   ren1->Delete();
 
-  return 0;
+  return EXIT_SUCCESS;
 }

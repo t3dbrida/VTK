@@ -36,7 +36,8 @@ Behaviour:
 # import usual libraries
 import math, os, sys
 import wx
-from vtkmodules.vtkRenderingCore import vtkGenericRenderWindowInteractor, vtkRenderWindow
+from vtkmodules.vtkRenderingCore import vtkRenderWindow
+from vtkmodules.vtkRenderingUI import vtkGenericRenderWindowInteractor
 
 # a few configuration items, see what works best on your system
 
@@ -62,7 +63,7 @@ class EventTimer(wx.Timer):
 
     def __init__(self, iren):
         """Default class constructor.
-        @param iren: current render window
+        @param iren current render window
         """
         wx.Timer.__init__(self)
         self.iren = iren
@@ -92,9 +93,9 @@ class wxVTKRenderWindowInteractor(baseClass):
 
     def __init__(self, parent, ID, *args, **kw):
         """Default class constructor.
-        @param parent: parent window
-        @param ID: window id
-        @param **kw: wxPython keywords (position, size, style) plus the
+        @param parent parent window
+        @param ID window id
+        @param **kw wxPython keywords (position, size, style) plus the
         'stereo' keyword
         """
         # private attributes
@@ -559,7 +560,7 @@ class wxVTKRenderWindowInteractor(baseClass):
         ctrl, shift = event.ControlDown(), event.ShiftDown()
         keycode, keysym = event.GetKeyCode(), None
         key = chr(0)
-        if keycode < 256:
+        if keycode < 128:
             key = chr(keycode)
 
         # wxPython 2.6.0.1 does not return a valid event.Get{X,Y}()
@@ -584,7 +585,7 @@ class wxVTKRenderWindowInteractor(baseClass):
         ctrl, shift = event.ControlDown(), event.ShiftDown()
         keycode, keysym = event.GetKeyCode(), None
         key = chr(0)
-        if keycode < 256:
+        if keycode < 128:
             key = chr(keycode)
 
         self._Iren.SetEventInformationFlipY(event.GetX(), event.GetY(),
@@ -609,7 +610,7 @@ class wxVTKRenderWindowInteractor(baseClass):
             topParent = wx.GetTopLevelParent(self)
             if topParent:
                 # if it exists, check whether it's enabled
-                # if it's not enabeld, RenderAllowed will be false
+                # if it's not enabled, RenderAllowed will be false
                 RenderAllowed = topParent.IsEnabled()
 
         if RenderAllowed:
@@ -662,6 +663,9 @@ def wxVTKRenderWindowInteractorConeExample():
 
     from vtkmodules.vtkFiltersSources import vtkConeSource
     from vtkmodules.vtkRenderingCore import vtkActor, vtkPolyDataMapper, vtkRenderer
+    # load implementations for rendering and interaction factory classes
+    import vtkmodules.vtkRenderingOpenGL2
+    import vtkmodules.vtkInteractionStyle
 
     # every wx app needs an app
     app = wx.App(False)

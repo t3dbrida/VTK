@@ -1,38 +1,6 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestPickingManagerSeedWidget.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-
-/*==============================================================================
-
-  Library: MSVTK
-
-  Copyright (c) Kitware Inc.
-
-  Licensed under the Apache License, Version 2.0 (the "License");
-  you may not use this file except in compliance with the License.
-  You may obtain a copy of the License at
-
-      http://www.apache.org/licenses/LICENSE-2.0.txt
-
-  Unless required by applicable law or agreed to in writing, software
-  distributed under the License is distributed on an "AS IS" BASIS,
-  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  See the License for the specific language governing permissions and
-  limitations under the License.
-
-==============================================================================*/
-
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-FileCopyrightText: Copyright (c) Kitware Inc.
+// SPDX-License-Identifier: BSD-3-Clause AND Apache-2.0
 //
 // This example tests the PickingManager using a scene full of seed widgets.
 // It measures the performances using the Picking manager into different modes:
@@ -57,23 +25,24 @@
 #include "vtkNew.h"
 #include "vtkPickingManager.h"
 #include "vtkProperty.h"
-#include "vtkRenderer.h"
-#include "vtkRendererCollection.h"
 #include "vtkRenderWindow.h"
 #include "vtkRenderWindowInteractor.h"
+#include "vtkRenderer.h"
+#include "vtkRendererCollection.h"
 #include "vtkSeedRepresentation.h"
 #include "vtkSeedWidget.h"
 #include "vtkSmartPointer.h"
 #include "vtkSphereHandleRepresentation.h"
-#include "vtkStdString.h"
+#include "vtkTesting.h"
 #include "vtkTimerLog.h"
+#include "vtksys/FStream.hxx"
 
 // STL includes
-#include <iostream>
 #include <fstream>
+#include <iostream>
 #include <list>
 
-const char eventLogTestPickingManagerSeedWidget[] =
+constexpr char eventLogTestPickingManagerSeedWidget[] =
   "# StreamVersion 1 \n"
   "EnterEvent 570 160 0 0 0 0 0 i\n"
   "MouseMoveEvent 570 160 0 0 0 0 0 i\n"
@@ -304,8 +273,7 @@ const char eventLogTestPickingManagerSeedWidget[] =
   "KeyPressEvent 353 212 0 0 32 1 space i\n"
   "CharEvent 353 212 0 0 32 1 space i\n"
   "KeyReleaseEvent 420 372 0 0 32 1 space i\n"
-  "MouseMoveEvent 284 134 0 0 0 0 0 i\n"
-  ;
+  "MouseMoveEvent 284 134 0 0 0 0 0 i\n";
 
 //------------------------------------------------------------------------------
 // Press 'Ctrl' to switch the activation of the Picking Manager.
@@ -314,20 +282,18 @@ const char eventLogTestPickingManagerSeedWidget[] =
 class vtkPickingManagerCallback : public vtkCommand
 {
 public:
-  static vtkPickingManagerCallback *New()
-    {return new vtkPickingManagerCallback;}
+  static vtkPickingManagerCallback* New() { return new vtkPickingManagerCallback; }
 
-  void Execute(vtkObject *caller, unsigned long, void*) override
+  void Execute(vtkObject* caller, unsigned long, void*) override
   {
-    vtkRenderWindowInteractor *iren =
-      static_cast<vtkRenderWindowInteractor*>(caller);
+    vtkRenderWindowInteractor* iren = static_cast<vtkRenderWindowInteractor*>(caller);
+    char* cKeySym = iren->GetKeySym();
+    std::string keySym = cKeySym != nullptr ? cKeySym : "";
 
     // Enable/Disable the PickingManager
-    if((vtkStdString(iren->GetKeySym()) == "Control_L" ||
-       vtkStdString(iren->GetKeySym()) == "Control_R") &&
-       iren->GetPickingManager())
+    if ((keySym == "Control_L" || keySym == "Control_R") && iren->GetPickingManager())
     {
-      if(!iren->GetPickingManager()->GetEnabled())
+      if (!iren->GetPickingManager()->GetEnabled())
       {
         std::cout << "PickingManager ON !" << std::endl;
         iren->GetPickingManager()->EnabledOn();
@@ -339,18 +305,17 @@ public:
       }
     }
     // Enable/Disable the Optimization on render events.
-    else if (vtkStdString(iren->GetKeySym()) == "o" &&
-             iren->GetPickingManager())
+    else if (keySym == "o" && iren->GetPickingManager())
     {
-      if(!iren->GetPickingManager()->GetOptimizeOnInteractorEvents())
+      if (!iren->GetPickingManager()->GetOptimizeOnInteractorEvents())
       {
         std::cout << "Optimization on Interactor events ON !" << std::endl;
-        iren->GetPickingManager()->SetOptimizeOnInteractorEvents(1);
+        iren->GetPickingManager()->SetOptimizeOnInteractorEvents(true);
       }
       else
       {
         std::cout << "Optimization on Interactor events OFF !" << std::endl;
-        iren->GetPickingManager()->SetOptimizeOnInteractorEvents(0);
+        iren->GetPickingManager()->SetOptimizeOnInteractorEvents(false);
       }
     }
   }
@@ -363,35 +328,29 @@ public:
 class vtkPMSCubeCallback : public vtkCommand
 {
 public:
-  static vtkPMSCubeCallback *New()
-  { return new vtkPMSCubeCallback; }
+  static vtkPMSCubeCallback* New() { return new vtkPMSCubeCallback; }
 
-  void Execute(vtkObject *caller, unsigned long, void*) override
+  void Execute(vtkObject* caller, unsigned long, void*) override
   {
-    vtkRenderWindowInteractor *iren =
-      static_cast<vtkRenderWindowInteractor*>(caller);
+    vtkRenderWindowInteractor* iren = static_cast<vtkRenderWindowInteractor*>(caller);
 
     // Reorganize the cube
-    if(vtkStdString(iren->GetKeySym()) == "space")
+    if (!strcmp(iren->GetKeySym(), "space"))
     {
-      const int baseCube =
-        static_cast<int>(pow(this->Seeds.size(), 1./3.) / 2 + 0.5);
-      std::list<vtkSmartPointer<vtkHandleWidget> >::iterator it =
-        this->Seeds.begin();
+      const int baseCube = static_cast<int>(pow(this->Seeds.size(), 1. / 3.) / 2 + 0.5);
+      std::list<vtkSmartPointer<vtkHandleWidget>>::iterator it = this->Seeds.begin();
 
-      for(int i=-baseCube; i<baseCube; ++i)
+      for (int i = -baseCube; i < baseCube; ++i)
       {
-        for(int j=-baseCube; j<baseCube; ++j)
+        for (int j = -baseCube; j < baseCube; ++j)
         {
-          for(int k=-baseCube; k<baseCube; ++k)
+          for (int k = -baseCube; k < baseCube; ++k)
           {
             vtkSphereHandleRepresentation* newHandleRep =
-                vtkSphereHandleRepresentation::SafeDownCast(
-                  (*it)->GetRepresentation());
+              vtkSphereHandleRepresentation::SafeDownCast((*it)->GetRepresentation());
 
-            double pos[3] = {static_cast<double>(i),
-                             static_cast<double>(j),
-                             static_cast<double>(k)};
+            double pos[3] = { static_cast<double>(i), static_cast<double>(j),
+              static_cast<double>(k) };
             newHandleRep->SetWorldPosition(pos);
 
             ++it;
@@ -401,7 +360,7 @@ public:
     }
   }
 
-  std::list<vtkSmartPointer<vtkHandleWidget> > Seeds;
+  std::list<vtkSmartPointer<vtkHandleWidget>> Seeds;
 };
 
 //------------------------------------------------------------------------------
@@ -410,8 +369,7 @@ public:
 class vtkPMSRecordPerfCallback : public vtkCommand
 {
 public:
-  static vtkPMSRecordPerfCallback *New()
-  { return new vtkPMSRecordPerfCallback; }
+  static vtkPMSRecordPerfCallback* New() { return new vtkPMSRecordPerfCallback; }
 
   vtkPMSRecordPerfCallback()
   {
@@ -457,7 +415,7 @@ public:
     this->logTime->StartTimer();
   }
 
-  std::ofstream performanceReport;
+  vtksys::ofstream performanceReport;
   vtkTimerLog* logTime;
 
 private:
@@ -474,6 +432,14 @@ int TestPickingManagerSeedWidget(int vtkNotUsed(argc), char* vtkNotUsed(argv)[])
   //
   vtkNew<vtkRenderer> ren1;
   vtkNew<vtkRenderWindow> renWin;
+  if (renWin->IsA("vtkOSOpenGLRenderWindow"))
+  {
+    // we cannot run in OSMesa.
+    // Note: I am not sure why but this is how things were before.
+    // This test was excluded from the build when VTK_OPENGL_HAS_OSMESA (old setting)
+    // was `ON`.
+    return VTK_SKIP_RETURN_CODE;
+  }
   renWin->AddRenderer(ren1);
 
   vtkNew<vtkRenderWindowInteractor> iren;
@@ -493,16 +459,16 @@ int TestPickingManagerSeedWidget(int vtkNotUsed(argc), char* vtkNotUsed(argv)[])
   // SEEDS
   /*--------------------------------------------------------------------------*/
   // Representations
-  double pos[3] = {0, 0, 0};
+  double pos[3] = { 0, 0, 0 };
   vtkNew<vtkSphereHandleRepresentation> handle;
-  //handle->SetHandleSize(15.0);
+  // handle->SetHandleSize(15.0);
   handle->GetProperty()->SetRepresentationToWireframe();
-  handle->GetProperty()->SetColor(1,1,1);
+  handle->GetProperty()->SetColor(1, 1, 1);
 
   vtkNew<vtkSeedRepresentation> seedRepresentation;
   seedRepresentation->SetHandleRepresentation(handle);
 
-    // Settings
+  // Settings
   vtkNew<vtkSeedWidget> seedWidget;
   seedWidget->SetRepresentation(seedRepresentation);
   seedWidget->SetInteractor(iren);
@@ -510,28 +476,27 @@ int TestPickingManagerSeedWidget(int vtkNotUsed(argc), char* vtkNotUsed(argv)[])
 
   // Create a cube full of seeds
   // base correspond to the side of the cube --> (2*base)^3 seeds
-  const int baseCube = 2;
-  std::list <vtkSmartPointer<vtkHandleWidget> > seeds;
-  for(int i=-baseCube; i<baseCube; ++i)
+  constexpr int baseCube = 2;
+  std::list<vtkSmartPointer<vtkHandleWidget>> seeds;
+  for (int i = -baseCube; i < baseCube; ++i)
   {
-    for(int j=-baseCube; j<baseCube; ++j)
+    for (int j = -baseCube; j < baseCube; ++j)
     {
-      for(int k=-baseCube; k<baseCube; ++k)
+      for (int k = -baseCube; k < baseCube; ++k)
       {
         vtkHandleWidget* newHandle = seedWidget->CreateNewHandle();
         newHandle->SetEnabled(1);
         vtkSphereHandleRepresentation* newHandleRep =
-            vtkSphereHandleRepresentation::SafeDownCast(
-              newHandle->GetRepresentation());
+          vtkSphereHandleRepresentation::SafeDownCast(newHandle->GetRepresentation());
 
         pos[0] = i;
         pos[1] = j;
         pos[2] = k;
         newHandleRep->GetProperty()->SetRepresentationToWireframe();
-        newHandleRep->GetProperty()->SetColor(1,1,1);
+        newHandleRep->GetProperty()->SetColor(1, 1, 1);
         newHandleRep->SetWorldPosition(pos);
 
-        seeds.push_back(newHandle);
+        seeds.emplace_back(newHandle);
       }
     }
   }
@@ -551,7 +516,7 @@ int TestPickingManagerSeedWidget(int vtkNotUsed(argc), char* vtkNotUsed(argv)[])
   renWin->SetSize(600, 600);
 
   // Record
-  //iren->GetPickingManager()->EnabledOff();
+  // iren->GetPickingManager()->EnabledOff();
   vtkNew<vtkInteractorEventRecorder> recorder;
   recorder->SetInteractor(iren);
   recorder->ReadFromInputStringOn();
@@ -559,7 +524,7 @@ int TestPickingManagerSeedWidget(int vtkNotUsed(argc), char* vtkNotUsed(argv)[])
 
   // render the image
   iren->Initialize();
-  double extent[6] = {-7, 7, -7, 7, -1, 1};
+  double extent[6] = { -7, 7, -7, 7, -1, 1 };
   ren1->ResetCamera(extent);
   renWin->Render();
 

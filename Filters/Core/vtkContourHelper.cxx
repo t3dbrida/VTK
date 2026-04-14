@@ -1,115 +1,118 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkContourHelper.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkContourHelper.h"
 
-#include "vtkIncrementalPointLocator.h"
-#include "vtkCellArray.h"
-#include "vtkPointData.h"
-#include "vtkCellData.h"
-#include "vtkPolygonBuilder.h"
-#include "vtkIdListCollection.h"
 #include "vtkCell.h"
+#include "vtkCellArray.h"
+#include "vtkCellData.h"
 #include "vtkDataArray.h"
+#include "vtkIdListCollection.h"
+#include "vtkIncrementalPointLocator.h"
+#include "vtkPointData.h"
+#include "vtkPolygonBuilder.h"
 
-vtkContourHelper::vtkContourHelper(vtkIncrementalPointLocator *locator,
-                                   vtkCellArray *verts,
-                                   vtkCellArray *lines,
-                                   vtkCellArray* polys,
-                                   vtkPointData *inPd,
-                                   vtkCellData *inCd,
-                                   vtkPointData* outPd,
-                                   vtkCellData *outCd,
-                                   int estimatedSize,
-                                   bool outputTriangles):
-    Locator(locator),
-    Verts(verts),
-    Lines(lines),
-    Polys(polys),
-    InPd(inPd),
-    InCd(inCd),
-    OutPd(outPd),
-    OutCd(outCd),
-    GenerateTriangles(outputTriangles)
+//------------------------------------------------------------------------------
+VTK_ABI_NAMESPACE_BEGIN
+// VTK_DEPRECATED_IN_9_7_0
+vtkContourHelper::vtkContourHelper(vtkIncrementalPointLocator* locator, vtkCellArray* outVerts,
+  vtkCellArray* outLines, vtkCellArray* outPolys, vtkPointData* inPd, vtkCellData* inCd,
+  vtkPointData* outPd, vtkCellData* outCd, int vtkNotUsed(trisEstimatedSize), bool outputTriangles)
+  : vtkContourHelper(
+      locator, outVerts, outLines, outPolys, inPd, inCd, outPd, outCd, outputTriangles)
 {
-  this->Tris = vtkCellArray::New();
-  this->TriOutCd = vtkCellData::New();
-  if(this->GenerateTriangles)
-  {
-    this->Tris->Allocate(estimatedSize,estimatedSize/2);
-    this->TriOutCd->Initialize();
-  }
-  this->PolyCollection = vtkIdListCollection::New();
 }
 
-vtkContourHelper::~vtkContourHelper()
+//------------------------------------------------------------------------------
+vtkContourHelper::vtkContourHelper(vtkIncrementalPointLocator* locator, vtkCellArray* outVerts,
+  vtkCellArray* outLines, vtkCellArray* outPolys, vtkPointData* inPd, vtkCellData* inCd,
+  vtkPointData* outPd, vtkCellData* outCd, bool outputTriangles)
+  : Locator(locator)
+  , OutVerts(outVerts)
+  , OutLines(outLines)
+  , OutPolys(outPolys)
+  , InPd(inPd)
+  , InCd(inCd)
+  , OutPd(outPd)
+  , OutCd(outCd)
+  , OutputTriangles(outputTriangles)
 {
-  this->Tris->Delete();
-  this->TriOutCd->Delete();
-  this->PolyCollection->Delete();
 }
 
-void vtkContourHelper::Contour(vtkCell* cell, double value, vtkDataArray *cellScalars, vtkIdType cellId)
+//------------------------------------------------------------------------------
+void vtkContourHelper::Contour(
+  vtkCell* cell, double value, vtkDataArray* cellScalars, vtkIdType cellId)
 {
-  bool mergeTriangles = (!this->GenerateTriangles) && cell->GetCellDimension()==3;
-  vtkCellData* outCD = nullptr;
-  vtkCellArray* outPoly = nullptr;
-  if(mergeTriangles)
+  if (!this->OutputTriangles && cell->GetCellDimension() == 3)
   {
-    outPoly = this->Tris;
-    outCD = this->TriOutCd;
-  }
-  else
-  {
-    outPoly = this->Polys;
-    outCD = this->OutCd;
-  }
-  cell->Contour(value,cellScalars,this->Locator,  this->Verts, this->Lines,
-                outPoly, this->InPd,this->OutPd,this->InCd,cellId, outCD);
-  if(mergeTriangles)
-  {
-    this->PolyBuilder.Reset();
 
-    vtkIdType cellSize;
-    vtkIdType* cellVerts;
-    while(this->Tris->GetNextCell(cellSize,cellVerts))
+    // Retrieve the output triangles of the contour in temporary structures.
+    this->InitializeTempContainers();
+    this->TempTris->Reset();
+    this->TempTriData->Reset();
+
+    cell->Contour(value, cellScalars, this->Locator, this->OutVerts, this->OutLines, this->TempTris,
+      this->InPd, this->OutPd, this->InCd, cellId, this->TempTriData);
+
+    // Add output triangles to the PolygonBuilder in order to merge them into polygons.
+    vtkPolygonBuilder polyBuilder;
+    polyBuilder.Reset();
+
+    vtkIdType cellSize = 0;
+    const vtkIdType* cellVerts = nullptr;
+
+    this->TempTris->InitTraversal();
+    while (this->TempTris->GetNextCell(cellSize, cellVerts))
     {
-      if(cellSize==3)
+      if (cellSize == 3)
       {
-        this->PolyBuilder.InsertTriangle(cellVerts);
+        polyBuilder.InsertTriangle(cellVerts);
       }
-      else //for whatever reason, the cell contouring is already outputting polys
+      else
       {
-        vtkIdType outCellId = this->Polys->InsertNextCell(cellSize, cellVerts);
-        this->OutCd->CopyData(this->InCd, cellId, outCellId +
-          this->Verts->GetNumberOfCells() + this->Lines->GetNumberOfCells());
+        // If for whatever reason, the cell contouring is already outputting polys.
+        // Add them directly to the output.
+        vtkIdType outCellId = this->OutPolys->InsertNextCell(cellSize, cellVerts);
+        this->OutCd->CopyData(this->InCd, cellId,
+          outCellId + this->OutVerts->GetNumberOfCells() + this->OutLines->GetNumberOfCells());
       }
     }
 
-    this->PolyBuilder.GetPolygons(this->PolyCollection);
-    int nPolys = this->PolyCollection->GetNumberOfItems();
-    for (int polyId = 0; polyId < nPolys; ++polyId)
+    // Add constructed polygons to the output.
+    vtkNew<vtkIdListCollection> polyCollection;
+    polyBuilder.GetPolygons(polyCollection);
+    for (int polyId = 0; polyId < polyCollection->GetNumberOfItems(); ++polyId)
     {
-      vtkIdList* poly = this->PolyCollection->GetItem(polyId);
-      if(poly->GetNumberOfIds()!=0)
+      vtkIdList* poly = polyCollection->GetItem(polyId);
+      if (poly->GetNumberOfIds() != 0)
       {
-        vtkIdType outCellId = this->Polys->InsertNextCell(poly);
-        this->OutCd->CopyData(this->InCd, cellId, outCellId +
-          this->Verts->GetNumberOfCells() + this->Lines->GetNumberOfCells());
+        vtkIdType outCellId = this->OutPolys->InsertNextCell(poly);
+        this->OutCd->CopyData(this->InCd, cellId,
+          outCellId + this->OutVerts->GetNumberOfCells() + this->OutLines->GetNumberOfCells());
       }
       poly->Delete();
     }
-    this->PolyCollection->RemoveAllItems();
+    polyCollection->RemoveAllItems();
+  }
+  else
+  {
+    // We do not need to merge output triangles, so we call the contour method directly.
+    cell->Contour(value, cellScalars, this->Locator, this->OutVerts, this->OutLines, this->OutPolys,
+      this->InPd, this->OutPd, this->InCd, cellId, this->OutCd);
   }
 }
+
+//------------------------------------------------------------------------------
+void vtkContourHelper::InitializeTempContainers()
+{
+  if (this->TempContainersInitialized)
+  {
+    return;
+  }
+  // Per-cell contouring produces a small number of triangles in practice.
+  // Using a small fixed upper bound avoids frequent reallocations while
+  // keeping memory overhead negligible.
+  this->TempTris->AllocateEstimate(64, 3);
+  this->TempTriData->Initialize();
+  this->TempContainersInitialized = true;
+}
+VTK_ABI_NAMESPACE_END

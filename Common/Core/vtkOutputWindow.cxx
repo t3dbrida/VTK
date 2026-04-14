@@ -1,27 +1,21 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkOutputWindow.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkOutputWindow.h"
-#include "vtkToolkits.h"
-#if defined( _WIN32 ) && !defined( VTK_USE_X )
+#if defined(_WIN32) && !defined(VTK_USE_X)
 #include "vtkWin32OutputWindow.h"
 #endif
-#if defined (ANDROID)
+#if defined(__ANDROID__) || defined(ANDROID)
 #include "vtkAndroidOutputWindow.h"
 #endif
+
 #include "vtkCommand.h"
+#include "vtkLogger.h"
 #include "vtkObjectFactory.h"
+#include "vtkSmartPointer.h"
+
+#include <iostream>
+#include <mutex>
+#include <sstream>
 
 namespace
 {
@@ -30,11 +24,11 @@ namespace
 template <class T>
 class vtkScopedSet
 {
-  T* Ptr;
+  std::atomic<T>* Ptr;
   T OldVal;
 
 public:
-  vtkScopedSet(T* ptr, const T& newval)
+  vtkScopedSet(std::atomic<T>* ptr, const T& newval)
     : Ptr(ptr)
     , OldVal(*ptr)
   {
@@ -44,9 +38,24 @@ public:
 };
 }
 
-//----------------------------------------------------------------------------
-vtkOutputWindow* vtkOutputWindow::Instance = nullptr;
-static unsigned int vtkOutputWindowCleanupCounter = 0;
+VTK_ABI_NAMESPACE_BEGIN
+//------------------------------------------------------------------------------
+static std::mutex InstanceLock; // XXX(c++17): use a `shared_mutex`
+static vtkSmartPointer<vtkOutputWindow> vtkOutputWindowGlobalInstance;
+
+// helps accessing private members in vtkOutputWindow.
+class vtkOutputWindowPrivateAccessor
+{
+  vtkOutputWindow* Instance;
+
+public:
+  vtkOutputWindowPrivateAccessor(vtkOutputWindow* self)
+    : Instance(self)
+  {
+    ++self->InStandardMacros;
+  }
+  ~vtkOutputWindowPrivateAccessor() { --(this->Instance->InStandardMacros); }
+};
 
 void vtkOutputWindowDisplayText(const char* message)
 {
@@ -55,35 +64,102 @@ void vtkOutputWindowDisplayText(const char* message)
 
 void vtkOutputWindowDisplayErrorText(const char* message)
 {
-  vtkOutputWindow::GetInstance()->DisplayErrorText(message);
+  vtkLogF(ERROR, "%s", message);
+  if (auto win = vtkOutputWindow::GetInstance())
+  {
+    vtkOutputWindowPrivateAccessor helper_raii(win);
+    win->DisplayErrorText(message);
+  }
 }
 
 void vtkOutputWindowDisplayWarningText(const char* message)
 {
-  vtkOutputWindow::GetInstance()->DisplayWarningText(message);
+  vtkLogF(WARNING, "%s", message);
+  if (auto win = vtkOutputWindow::GetInstance())
+  {
+    vtkOutputWindowPrivateAccessor helper_raii(win);
+    win->DisplayWarningText(message);
+  }
 }
 
 void vtkOutputWindowDisplayGenericWarningText(const char* message)
 {
-  vtkOutputWindow::GetInstance()->DisplayGenericWarningText(message);
+  vtkLogF(WARNING, "%s", message);
+  if (auto win = vtkOutputWindow::GetInstance())
+  {
+    vtkOutputWindowPrivateAccessor helper_raii(win);
+    win->DisplayGenericWarningText(message);
+  }
 }
 
 void vtkOutputWindowDisplayDebugText(const char* message)
 {
-  vtkOutputWindow::GetInstance()->DisplayDebugText(message);
-}
-
-vtkOutputWindowCleanup::vtkOutputWindowCleanup()
-{
-  ++vtkOutputWindowCleanupCounter;
-}
-
-vtkOutputWindowCleanup::~vtkOutputWindowCleanup()
-{
-  if (--vtkOutputWindowCleanupCounter == 0)
+  vtkLogF(INFO, "%s", message);
+  if (auto win = vtkOutputWindow::GetInstance())
   {
-    // Destroy any remaining output window.
-    vtkOutputWindow::SetInstance(nullptr);
+    vtkOutputWindowPrivateAccessor helper_raii(win);
+    win->DisplayDebugText(message);
+  }
+}
+
+void vtkOutputWindowDisplayErrorText(
+  const char* fname, int lineno, const char* message, vtkObject* sourceObj)
+{
+  std::ostringstream vtkmsg;
+  vtkmsg << "ERROR: In " << fname << ", line " << lineno << "\n" << message << "\n\n";
+  if (sourceObj && sourceObj->HasObserver(vtkCommand::ErrorEvent))
+  {
+    sourceObj->InvokeEvent(vtkCommand::ErrorEvent, const_cast<char*>(vtkmsg.str().c_str()));
+  }
+  else if (auto win = vtkOutputWindow::GetInstance())
+  {
+    vtkLogger::Log(vtkLogger::VERBOSITY_ERROR, fname, lineno, message);
+    vtkOutputWindowPrivateAccessor helper_raii(win);
+    win->DisplayErrorText(vtkmsg.str().c_str());
+  }
+}
+
+void vtkOutputWindowDisplayWarningText(
+  const char* fname, int lineno, const char* message, vtkObject* sourceObj)
+{
+  std::ostringstream vtkmsg;
+  vtkmsg << "Warning: In " << fname << ", line " << lineno << "\n" << message << "\n\n";
+  if (sourceObj && sourceObj->HasObserver(vtkCommand::WarningEvent))
+  {
+    sourceObj->InvokeEvent(vtkCommand::WarningEvent, const_cast<char*>(vtkmsg.str().c_str()));
+  }
+  else if (auto win = vtkOutputWindow::GetInstance())
+  {
+    vtkLogger::Log(vtkLogger::VERBOSITY_WARNING, fname, lineno, message);
+    vtkOutputWindowPrivateAccessor helper_raii(win);
+    win->DisplayWarningText(vtkmsg.str().c_str());
+  }
+}
+
+void vtkOutputWindowDisplayGenericWarningText(const char* fname, int lineno, const char* message)
+{
+  vtkLogger::Log(vtkLogger::VERBOSITY_WARNING, fname, lineno, message);
+
+  if (auto win = vtkOutputWindow::GetInstance())
+  {
+    vtkOutputWindowPrivateAccessor helper_raii(win);
+    std::ostringstream vtkmsg;
+    vtkmsg << "Generic Warning: In " << fname << ", line " << lineno << "\n" << message << "\n\n";
+    win->DisplayGenericWarningText(vtkmsg.str().c_str());
+  }
+}
+
+void vtkOutputWindowDisplayDebugText(
+  const char* fname, int lineno, const char* message, vtkObject* vtkNotUsed(sourceObj))
+{
+  vtkLogger::Log(vtkLogger::VERBOSITY_INFO, fname, lineno, message);
+
+  if (auto win = vtkOutputWindow::GetInstance())
+  {
+    vtkOutputWindowPrivateAccessor helper_raii(win);
+    std::ostringstream vtkmsg;
+    vtkmsg << "Debug: In " << fname << ", line " << lineno << "\n" << message << "\n\n";
+    win->DisplayDebugText(vtkmsg.str().c_str());
   }
 }
 
@@ -91,8 +167,9 @@ vtkObjectFactoryNewMacro(vtkOutputWindow);
 vtkOutputWindow::vtkOutputWindow()
 {
   this->PromptUser = false;
-  this->UseStdErrorForAllMessages = false;
   this->CurrentMessageType = MESSAGE_TYPE_TEXT;
+  this->DisplayMode = vtkOutputWindow::DEFAULT;
+  this->InStandardMacros = 0;
 }
 
 vtkOutputWindow::~vtkOutputWindow() = default;
@@ -101,41 +178,87 @@ void vtkOutputWindow::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os, indent);
 
-  os << indent << "vtkOutputWindow Single instance = "
-     << (void*)vtkOutputWindow::Instance << endl;
-  os << indent << "Prompt User: "
-     << (this->PromptUser ? "On\n" : "Off\n");
-  os << indent << "UseStdErrorForAllMessages: "
-     << (this->UseStdErrorForAllMessages ? "On\n" : "Off\n");
+  os << indent << "vtkOutputWindow Single instance = " << (void*)vtkOutputWindowGlobalInstance
+     << std::endl;
+  os << indent << "Prompt User: " << (this->PromptUser ? "On\n" : "Off\n");
+  os << indent << "DisplayMode: ";
+  switch (this->DisplayMode)
+  {
+    case DEFAULT:
+      os << "Default\n";
+      break;
+    case NEVER:
+      os << "Never\n";
+      break;
+    case ALWAYS:
+      os << "Always\n";
+      break;
+    case ALWAYS_STDERR:
+      os << "AlwaysStderr\n";
+      break;
+  }
 }
 
+vtkOutputWindow::StreamType vtkOutputWindow::GetDisplayStream(MessageTypes msgType) const
+{
+  switch (this->DisplayMode)
+  {
+    case DEFAULT:
+      if (this->InStandardMacros && vtkLogger::IsEnabled())
+      {
+        return StreamType::Null;
+      }
+      [[fallthrough]];
 
-// default implementation outputs to cerr only
+    case ALWAYS:
+      switch (msgType)
+      {
+        case MESSAGE_TYPE_TEXT:
+          return StreamType::StdOutput;
+
+        default:
+          return StreamType::StdError;
+      }
+
+    case ALWAYS_STDERR:
+      return StreamType::StdError;
+
+    case NEVER:
+    default:
+      return StreamType::Null;
+  }
+}
+
+// default implementation outputs to std::cerr only
 void vtkOutputWindow::DisplayText(const char* txt)
 {
   // pick correct output channel to dump text on.
-  if (this->CurrentMessageType != MESSAGE_TYPE_TEXT || this->UseStdErrorForAllMessages)
+  const auto stream_type = this->GetDisplayStream(this->CurrentMessageType);
+  switch (stream_type)
   {
-    cerr << txt;
-  }
-  else
-  {
-    cout << txt;
+    case StreamType::StdOutput:
+      std::cout << txt;
+      break;
+    case StreamType::StdError:
+      std::cerr << txt;
+      break;
+    case StreamType::Null:
+      break;
   }
 
-  if (this->PromptUser && this->CurrentMessageType != MESSAGE_TYPE_TEXT)
+  if (this->PromptUser && this->CurrentMessageType != MESSAGE_TYPE_TEXT &&
+    stream_type != StreamType::Null)
   {
     char c = 'n';
-    cerr << "\nDo you want to suppress any further messages (y,n,q)?."
-              << endl;
-    cin >> c;
+    std::cerr << "\nDo you want to suppress any further messages (y,n,q)?." << std::endl;
+    std::cin >> c;
     if (c == 'y')
     {
       vtkObject::GlobalWarningDisplayOff();
     }
-    if(c == 'q')
+    if (c == 'q')
     {
-      this->PromptUser = 0;
+      this->PromptUser = false;
     }
   }
 
@@ -180,43 +303,58 @@ void vtkOutputWindow::DisplayDebugText(const char* txt)
 // Return the single instance of the vtkOutputWindow
 vtkOutputWindow* vtkOutputWindow::GetInstance()
 {
-  if(!vtkOutputWindow::Instance)
+  // Check if we have an instance already.
   {
-    // Try the factory first
-    vtkOutputWindow::Instance = (vtkOutputWindow*)
-      vtkObjectFactory::CreateInstance("vtkOutputWindow");
-    // if the factory did not provide one, then create it here
-    if(!vtkOutputWindow::Instance)
+    std::unique_lock<std::mutex> lock(InstanceLock);
+    // std::shared_lock lock(InstanceLock); // XXX(c++17)
+    (void)lock;
+
+    if (vtkOutputWindowGlobalInstance)
     {
-#if defined( _WIN32 ) && !defined( VTK_USE_X )
-      vtkOutputWindow::Instance = vtkWin32OutputWindow::New();
-#elif defined( ANDROID )
-      vtkOutputWindow::Instance = vtkAndroidOutputWindow::New();
+      return vtkOutputWindowGlobalInstance;
+    }
+  }
+
+  {
+    std::unique_lock<std::mutex> lock(InstanceLock);
+    (void)lock;
+
+    // Another thread may have raced us here; if it already exists, use it.
+    if (vtkOutputWindowGlobalInstance)
+    {
+      return vtkOutputWindowGlobalInstance;
+    }
+
+    // Try the factory first
+    vtkOutputWindowGlobalInstance.TakeReference(
+      (vtkOutputWindow*)vtkObjectFactory::CreateInstance("vtkOutputWindow"));
+    // if the factory did not provide one, then create it here
+    if (!vtkOutputWindowGlobalInstance)
+    {
+#if defined(_WIN32) && !defined(VTK_USE_X)
+      vtkOutputWindowGlobalInstance.TakeReference(vtkWin32OutputWindow::New());
+#elif defined(ANDROID)
+      vtkOutputWindowGlobalInstance.TakeReference(vtkAndroidOutputWindow::New());
 #else
-      vtkOutputWindow::Instance = vtkOutputWindow::New();
+      vtkOutputWindowGlobalInstance.TakeReference(vtkOutputWindow::New());
 #endif
     }
   }
+
   // return the instance
-  return vtkOutputWindow::Instance;
+  return vtkOutputWindowGlobalInstance;
 }
 
 void vtkOutputWindow::SetInstance(vtkOutputWindow* instance)
 {
-  if (vtkOutputWindow::Instance==instance)
+  std::unique_lock<std::mutex> lock(InstanceLock);
+  (void)lock;
+
+  if (vtkOutputWindowGlobalInstance == instance)
   {
     return;
   }
-  // preferably this will be nullptr
-  if (vtkOutputWindow::Instance)
-  {
-    vtkOutputWindow::Instance->Delete();
-  }
-  vtkOutputWindow::Instance = instance;
-  if (!instance)
-  {
-    return;
-  }
-  // user will call ->Delete() after setting instance
-  instance->Register(nullptr);
+
+  vtkOutputWindowGlobalInstance = vtk::MakeSmartPointer(instance);
 }
+VTK_ABI_NAMESPACE_END

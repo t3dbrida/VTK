@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestArrayLookup.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "vtkBitArray.h"
 #include "vtkFloatArray.h"
@@ -21,12 +9,12 @@
 #include "vtkNew.h"
 #include "vtkSortDataArray.h"
 #include "vtkStringArray.h"
+#include "vtkStringScanner.h"
 #include "vtkTimerLog.h"
 #include "vtkVariantArray.h"
 
 #include "vtkSmartPointer.h"
-#define VTK_CREATE(type,name) \
-  vtkSmartPointer<type> name = vtkSmartPointer<type>::New()
+#define VTK_CREATE(type, name) vtkSmartPointer<type> name = vtkSmartPointer<type>::New()
 
 #include <algorithm>
 #include <limits>
@@ -34,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+#include <iostream>
 
 struct NodeCompare
 {
@@ -53,12 +42,11 @@ vtkIdType LookupValue(std::multimap<int, vtkIdType>& lookup, int value)
   return -1;
 }
 
-vtkIdType LookupValue(std::vector<std::pair<int, vtkIdType> >& lookup, int value)
+vtkIdType LookupValue(std::vector<std::pair<int, vtkIdType>>& lookup, int value)
 {
   NodeCompare comp;
   std::pair<int, vtkIdType> val(value, 0);
-  std::pair<int, vtkIdType> found =
-    *std::lower_bound(lookup.begin(), lookup.end(), val, comp);
+  std::pair<int, vtkIdType> found = *std::lower_bound(lookup.begin(), lookup.end(), val, comp);
   if (found.first == value)
   {
     return found.second;
@@ -69,7 +57,8 @@ vtkIdType LookupValue(std::vector<std::pair<int, vtkIdType> >& lookup, int value
 vtkIdType LookupValue(vtkIntArray* lookup, vtkIdTypeArray* index, int value)
 {
   int* ptr = lookup->GetPointer(0);
-  vtkIdType place = static_cast<vtkIdType>(std::lower_bound(ptr, ptr + lookup->GetNumberOfTuples(), value) - ptr);
+  vtkIdType place =
+    static_cast<vtkIdType>(std::lower_bound(ptr, ptr + lookup->GetNumberOfTuples(), value) - ptr);
   if (place < lookup->GetNumberOfTuples() && ptr[place] == value)
   {
     return index->GetValue(place);
@@ -82,11 +71,11 @@ int TestArrayLookupBit(vtkIdType numVal)
   int errors = 0;
 
   // Create the array
-  vtkIdType arrSize = (numVal-1)*numVal/2;
+  vtkIdType arrSize = (numVal - 1) * numVal / 2;
   VTK_CREATE(vtkBitArray, arr);
   for (vtkIdType i = 0; i < arrSize; i++)
   {
-    arr->InsertNextValue(i < arrSize/2);
+    arr->InsertNextValue(i < arrSize / 2);
   }
 
   //
@@ -98,7 +87,7 @@ int TestArrayLookupBit(vtkIdType numVal)
   timer->StartTimer();
   arr->LookupValue(0);
   timer->StopTimer();
-  cerr << "," << timer->GetElapsedTime();
+  std::cerr << "," << timer->GetElapsedTime();
 
   // Time simple lookup
   timer->StartTimer();
@@ -107,7 +96,7 @@ int TestArrayLookupBit(vtkIdType numVal)
     arr->LookupValue(i % 2);
   }
   timer->StopTimer();
-  cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
+  std::cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
 
   // Time list lookup
   VTK_CREATE(vtkIdList, list);
@@ -117,34 +106,38 @@ int TestArrayLookupBit(vtkIdType numVal)
     arr->LookupValue(i % 2, list);
   }
   timer->StopTimer();
-  cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
+  std::cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
 
   // Test for correctness (-1)
   vtkIdType index = -1;
   index = arr->LookupValue(-1);
   if (index != -1)
   {
-    cerr << "ERROR: lookup found value at " << index << " but is not there (should return -1)" << endl;
+    std::cerr << "ERROR: lookup found value at " << index << " but is not there (should return -1)"
+              << std::endl;
     errors++;
   }
   arr->LookupValue(-1, list);
   if (list->GetNumberOfIds() != 0)
   {
-    cerr << "ERROR: lookup found " << list->GetNumberOfIds() << " matches but there should be " << 0 << endl;
+    std::cerr << "ERROR: lookup found " << list->GetNumberOfIds() << " matches but there should be "
+              << 0 << std::endl;
     errors++;
   }
 
   // Test for correctness (0)
   index = arr->LookupValue(0);
-  if (index < arrSize/2 || index > arrSize-1)
+  if (index < arrSize / 2 || index > arrSize - 1)
   {
-    cerr << "ERROR: vector lookup found value at " << index << " but is in range [" << arrSize/2 << "," << arrSize-1 << "]" << endl;
+    std::cerr << "ERROR: vector lookup found value at " << index << " but is in range ["
+              << arrSize / 2 << "," << arrSize - 1 << "]" << std::endl;
     errors++;
   }
   arr->LookupValue(0, list);
-  if (list->GetNumberOfIds() != arrSize - arrSize/2)
+  if (list->GetNumberOfIds() != arrSize - arrSize / 2)
   {
-    cerr << "ERROR: lookup found " << list->GetNumberOfIds() << " matches but there should be " << arrSize - arrSize/2 << endl;
+    std::cerr << "ERROR: lookup found " << list->GetNumberOfIds() << " matches but there should be "
+              << arrSize - arrSize / 2 << std::endl;
     errors++;
   }
   else
@@ -153,7 +146,7 @@ int TestArrayLookupBit(vtkIdType numVal)
     {
       if (arr->GetValue(list->GetId(j)) != 0)
       {
-        cerr << "ERROR: could not find " << j << " in found list" << endl;
+        std::cerr << "ERROR: could not find " << j << " in found list" << std::endl;
         errors++;
       }
     }
@@ -161,15 +154,17 @@ int TestArrayLookupBit(vtkIdType numVal)
 
   // Test for correctness (1)
   index = arr->LookupValue(1);
-  if (index < 0 || index > arrSize/2-1)
+  if (index < 0 || index > arrSize / 2 - 1)
   {
-    cerr << "ERROR: vector lookup found value at " << index << " but is in range [" << 0 << "," << arrSize/2-1 << "]" << endl;
+    std::cerr << "ERROR: vector lookup found value at " << index << " but is in range [" << 0 << ","
+              << arrSize / 2 - 1 << "]" << std::endl;
     errors++;
   }
   arr->LookupValue(1, list);
-  if (list->GetNumberOfIds() != arrSize/2)
+  if (list->GetNumberOfIds() != arrSize / 2)
   {
-    cerr << "ERROR: lookup found " << list->GetNumberOfIds() << " matches but there should be " << arrSize/2 << endl;
+    std::cerr << "ERROR: lookup found " << list->GetNumberOfIds() << " matches but there should be "
+              << arrSize / 2 << std::endl;
     errors++;
   }
   else
@@ -178,7 +173,7 @@ int TestArrayLookupBit(vtkIdType numVal)
     {
       if (arr->GetValue(list->GetId(j)) != 1)
       {
-        cerr << "ERROR: could not find " << j << " in found list" << endl;
+        std::cerr << "ERROR: could not find " << j << " in found list" << std::endl;
         errors++;
       }
     }
@@ -192,13 +187,13 @@ int TestArrayLookupVariant(vtkIdType numVal)
   int errors = 0;
 
   // Create the array
-  vtkIdType arrSize = (numVal-1)*numVal/2;
+  vtkIdType arrSize = (numVal - 1) * numVal / 2;
   VTK_CREATE(vtkVariantArray, arr);
   for (vtkIdType i = 0; i < numVal; i++)
   {
-    for (vtkIdType j = 0; j < numVal-1-i; j++)
+    for (vtkIdType j = 0; j < numVal - 1 - i; j++)
     {
-      arr->InsertNextValue(numVal-1-i);
+      arr->InsertNextValue(numVal - 1 - i);
     }
   }
 
@@ -211,7 +206,7 @@ int TestArrayLookupVariant(vtkIdType numVal)
   timer->StartTimer();
   arr->LookupValue(0);
   timer->StopTimer();
-  cerr << "," << timer->GetElapsedTime();
+  std::cerr << "," << timer->GetElapsedTime();
 
   // Time simple lookup
   timer->StartTimer();
@@ -220,7 +215,7 @@ int TestArrayLookupVariant(vtkIdType numVal)
     arr->LookupValue(i);
   }
   timer->StopTimer();
-  cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
+  std::cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
 
   // Time list lookup
   VTK_CREATE(vtkIdList, list);
@@ -230,7 +225,7 @@ int TestArrayLookupVariant(vtkIdType numVal)
     arr->LookupValue(i, list);
   }
   timer->StopTimer();
-  cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
+  std::cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
 
   // Test for correctness
   vtkIdType correctIndex = arrSize;
@@ -240,18 +235,20 @@ int TestArrayLookupVariant(vtkIdType numVal)
     vtkIdType index = arr->LookupValue(i);
     if (i == 0 && index != -1)
     {
-      cerr << "ERROR: lookup found value at " << index << " but is at -1" << endl;
+      std::cerr << "ERROR: lookup found value at " << index << " but is at -1" << std::endl;
       errors++;
     }
     if (i != 0 && (index < correctIndex || index > correctIndex + i - 1))
     {
-      cerr << "ERROR: vector lookup found value at " << index << " but is in range [" << correctIndex << "," << correctIndex + i - 1 << "]" << endl;
+      std::cerr << "ERROR: vector lookup found value at " << index << " but is in range ["
+                << correctIndex << "," << correctIndex + i - 1 << "]" << std::endl;
       errors++;
     }
     arr->LookupValue(i, list);
     if (list->GetNumberOfIds() != i)
     {
-      cerr << "ERROR: lookup found " << list->GetNumberOfIds() << " matches but there should be " << i << endl;
+      std::cerr << "ERROR: lookup found " << list->GetNumberOfIds()
+                << " matches but there should be " << i << std::endl;
       errors++;
     }
     else
@@ -269,7 +266,7 @@ int TestArrayLookupVariant(vtkIdType numVal)
         }
         if (!inList)
         {
-          cerr << "ERROR: could not find " << j << " in found list" << endl;
+          std::cerr << "ERROR: could not find " << j << " in found list" << std::endl;
           errors++;
         }
       }
@@ -283,13 +280,13 @@ int TestArrayLookupFloat(vtkIdType numVal)
   int errors = 0;
 
   // Create the array
-  vtkIdType arrSize = (numVal-1)*numVal/2;
+  vtkIdType arrSize = (numVal - 1) * numVal / 2;
   VTK_CREATE(vtkFloatArray, arr);
   for (vtkIdType i = 0; i < numVal; i++)
   {
-    for (vtkIdType j = 0; j < numVal-1-i; j++)
+    for (vtkIdType j = 0; j < numVal - 1 - i; j++)
     {
-      arr->InsertNextValue(numVal-1-i);
+      arr->InsertNextValue(numVal - 1 - i);
     }
   }
   arr->InsertNextValue(std::numeric_limits<float>::quiet_NaN());
@@ -303,7 +300,7 @@ int TestArrayLookupFloat(vtkIdType numVal)
   timer->StartTimer();
   arr->LookupValue(0);
   timer->StopTimer();
-  cerr << "," << timer->GetElapsedTime();
+  std::cerr << "," << timer->GetElapsedTime();
 
   // Time simple lookup
   timer->StartTimer();
@@ -312,7 +309,7 @@ int TestArrayLookupFloat(vtkIdType numVal)
     arr->LookupValue(i);
   }
   timer->StopTimer();
-  cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
+  std::cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
 
   // Time list lookup
   VTK_CREATE(vtkIdList, list);
@@ -322,13 +319,14 @@ int TestArrayLookupFloat(vtkIdType numVal)
     arr->LookupValue(i, list);
   }
   timer->StopTimer();
-  cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
+  std::cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
 
   // Test for NaN
   {
     vtkIdType index = arr->LookupValue(std::numeric_limits<float>::quiet_NaN());
-    if (index != arrSize) {
-      cerr << "ERROR: lookup found NaN at " << index << " instead of " << arrSize << endl;
+    if (index != arrSize)
+    {
+      std::cerr << "ERROR: lookup found NaN at " << index << " instead of " << arrSize << std::endl;
       errors++;
     }
   }
@@ -337,12 +335,14 @@ int TestArrayLookupFloat(vtkIdType numVal)
     arr->LookupValue(std::numeric_limits<float>::quiet_NaN(), NaNlist);
     if (NaNlist->GetNumberOfIds() != 1)
     {
-      cerr << "ERROR: lookup found " << list->GetNumberOfIds() << " values of NaN instead of " << 1 << endl;
+      std::cerr << "ERROR: lookup found " << list->GetNumberOfIds() << " values of NaN instead of "
+                << 1 << std::endl;
       errors++;
     }
     if (NaNlist->GetId(0) != arrSize)
     {
-      cerr << "ERROR: lookup found NaN at " << list->GetId(0) << " instead of " << arrSize << endl;
+      std::cerr << "ERROR: lookup found NaN at " << list->GetId(0) << " instead of " << arrSize
+                << std::endl;
       errors++;
     }
   }
@@ -355,18 +355,20 @@ int TestArrayLookupFloat(vtkIdType numVal)
     vtkIdType index = arr->LookupValue(i);
     if (i == 0 && index != -1)
     {
-      cerr << "ERROR: lookup found value at " << index << " but is at -1" << endl;
+      std::cerr << "ERROR: lookup found value at " << index << " but is at -1" << std::endl;
       errors++;
     }
     if (i != 0 && (index < correctIndex || index > correctIndex + i - 1))
     {
-      cerr << "ERROR: vector lookup found value at " << index << " but is in range [" << correctIndex << "," << correctIndex + i - 1 << "]" << endl;
+      std::cerr << "ERROR: vector lookup found value at " << index << " but is in range ["
+                << correctIndex << "," << correctIndex + i - 1 << "]" << std::endl;
       errors++;
     }
     arr->LookupValue(i, list);
     if (list->GetNumberOfIds() != i)
     {
-      cerr << "ERROR: lookup found " << list->GetNumberOfIds() << " matches but there should be " << i << endl;
+      std::cerr << "ERROR: lookup found " << list->GetNumberOfIds()
+                << " matches but there should be " << i << std::endl;
       errors++;
     }
     else
@@ -384,7 +386,7 @@ int TestArrayLookupFloat(vtkIdType numVal)
         }
         if (!inList)
         {
-          cerr << "ERROR: could not find " << j << " in found list" << endl;
+          std::cerr << "ERROR: could not find " << j << " in found list" << std::endl;
           errors++;
         }
       }
@@ -393,19 +395,18 @@ int TestArrayLookupFloat(vtkIdType numVal)
   return errors;
 }
 
-
 int TestArrayLookupString(vtkIdType numVal)
 {
   int errors = 0;
 
   // Create the array
-  vtkIdType arrSize = (numVal-1)*numVal/2;
+  vtkIdType arrSize = (numVal - 1) * numVal / 2;
   VTK_CREATE(vtkStringArray, arr);
   for (vtkIdType i = 0; i < numVal; i++)
   {
-    for (vtkIdType j = 0; j < numVal-1-i; j++)
+    for (vtkIdType j = 0; j < numVal - 1 - i; j++)
     {
-      arr->InsertNextValue(vtkVariant(numVal-1-i).ToString());
+      arr->InsertNextValue(vtkVariant(numVal - 1 - i).ToString());
     }
   }
 
@@ -418,7 +419,7 @@ int TestArrayLookupString(vtkIdType numVal)
   timer->StartTimer();
   arr->LookupValue("0");
   timer->StopTimer();
-  cerr << "," << timer->GetElapsedTime();
+  std::cerr << "," << timer->GetElapsedTime();
 
   // Time simple lookup
   timer->StartTimer();
@@ -427,7 +428,7 @@ int TestArrayLookupString(vtkIdType numVal)
     arr->LookupValue(vtkVariant(i).ToString());
   }
   timer->StopTimer();
-  cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
+  std::cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
 
   // Time list lookup
   VTK_CREATE(vtkIdList, list);
@@ -437,7 +438,7 @@ int TestArrayLookupString(vtkIdType numVal)
     arr->LookupValue(vtkVariant(i).ToString(), list);
   }
   timer->StopTimer();
-  cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
+  std::cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
 
   // Test for correctness
   vtkIdType correctIndex = arrSize;
@@ -447,18 +448,20 @@ int TestArrayLookupString(vtkIdType numVal)
     vtkIdType index = arr->LookupValue(vtkVariant(i).ToString());
     if (i == 0 && index != -1)
     {
-      cerr << "ERROR: lookup found value at " << index << " but is at -1" << endl;
+      std::cerr << "ERROR: lookup found value at " << index << " but is at -1" << std::endl;
       errors++;
     }
     if (i != 0 && (index < correctIndex || index > correctIndex + i - 1))
     {
-      cerr << "ERROR: vector lookup found value at " << index << " but is in range [" << correctIndex << "," << correctIndex + i - 1 << "]" << endl;
+      std::cerr << "ERROR: vector lookup found value at " << index << " but is in range ["
+                << correctIndex << "," << correctIndex + i - 1 << "]" << std::endl;
       errors++;
     }
     arr->LookupValue(vtkVariant(i).ToString(), list);
     if (list->GetNumberOfIds() != i)
     {
-      cerr << "ERROR: lookup found " << list->GetNumberOfIds() << " matches but there should be " << i << endl;
+      std::cerr << "ERROR: lookup found " << list->GetNumberOfIds()
+                << " matches but there should be " << i << std::endl;
       errors++;
     }
     else
@@ -476,7 +479,7 @@ int TestArrayLookupString(vtkIdType numVal)
         }
         if (!inList)
         {
-          cerr << "ERROR: could not find " << j << " in found list" << endl;
+          std::cerr << "ERROR: could not find " << j << " in found list" << std::endl;
           errors++;
         }
       }
@@ -490,13 +493,13 @@ int TestArrayLookupInt(vtkIdType numVal, bool runComparison)
   int errors = 0;
 
   // Create the array
-  vtkIdType arrSize = (numVal-1)*numVal/2;
+  vtkIdType arrSize = (numVal - 1) * numVal / 2;
   VTK_CREATE(vtkIntArray, arr);
   for (vtkIdType i = 0; i < numVal; i++)
   {
-    for (vtkIdType j = 0; j < numVal-1-i; j++)
+    for (vtkIdType j = 0; j < numVal - 1 - i; j++)
     {
-      arr->InsertNextValue(numVal-1-i);
+      arr->InsertNextValue(numVal - 1 - i);
     }
   }
 
@@ -509,7 +512,7 @@ int TestArrayLookupInt(vtkIdType numVal, bool runComparison)
   timer->StartTimer();
   arr->LookupValue(0);
   timer->StopTimer();
-  cerr << "," << timer->GetElapsedTime();
+  std::cerr << "," << timer->GetElapsedTime();
 
   // Time simple lookup
   timer->StartTimer();
@@ -518,7 +521,7 @@ int TestArrayLookupInt(vtkIdType numVal, bool runComparison)
     arr->LookupValue(i);
   }
   timer->StopTimer();
-  cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
+  std::cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
 
   // Time list lookup
   VTK_CREATE(vtkIdList, list);
@@ -528,7 +531,7 @@ int TestArrayLookupInt(vtkIdType numVal, bool runComparison)
     arr->LookupValue(i, list);
   }
   timer->StopTimer();
-  cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
+  std::cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
 
   // Test for correctness
   vtkIdType correctIndex = arrSize;
@@ -538,18 +541,20 @@ int TestArrayLookupInt(vtkIdType numVal, bool runComparison)
     vtkIdType index = arr->LookupValue(i);
     if (i == 0 && index != -1)
     {
-      cerr << "ERROR: lookup found value at " << index << " but is at -1" << endl;
+      std::cerr << "ERROR: lookup found value at " << index << " but is at -1" << std::endl;
       errors++;
     }
     if (i != 0 && (index < correctIndex || index > correctIndex + i - 1))
     {
-      cerr << "ERROR: vector lookup found value at " << index << " but is in range [" << correctIndex << "," << correctIndex + i - 1 << "]" << endl;
+      std::cerr << "ERROR: vector lookup found value at " << index << " but is in range ["
+                << correctIndex << "," << correctIndex + i - 1 << "]" << std::endl;
       errors++;
     }
     arr->LookupValue(i, list);
     if (list->GetNumberOfIds() != i)
     {
-      cerr << "ERROR: lookup found " << list->GetNumberOfIds() << " matches but there should be " << i << endl;
+      std::cerr << "ERROR: lookup found " << list->GetNumberOfIds()
+                << " matches but there should be " << i << std::endl;
       errors++;
     }
     else
@@ -567,7 +572,7 @@ int TestArrayLookupInt(vtkIdType numVal, bool runComparison)
         }
         if (!inList)
         {
-          cerr << "ERROR: could not find " << j << " in found list" << endl;
+          std::cerr << "ERROR: could not find " << j << " in found list" << std::endl;
           errors++;
         }
       }
@@ -589,7 +594,7 @@ int TestArrayLookupInt(vtkIdType numVal, bool runComparison)
       map.insert(std::pair<const int, vtkIdType>(*ptr, i));
     }
     timer->StopTimer();
-    cerr << "," << timer->GetElapsedTime();
+    std::cerr << "," << timer->GetElapsedTime();
 
     // Time simple lookup
     timer->StartTimer();
@@ -598,7 +603,7 @@ int TestArrayLookupInt(vtkIdType numVal, bool runComparison)
       LookupValue(map, i);
     }
     timer->StopTimer();
-    cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
+    std::cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
 
     // Test for correctness
     correctIndex = arrSize;
@@ -608,12 +613,13 @@ int TestArrayLookupInt(vtkIdType numVal, bool runComparison)
       vtkIdType index = LookupValue(map, i);
       if (i == 0 && index != -1)
       {
-        cerr << "ERROR: lookup found value at " << index << " but is at -1" << endl;
+        std::cerr << "ERROR: lookup found value at " << index << " but is at -1" << std::endl;
         errors++;
       }
       if (i != 0 && index != correctIndex)
       {
-        cerr << "ERROR: lookup found value at " << index << " but is at " << correctIndex << endl;
+        std::cerr << "ERROR: lookup found value at " << index << " but is at " << correctIndex
+                  << std::endl;
         errors++;
       }
     }
@@ -625,7 +631,7 @@ int TestArrayLookupInt(vtkIdType numVal, bool runComparison)
     // Time lookup creation
     timer->StartTimer();
     ptr = arr->GetPointer(0);
-    std::vector<std::pair<int, vtkIdType> > vec(arrSize);
+    std::vector<std::pair<int, vtkIdType>> vec(arrSize);
     for (vtkIdType i = 0; i < arrSize; ++i, ++ptr)
     {
       vec[i] = std::pair<int, vtkIdType>(*ptr, i);
@@ -633,7 +639,7 @@ int TestArrayLookupInt(vtkIdType numVal, bool runComparison)
     NodeCompare comp;
     std::sort(vec.begin(), vec.end(), comp);
     timer->StopTimer();
-    cerr << "," << timer->GetElapsedTime();
+    std::cerr << "," << timer->GetElapsedTime();
 
     // Time simple lookup
     timer->StartTimer();
@@ -642,7 +648,7 @@ int TestArrayLookupInt(vtkIdType numVal, bool runComparison)
       LookupValue(vec, i);
     }
     timer->StopTimer();
-    cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
+    std::cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
 
     // Test for correctness
     correctIndex = arrSize;
@@ -652,12 +658,14 @@ int TestArrayLookupInt(vtkIdType numVal, bool runComparison)
       vtkIdType index = LookupValue(vec, i);
       if (i == 0 && index != -1)
       {
-        cerr << "ERROR: vector lookup found value at " << index << " but is at -1" << endl;
+        std::cerr << "ERROR: vector lookup found value at " << index << " but is at -1"
+                  << std::endl;
         errors++;
       }
       if (i != 0 && (index < correctIndex || index > correctIndex + i - 1))
       {
-        cerr << "ERROR: vector lookup found value at " << index << " but is in range [" << correctIndex << "," << correctIndex + i - 1 << "]" << endl;
+        std::cerr << "ERROR: vector lookup found value at " << index << " but is in range ["
+                  << correctIndex << "," << correctIndex + i - 1 << "]" << std::endl;
         errors++;
       }
     }
@@ -679,7 +687,7 @@ int TestArrayLookupInt(vtkIdType numVal, bool runComparison)
     sorted->DeepCopy(arr);
     vtkSortDataArray::Sort(sorted, indices);
     timer->StopTimer();
-    cerr << "," << timer->GetElapsedTime();
+    std::cerr << "," << timer->GetElapsedTime();
 
     // Time simple lookup
     timer->StartTimer();
@@ -688,7 +696,7 @@ int TestArrayLookupInt(vtkIdType numVal, bool runComparison)
       LookupValue(sorted, indices, i);
     }
     timer->StopTimer();
-    cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
+    std::cerr << "," << (timer->GetElapsedTime() / static_cast<double>(numVal));
 
     // Test for correctness
     correctIndex = arrSize;
@@ -698,17 +706,64 @@ int TestArrayLookupInt(vtkIdType numVal, bool runComparison)
       vtkIdType index = LookupValue(sorted, indices, i);
       if (i == 0 && index != -1)
       {
-        cerr << "ERROR: arr lookup found value at " << index << " but is at -1" << endl;
+        std::cerr << "ERROR: arr lookup found value at " << index << " but is at -1" << std::endl;
         errors++;
       }
       if (i != 0 && (index < correctIndex || index > correctIndex + i - 1))
       {
-        cerr << "ERROR: arr lookup found value at " << index << " but is in range [" << correctIndex << "," << correctIndex + i - 1 << "]" << endl;
+        std::cerr << "ERROR: arr lookup found value at " << index << " but is in range ["
+                  << correctIndex << "," << correctIndex + i - 1 << "]" << std::endl;
         errors++;
       }
     }
   }
 
+  return errors;
+}
+
+int TestMultiComponent()
+{
+  int errors = 0;
+  auto array = vtkSmartPointer<vtkFloatArray>::New();
+  array->SetNumberOfComponents(3);
+  static const float data[3][3] = { { 1., 2., 3. }, { 2., 3., 4. }, { 3., 4., 5. } };
+  for (auto tuple : data)
+  {
+    array->InsertNextTypedTuple(tuple);
+  }
+
+  // a list of values and the index expected to be returned
+  static const int expected[][2] = { { 2, 1 }, { 3, 2 }, { 4, 5 }, { 5, 8 }, { 6, -1 } };
+  for (auto e : expected)
+  {
+    vtkIdType index = array->LookupTypedValue(e[0]);
+    if (index != e[1])
+    {
+      std::cerr << "TestMultiComponent: "
+                << "index of " << e[0] << " expected " << e[1] << " actual " << index;
+      ++errors;
+    }
+  }
+
+  // overwrite 3.0 (3rd component of 1st tuple) with NaN.
+  array->SetTypedComponent(0, 2, std::numeric_limits<float>::quiet_NaN());
+
+  // We need to trigger rebuilding the auxiliary data structures explicitly
+  array->ClearLookup();
+  vtkIdType index = array->LookupValue(std::numeric_limits<float>::quiet_NaN());
+  if (2 != index)
+  {
+    std::cerr << "TestMultiComponent: lookup of NaN: "
+              << "expected 0 actual " << index;
+    ++errors;
+  }
+  index = array->LookupValue(3.);
+  if (4 != index)
+  {
+    std::cerr << "TestMultiComponent: lookup of value 3.: "
+              << "expected 1 actual " << index;
+    ++errors;
+  }
   return errors;
 }
 
@@ -724,66 +779,69 @@ int TestArrayLookup(int argc, char* argv[])
     {
       runComparison = true;
     }
-    if (!strcmp(argv[i], "-m") && i+1 < argc)
+    if (!strcmp(argv[i], "-m") && i + 1 < argc)
     {
       ++i;
-      int size = atoi(argv[i]);
-      min = static_cast<int>((-1.0 + sqrt(1 + 8.0*size))/2.0);
+      int size;
+      VTK_FROM_CHARS_IF_ERROR_RETURN(argv[i], size, EXIT_FAILURE);
+      min = static_cast<int>((-1.0 + sqrt(1 + 8.0 * size)) / 2.0);
     }
-    if (!strcmp(argv[i], "-M") && i+1 < argc)
+    if (!strcmp(argv[i], "-M") && i + 1 < argc)
     {
       ++i;
-      int size = atoi(argv[i]);
-      max = static_cast<int>((-1.0 + sqrt(1 + 8.0*size))/2.0);
+      int size;
+      VTK_FROM_CHARS_IF_ERROR_RETURN(argv[i], size, EXIT_FAILURE);
+      max = static_cast<int>((-1.0 + sqrt(1 + 8.0 * size)) / 2.0);
     }
-    if (!strcmp(argv[i], "-S") && i+1 < argc)
+    if (!strcmp(argv[i], "-S") && i + 1 < argc)
     {
       ++i;
-      steps = atoi(argv[i]);
+      VTK_FROM_CHARS_IF_ERROR_RETURN(argv[i], steps, EXIT_FAILURE);
     }
   }
 
-  vtkIdType stepSize = (max-min)/(steps-1);
+  vtkIdType stepSize = (max - min) / (steps - 1);
   if (stepSize <= 0)
   {
     stepSize = 1;
   }
 
   int errors = 0;
-  cerr << "distinct values";
-  cerr << ",size";
-  cerr << ",create lookup";
-  cerr << ",index lookup";
-  cerr << ",list lookup";
+  std::cerr << "distinct values";
+  std::cerr << ",size";
+  std::cerr << ",create lookup";
+  std::cerr << ",index lookup";
+  std::cerr << ",list lookup";
   if (runComparison)
   {
-    cerr << ",create map lookup";
-    cerr << ",index map lookup";
-    cerr << ",create vector lookup";
-    cerr << ",index vector lookup";
-    cerr << ",create array lookup";
-    cerr << ",index array lookup";
+    std::cerr << ",create map lookup";
+    std::cerr << ",index map lookup";
+    std::cerr << ",create vector lookup";
+    std::cerr << ",index vector lookup";
+    std::cerr << ",create array lookup";
+    std::cerr << ",index array lookup";
   }
-  cerr << ",string create lookup";
-  cerr << ",string index lookup";
-  cerr << ",string list lookup";
-  cerr << ",variant create lookup";
-  cerr << ",variant index lookup";
-  cerr << ",variant list lookup";
-  cerr << ",bit create lookup";
-  cerr << ",bit index lookup";
-  cerr << ",bit list lookup";
-  cerr << endl;
+  std::cerr << ",string create lookup";
+  std::cerr << ",string index lookup";
+  std::cerr << ",string list lookup";
+  std::cerr << ",variant create lookup";
+  std::cerr << ",variant index lookup";
+  std::cerr << ",variant list lookup";
+  std::cerr << ",bit create lookup";
+  std::cerr << ",bit index lookup";
+  std::cerr << ",bit list lookup";
+  std::cerr << std::endl;
   for (vtkIdType numVal = min; numVal <= max; numVal += stepSize)
   {
-    vtkIdType total = numVal*(numVal+1)/2;
-    cerr << numVal << "," << total;
+    vtkIdType total = numVal * (numVal + 1) / 2;
+    std::cerr << numVal << "," << total;
     errors += TestArrayLookupInt(numVal, runComparison);
     errors += TestArrayLookupFloat(numVal);
     errors += TestArrayLookupString(numVal);
     errors += TestArrayLookupVariant(numVal);
     errors += TestArrayLookupBit(numVal);
-    cerr << endl;
+    std::cerr << std::endl;
   }
+  errors += TestMultiComponent();
   return errors;
 }

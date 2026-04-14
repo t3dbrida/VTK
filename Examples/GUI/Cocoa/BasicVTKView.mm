@@ -1,18 +1,12 @@
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #import "BasicVTKView.h"
 
-#import "vtkRenderer.h"
+#import "vtkCocoaRenderWindow.h"
+#import "vtkCocoaRenderWindowInteractor.h"
 #import "vtkRenderWindow.h"
 #import "vtkRenderWindowInteractor.h"
-#import "vtkCocoaRenderWindowInteractor.h"
-#import "vtkCocoaRenderWindow.h"
-
-// Private Interface
-@interface BasicVTKView()
-{
-  @private
-  vtkRenderer* _renderer;
-}
-@end
+#import "vtkRenderer.h"
 
 @implementation BasicVTKView
 
@@ -31,7 +25,7 @@
 
 // ----------------------------------------------------------------------------
 // Designated initializer
-- (/*nullable*/ instancetype)initWithCoder:(NSCoder *)coder
+- (nullable instancetype)initWithCoder:(NSCoder*)coder
 {
   self = [super initWithCoder:coder];
   if (self)
@@ -59,10 +53,10 @@
   // not be what is wanted. If you allow this code then what you end up with is the
   // typical empty black OpenGL view which seems more 'correct' or at least is
   // more soothing to the eye.
-  vtkRenderWindowInteractor* theRenWinInt = [self getInteractor];
-  if (theRenWinInt && (theRenWinInt->GetInitialized() == NO))
+  vtkRenderWindowInteractor* renWinInt = [self getInteractor];
+  if (renWinInt && (renWinInt->GetInitialized() == NO))
   {
-    theRenWinInt->Initialize();
+    renWinInt->Initialize();
   }
 
   // Let the vtkCocoaGLView do its regular drawing
@@ -88,10 +82,12 @@
     // default behaviour) we tell vtk that they exist already.
     // The APIs names are a bit misleading, due to the cross
     // platform nature of vtk, but this usage is correct.
-    cocoaRenWin->SetRootWindow((__bridge void*)[self window]);
+    NSWindow* parentWindow = [self window];
+    assert(parentWindow);
+    cocoaRenWin->SetRootWindow((__bridge void*)parentWindow);
     cocoaRenWin->SetWindowId((__bridge void*)self);
 
-    // The usual vtk connections
+    // The usual vtk connections.
     cocoaRenWin->AddRenderer(ren);
     renWinInt->SetRenderWindow(cocoaRenWin);
 
@@ -130,18 +126,6 @@
 
   // There is no setter accessor for the render window
   // interactor, that's ok.
-}
-
-// ----------------------------------------------------------------------------
-- (/*nullable*/ vtkRenderer*)getRenderer
-{
-  return _renderer;
-}
-
-// ----------------------------------------------------------------------------
-- (void)setRenderer:(/*nullable*/ vtkRenderer*)theRenderer
-{
-  _renderer = theRenderer;
 }
 
 @end

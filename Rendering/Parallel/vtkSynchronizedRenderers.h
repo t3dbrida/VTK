@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkSynchronizedRenderers.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkSynchronizedRenderers
  * @brief   synchronizes renderers across processes.
@@ -25,16 +13,20 @@
  * of rendered images across processes on its own. You typically either subclass
  * to implement a compositing algorithm or use a renderer capable of compositing
  * eg. IceT based renderer.
-*/
+ */
 
 #ifndef vtkSynchronizedRenderers_h
 #define vtkSynchronizedRenderers_h
 
-#include "vtkRenderingParallelModule.h" // For export macro
+#include "vtkIndependentViewerCollection.h" // needed for vtkIndependentViewerCollection
 #include "vtkObject.h"
-#include "vtkUnsignedCharArray.h" // needed for vtkUnsignedCharArray.
-#include "vtkSmartPointer.h" // needed for vtkSmartPointer.
+#include "vtkRenderingParallelModule.h" // For export macro
+#include "vtkSmartPointer.h"            // needed for vtkSmartPointer.
+#include "vtkUnsignedCharArray.h"       // needed for vtkUnsignedCharArray.
 
+#include <memory> // for std::unique_ptr
+
+VTK_ABI_NAMESPACE_BEGIN
 class vtkFXAAOptions;
 class vtkRenderer;
 class vtkMultiProcessController;
@@ -49,7 +41,7 @@ public:
   vtkTypeMacro(vtkSynchronizedRenderers, vtkObject);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
-  //@{
+  ///@{
   /**
    * Set the renderer to be synchronized by this instance. A
    * vtkSynchronizedRenderers instance can be used to synchronize exactly 1
@@ -58,18 +50,28 @@ public:
    */
   virtual void SetRenderer(vtkRenderer*);
   virtual vtkRenderer* GetRenderer();
-  //@}
+  ///@}
 
-  //@{
+  ///@{
+  /**
+   * Optionally, set the independent viewer collection to be synchronized. If
+   * set, a 16-element eye matrix and a single eye separation is synchronized
+   * to remote processes, for each viewer in the collection.
+   */
+  vtkSetObjectMacro(IndependentViewers, vtkIndependentViewerCollection);
+  vtkGetObjectMacro(IndependentViewers, vtkIndependentViewerCollection);
+  ///@}
+
+  ///@{
   /**
    * Set the parallel message communicator. This is used to communicate among
    * processes.
    */
   virtual void SetParallelController(vtkMultiProcessController*);
   vtkGetObjectMacro(ParallelController, vtkMultiProcessController);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Enable/Disable parallel rendering. Unless Parallel rendering is on, the
    * cameras won't be synchronized across processes.
@@ -77,17 +79,17 @@ public:
   vtkSetMacro(ParallelRendering, bool);
   vtkGetMacro(ParallelRendering, bool);
   vtkBooleanMacro(ParallelRendering, bool);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Get/Set the image reduction factor.
    */
   vtkSetClampMacro(ImageReductionFactor, int, 1, 50);
   vtkGetMacro(ImageReductionFactor, int);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * If on (default), the rendered images are pasted back on to the screen. You
    * should turn this flag off on processes that are not meant to be visible to
@@ -96,9 +98,9 @@ public:
   vtkSetMacro(WriteBackImages, bool);
   vtkGetMacro(WriteBackImages, bool);
   vtkBooleanMacro(WriteBackImages, bool);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Get/Set the root-process id. This is required when the ParallelController
    * is a vtkSocketController. Set to 0 by default (which will not work when
@@ -106,7 +108,7 @@ public:
    */
   vtkSetMacro(RootProcessId, int);
   vtkGetMacro(RootProcessId, int);
-  //@}
+  ///@}
 
   /**
    * Computes visible prob bounds. This must be called on all processes at the
@@ -117,16 +119,24 @@ public:
    */
   void CollectiveExpandForVisiblePropBounds(double bounds[6]);
 
-  //@{
+  ///@{
   /**
    * When set, this->CaptureRenderedImage() does not capture image from the
    * screen instead passes the call to the delegate.
    */
   virtual void SetCaptureDelegate(vtkSynchronizedRenderers*);
   vtkGetObjectMacro(CaptureDelegate, vtkSynchronizedRenderers);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
+  /**
+   * Allows synchronizing collections of actors from local to remote
+   * renderer.
+   */
+  void EnableSynchronizableActors(bool);
+  ///@}
+
+  ///@{
   /**
    * When multiple groups of processes are synchronized together using different
    * controllers, one needs to specify the order in which the various
@@ -137,12 +147,29 @@ public:
   vtkSetMacro(AutomaticEventHandling, bool);
   vtkGetMacro(AutomaticEventHandling, bool);
   vtkBooleanMacro(AutomaticEventHandling, bool);
-  //@}
+  ///@}
+
+  ///@{
+  /**
+   * When doing rendering between multiple processes, it is often easier to have
+   * all ranks do the rendering on a black background. This helps avoid issues
+   * where the background gets over blended as the images are composted
+   * together. If  set to true (default is false), before the rendering begins,
+   * vtkSynchronizedRenderers will change the renderer's background color and
+   * other flags to make it render on a black background and then restore then
+   * on end render. If WriteBackImages is true, then the background will indeed
+   * be restored before the write-back happens, thus ensuring the result
+   * displayed to the user is on correct background.
+   */
+  vtkSetMacro(FixBackground, bool);
+  vtkGetMacro(FixBackground, bool);
+  vtkBooleanMacro(FixBackground, bool);
+  ///@}
 
   enum
   {
     SYNC_RENDERER_TAG = 15101,
-    RESET_CAMERA_TAG  = 15102,
+    RESET_CAMERA_TAG = 15102,
     COMPUTE_BOUNDS_TAG = 15103
   };
 
@@ -173,18 +200,27 @@ public:
     void MarkInValid() { this->Valid = false; }
 
     bool IsValid() { return this->Valid; }
-    int GetWidth() { return this->Size[0];}
-    int GetHeight() { return this->Size[1];}
-    vtkUnsignedCharArray* GetRawPtr()
-      { return this->Data; }
+    int GetWidth() { return this->Size[0]; }
+    int GetHeight() { return this->Size[1]; }
+    vtkUnsignedCharArray* GetRawPtr() { return this->Data; }
 
-    // Pushes the image to the viewport.
-    bool PushToViewport(vtkRenderer*);
+    /**
+     * Pushes the image to the viewport. The OpenGL viewport  and scissor region
+     * is setup using the viewport defined by the renderer.
+     *
+     * If blend is true (default), the image will be blended onto to the existing
+     * background, else it will replace it.
+     */
+    bool PushToViewport(vtkRenderer* renderer, bool blend = true);
 
-    // This is a raw version of PushToViewport() that assumes that the
-    // glViewport() has already been setup externally.
-    // the argument is optional for backwards compat with old OpenGL
-    bool PushToFrameBuffer(vtkRenderer *ren = nullptr);
+    /**
+     * This is a raw version of PushToViewport() that assumes that the
+     * glViewport() has already been setup externally.
+     *
+     * If blend is true (default), the image will be blended onto to the existing
+     * background, else it will replace it.
+     */
+    bool PushToFrameBuffer(vtkRenderer* ren, bool blend = true);
 
     // Captures the image from the viewport.
     // This doesn't trigger a render, just captures what's currently there in
@@ -192,7 +228,7 @@ public:
     bool Capture(vtkRenderer*);
 
     // Save the image as a png. Useful for debugging.
-    void SaveAsPNG(const char* filename);
+    void SaveAsPNG(VTK_FILEPATH const char* filename);
 
   private:
     bool Valid;
@@ -219,6 +255,7 @@ protected:
     double CameraClippingRange[2];
     double CameraViewAngle;
     double CameraParallelScale;
+    double CameraEyeSeparation;
     double EyeTransformMatrix[16];
     double ModelTransformMatrix[16];
 
@@ -244,26 +281,23 @@ protected:
 
   vtkMultiProcessController* ParallelController;
   vtkOpenGLRenderer* Renderer;
+  vtkIndependentViewerCollection* IndependentViewers = nullptr;
 
   /**
    * Can be used in HandleEndRender(), MasterEndRender() or SlaveEndRender()
-   * calls to capture the rendered image. If this->ImageReductionFactor, then
-   * the image will be capture in this->ReducedImage, otherwise it will be
-   * captured in this->FullImage (this->ReducedImage will be pointing to the
-   * same image).
+   * calls to capture the rendered image. The captured image is stored in
+   * `this->Image`.
    */
   virtual vtkRawImage& CaptureRenderedImage();
 
   /**
    * Can be used in HandleEndRender(), MasterEndRender() or SlaveEndRender()
-   * calls to paste back the image from either this->ReducedImage or
-   * this->FullImage info the viewport.
+   * calls to paste back the image from this->Image to the viewport.
    */
   virtual void PushImageToScreen();
 
   vtkSynchronizedRenderers* CaptureDelegate;
-  vtkRawImage ReducedImage;
-  vtkRawImage FullImage;
+  vtkRawImage Image;
 
   bool ParallelRendering;
   int ImageReductionFactor;
@@ -283,7 +317,16 @@ private:
   vtkOpenGLFXAAFilter* FXAAFilter;
 
   double LastViewport[4];
+
+  double LastBackground[3];
+  double LastBackgroundAlpha;
+  bool LastTexturedBackground;
+  bool LastGradientBackground;
+  bool FixBackground;
+
+  class vtkInternals;
+  std::unique_ptr<vtkInternals> Internal;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif
-

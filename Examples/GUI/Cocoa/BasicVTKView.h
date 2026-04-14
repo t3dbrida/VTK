@@ -1,9 +1,12 @@
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #import <Cocoa/Cocoa.h>
 
 #import "vtkCocoaGLView.h"
 
-#include "vtkRenderer.h"
+#import "vtkRenderer.h"
 
+// This is a subclass of VTK's vtkCocoaGLView.
 @interface BasicVTKView : vtkCocoaGLView
 
 // Create the vtkRenderer, vtkRenderWindow, and vtkRenderWindowInteractor.
@@ -15,7 +18,6 @@
 - (void)cleanUpVTKSupport;
 
 // Accessors for the vtkRenderer.
-- (/*nullable*/ vtkRenderer*)getRenderer;
-- (void)setRenderer:(/*nullable*/ vtkRenderer*)theRenderer;
+@property (readwrite, nonatomic, nullable, getter=getRenderer) vtkRenderer* renderer;
 
 @end

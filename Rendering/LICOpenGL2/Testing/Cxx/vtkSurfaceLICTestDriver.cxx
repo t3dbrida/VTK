@@ -1,55 +1,37 @@
-/*=========================================================================
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
-  Program:   Visualization Toolkit
-  Module:    TestSurfaceLIC.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-
-#include "vtkObjectFactory.h"
-#include "vtkSmartPointer.h"
-#include "vtkPointData.h"
+#include "vtkArrayComponents.h"
+#include "vtkCamera.h"
 #include "vtkCellData.h"
-#include "vtkPolyData.h"
+#include "vtkCompositeDataIterator.h"
+#include "vtkCompositeDataPipeline.h"
+#include "vtkCompositeDataSet.h"
 #include "vtkDataObject.h"
 #include "vtkDataSet.h"
-#include "vtkCompositeDataSet.h"
-#include "vtkCompositeDataIterator.h"
-#include "vtkTestUtilities.h"
-#include "vtkCamera.h"
-#include "vtkColorTransferFunction.h"
+#include "vtkDiscretizableColorTransferFunction.h"
+#include "vtkObjectFactory.h"
+#include "vtkPointData.h"
+#include "vtkPolyData.h"
 #include "vtkRegressionTestImage.h"
-#include "vtkRenderer.h"
 #include "vtkRenderWindow.h"
 #include "vtkRenderWindowInteractor.h"
-#include "vtkCompositeDataPipeline.h"
-#include "vtkCompositePolyDataMapper2.h"
+#include "vtkRenderer.h"
+#include "vtkSmartPointer.h"
+#include "vtkTestUtilities.h"
 
 #include "vtkCompositeSurfaceLICMapper.h"
-#include "vtkSurfaceLICMapper.h"
 #include "vtkSurfaceLICInterface.h"
+#include "vtkSurfaceLICMapper.h"
 
-#include "vtk_glew.h"
+#include "vtk_glad.h"
 
-#include <vector>
+#include <iostream>
 #include <string>
-
-#ifndef vtkFloatingPointTemplateMacro
-#define vtkFloatingPointTemplateMacro(call) \
-  vtkTemplateMacroCase(VTK_DOUBLE, double, call); \
-  vtkTemplateMacroCase(VTK_FLOAT, float, call);
-#endif
+#include <vector>
 
 // Helper to compute range
-static
-void Range(vtkDataArray *S, double *range)
+static void Range(vtkDataArray* S, double* range)
 {
   double Srange[2];
   S->GetRange(Srange);
@@ -57,101 +39,44 @@ void Range(vtkDataArray *S, double *range)
   range[1] = Srange[1] > range[1] ? Srange[1] : range[1];
 }
 
-// helper to compute magnitude
-static
-vtkDataArray *Magnitude(vtkDataArray *V)
-{
-  vtkIdType nTups = V->GetNumberOfTuples();
-  vtkIdType nComps = V->GetNumberOfComponents();
-  vtkDataArray *magV = V->NewInstance();
-  magV->SetNumberOfTuples(nTups);
-  switch (V->GetDataType())
-  {
-    vtkFloatingPointTemplateMacro(
-      VTK_TT *pV = (VTK_TT*)V->GetVoidPointer(0);
-      VTK_TT *pMagV = (VTK_TT*)magV->GetVoidPointer(0);
-      for (vtkIdType i=0; i<nTups; ++i)
-      {
-        VTK_TT mag = VTK_TT(0);
-        for (vtkIdType j=0; j<nComps; ++j)
-        {
-          VTK_TT v = pV[i*nComps+j];
-          mag += v*v;
-        }
-        pMagV[i] = sqrt(mag);
-      }
-      );
-  default:
-    cerr << "ERROR: vectors must be float or double" << endl;
-    break;
-  }
-  return magV;
-}
-
 // Compute the magnitude of the named vector and add it to
 // dataset, return range.
-static
-vtkDataArray *Magnitude(vtkDataSet *ds, std::string &vectors)
+static vtkSmartPointer<vtkDataArray> Magnitude(vtkDataSet* ds, std::string& vectors)
 {
-  vtkDataArray *V = nullptr;
+  vtkDataArray* V = nullptr;
   V = ds->GetPointData()->GetArray(vectors.c_str());
   if (V == nullptr)
   {
-    cerr << "ERROR: point vectors " << vectors << " not found" << endl;
+    std::cerr << "ERROR: point vectors " << vectors << " not found" << std::endl;
     return nullptr;
   }
-  vtkDataArray *magV = Magnitude(V);
-  std::string magVName = "mag"+vectors;
+  auto magV = vtk::ComponentOrNormAsDataArray(V, L2Norm);
+  std::string magVName = "mag" + vectors;
   magV->SetName(magVName.c_str());
   return magV;
 }
 
 // This example demonstrates the use of vtkSurfaceLICmapper for rendering
 // geometry with LIC on the surface.
-int vtkSurfaceLICTestDriver(
-      int argc,
-      char **argv,
-      vtkDataObject *dataObj,
-      int num_steps,
-      double step_size,
-      int enhanced_lic,
-      int normalize_vectors,
-      int camera_config,
-      int generate_noise_texture,
-      int noise_type,
-      int noise_texture_size,
-      int noise_grain_size,
-      double min_noise_value,
-      double max_noise_value,
-      int number_of_noise_levels,
-      double impulse_noise_prob,
-      double impulse_noise_bg_value,
-      int noise_gen_seed,
-      int enhance_contrast,
-      double low_lic_contrast_enhancement_factor,
-      double high_lic_contrast_enhancement_factor,
-      double low_color_contrast_enhancement_factor,
-      double high_color_contrast_enhancement_factor,
-      int anti_alias,
-      int color_mode,
-      double lic_intensity,
-      double map_mode_bias,
-      int color_by_mag,
-      int mask_on_surface,
-      double mask_threshold,
-      double mask_intensity,
-      std::vector<double> &mask_color_rgb,
-      std::string &vectors)
+int vtkSurfaceLICTestDriver(int argc, char** argv, vtkDataObject* dataObj, int num_steps,
+  double step_size, int enhanced_lic, int normalize_vectors, int camera_config,
+  int generate_noise_texture, int noise_type, int noise_texture_size, int noise_grain_size,
+  double min_noise_value, double max_noise_value, int number_of_noise_levels,
+  double impulse_noise_prob, double impulse_noise_bg_value, int noise_gen_seed,
+  int enhance_contrast, double low_lic_contrast_enhancement_factor,
+  double high_lic_contrast_enhancement_factor, double low_color_contrast_enhancement_factor,
+  double high_color_contrast_enhancement_factor, int anti_alias, int color_mode,
+  double lic_intensity, double map_mode_bias, int color_by_mag, int mask_on_surface,
+  double mask_threshold, double mask_intensity, int interpolate_scalars_before_mapping,
+  int num_discrete_colors, std::vector<double>& mask_color_rgb, std::string& vectors)
 {
   // Set up the render window, renderer, interactor.
-  vtkSmartPointer<vtkRenderWindow> renWin
-    = vtkSmartPointer<vtkRenderWindow>::New();
+  vtkSmartPointer<vtkRenderWindow> renWin = vtkSmartPointer<vtkRenderWindow>::New();
 
-  vtkSmartPointer<vtkRenderer> renderer
-    = vtkSmartPointer<vtkRenderer>::New();
+  vtkSmartPointer<vtkRenderer> renderer = vtkSmartPointer<vtkRenderer>::New();
 
-  vtkSmartPointer<vtkRenderWindowInteractor> iren
-    = vtkSmartPointer<vtkRenderWindowInteractor>::New();
+  vtkSmartPointer<vtkRenderWindowInteractor> iren =
+    vtkSmartPointer<vtkRenderWindowInteractor>::New();
 
   renWin->AddRenderer(renderer);
   iren->SetRenderWindow(renWin);
@@ -176,9 +101,8 @@ int vtkSurfaceLICTestDriver(
 
   if (!vtkSurfaceLICInterface::IsSupported(renWin))
   {
-    cerr
-      << "WARNING: The rendering context does not support required extensions."
-      << endl;
+    std::cerr << "WARNING: The rendering context does not support required extensions."
+              << std::endl;
     dataObj = nullptr;
     renWin = nullptr;
     renderer = nullptr;
@@ -188,42 +112,40 @@ int vtkSurfaceLICTestDriver(
   }
 
   // Create a mapper and insert the vtkSurfaceLICmapper mapper into the
-  // mapper chain. This is essential since the entire logic of performin the
+  // mapper chain. This is essential since the entire logic of performing the
   // LIC is present in the vtkSurfaceLICmapper.
 
-  vtkSmartPointer<vtkCompositeSurfaceLICMapper> mapper
-    = vtkSmartPointer<vtkCompositeSurfaceLICMapper>::New();
+  vtkSmartPointer<vtkCompositeSurfaceLICMapper> mapper =
+    vtkSmartPointer<vtkCompositeSurfaceLICMapper>::New();
   // vtkSmartPointer<vtkSurfaceLICMapper> mapper
   //   = vtkSmartPointer<vtkSurfaceLICMapper>::New();
 
   // print details of the test
   // convenient for debugging failed
   // tests on remote dashboards.
-  const char *vtkGLVersion = reinterpret_cast<const char*>(glGetString(GL_VERSION));
-  const char *vtkGLVendor = reinterpret_cast<const char*>(glGetString(GL_VENDOR));
-  const char *vtkGLRenderer = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
-  const char *vtkLICClass = mapper->GetClassName();
-  std::string details
-    = std::string("\n\n====================================================================\n")
-    + std::string("VTK mapper:\n")
-    + std::string("    ") + std::string(vtkLICClass) + std::string("\n")
-    + std::string("OpenGL:\n")
-    + std::string("    ") + std::string(vtkGLVersion?vtkGLVersion:"unknown") + std::string("\n")
-    + std::string("    ") + std::string(vtkGLRenderer?vtkGLRenderer:"unknown") + std::string("\n")
-    + std::string("    ") + std::string(vtkGLVendor?vtkGLVendor:"unknown") + std::string("\n")
-    + std::string("====================================================================\n\n\n");
-  cerr << details << endl;
+  const char* vtkGLVersion = reinterpret_cast<const char*>(glGetString(GL_VERSION));
+  const char* vtkGLVendor = reinterpret_cast<const char*>(glGetString(GL_VENDOR));
+  const char* vtkGLRenderer = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
+  const char* vtkLICClass = mapper->GetClassName();
+  std::string details =
+    std::string("\n\n====================================================================\n") +
+    std::string("VTK mapper:\n") + std::string("    ") + std::string(vtkLICClass) +
+    std::string("\n") + std::string("OpenGL:\n") + std::string("    ") +
+    std::string(vtkGLVersion ? vtkGLVersion : "unknown") + std::string("\n") + std::string("    ") +
+    std::string(vtkGLRenderer ? vtkGLRenderer : "unknown") + std::string("\n") +
+    std::string("    ") + std::string(vtkGLVendor ? vtkGLVendor : "unknown") + std::string("\n") +
+    std::string("====================================================================\n\n\n");
+  std::cerr << details << std::endl;
 
   // If user chose a vector field, select it.
-  if (vectors != "")
+  if (!vectors.empty())
   {
-    mapper->SetInputArrayToProcess(0, 0, 0,
-      vtkDataObject::FIELD_ASSOCIATION_POINTS_THEN_CELLS,
-      vectors.c_str());
+    mapper->SetInputArrayToProcess(
+      0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS_THEN_CELLS, vectors.c_str());
   }
   else
   {
-    cerr << "ERROR: vectors must be set using --vectors." << endl;
+    std::cerr << "ERROR: vectors must be set using --vectors." << std::endl;
     return 1;
   }
 
@@ -232,16 +154,16 @@ int vtkSurfaceLICTestDriver(
 
   if (color_by_mag)
   {
-    if ( vectors.empty() )
+    if (vectors.empty())
     {
-      cerr << "ERROR: color by mag requires using --vectors." << endl;
+      std::cerr << "ERROR: color by mag requires using --vectors." << std::endl;
       vtkAlgorithm::SetDefaultExecutivePrototype(nullptr);
       return 1;
     }
 
-    const char *magVName = nullptr;
-    double range[2] = {VTK_FLOAT_MAX, -VTK_FLOAT_MAX};
-    vtkCompositeDataSet *cd = dynamic_cast<vtkCompositeDataSet*>(dataObj);
+    const char* magVName = nullptr;
+    double range[2] = { VTK_FLOAT_MAX, -VTK_FLOAT_MAX };
+    vtkCompositeDataSet* cd = dynamic_cast<vtkCompositeDataSet*>(dataObj);
     if (cd)
     {
       vtkCompositeDataIterator* iter = cd->NewIterator();
@@ -250,11 +172,10 @@ int vtkSurfaceLICTestDriver(
         vtkDataSet* ds = dynamic_cast<vtkDataSet*>(iter->GetCurrentDataObject());
         if (ds && ds->GetNumberOfCells())
         {
-          vtkDataArray *magV = Magnitude(ds, vectors);
+          auto magV = Magnitude(ds, vectors);
           magVName = magV->GetName();
           Range(magV, range);
           ds->GetPointData()->SetScalars(magV);
-          magV->Delete();
         }
       }
       iter->Delete();
@@ -262,35 +183,37 @@ int vtkSurfaceLICTestDriver(
     vtkDataSet* ds = dynamic_cast<vtkDataSet*>(dataObj);
     if (ds && ds->GetNumberOfCells())
     {
-      vtkDataArray *magV = Magnitude(ds, vectors);
+      auto magV = Magnitude(ds, vectors);
       magVName = magV->GetName();
       Range(magV, range);
       ds->GetPointData()->SetScalars(magV);
-      magV->Delete();
     }
     if (!magVName)
     {
-      cerr << "ERROR: color by mag could not generate magV." << endl;
+      std::cerr << "ERROR: color by mag could not generate magV." << std::endl;
       vtkAlgorithm::SetDefaultExecutivePrototype(nullptr);
       return 1;
     }
-    vtkColorTransferFunction *lut = vtkColorTransferFunction::New();
+    vtkDiscretizableColorTransferFunction* lut = vtkDiscretizableColorTransferFunction::New();
     lut->SetColorSpaceToRGB();
     lut->AddRGBPoint(range[0], 0.0, 0.0, 1.0);
     lut->AddRGBPoint(range[1], 1.0, 0.0, 0.0);
     lut->SetColorSpaceToDiverging();
     lut->Build();
+    lut->SetDiscretize(true);
+    lut->SetNumberOfValues(num_discrete_colors);
     mapper->SetLookupTable(lut);
     mapper->SetScalarModeToUsePointData();
     mapper->SetScalarVisibility(1);
     mapper->SelectColorArray(magVName);
     mapper->SetUseLookupTableScalarRange(1);
     mapper->SetScalarMode(VTK_SCALAR_MODE_USE_POINT_FIELD_DATA);
+    mapper->SetInterpolateScalarsBeforeMapping(interpolate_scalars_before_mapping);
     lut->Delete();
   }
 
   // Pass parameters.
-  vtkSurfaceLICInterface *li = mapper->GetLICInterface();
+  vtkSurfaceLICInterface* li = mapper->GetLICInterface();
   li->SetNumberOfSteps(num_steps);
   li->SetStepSize(step_size);
   li->SetEnhancedLIC(enhanced_lic);
@@ -317,10 +240,9 @@ int vtkSurfaceLICTestDriver(
   li->SetMaskOnSurface(mask_on_surface);
   li->SetMaskThreshold(mask_threshold);
   li->SetMaskIntensity(mask_intensity);
-  li->SetMaskColor(&mask_color_rgb[0]);
+  li->SetMaskColor(mask_color_rgb.data());
 
-  vtkSmartPointer<vtkActor> actor
-    = vtkSmartPointer<vtkActor>::New();
+  vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
 
   actor->SetMapper(mapper);
   renderer->AddActor(actor);
@@ -328,7 +250,7 @@ int vtkSurfaceLICTestDriver(
   mapper = nullptr;
   actor = nullptr;
 
-  vtkCamera *camera = renderer->GetActiveCamera();
+  vtkCamera* camera = renderer->GetActiveCamera();
 
   if (camera_config == 1)
   {
@@ -372,7 +294,7 @@ int vtkSurfaceLICTestDriver(
     camera->SetPosition(64.7, 3.2, -14.0);
     camera->SetViewAngle(30);
     camera->SetViewUp(0.25, 0.5, 0.8);
-    //renderer->ResetCamera();
+    // renderer->ResetCamera();
     camera->Zoom(1.09);
   }
 

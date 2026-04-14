@@ -1,349 +1,311 @@
-SET(CTEST_CUSTOM_MEMCHECK_IGNORE
-  ${CTEST_CUSTOM_MEMCHECK_IGNORE}
-  Example-vtkLocal
-  Example-vtkMy
+set(CTEST_CUSTOM_MAXIMUM_NUMBER_OF_ERRORS 1000)
+set(CTEST_CUSTOM_MAXIMUM_NUMBER_OF_WARNINGS 1000)
 
-@memcheck_excluded_tests@
+list(APPEND CTEST_CUSTOM_MEMCHECK_IGNORE
+  # Issues in third party glut library
+  VTK::RenderingExternalCxx-TestGLUTRenderWindow
+  VTK::IOVPICCxx-TestVPICReader
+  VTK::RenderingFreeTypeFontConfigCxx-TestSystemFontRendering
+  VTK::GeovisGDALCxx-TestRasterReprojectionFilter
 
-  PrintSelf-Charts
-  PrintSelf-Common
-  PrintSelf-Filtering
-  PrintSelf-GenericFiltering
-  PrintSelf-Geovis
-  PrintSelf-Graphics
-  PrintSelf-Hybrid
-  PrintSelf-Imaging
-  PrintSelf-Infovis
-  PrintSelf-IO
-  PrintSelf-Parallel
-  PrintSelf-Rendering
-  PrintSelf-Views
-  PrintSelf-VolumeRendering
-  PrintSelf-Widgets
+  # The PLY code does out of range ops but that is just how
+  # it is architected currently. It stores every value into
+  # uint, int, and double but typically only uses the
+  # value that makes sense for the type read in. Code needs
+  # to be reworked eventually but the out of range values
+  # are likely not being used.
+  VTK::IOPLYCxx-TestPLYWriter
+  VTK::IOPLYCxx-TestPLYWriterString
+  VTK::IOPLYCxx-TestPLYReaderTextureUVPoints
+  VTK::IOPLYCxx-TestPLYReaderTextureUVFaces
 
-  TestSetObjectMacro-Charts
-  TestSetObjectMacro-Common
-  TestSetObjectMacro-Filtering
-  TestSetObjectMacro-GenericFiltering
-  TestSetObjectMacro-Geovis
-  TestSetObjectMacro-Graphics
-  TestSetObjectMacro-Hybrid
-  TestSetObjectMacro-Imaging
-  TestSetObjectMacro-Infovis
-  TestSetObjectMacro-IO
-  TestSetObjectMacro-Parallel
-  TestSetObjectMacro-Rendering
-  TestSetObjectMacro-Views
-  TestSetObjectMacro-VolumeRendering
-  TestSetObjectMacro-Widgets
+  # TestLinePlotDouble intentionally uses very large doubles
+  # even though the implementation of the class is largely
+  # float. Fixing this requires reworking a few classes to
+  # use doubles everywhere (which they generally should)
+  # when that is done this can be removed.
+  # The key classes impacted are vtkPlotPoints and the
+  # Draw calls in Context2D
+  VTK::ChartsCoreCxx-TestLinePlotDouble
 
-  # this one runs python which then runs two program so no memory checking there
-  Sockets-image
-  )
+  # loguru looks like it leaks the thread name but apparently
+  # it eventually does free the memory. See
+  # https://github.com/emilk/loguru/issues/132
+  # for some reason only this test seems to report it
+  VTK::FiltersParallelDIY2Cxx-TestRedistributeDataSetFilter
+)
 
+list(APPEND CTEST_CUSTOM_WARNING_MATCH
+  "{standard input}:[0-9][0-9]*: Warning: ")
 
-#####################################################
-# Be aware CMake currently warns on all the following
-#
-# "([^ :]+):([0-9]+): warning:",
-#  "([^ :]+):([0-9]+): note:",
-#  "^cc[^C]*CC: WARNING File = ([^,]+), Line = ([0-9]+)",
-#  "^ld([^:])*:([ \\t])*WARNING([^:])*:",
-#  "([^:]+): warning ([0-9]+):",
-#  "^\"[^\"]+\", line [0-9]+: [Ww](arning|arnung)",
-#  "([^:]+): warning[ \\t]*[0-9]+[ \\t]*:",
-#  "^(Warning|Warnung) ([0-9]+):",
-#  "^(Warning|Warnung)[ :]",
-#  "WARNING: ",
-#  "([^ :]+) : warning",
-#  "([^:]+): warning",
-#  "\", line [0-9]+\\.[0-9]+: [0-9]+-[0-9]+ \\([WI]\\)",
-#  "^cxx: Warning:",
-#  ".*file: .* has no symbols",
-#  "([^ :]+):([0-9]+): (Warning|Warnung)",
-#  "\\([0-9]*\\): remark #[0-9]*",
-#  "\".*\", line [0-9]+: remark\\([0-9]*\\):",
-#  "cc-[0-9]* CC: REMARK File = .*, Line = [0-9]*",
-#  "^CMake Warning.*:",
-#  "^\\[WARNING\\]",
+list(APPEND CTEST_CUSTOM_WARNING_EXCEPTION
+  # classes that have been marked deprecated
+  # and will be removed in the future
+  # To be remove din VTK 9.0
+  "vtkTemporalStreamTracer"
 
-SET(CTEST_CUSTOM_WARNING_MATCH
-  ${CTEST_CUSTOM_WARNING_MATCH}
-  "{standard input}:[0-9][0-9]*: Warning: "
-  )
-
-# Removing this because it somehow matches normal build output lines
-# on several platforms.  Perhaps there is a bug in the custom match
-# support.
-#
-#  SET(CTEST_CUSTOM_ERROR_MATCH
-#    ${CTEST_CUSTOM_ERROR_MATCH}
-#    "\\", line [0-9]+, in "
-#    )
-
-IF(CMAKE_SYSTEM MATCHES "OSF")
-  SET(CTEST_CUSTOM_WARNING_EXCEPTION
-    ${CTEST_CUSTOM_WARNING_EXCEPTION}
-    "vtkKWApplication"
-    "vtkKWObject"
-    )
-ENDIF()
-
-SET(CTEST_CUSTOM_WARNING_EXCEPTION
-  ${CTEST_CUSTOM_WARNING_EXCEPTION}
-  "vcruntime_exception.h\\(43\\): note: see declaration"
-  "json/json"
-  "shadows a member of 'OGRRawPoint'"
-  "list.[0-9]+. : warning C4702: unreachable code"
-  "xtree.[0-9]+. : warning C4702: unreachable code"
-  "vector.[0-9]+. : warning C4702: unreachable code"
-  "warning LNK4221"
-  "variable .var_args[2]*. is used before its value is set"
-  "jobserver unavailable"
-  "warning: \\(Long double usage is reported only once for each file"
-  "warning: To disable this warning use"
-  "warning: .+ might be clobbered by .longjmp. or .vfork."
-  "(ranlib|libtool):.*file: .+ has no symbols"
-  "could not be inlined"
-  "ld: warning prebinding disabled because \\((__TEXT|__DATA|__LINKEDIT) segment \\(address = 0x[a-f0-9]+ size = 0x[a-f0-9]+\\) of (.*) overlaps with (__LINKEDIT|__TEXT|__DATA) segment \\(address = 0x[a-f0-9]+ size = 0x[a-f0-9]+\\) of (.*)"
-  "ld: warning prebinding disabled because dependent library: (.*).dylib is not prebound"
-  "warning: duplicate dylib"
-
-  # MPI uses c++ but may have been built with a different c++ compiler.
-  # It seems to work anyway so let's ignore it to make it easier to
-  # test more compilers.
-  "ld: warning: libstdc.*, needed by .*, may conflict with libstdc.*"
-
-  # Does *anyone* have an STL implementation that compiles without warnings...?
-  "cc-1116 CC: WARNING File = /usr/include/CC/stl_alloc.h, Line = 175"
-
-  # vtkfreetype needs to be updated to get rid of warnings that occur during
-  # 64-bit compiles... for now, mask them out of dashboard results:
-  "vtkfreetype.*warning C4"
-  "vtkfreetype.*warning: dereferencing type-punned pointer"
-  "vtkfreetype.*warning: conversion to .* from .* may change the sign of the result"
-  "vtkfreetype.*warning: passing argument .* of .* as .*signed due to prototype"
-  "vtkfreetype.*warning: passing argument .* of .* with different width due to prototype"
-  "vtkfreetype.*warning: conversion to .* from .* may alter its value"
-  "vtkfreetype.*warning: conversion of unsigned constant value to negative integer"
-  "vtkfreetype.*warning: suggest braces around empty body in 'do' statement"
-  "vtkfreetype.*warning: negative integer implicitly converted to unsigned type"
-  "vtkfreetype.*warning: dereferencing pointer .* does break strict-aliasing rules"
-  "vtkfreetype.*note: initialized from here"
-  "vtkfreetype.*warning: .* may be used uninitialized in this function"
-  "vtkfreetype.*note: .* was declared here"
-  "vtkfreetype/.*warning: .* set but not used"
-  "vtkfreetype/.*warning: .* defined but not used"
-  "WARNING: While resolving call to function .*FTC_GNode_Compare.* arguments were dropped!"
-  # vtknetcdf occasionally has warnings for things that are not a problem.
-  "vtknetcdf.*warning: dereferencing type-punned pointer"
-  "vtknetcdf.*warning: passing argument .* of .* as .*signed due to prototype"
-  "vtknetcdf.*warning: conversion to .* from .* may change the sign of the result"
-  "vtknetcdf.*warning: conversion to .* from .* may alter its value"
-  "vtknetcdf.*warning: dereferencing pointer .* does break strict-aliasing rules"
-  "vtknetcdf.*note: initialized from here"
-  # Some VTK dashboards include building bits of Qt which produce lots of
-  # the following warnings when built with the MS compilers. Qt guys should
-  # fix their code. Until they do, keep the Qt chatter off the VTK dashboard
-  # results:
-  "[Qq]t([Cc]ore|[Gg]ui).*(warning|note)"
-  "[Qq]t.*h.*warning.*declaration of .* shadows a member of .this"
-  "[Qq]t.*h.*warning.*(copy constructor|assignment operator) could not be generated"
-  "warning C4244: 'initializing' : conversion from 'qint64' to 'int', possible loss of data"
-  # gcc -Wstric-aliasing
-  "[Qq]t.*q.*h.*warning: dereferencing pointer .* does break strict-aliasing rules"
-  "[Qq]t.*q.*h.*note: initialized from here"
-  "[Qq]t.*q.*h.*note: while compiling"
-  "[Qq]t.*q.*h.*note: see reference"
-  "[Qq]t.*ui_"
-  "[Qq]t.*note: see reference"
-  "[Qq]t.*warning C4714"
-
-  # Specifically for HP compiler, mask out
-  "Filtering.vtkImageMultiple(Input|InputOutput)Filter.cxx.*warning.*more strictly aligned type"
-  "IO.vtkJPEG(Reader|Writer).cxx.*warning.*more strictly aligned type"
-  ".*warning.*relational operator.*always evaluates to.*"
-  ".*warning.*controlling expression is constant"
-  "[Qq]t.*h.*warning.*types cannot be declared in anonymous unions"
-
-  # QT on HP-UX uses -ldl while VTK uses -dldl.
-  "aCC: warning 983: The -ldl library specified on the command line is also added automatically by the compiler driver."
-
-  # This test is made to discover compiler warnings, therefore the emitted
-  # warnings are irrelevant in a dashboard submission
-  "TestCxxFeatures.cxx.*warning.*type qualifiers ignored on function return type"
-
-  # File generated by lex/yacc flex/bison, cannot fix the warnings.
-  "vtkParse.y.*passing argument 1 of 'preSig' discards qualifiers from pointer target type"
-  "vtkParse.y.*passing argument 1 of 'postSig' discards qualifiers from pointer target type"
-  "vtkParse.l.*warning: ignoring return value of 'fwrite', declared with attribute warn_unused_result"
-  "vtkParse.l.*warning: passing argument .* of .* as .* due to prototype"
-  "lex.yy.c.*warning: passing argument .* of .* as .* due to prototype"
-
-  # Java lint warnings
-  "Note: .* uses? or overrides a deprecated API"
-  "Note: .* uses? unchecked or unsafe operations"
-  "Note: Recompile with -Xlint:.* for details"
-
-  # warnings from some Open MPI headers/libs, cannot fix:
-  "/openmpi/.*request_inln.h.*warning: declaration .struct MPI::Grequest_intercept_t. does not declare anything"
-  "openmpi.*comm_inln.h.*warning: unused parameter"
-  "openmpi.*/cxx/op_inln.h.*warning: cast between incompatible function types from"
-
-  # remove the next line once this class is removed probably VTK 9.1
-  "vtkExtractArraysOverTime"
-
-  # warnings from some Eigen headers:
-  #
-  # Eigin has so many warnings using individual suppressions
-  # does not work. So many will be suppressed that it exceeds
-  # the limit ctest will show making it difficult to see
-  # the specifics of an unsuppressed warning unless you have
-  # access to the raw build logs. So we suppress everything
-  # that has eigin in the path. The old suppressions are left
-  # commented below should they be needed.
-  "[Ee]igen/src/.* note:"
-  "[Ee]igen/src/.* warning:"
-  "vtkeigen::"
-
-  # "[Ee]igen/src/.* note: \\(skipping"
-  # "[Ee]igen/src/.* note: expanded from macro"
-  # "[Ee]igen/src/.* note: implicit copy constructor for"
-  # "[Ee]igen/src/.* note: in expansion of macro"
-  # "[Ee]igen/src/.* note: in implicit copy constructor for"
-  # "[Ee]igen/src/.* note: in implicit move constructor for"
-  # "[Ee]igen/src/.* note: in instantiation of member function"
-  # "[Ee]igen/src/.* note: previous declaration is here"
-  # "[Ee]igen/src/.* note: shadowed declaration is here"
-  # "[Ee]igen/src/.* warning: cast from"
-  # "[Ee]igen/src/.* warning: 'm_maxThreads' was marked unused but was used"
-  # "[Ee]igen/src/.* warning: declaration of '.*' shadows"
-  # "[Ee]igen/src/.* warning: declaration shadows a typedef in"
-  # "[Ee]igen/src/.* warning: definition of implicit copy constructor for"
-  # "[Ee]igen/src/.* warning: enum constant in boolean context"
-  # "note: in instantiation of member function 'vtkeigen::"
-  # "note: in instantiation of function template specialization 'vtkeigen::"
-
-  # nested from an eigen macro
-  "include/assert.h.* note: expanded from macro 'assert'"
-
-  # warnings from some python headers/libs, cannot fix:
-  "warning: the use of .tmpnam_r. is dangerous, better use .mkstemp."
-  "warning: the use of .tempnam. is dangerous, better use .mkstemp."
-  "pyconfig.h.*warning: ._XOPEN_SOURCE. redefined"
-  "features.h.*warning: this is the location of the previous definition"
-
-  #boost
-  "boost.*warning.*assignment operator could not be generated"
-  "boost.*warning.*type name first seen using .* now seen using .*"
-  "boost.*warning.*default constructor could not be generated"
-  "boost.*warning.*can never be instantiated - user defined constructor required"
-  "boost.*warning.*unreferenced formal parameter"
-  "boost.*warning.*signed/unsigned mismatch"
-  "boost.*warning.*conversion from .* to .*, possible loss of data"
-  "boost.*warning.*declaration of .* shadows a member of"
-  "boost.*warning.*unused parameter"
-  "boost.*warning.*comparison between signed and unsigned integer expressions"
-  "TestBoostAdapter.*warning.*edge_property.*may be used uninitialized"
-
-  # bogus unreachable code warning in hashtable in kwsys
-  "hashtable.hxx.*warning C4702: unreachable code"
-
-  # Qt Designer related warning
-  "QtDesigner/extension.*warning: unused parameter"
-
-  # Strange Arch warning
-  "cc1plus: warning: assuming signed overflow does not occur when assuming that .* is always true"
-
-  # Unused dll when building Examples/AMR/Cxx with VS 7.1, Release configuration
-  "warning LNK4089: all references to .vtkIOXML-.*dll. discarded by /OPT:REF"
-
-  # Ignore clang's summary warning, assuming prior text has matched some
-  # other warning expression:
-  "[0-9,]+ warnings? generated."
-
-  #ignore clangs documentation warnings from libxml, which uses gtk-doc natively, not doxygen
-  "vtklibxml2.*warning: unknown command tag name"
-
-  # Ignore warnings about inheriting std::exception when the dll-interface
-  # doesn't match. There's no other way to really do exceptions properly.
-  "warning C4275: non dll-interface class 'std::exception' used as base"
-
-  # This warning occurs when building Java with -source x.y with compiler a.b's
-  # runtime library (rt.jar). It also emits a line with "1 warning"
-  # which matches ctests regex as well
+  # Java compilation warnings that don't matter.
+  "^1 warning$"
   "bootstrap class path not set in conjunction with -source"
-  "1 warning"
 
-  # diy warnings
-  "vtkmdiy/io/utils.hpp\\(84\\): warning: result of call is not used"
+  # OSX has deprecated openGL but we still use it
+  # and probably will not update the code but replace it
+  # with vulklan/moltenVK in the future
+  "Cocoa.*deprecated"
+  "NSOpenGL.*deprecated"
 
-  # stephen and matt should be working on these. Suppress until they fix
-  # upstream and we update. Todo: check after Sept 1 2018 with Stephen and
-  # Matt if these are fixed.
-  #
-  "vtkmetaio/metaImage.cxx"
-  "vtkmetaio/metaArray.cxx"
+  # C4275 carries with it a note that we don't care about. std::exception is
+  # the main culprit here.
+  "vcruntime_exception.h.*: note: see declaration of 'std::exception'"
 
-  # 3-rd party warnings from double-conversion
-  "vtkdoubleconversion.*unused function"
+  # C4702 warning (unreachable code) caused by intentional abort() used
+  # in test which prevents the return statement from being called.
+  "TestLoggerDisableSignalHandler.*unreachable code"
 
-  # warnings from ospray include.
-  "ospray/ospcommon"
+  # GetVersion is deprecated, but its use is OK.
+  "sysinfoapi.h.*: note: see declaration of 'GetVersion'"
 
-  # warnings as part of the doxygen documentation build
-  "no documentation block in"
-  "Utilities/Doxygen"
-  "Consider increasing DOT_GRAPH_MAX_NODES"
-  "based on cache misses the ideal setting for LOOKUP_CACHE_SIZE"
+  # Suppress notes from template instantiation backtraces.
+  "note: see reference to (class|function) template instantiation"
+  "note: while compiling class template member function"
 
+  # This is secondary output from clang, not indicating the warning per se.
+  "[0-9]* warnings? generated"
+  "note: \\(skipping [0-9]* expansions in backtrace"
+  "note: expanded from (here|macro)"
+
+  # This is secondary output from MSVC, not indicate the warning per se.
+  "note: see declaration of"
+  "note: see previous definition of"
+
+  # Ignore macro expansion lines from GCC
+  "note: in expansion of macro"
+
+  # function cast in vtkLogger/loguru
+  "vtkLogger.cxx.*: warning: cast between incompatible function types"
+
+  # Qt headers cause C4127 warnings with MSVC. Nothing we can do to fix them.
+  "[Qq]t([Cc]ore|[Gg]ui|[Tt]est|[Ww]idgets).*(warning|note)"
+  # Qt has some functions marked as `__forceinline` which MSVC refuses to inline.
+  "[Qq]t.*warning C4714"
+  "[Qq]t.*note: see declaration of"
+
+  # Python notes triggered from MPI4Py Cython-generated code.
+  "include/python3.*: note:"
+
+  # macOS warnings about dependencies htat are newer than the CI target
+  # version.
+  "ld: warning: dylib \\(/Applications/Xcode.*\\.app/Contents/Developer/Library/Frameworks/.*\\) was built for newer macOS version \\(.*\\) than being linked \\(.*\\)"
+
+  # Warning notes from Xcode.
+  "/Applications/Xcode.*: note:"
+
+  # Ignore moc-generated code (and rcc and uic).
+  "\\.dir[/\\\\][^/\\\\]*_autogen"
+
+  # Intel compilers warn about large functions, but we don't usually care.
+  "remark #11074: Inlining inhibited by limit (max-total-size|max-size)"
+  # Ignore the suggestion line for more information too.
+  "remark #11076: To get full report use"
+
+  # clang-tidy ignores
+  "vtkParse.tab.c.*bugprone-sizeof-expression"
+  "vtkParse.tab.c.*bugprone-suspicious-include"
+  "mocs_compilation.cpp.*bugprone-suspicious-include"
+  "vtkkwiml/test/test_.*: warning: .* \\[modernize-redundant-void-arg\\]"
+
+  # Ignore warnings from the standard library.
+  "warning:.*__builtin_memcpy.*stringop-overflow="
+  "note: at offset .* into destination object"
+
+  # Ignore some tidy warnings from wrapper code.
+  "vtk[^\\.]+(Java|Python).cxx:.*\\[(readability-redundant-string-init)\\]"
+
+  # Ignore some doxygen warnings
+  "warning: documented symbol 'template class .*' was not declared or defined."
+  "vtkContext2D.h:.*: warning: argument '.*' of command @param is not found in the argument list of vtkContext2D::DrawMarkers"
+  "vtkMultiThreshold.h:.*: warning: argument '.*' of command @param is not found in the argument list of vtkMultiThreshold::AddIntervalSet"
+  "QQuickVTKRenderWindow.h:.*: warning: QQuickVTKRenderWindow::captureScreenshot has @param documentation sections but no arguments"
+  "vtkInherits.h:.*: warning: documented symbol 'static vtk::ParentClasses.*::value' was not declared or defined."
+  "vtkPolyhedron.h:.*: warning: vtkPolyhedron::GetCellFaces has @param documentation sections but no arguments"
+
+  # Ignore bits from gcc-12 stdlib. There seem to be some serious issues in GCC
+  # 12 diagnostics. These come from the `quay.io/pypa/manylinux_2_28_x86_64`
+  # container as of now.
+  "/opt/rh/gcc-toolset-12"
+
+  # GCC 10.1 contains a bugfix for an error in previous GCC versions that
+  # resulted in a class zero-sized subobject to be passed incorrectly when
+  # compiled as C++17 or C++20 in versions of GCC prior to 10.1. GCC 10.1 fixes
+  # this by forcing the C++14 implementation and issuing a warning.
+  "when C\\+\\+17 is enabled changed to match C\\+\\+14 in GCC 10.1"
   )
 
-IF(APPLE)
-SET(CTEST_CUSTOM_WARNING_EXCEPTION
-  ${CTEST_CUSTOM_WARNING_EXCEPTION}
-  "warning -.: directory name .* does not exist"
-  )
-ENDIF()
+set(cdash_show_third_party_warnings "@VTK_ENABLE_CDASH_THIRD_PARTY_WARNINGS@")
+if (NOT cdash_show_third_party_warnings)
+  list(APPEND CTEST_CUSTOM_WARNING_EXCEPTION
+    # issue with exodus but exodus is not included in the note
+    # should these issues get fixed in exodus then remove this
+    # suppression
+    "note: '__builtin___snprintf_chk'"
 
-SET(CTEST_CUSTOM_COVERAGE_EXCLUDE
-  ${CTEST_CUSTOM_COVERAGE_EXCLUDE}
+    # HDF5 lex/yacc sources compilation lacks the "ThirdParty" part of the path.
+    "hl/src/H5LT(parse|analyze)"
+
+    # Suppress ThirdParty source code from displaying warnings.
+    "[Tt]hird[Pp]arty"
+
+    # Suppress MetaIO warnings.
+    "MetaIO/vtkmetaio"
+
+    # clang will often give multiline warnings from macro expansions,
+    # where the first part has "warning:" and subsequent parts have "note:"
+    # and those will sometimes expand into systems headers. When this occurs
+    # for ThirdParty code, we want it suppressed too. Do so here for headers within Xcode.
+    "Xcode\\.app/Contents/Developer.+note:"
+
+    # Suppress Remote module source code from displaying warnings.
+    # Suppress modules individually as just "Remote" is a common pattern
+    "[Rr]emote.[Mm]oment[Ii]nvariants"
+    "[Rr]emote.[Pp]oisson[Rr]econstruction"
+    "[Rr]emote.[Pp]owercrust"
+
+    # sometimes we use system third party headers with issues
+    # in this case liblas
+    "include/liblas"
+
+    # in this case a redefinition of strndup between netcdf and
+    # /usr/include/x86_64-linux-gnu/bits/string2.h  but the warning
+    # does not include ThirdParty in the line
+    "bits/string2\\.h"
+
+    # some windows link warnings related to hdf5 that do not include
+    # ThirdParty in the message
+    "H5.*\\.c\\.obj : warning LNK4221"
+
+    # ThirdParty xdmf2 uses sbrk which has been marked deprecated but
+    # produces a warning without ThirdParty ala
+    # /usr/include/unistd.h:587:7: note: 'sbrk' has been explicitly marked deprecated here
+    "note: 'sbrk' has been explicitly marked deprecated here"
+
+    # libproj source code includes the line
+    # return 0;       /* suppresses a warning */
+    # which is listed as context for another warning
+    # and causes a match due to the work warning in it
+    "return 0;       /\\* suppresses a warning \\*/"
+
+    # boost graph lib causes a warning on gcc with code that
+    # boost uses internally. An example for you template fans is
+    # /source/Infovis/BoostGraphAlgorithms/Testing/Cxx/TestBoostAdapter.cxx:221:47: warning: '*((void*)(& ei)+32).__gnu_cxx::__normal_iterator<boost::detail::stored_edge_property<long unsigned int, boost::property<boost::edge_index_t, unsigned int> >*, std::vector<boost::detail::stored_edge_property<long unsigned int, boost::property<boost::edge_index_t, unsigned int> >, std::allocator<boost::detail::stored_edge_property<long unsigned int, boost::property<boost::edge_index_t, unsigned int> > > > >::_M_current' may be used uninitialized in this function [-Wmaybe-uninitialized]
+    "[Bb]oost[Gg]raph.*edge_property.*may be used uninitialized"
+
+    # Boost.Graph uses deprecated Boost headers internally.
+    "define BOOST_BIND_GLOBAL_PLACEHOLDERS to retain the current behavior"
+
+    # Boost.Math is C++14; ignore warnings for now.
+    "boost/math/tools/config.hpp.*: warning: .*minimum language standard"
+
+    # Warnings due to DIY
+    "xmemory.*: warning C4996:.*Default Bounds constructor"
+
+    # viskores uses deprecated TBB headers
+    "TBB Warning: tbb/task.h is deprecated"
+
+    # viskores related warnings, someone working on viskores should fix these and once fixed
+    # remove these suppressions
+    "struct VISKORES_DEPRECATED"
+    "viskores::filter"
+
+    # eigen uses this internal header from CUDA that should not be used.
+    # [-Wcpp]
+    "host_defines.h is an internal header file and must not be used directly.  This file will be removed in a future CUDA release.  Please use cuda_runtime_api.h or cuda_runtime.h instead"
+
+    # warnings from moc generated code such as
+    # GUISupport/Qt/GUISupportQt_autogen/EWIEGA46WW/moc_QVTKInteractorInternal.cpp:73:55: warning: redundant parentheses surrounding declarator [-Wredundant-parens]
+    "autogen.*moc.*redundant parentheses"
+    # GUISupport/Qt/GUISupportQt_autogen/EWIEGA46WW/moc_QFilterTreeProxyModel.cpp:40:5: warning: 'StringRefStorage' may not intend to support class template argument deduction [-Wctad-maybe-unsupported]
+    "autogen.*moc.*ctad-maybe-unsupported"
+
+    # third party hdf5
+    # if(NULL == (*full_name = (char *)H5MM_malloc(path1_len + path2_len + 2 + 2))) /* Extra "+2" to quiet GCC warning - 2019/07/05, QAK */
+    "H5MM.*quiet GCC warning"
+
+    # Ignore diy2 warnings
+    "vtkdiy2"
+
+    # missing overrides may be suppressed, but the superclass shows up as a match on some systems
+    # it makes no sense to suppress the offending class but report the superclass
+    # vtkPolyDataAlgorithm.h:91:3: note: overridden virtual function is here
+    "note: overridden virtual function is here"
+
+    # Warnings from template instantiations. Remove once cmake/cmake!4766 is releasted.
+    "x(memory0|utility)\\([0-9]+\\): warning C4244"
+
+    # Timeout errors of SCCACHE are common cases for long builds such as VTK+Viskores+CUDA
+    "sccache: warning: The server looks like it shut down unexpectedly, compiling locally instead"
+
+    # Ignore warnings from Apple's new linker about duplicate rpath flags.
+    "ld: warning: duplicate -rpath"
+
+    # Libxml2 has an ignored warning in a line with a string containing `warning`
+    "xmlVFormatLegacyError.*validity warning"
+
+    # Suppress deprecated CUB Swap function warning suggesting cuda::std::swap
+    "cub::CUB_200802_SM_600::Swap.*deprecated.*cuda::std::swap"
+  )
+endif ()
+
+# CI-specific warning suppressions.
+#
+# Some of our CI ends up generating warnings that don't really matter. Of
+# particular interest are warnings which have different behavior in older
+# compilers than modern ones. It's not really all that important to cater to
+# old, broken warning implementations when newer compilers tell us when we
+# aren't doing things properly.
+if (NOT "$ENV{CI}" STREQUAL "")
+  # Warning exclusions for old compilers and dependencies.
+  if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "mindeps")
+    # GCC 8.0.0
+    if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "el7")
+      list(APPEND CTEST_CUSTOM_WARNING_EXCEPTION
+        # Deprecated classes trigger "usage" warnings in methods marked with
+        # either `= default` or `= delete` generated implementations. This is not
+        # helpful, so just ignore them all.
+        "Wdeprecated-declarations"
+      )
+    endif ()
+  endif ()
+
+  # For some reason, warning flags aren't working here.
+  if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "_ext_vtk")
+    list(APPEND CTEST_CUSTOM_WARNING_EXCEPTION
+      "Wstringop-overflow="
+      "note: destination object allocated here"
+      "note: destination object '.*' of size .*"
+
+      "Wstringop-overread"
+      "allocated by 'operator new'"
+      "note: source object '.*' of size .*"
+      "note: at offset .* into source object '.*' of size .*"
+      )
+  endif ()
+  if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "wasm")
+    list(APPEND CTEST_CUSTOM_WARNING_EXCEPTION
+      # Emscripten tends to use bleeding edge versions of clang.
+      # Suppress warnings from clang's c++ headers about deprecated features.
+      "note: '[a-z]?strstream' has been explicitly marked deprecated here"
+      "note: 'char_traits<vtkfmt::detail::char8_type>' has been explicitly marked deprecated here"
+      "warning: 'char_traits<vtkfmt::detail::char8_type>' is deprecated"
+    )
+  endif ()
+endif ()
+
+list(APPEND CTEST_CUSTOM_COVERAGE_EXCLUDE
   "vtk[^\\.]+(Java|Python).cxx"
-  ".*vtkOpenGLState.*" # debugging class
   ".*Testing.Cxx.*cxx"
   ".*Testing.Cxx.*h"
   ".*moc_.*cxx"
-  # Generated files
-  ".*/Rendering/OpenGL/vtkgl.*"
 
   # Exclude files from the Utilities directories
   ".*/Utilities/.*"
-  ".*/ThirdParty/.*"
-
-  # Exclude vtkOpenGLPolyDataMapper since the class is deprecated since VTK 6.2.
-  ".*vtkOpenGLPolyDataMapper.*"
-  )
-
-IF(CMAKE_COMPILER_IS_GNUCXX)
-SET(CTEST_CUSTOM_WARNING_EXCEPTION
-  ${CTEST_CUSTOM_WARNING_EXCEPTION}
-  # GCC 4.2 has a bug where it has Unnecessary anonymous namespace warnings
-  # you can find the full bug on GNU Bugzilla with bug number 29365
-  "warning: .* has a field .* whose type uses the anonymous namespace"
-  )
-ENDIF()
-
-# If VTK_LEGACY_REMOVE is not set, then we're expecting code to use deprecated
-# API. Hence ignore all deprecation warnings.
-IF(NOT VTK_LEGACY_REMOVE AND NOT VTK_LEGACY_SILENT)
-SET(CTEST_CUSTOM_WARNING_EXCEPTION
-  ${CTEST_CUSTOM_WARNING_EXCEPTION}
-  ".*[W|w]arning:.* deprecated"
-  "[N|n]ote: expanded from macro"
-  "[N|n]ote:.* deprecated"
-  )
-ENDIF()
-# Temporarily: to show us *all* the remaining warnings on the
-# 64-bit Windows builds on one result page...
-#
-SET(CTEST_CUSTOM_MAXIMUM_NUMBER_OF_WARNINGS 222)
+  ".*/ThirdParty/.*")

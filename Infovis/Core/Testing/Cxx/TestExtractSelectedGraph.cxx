@@ -1,22 +1,6 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestExtractSelectedGraph.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-/*-------------------------------------------------------------------------
-  Copyright 2008 Sandia Corporation.
-  Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-  the U.S. Government retains certain rights in this software.
--------------------------------------------------------------------------*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-FileCopyrightText: Copyright 2008 Sandia Corporation
+// SPDX-License-Identifier: LicenseRef-BSD-3-Clause-Sandia-USGov
 #include "vtkActor.h"
 #include "vtkCircularLayoutStrategy.h"
 #include "vtkDoubleArray.h"
@@ -31,18 +15,21 @@
 #include "vtkPolyDataMapper.h"
 #include "vtkProperty.h"
 #include "vtkRegressionTestImage.h"
-#include "vtkRenderer.h"
 #include "vtkRenderWindow.h"
 #include "vtkRenderWindowInteractor.h"
+#include "vtkRenderer.h"
 #include "vtkSelection.h"
 #include "vtkSelectionNode.h"
 #include "vtkTestUtilities.h"
 
 #include "vtkSmartPointer.h"
-#define VTK_CREATE(type, name) \
-  vtkSmartPointer<type> name = vtkSmartPointer<type>::New()
 
-void RenderGraph(vtkAlgorithm* alg, vtkRenderer* ren, double r, double g, double b, double z, float size)
+#include <iostream>
+
+#define VTK_CREATE(type, name) vtkSmartPointer<type> name = vtkSmartPointer<type>::New()
+
+void RenderGraph(
+  vtkAlgorithm* alg, vtkRenderer* ren, double r, double g, double b, double z, float size)
 {
   VTK_CREATE(vtkGraphToPolyData, graphToPoly);
   graphToPoly->SetInputConnection(alg->GetOutputPort());
@@ -51,7 +38,7 @@ void RenderGraph(vtkAlgorithm* alg, vtkRenderer* ren, double r, double g, double
   VTK_CREATE(vtkActor, edgeActor);
   edgeActor->SetMapper(edgeMapper);
   edgeActor->GetProperty()->SetColor(r, g, b);
-  edgeActor->GetProperty()->SetLineWidth(size/2);
+  edgeActor->GetProperty()->SetLineWidth(size / 2);
   edgeActor->SetPosition(0, 0, z);
   VTK_CREATE(vtkGlyphSource2D, vertex);
   vertex->SetGlyphTypeToVertex();
@@ -73,7 +60,7 @@ int TestExtractSelectedGraph(int argc, char* argv[])
 {
   VTK_CREATE(vtkRenderer, ren);
 
-  cerr << "Creating test graph..." << endl;
+  std::cerr << "Creating test graph..." << std::endl;
   VTK_CREATE(vtkMutableUndirectedGraph, graph);
   graph->AddVertex();
   graph->AddVertex();
@@ -98,9 +85,9 @@ int TestExtractSelectedGraph(int argc, char* argv[])
   VTK_CREATE(vtkCircularLayoutStrategy, circular);
   layout->SetLayoutStrategy(circular);
   RenderGraph(layout, ren, 1, 1, 1, 0.01, 2.0f);
-  cerr << "...done." << endl;
+  std::cerr << "...done." << std::endl;
 
-  cerr << "Testing threshold selection..." << endl;
+  std::cerr << "Testing threshold selection..." << std::endl;
   VTK_CREATE(vtkSelection, threshold);
   VTK_CREATE(vtkSelectionNode, thresholdNode);
   threshold->AddNode(thresholdNode);
@@ -116,9 +103,9 @@ int TestExtractSelectedGraph(int argc, char* argv[])
   extractThreshold->SetInputConnection(0, layout->GetOutputPort());
   extractThreshold->SetInputData(1, threshold);
   RenderGraph(extractThreshold, ren, 1, 0, 0, -0.01, 5.0f);
-  cerr << "...done." << endl;
+  std::cerr << "...done." << std::endl;
 
-  cerr << "Testing indices selection..." << endl;
+  std::cerr << "Testing indices selection..." << std::endl;
   VTK_CREATE(vtkSelection, indices);
   VTK_CREATE(vtkSelectionNode, indicesNode);
   indices->AddNode(indicesNode);
@@ -134,7 +121,7 @@ int TestExtractSelectedGraph(int argc, char* argv[])
   extractIndices->SetInputConnection(0, layout->GetOutputPort());
   extractIndices->SetInputData(1, indices);
   RenderGraph(extractIndices, ren, 0, 1, 0, -0.02, 9.0f);
-  cerr << "...done." << endl;
+  std::cerr << "...done." << std::endl;
 
   VTK_CREATE(vtkRenderWindowInteractor, iren);
   VTK_CREATE(vtkRenderWindow, win);

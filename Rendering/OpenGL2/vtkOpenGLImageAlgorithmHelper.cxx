@@ -1,57 +1,44 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkOpenGLImageAlgorithmHelper.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "vtkOpenGLImageAlgorithmHelper.h"
-#include "vtkObjectFactory.h"
-#include "vtkTextureObject.h"
-#include "vtkOpenGLRenderWindow.h"
 #include "vtkDataArray.h"
 #include "vtkImageData.h"
 #include "vtkNew.h"
+#include "vtkObjectFactory.h"
 #include "vtkOpenGLFramebufferObject.h"
+#include "vtkOpenGLRenderWindow.h"
 #include "vtkOpenGLShaderCache.h"
 #include "vtkOpenGLState.h"
-#include "vtk_glew.h"
-#include "vtkPixelTransfer.h"
-#include "vtkPointData.h"
-#include "vtkPixelBufferObject.h"
-#include "vtkShaderProgram.h"
 #include "vtkOpenGLVertexArrayObject.h"
+#include "vtkPointData.h"
+#include "vtkShaderProgram.h"
+#include "vtkTextureObject.h"
+#include "vtk_glad.h"
 
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkOpenGLImageAlgorithmHelper);
 
-// ----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkOpenGLImageAlgorithmHelper::vtkOpenGLImageAlgorithmHelper()
 {
   this->RenderWindow = nullptr;
 }
 
-// ----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkOpenGLImageAlgorithmHelper::~vtkOpenGLImageAlgorithmHelper()
 {
   this->SetRenderWindow(nullptr);
 }
 
-void vtkOpenGLImageAlgorithmHelper::SetRenderWindow(vtkRenderWindow *renWin)
+void vtkOpenGLImageAlgorithmHelper::SetRenderWindow(vtkRenderWindow* renWin)
 {
   if (renWin == this->RenderWindow.GetPointer())
   {
     return;
   }
 
-  vtkOpenGLRenderWindow *orw  = nullptr;
+  vtkOpenGLRenderWindow* orw = nullptr;
   if (renWin)
   {
     orw = vtkOpenGLRenderWindow::SafeDownCast(renWin);
@@ -61,14 +48,9 @@ void vtkOpenGLImageAlgorithmHelper::SetRenderWindow(vtkRenderWindow *renWin)
   this->Modified();
 }
 
-void vtkOpenGLImageAlgorithmHelper::Execute(
-  vtkOpenGLImageAlgorithmCallback *cb,
-  vtkImageData *inImage, vtkDataArray *inArray,
-  vtkImageData *outImage, int outExt[6],
-  const char *vertexCode,
-  const char *fragmentCode,
-  const char *geometryCode
-  )
+void vtkOpenGLImageAlgorithmHelper::Execute(vtkOpenGLImageAlgorithmCallback* cb,
+  vtkImageData* inImage, vtkDataArray* inArray, vtkImageData* outImage, int outExt[6],
+  const char* vertexCode, const char* fragmentCode, const char* geometryCode)
 {
   // make sure it is initialized
   if (!this->RenderWindow)
@@ -83,7 +65,7 @@ void vtkOpenGLImageAlgorithmHelper::Execute(
   int dims[3];
   inImage->GetDimensions(dims);
   int dimensions = 0;
-  for (int i = 0; i < 3; i ++)
+  for (int i = 0; i < 3; i++)
   {
     if (dims[i] > 1)
     {
@@ -101,7 +83,8 @@ void vtkOpenGLImageAlgorithmHelper::Execute(
   // send vector data to a texture
   int inputExt[6];
   inImage->GetExtent(inputExt);
-  void *inPtr = inArray->GetVoidPointer(0);
+  auto inAOS = inArray->ToAOSDataArray();
+  void* inPtr = inAOS->GetVoidPointer(0); // NOLINT(bugprone-unsafe-functions)
 
   // could do shortcut here if the input volume is
   // exactly what we want (updateExtent == wholeExtent)
@@ -112,9 +95,7 @@ void vtkOpenGLImageAlgorithmHelper::Execute(
   vtkNew<vtkTextureObject> inputTex;
   inputTex->SetContext(this->RenderWindow);
   inputTex->Create3DFromRaw(
-    dims[0], dims[1], dims[2],
-    inArray->GetNumberOfComponents(),
-    inArray->GetDataType(), inPtr);
+    dims[0], dims[1], dims[2], inArray->GetNumberOfComponents(), inArray->GetDataType(), inPtr);
 
   float shift = 0.0;
   float scale = 1.0;
@@ -131,10 +112,12 @@ void vtkOpenGLImageAlgorithmHelper::Execute(
 
   vtkNew<vtkOpenGLFramebufferObject> fbo;
   fbo->SetContext(this->RenderWindow);
-  vtkOpenGLState *ostate = this->RenderWindow->GetState();
+  vtkOpenGLState* ostate = this->RenderWindow->GetState();
+  ostate->PushFramebufferBindings();
+  fbo->Bind();
 
   outputTex->Create2D(outDims[0], outDims[1], 4, VTK_FLOAT, false);
-  fbo->AddColorAttachment(fbo->GetDrawMode(), 0, outputTex);
+  fbo->AddColorAttachment(0, outputTex);
 
   // because the same FBO can be used in another pass but with several color
   // buffers, force this pass to use 1, to avoid side effects from the
@@ -145,10 +128,11 @@ void vtkOpenGLImageAlgorithmHelper::Execute(
   ostate->vtkglViewport(0, 0, outDims[0], outDims[1]);
   ostate->vtkglScissor(0, 0, outDims[0], outDims[1]);
   ostate->vtkglDisable(GL_DEPTH_TEST);
+  ostate->vtkglDepthMask(false);
+  ostate->vtkglClearColor(0.0, 0.0, 0.0, 1.0);
 
-  vtkShaderProgram *prog =
-    this->RenderWindow->GetShaderCache()->ReadyShaderProgram(
-      vertexCode, fragmentCode, geometryCode);
+  vtkShaderProgram* prog = this->RenderWindow->GetShaderCache()->ReadyShaderProgram(
+    vertexCode, fragmentCode, geometryCode);
   if (prog != this->Quad.Program)
   {
     this->Quad.Program = prog;
@@ -165,47 +149,49 @@ void vtkOpenGLImageAlgorithmHelper::Execute(
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
+  float* ftmp = new float[outDims[0] * outDims[1] * 4];
+  int outNumComponents = outImage->GetNumberOfScalarComponents();
+
   // for each zslice in the output
-  vtkPixelExtent outputPixelExt(outExt);
   for (int i = outExt[4]; i <= outExt[5]; i++)
   {
     cb->UpdateShaderUniforms(prog, i);
     this->Quad.Program->SetUniformf("zPos", (i - outExt[4] + 0.5) / (outDims[2]));
+    glClear(GL_COLOR_BUFFER_BIT);
+    fbo->RenderQuad(0, outDims[0] - 1, 0, outDims[1] - 1, this->Quad.Program, this->Quad.VAO);
+    glReadPixels(0, 0, outDims[0], outDims[1], GL_RGBA, GL_FLOAT, ftmp);
 
-    fbo->RenderQuad(
-      0, outDims[0] - 1,
-      0, outDims[1] - 1,
-      this->Quad.Program, this->Quad.VAO);
-
-    vtkPixelBufferObject *outPBO = outputTex->Download();
-
-    vtkPixelTransfer::Blit<float, double>(
-      outputPixelExt,
-      outputPixelExt,
-      outputPixelExt,
-      outputPixelExt,
-      4,
-      (float*)outPBO->MapPackedBuffer(),
-      outImage->GetPointData()->GetScalars()->GetNumberOfComponents(),
-      static_cast<double *>(outImage->GetScalarPointer(outExt[0], outExt[2], i)));
-
-    outPBO->UnmapPackedBuffer();
-    outPBO->Delete();
+    double* outP = static_cast<double*>(outImage->GetScalarPointer(outExt[0], outExt[2], i));
+    float* tmpP = ftmp;
+    for (int j = 0; j < outDims[1] * outDims[0]; ++j)
+    {
+      for (int c = 0; c < outNumComponents; ++c)
+      {
+        outP[c] = tmpP[c];
+      }
+      tmpP += 4;
+      outP += outNumComponents;
+    }
   }
+
+  inputTex->Deactivate();
+  ostate->PopFramebufferBindings();
+  delete[] ftmp;
 }
 
-// ----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkOpenGLImageAlgorithmHelper::PrintSelf(ostream& os, vtkIndent indent)
 {
-  this->Superclass::PrintSelf(os,indent);
+  this->Superclass::PrintSelf(os, indent);
 
   os << indent << "RenderWindow:";
-  if(this->RenderWindow != nullptr)
+  if (this->RenderWindow != nullptr)
   {
-    this->RenderWindow->PrintSelf(os,indent);
+    this->RenderWindow->PrintSelf(os, indent);
   }
   else
   {
-    os << "(none)" <<endl;
+    os << "(none)" << endl;
   }
 }
+VTK_ABI_NAMESPACE_END

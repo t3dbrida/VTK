@@ -1,22 +1,10 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkCPExodusIIElementBlock.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "vtkCPExodusIIElementBlock.h"
 
 #include "vtkCellType.h"
-#include "vtkCellTypes.h"
+#include "vtkCellTypeUtilities.h"
 #include "vtkGenericCell.h"
 #include "vtkIdTypeArray.h"
 #include "vtkObjectFactory.h"
@@ -25,24 +13,24 @@
 #include <algorithm>
 
 //------------------------------------------------------------------------------
-vtkStandardNewMacro(vtkCPExodusIIElementBlock)
-vtkStandardNewMacro(vtkCPExodusIIElementBlockImpl)
+VTK_ABI_NAMESPACE_BEGIN
+vtkStandardNewMacro(vtkCPExodusIIElementBlock);
+vtkStandardNewMacro(vtkCPExodusIIElementBlockImpl);
 
 //------------------------------------------------------------------------------
-void vtkCPExodusIIElementBlockImpl::PrintSelf(ostream &os, vtkIndent indent)
+void vtkCPExodusIIElementBlockImpl::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os, indent);
   os << indent << "Elements: " << this->Elements << endl;
-  os << indent << "CellType: "
-     << vtkCellTypes::GetClassNameFromTypeId(this->CellType) << endl;
+  os << indent << "CellType: " << vtkCellTypeUtilities::GetClassNameFromTypeId(this->CellType)
+     << endl;
   os << indent << "CellSize: " << this->CellSize << endl;
   os << indent << "NumberOfCells: " << this->NumberOfCells << endl;
 }
 
 //------------------------------------------------------------------------------
 bool vtkCPExodusIIElementBlockImpl::SetExodusConnectivityArray(
-    int *elements, const std::string &type, int numElements,
-    int nodesPerElement)
+  int* elements, const std::string& type, int numElements, int nodesPerElement)
 {
   if (!elements)
   {
@@ -52,8 +40,7 @@ bool vtkCPExodusIIElementBlockImpl::SetExodusConnectivityArray(
   // Try to figure out the vtk cell type:
   if (type.size() < 3)
   {
-    vtkErrorMacro(<< "Element type too short, expected at least 3 char: "
-                  << type);
+    vtkErrorMacro(<< "Element type too short, expected at least 3 char: " << type);
     return false;
   }
   std::string typekey = type.substr(0, 3);
@@ -113,31 +100,43 @@ int vtkCPExodusIIElementBlockImpl::GetCellType(vtkIdType)
 }
 
 //------------------------------------------------------------------------------
-void vtkCPExodusIIElementBlockImpl::GetCellPoints(vtkIdType cellId,
-                                              vtkIdList *ptIds)
+void vtkCPExodusIIElementBlockImpl::GetCellPoints(vtkIdType cellId, vtkIdList* ptIds)
 {
   ptIds->SetNumberOfIds(this->CellSize);
 
-  std::transform(this->GetElementStart(cellId),
-                 this->GetElementEnd(cellId),
-                 ptIds->GetPointer(0), NodeToPoint);
+  std::transform(
+    this->GetElementStart(cellId), this->GetElementEnd(cellId), ptIds->GetPointer(0), NodeToPoint);
 }
 
 //------------------------------------------------------------------------------
-void vtkCPExodusIIElementBlockImpl::GetPointCells(vtkIdType ptId,
-                                                  vtkIdList *cellIds)
+void vtkCPExodusIIElementBlockImpl::GetFaceStream(
+  vtkIdType vtkNotUsed(cellId), vtkIdList* vtkNotUsed(ptIds))
+{
+  // vtkCPExodusIIElementBlockImpl does not support polyhedra
+  vtkErrorMacro(<< __FUNCTION__ << " is not implemented");
+}
+
+//------------------------------------------------------------------------------
+void vtkCPExodusIIElementBlockImpl::GetPolyhedronFaces(
+  vtkIdType vtkNotUsed(cellId), vtkCellArray* vtkNotUsed(faces))
+{
+  // vtkCPExodusIIElementBlockImpl does not support polyhedra
+  vtkErrorMacro(<< __FUNCTION__ << " is not implemented");
+}
+
+//------------------------------------------------------------------------------
+void vtkCPExodusIIElementBlockImpl::GetPointCells(vtkIdType ptId, vtkIdList* cellIds)
 {
   const int targetElement = PointToNode(ptId);
-  int *element = this->GetStart();
-  int *elementEnd = this->GetEnd();
+  int* element = this->GetStart();
+  int* elementEnd = this->GetEnd();
 
   cellIds->Reset();
 
   element = std::find(element, elementEnd, targetElement);
   while (element != elementEnd)
   {
-    cellIds->InsertNextId(static_cast<vtkIdType>((element - this->Elements)
-                                                 / this->CellSize));
+    cellIds->InsertNextId(static_cast<vtkIdType>((element - this->Elements) / this->CellSize));
     element = std::find(element, elementEnd, targetElement);
   }
 }
@@ -149,14 +148,12 @@ int vtkCPExodusIIElementBlockImpl::GetMaxCellSize()
 }
 
 //------------------------------------------------------------------------------
-void vtkCPExodusIIElementBlockImpl::GetIdsOfCellsOfType(int type,
-                                                        vtkIdTypeArray *array)
+void vtkCPExodusIIElementBlockImpl::GetIdsOfCellsOfType(int type, vtkIdTypeArray* array)
 {
-  array->Reset();
+  array->Initialize();
   if (type == this->CellType)
   {
-    array->SetNumberOfComponents(1);
-    array->Allocate(this->NumberOfCells);
+    array->ReserveValues(this->NumberOfCells);
     for (vtkIdType i = 0; i < this->NumberOfCells; ++i)
     {
       array->InsertNextValue(i);
@@ -173,48 +170,49 @@ int vtkCPExodusIIElementBlockImpl::IsHomogeneous()
 //------------------------------------------------------------------------------
 void vtkCPExodusIIElementBlockImpl::Allocate(vtkIdType, int)
 {
-  vtkErrorMacro("Read only container.")
+  vtkErrorMacro("Read only container.");
 }
 
 //------------------------------------------------------------------------------
 vtkIdType vtkCPExodusIIElementBlockImpl::InsertNextCell(int, vtkIdList*)
 {
-  vtkErrorMacro("Read only container.")
+  vtkErrorMacro("Read only container.");
   return -1;
 }
 
 //------------------------------------------------------------------------------
 vtkIdType vtkCPExodusIIElementBlockImpl::InsertNextCell(int, vtkIdType, const vtkIdType[])
 {
-  vtkErrorMacro("Read only container.")
+  vtkErrorMacro("Read only container.");
   return -1;
 }
 
 //------------------------------------------------------------------------------
 vtkIdType vtkCPExodusIIElementBlockImpl::InsertNextCell(
-    int, vtkIdType, const vtkIdType[], vtkIdType, const vtkIdType[])
+  int, vtkIdType, const vtkIdType[], vtkCellArray*)
 {
-  vtkErrorMacro("Read only container.")
+  vtkErrorMacro("Read only container.");
   return -1;
 }
 
 //------------------------------------------------------------------------------
 void vtkCPExodusIIElementBlockImpl::ReplaceCell(vtkIdType, int, const vtkIdType[])
 {
-  vtkErrorMacro("Read only container.")
+  vtkErrorMacro("Read only container.");
 }
 
 //------------------------------------------------------------------------------
 vtkCPExodusIIElementBlockImpl::vtkCPExodusIIElementBlockImpl()
-  : Elements(nullptr),
-    CellType(VTK_EMPTY_CELL),
-    CellSize(0),
-    NumberOfCells(0)
+  : Elements(nullptr)
+  , CellType(VTK_EMPTY_CELL)
+  , CellSize(0)
+  , NumberOfCells(0)
 {
 }
 
 //------------------------------------------------------------------------------
 vtkCPExodusIIElementBlockImpl::~vtkCPExodusIIElementBlockImpl()
 {
-  delete [] this->Elements;
+  delete[] this->Elements;
 }
+VTK_ABI_NAMESPACE_END

@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkSimpleBondPerceiver.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkSimpleBondPerceiver.h"
 
 #include "vtkCommand.h"
@@ -32,20 +20,21 @@
 
 #include <vector>
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+VTK_ABI_NAMESPACE_BEGIN
 vtkObjectFactoryNewMacro(vtkSimpleBondPerceiver);
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkSimpleBondPerceiver::vtkSimpleBondPerceiver()
   : Tolerance(0.45)
   , IsToleranceAbsolute(true)
 {
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkSimpleBondPerceiver::~vtkSimpleBondPerceiver() = default;
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkSimpleBondPerceiver::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os, indent);
@@ -54,23 +43,21 @@ void vtkSimpleBondPerceiver::PrintSelf(ostream& os, vtkIndent indent)
   os << indent << "IsToleranceAbsolute: " << this->IsToleranceAbsolute << "\n";
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkSimpleBondPerceiver::RequestData(
-  vtkInformation* ,
-  vtkInformationVector** inputVector,
-  vtkInformationVector* outputVector)
+  vtkInformation*, vtkInformationVector** inputVector, vtkInformationVector* outputVector)
 {
   vtkMolecule* input = vtkMolecule::SafeDownCast(vtkDataObject::GetData(inputVector[0]));
   if (!input)
   {
-    vtkErrorMacro(<< "Input vtkMolecule does not exists.");
+    vtkErrorMacro(<< "Input vtkMolecule does not exist.");
     return 0;
   }
 
   vtkMolecule* output = vtkMolecule::SafeDownCast(vtkDataObject::GetData(outputVector));
   if (!output)
   {
-    vtkErrorMacro(<< "Output vtkMolecule does not exists.");
+    vtkErrorMacro(<< "Output vtkMolecule does not exist.");
     return 0;
   }
 
@@ -84,7 +71,7 @@ int vtkSimpleBondPerceiver::RequestData(
   return 1;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkSimpleBondPerceiver::ComputeBonds(vtkMolecule* molecule)
 {
   if (!molecule)
@@ -137,7 +124,6 @@ void vtkSimpleBondPerceiver::ComputeBonds(vtkMolecule* molecule)
     double covalentRadius = this->GetCovalentRadiusWithTolerance(periodicTable, atomicNumber);
     double atomPosition[3];
     atomPositions->GetPoint(i, atomPosition);
-    neighborsIdsList->SetNumberOfIds(0);
     locator->FindPointsWithinRadius(2 * covalentRadius, atomPosition, neighborsIdsList.Get());
 
     vtkIdType nbNeighbors = neighborsIdsList->GetNumberOfIds();
@@ -188,10 +174,11 @@ void vtkSimpleBondPerceiver::ComputeBonds(vtkMolecule* molecule)
   }
 }
 
-//----------------------------------------------------------------------------
-double vtkSimpleBondPerceiver::GetCovalentRadiusWithTolerance(vtkPeriodicTable* table,
-  vtkIdType atomicNumber)
+//------------------------------------------------------------------------------
+double vtkSimpleBondPerceiver::GetCovalentRadiusWithTolerance(
+  vtkPeriodicTable* table, vtkIdType atomicNumber)
 {
   return this->IsToleranceAbsolute ? table->GetCovalentRadius(atomicNumber) + this->Tolerance / 2
                                    : table->GetCovalentRadius(atomicNumber) * this->Tolerance;
 }
+VTK_ABI_NAMESPACE_END

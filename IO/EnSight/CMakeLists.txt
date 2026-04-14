@@ -1,11 +1,24 @@
-set(Module_SRCS
-  vtkEnSight6BinaryReader.cxx
-  vtkEnSight6Reader.cxx
-  vtkEnSightGoldBinaryReader.cxx
-  vtkEnSightGoldReader.cxx
-  vtkEnSightMasterServerReader.cxx
-  vtkEnSightReader.cxx
-  vtkGenericEnSightReader.cxx
-)
+set(classes
+  vtkEnSight6BinaryReader
+  vtkEnSight6Reader
+  vtkEnSightGoldBinaryReader
+  vtkEnSightGoldCombinedReader
+  vtkEnSightGoldReader
+  vtkEnSightMasterServerReader
+  vtkEnSightReader
+  vtkEnSightSOSGoldReader
+  vtkGenericEnSightReader)
 
-vtk_module_library(vtkIOEnSight ${Module_SRCS})
+set(private_headers
+    core/EnSightFile.h
+    core/EnSightDataSet.h)
+
+set(private_classes
+    core/EnSightFile
+    core/EnSightDataSet)
+
+vtk_module_add_module(VTK::IOEnSight
+  CLASSES ${classes}
+  PRIVATE_CLASSES ${private_classes}
+  PRIVATE_HEADERS ${private_headers})
+vtk_add_test_mangling(VTK::IOEnSight)

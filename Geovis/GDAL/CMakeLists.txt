@@ -1,12 +1,15 @@
-find_package(GDAL REQUIRED)
-mark_as_advanced(GDAL_INCLUDE_DIR GDAL_LIBRARY)
+vtk_module_find_package(PRIVATE_IF_SHARED
+  PACKAGE GDAL)
 
-set(Module_SRCS
-  vtkGDALRasterConverter.cxx
-  vtkGDALRasterReprojection.cxx
-  vtkRasterReprojectionFilter.cxx
-  )
+set(classes
+  vtkGDALRasterConverter
+  vtkGDALRasterReprojection
+  vtkRasterReprojectionFilter)
 
-include_directories(${GDAL_INCLUDE_DIRS})
-vtk_module_library(vtkGeovisGDAL ${Module_SRCS})
-vtk_module_link_libraries(vtkGeovisGDAL LINK_PRIVATE ${GDAL_LIBRARY})
+vtk_module_add_module(VTK::GeovisGDAL
+  CLASSES ${classes})
+vtk_module_link(VTK::GeovisGDAL
+  NO_KIT_EXPORT_IF_SHARED
+  PRIVATE
+    GDAL::GDAL)
+vtk_add_test_mangling(VTK::GeovisGDAL)

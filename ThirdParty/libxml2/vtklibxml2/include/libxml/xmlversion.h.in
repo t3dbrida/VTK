@@ -1,6 +1,6 @@
 /*
- * Summary: compile-time version informations
- * Description: compile-time version informations for the XML library
+ * Summary: compile-time version information
+ * Description: compile-time version information for the XML library
  *
  * Copy: See Copyright for the status of this software.
  *
@@ -9,20 +9,6 @@
 
 #ifndef __XML_VERSION_H__
 #define __XML_VERSION_H__
-
-#include "xmlexports.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-/*
- * use those to be sure nothing nasty will happen if
- * your library and includes mismatch
- */
-#ifndef LIBXML2_COMPILING_MSCCDEF
-XMLPUBFUN void XMLCALL xmlCheckVersion(int version);
-#endif /* LIBXML2_COMPILING_MSCCDEF */
 
 /**
  * LIBXML_DOTTED_VERSION:
@@ -48,7 +34,7 @@ XMLPUBFUN void XMLCALL xmlCheckVersion(int version);
 /**
  * LIBXML_VERSION_EXTRA:
  *
- * extra version information, used to show a CVS compilation
+ * extra version information, used to show a git commit description
  */
 #define LIBXML_VERSION_EXTRA "@LIBXML_VERSION_EXTRA@"
 
@@ -60,40 +46,22 @@ XMLPUBFUN void XMLCALL xmlCheckVersion(int version);
  */
 #define LIBXML_TEST_VERSION xmlCheckVersion(@LIBXML_VERSION_NUMBER@);
 
-#ifndef VMS
-#if @WITH_TRIO@
-/**
- * WITH_TRIO:
- *
- * defined if the trio support need to be configured in
- */
-#define WITH_TRIO
-#else
-/**
- * WITHOUT_TRIO:
- *
- * defined if the trio support should not be configured in
- */
-#define WITHOUT_TRIO
-#endif
-#else /* VMS */
-/**
- * WITH_TRIO:
- *
- * defined if the trio support need to be configured in
- */
-#define WITH_TRIO 1
-#endif /* VMS */
-
 /**
  * LIBXML_THREAD_ENABLED:
  *
  * Whether the thread support is configured in
  */
 #if @WITH_THREADS@
-#if defined(_REENTRANT) || defined(__MT__) || (_POSIX_C_SOURCE - 0 >= 199506L)
 #define LIBXML_THREAD_ENABLED
 #endif
+
+/**
+ * LIBXML_THREAD_ALLOC_ENABLED:
+ *
+ * Whether the allocation hooks are per-thread
+ */
+#if @WITH_THREAD_ALLOC@
+#define LIBXML_THREAD_ALLOC_ENABLED
 #endif
 
 /**
@@ -223,15 +191,6 @@ XMLPUBFUN void XMLCALL xmlCheckVersion(int version);
 #endif
 
 /**
- * LIBXML_DOCB_ENABLED:
- *
- * Whether the SGML Docbook support is configured in
- */
-#if @WITH_DOCB@
-#define LIBXML_DOCB_ENABLED
-#endif
-
-/**
  * LIBXML_XPATH_ENABLED:
  *
  * Whether XPath is configured in
@@ -247,6 +206,15 @@ XMLPUBFUN void XMLCALL xmlCheckVersion(int version);
  */
 #if @WITH_XPTR@
 #define LIBXML_XPTR_ENABLED
+#endif
+
+/**
+ * LIBXML_XPTR_LOCS_ENABLED:
+ *
+ * Whether support for XPointer locations is configured in
+ */
+#if @WITH_XPTR_LOCS@
+#define LIBXML_XPTR_LOCS_ENABLED
 #endif
 
 /**
@@ -268,6 +236,15 @@ XMLPUBFUN void XMLCALL xmlCheckVersion(int version);
 #endif
 
 /**
+ * LIBXML_ICU_ENABLED:
+ *
+ * Whether icu support is available
+ */
+#if @WITH_ICU@
+#define LIBXML_ICU_ENABLED
+#endif
+
+/**
  * LIBXML_ISO8859X_ENABLED:
  *
  * Whether ISO-8859-* support is made available in case iconv is not
@@ -283,24 +260,6 @@ XMLPUBFUN void XMLCALL xmlCheckVersion(int version);
  */
 #if @WITH_DEBUG@
 #define LIBXML_DEBUG_ENABLED
-#endif
-
-/**
- * DEBUG_MEMORY_LOCATION:
- *
- * Whether the memory debugging is configured in
- */
-#if @WITH_MEM_DEBUG@
-#define DEBUG_MEMORY_LOCATION
-#endif
-
-/**
- * LIBXML_DEBUG_RUNTIME:
- *
- * Whether the runtime debugging is configured in
- */
-#if @WITH_RUN_DEBUG@
-#define LIBXML_DEBUG_RUNTIME
 #endif
 
 /**
@@ -328,15 +287,6 @@ XMLPUBFUN void XMLCALL xmlCheckVersion(int version);
  */
 #if @WITH_REGEXPS@
 #define LIBXML_AUTOMATA_ENABLED
-#endif
-
-/**
- * LIBXML_EXPR_ENABLED:
- *
- * Whether the formal expressions interfaces are compiled in
- */
-#if @WITH_SCHEMAS@
-#define LIBXML_EXPR_ENABLED
 #endif
 
 /**
@@ -382,24 +332,16 @@ XMLPUBFUN void XMLCALL xmlCheckVersion(int version);
 #endif
 
 /**
- * ATTRIBUTE_UNUSED:
+ * LIBXML_LZMA_ENABLED:
  *
- * Macro used to signal to GCC unused function parameters
+ * Whether the Lzma support is compiled in
  */
-#ifdef __GNUC__
-#ifdef HAVE_ANSIDECL_H
-#include <ansidecl.h>
-#endif
-#ifndef ATTRIBUTE_UNUSED
-#define ATTRIBUTE_UNUSED __attribute__((unused))
-#endif
-#else
-#define ATTRIBUTE_UNUSED
+#if @WITH_LZMA@
+#define LIBXML_LZMA_ENABLED
 #endif
 
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
+#include <libxml/xmlexports.h>
+
 #endif
 
 

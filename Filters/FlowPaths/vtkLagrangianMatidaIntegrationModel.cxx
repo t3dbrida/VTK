@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkLagrangianMatidaIntegrationModel.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-    This software is distributed WITHOUT ANY WARRANTY; without even
-    the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-    PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkLagrangianMatidaIntegrationModel.h"
 
 #include "vtkCellData.h"
@@ -26,9 +14,10 @@
 
 #include <cstring>
 
+VTK_ABI_NAMESPACE_BEGIN
 vtkObjectFactoryNewMacro(vtkLagrangianMatidaIntegrationModel);
 
-//---------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkLagrangianMatidaIntegrationModel::vtkLagrangianMatidaIntegrationModel()
 {
   // Fill the helper array
@@ -39,133 +28,132 @@ vtkLagrangianMatidaIntegrationModel::vtkLagrangianMatidaIntegrationModel()
   this->SeedArrayComps->InsertNextValue(1);
   this->SeedArrayTypes->InsertNextValue(VTK_DOUBLE);
 
-  this->NumFuncs     = 6; // u, v, w, du/dt, dv/dt, dw/dt
+  this->NumFuncs = 6;     // u, v, w, du/dt, dv/dt, dw/dt
   this->NumIndepVars = 7; // x, y, z, u, v, w, t
 }
 
-//---------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkLagrangianMatidaIntegrationModel::~vtkLagrangianMatidaIntegrationModel() = default;
 
-//---------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkLagrangianMatidaIntegrationModel::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os, indent);
 }
 
-//---------------------------------------------------------------------------
-int vtkLagrangianMatidaIntegrationModel::FunctionValues(vtkDataSet* dataSet,
-  vtkIdType cellId, double* weights, double* x, double* f)
+//------------------------------------------------------------------------------
+int vtkLagrangianMatidaIntegrationModel::FunctionValues(vtkLagrangianParticle* particle,
+  vtkDataSet* dataSet, vtkIdType cellId, double* weights, double* x, double* f)
 {
   // Initialize output
   std::fill(f, f + 6, 0.0);
 
-  // Check for a particle
-  if (this->CurrentParticle == nullptr)
+  if (!particle)
   {
     vtkErrorMacro(<< "No particle to integrate");
     return 0;
   }
 
   // Sanity Check
-  if (dataSet == nullptr || cellId == -1)
+  if (!dataSet || cellId == -1)
   {
-    vtkErrorMacro(<< "No cell or dataset to integrate the particle on. Dataset: "
-      << dataSet << " CellId:" << cellId);
+    vtkErrorMacro(<< "No cell or dataset to integrate the particle on. Dataset: " << dataSet
+                  << " CellId:" << cellId);
     return 0;
   }
-
-  // Recover Flow Properties
-  int nComponent;
-  double* tmp;
 
   // Fetch flowVelocity at index 3
-  if (!this->GetFlowOrSurfaceData(3, dataSet, cellId, weights, tmp, nComponent)
-      || nComponent != 3)
+  double flowVelocity[3];
+  if (this->GetFlowOrSurfaceDataNumberOfComponents(3, dataSet) != 3 ||
+    !this->GetFlowOrSurfaceData(particle, 3, dataSet, cellId, weights, flowVelocity))
   {
     vtkErrorMacro(<< "Flow velocity is not set in source flow dataset or "
-      "have incorrect number of components, cannot use Matida equations");
+                     "has incorrect number of components, cannot use Matida equations");
     return 0;
   }
-  double flowVelocity[3];
-  std::memcpy(flowVelocity, tmp, sizeof(double) * nComponent);
 
   // Fetch flowDensity at index 4
-  if (!this->GetFlowOrSurfaceData(4, dataSet, cellId, weights, tmp, nComponent)
-      || nComponent != 1)
+  double flowDensity;
+  if (this->GetFlowOrSurfaceDataNumberOfComponents(4, dataSet) != 1 ||
+    !this->GetFlowOrSurfaceData(particle, 4, dataSet, cellId, weights, &flowDensity))
   {
     vtkErrorMacro(<< "Flow density is not set in source flow dataset or "
-      "have incorrect number of components, cannot use Matida equations");
+                     "has incorrect number of components, cannot use Matida equations");
     return 0;
   }
-  double flowDensity = *tmp;
 
   // Fetch flowDynamicViscosity at index 5
-  if (!this->GetFlowOrSurfaceData(5, dataSet, cellId, weights, tmp, nComponent)
-      || nComponent != 1)
+  double flowDynamicViscosity;
+  if (this->GetFlowOrSurfaceDataNumberOfComponents(5, dataSet) != 1 ||
+    !this->GetFlowOrSurfaceData(particle, 5, dataSet, cellId, weights, &flowDynamicViscosity))
   {
     vtkErrorMacro(<< "Flow dynamic viscosity is not set in source flow dataset or "
-      "have incorrect number of components, cannot use Matida equations");
+                     "has incorrect number of components, cannot use Matida equations");
     return 0;
   }
-  double flowDynamicViscosity = *tmp;
-
-  // Fetch Particle Properties
-  vtkIdType tupleIndex = this->CurrentParticle->GetSeedArrayTupleIndex();
 
   // Fetch Particle Diameter at index 6
-  vtkDataArray* particleDiameters = vtkDataArray::SafeDownCast(
-    this->GetSeedArray(6, this->CurrentParticle));
-  if (particleDiameters == nullptr)
+  vtkDataArray* particleDiameters = vtkDataArray::SafeDownCast(this->GetSeedArray(6, particle));
+  if (!particleDiameters)
   {
     vtkErrorMacro(<< "Particle diameter is not set in particle data, "
-      "cannot use Matida equations");
+                     "cannot use Matida equations");
     return 0;
   }
-  double particleDiameter = particleDiameters->GetTuple1(tupleIndex);
+  if (particleDiameters->GetNumberOfComponents() != 1)
+  {
+    vtkErrorMacro(<< "Particle diameter does not have the right number of components, "
+                     "cannot use Matida equations");
+    return 0;
+  }
+  double particleDiameter;
+  particleDiameters->GetTuple(particle->GetSeedArrayTupleIndex(), &particleDiameter);
 
   // Fetch Particle Density at index 7
-  vtkDataArray* particleDensities = vtkDataArray::SafeDownCast(
-    this->GetSeedArray(7, this->CurrentParticle));
-  if (particleDensities == nullptr)
+  vtkDataArray* particleDensities = vtkDataArray::SafeDownCast(this->GetSeedArray(7, particle));
+  if (!particleDensities)
   {
     vtkErrorMacro(<< "Particle density is not set in particle data, "
-      "cannot use Matida equations");
+                     "cannot use Matida equations");
     return 0;
   }
-  double particleDensity = particleDensities->GetTuple1(tupleIndex);
+  if (particleDensities->GetNumberOfComponents() != 1)
+  {
+    vtkErrorMacro(<< "Particle densities does not have the right number of components, "
+                     "cannot use Matida equations");
+    return 0;
+  }
+  double particleDensity;
+  particleDensities->GetTuple(particle->GetSeedArrayTupleIndex(), &particleDensity);
 
   // Compute function values
-  for (int i = 0; i<3; i++)
+  for (int i = 0; i < 3; i++)
   {
-    double drag =
-      this->GetDragCoefficient(flowVelocity, this->CurrentParticle->GetVelocity(),
-        flowDynamicViscosity, particleDiameter, flowDensity);
-    double relax =
-      this->GetRelaxationTime(flowDynamicViscosity, particleDiameter, particleDensity);
+    double drag = vtkLagrangianMatidaIntegrationModel::GetDragCoefficient(
+      flowVelocity, particle->GetVelocity(), flowDynamicViscosity, particleDiameter, flowDensity);
+    double relax = vtkLagrangianMatidaIntegrationModel::GetRelaxationTime(
+      flowDynamicViscosity, particleDiameter, particleDensity);
     // Matida Equation
-    f[i + 3] = (relax == 0) ? std::numeric_limits<double>::infinity() :
-      (flowVelocity[i] - x[i + 3]) * drag / relax;
+    f[i + 3] = (relax == 0) ? std::numeric_limits<double>::infinity()
+                            : (flowVelocity[i] - x[i + 3]) * drag / relax +
+        this->Gravity[i] * (1 - (flowDensity / particleDensity));
     f[i] = x[i + 3];
   }
 
-  const double G = 9.8; // Gravity
-  f[5] -= G * (1 - (flowDensity / particleDensity));
   return 1;
 }
 
-//---------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 double vtkLagrangianMatidaIntegrationModel::GetRelaxationTime(
   double dynVisc, double diameter, double density)
 {
-  return (dynVisc == 0) ?
-    std::numeric_limits<double>::infinity() :
-    (density * diameter * diameter) / (18.0 * dynVisc);
+  return (dynVisc == 0) ? std::numeric_limits<double>::infinity()
+                        : (density * diameter * diameter) / (18.0 * dynVisc);
 }
 
-//---------------------------------------------------------------------------
-double vtkLagrangianMatidaIntegrationModel::GetDragCoefficient(
-  const double* flowVelocity, const double* particleVelocity,
-  double dynVisc, double particleDiameter, double flowDensity)
+//------------------------------------------------------------------------------
+double vtkLagrangianMatidaIntegrationModel::GetDragCoefficient(const double* flowVelocity,
+  const double* particleVelocity, double dynVisc, double particleDiameter, double flowDensity)
 {
   if (dynVisc == 0)
   {
@@ -180,3 +168,4 @@ double vtkLagrangianMatidaIntegrationModel::GetDragCoefficient(
   double reynolds = flowDensity * relativeSpeed * particleDiameter / dynVisc;
   return (1.0 + 0.15 * pow(reynolds, 0.687));
 }
+VTK_ABI_NAMESPACE_END

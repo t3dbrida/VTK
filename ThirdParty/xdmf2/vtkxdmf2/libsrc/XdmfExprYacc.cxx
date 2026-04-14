@@ -36,6 +36,12 @@
 /* Identify Bison output.  */
 #define YYBISON 1
 
+/* Do not use alloca().  */
+#define YYSTACK_USE_ALLOCA 0
+
+/* Use the default max depth.  */
+#define YYMAXDEPTH 0
+
 /* Skeleton name.  */
 #define YYSKELETON_NAME "yacc.c"
 
@@ -264,7 +270,7 @@ union yyalloc
 #   define YYCOPY(To, From, Count)                \
       do                                        \
         {                                        \
-          register YYSIZE_T yyi;                \
+          YYSIZE_T yyi;                \
           for (yyi = 0; yyi < (Count); yyi++)        \
             (To)[yyi] = (From)[yyi];                \
         }                                        \
@@ -794,7 +800,7 @@ yystrlen (yystr)
      const char *yystr;
 #   endif
 {
-  register const char *yys = yystr;
+  const char *yys = yystr;
 
   while (*yys++ != '\0')
     continue;
@@ -819,8 +825,8 @@ yystpcpy (yydest, yysrc)
      const char *yysrc;
 #   endif
 {
-  register char *yyd = yydest;
-  register const char *yys = yysrc;
+  char *yyd = yydest;
+  const char *yys = yysrc;
 
   while ((*yyd++ = *yys++) != '\0')
     continue;
@@ -939,8 +945,8 @@ yyparse ()
 #endif
 {
   
-  register int yystate;
-  register int yyn;
+  int yystate;
+  int yyn;
   int yyresult;
   /* Number of tokens to shift before error messages enabled.  */
   int yyerrstatus;
@@ -958,12 +964,12 @@ yyparse ()
   /* The state stack.  */
   short        yyssa[YYINITDEPTH];
   short *yyss = yyssa;
-  register short *yyssp;
+  short *yyssp;
 
   /* The semantic value stack.  */
   YYSTYPE yyvsa[YYINITDEPTH];
   YYSTYPE *yyvs = yyvsa;
-  register YYSTYPE *yyvsp;
+  YYSTYPE *yyvsp;
 
 
 
@@ -1318,7 +1324,7 @@ yyreduce:
                         xdmf2::XdmfArray *Array2 = ( xdmf2::XdmfArray *)yyvsp[0].ArrayPointer;
                         xdmf2::XdmfArray *NewArray = new xdmf2::XdmfArray();
                         XdmfInt32 i, Rank1, Rank2;
-                        XdmfInt64 NewLength, Length1, Length2, IFactor, Lcd;
+                        XdmfInt64 NewLength, Length1, Length2, /*IFactor,*/ Lcd;
                         XdmfInt64 Dimension1[ XDMF_MAX_DIMENSION ];
                         XdmfInt64 Dimension2[ XDMF_MAX_DIMENSION ];
                         XdmfInt64 Start[ XDMF_MAX_DIMENSION ];
@@ -1338,7 +1344,7 @@ yyreduce:
                         Length1 = Array1->GetNumberOfElements();
                         Length2 = Array2->GetNumberOfElements();
                         NewLength = Length1 + Length2;
-                        IFactor = Length1 / Length2;
+                        // IFactor = Length1 / Length2;
                         Lcd = Length1;
                         if( Length2 < Length1 ){
                                 Lcd = Length2;

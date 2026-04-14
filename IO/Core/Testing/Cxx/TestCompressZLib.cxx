@@ -1,29 +1,18 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestCompress.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 // .NAME Test of vtkZLibDataCompressor
 // .SECTION Description
 //
 
 #include "vtkObjectFactory.h"
-#include "vtkOutputWindow.h"
 #include "vtkZLibDataCompressor.h"
 
-int TestCompressZLib(int argc, char *argv[])
+#include <iostream>
+
+int TestCompressZLib(int argc, char* argv[])
 {
   int res = 1;
-  const unsigned int start_size = 100024;
+  constexpr unsigned int start_size = 100024;
   unsigned int cc;
   unsigned char buffer[start_size];
   unsigned char* cbuffer;
@@ -31,7 +20,7 @@ int TestCompressZLib(int argc, char *argv[])
   size_t nlen;
   size_t rlen;
 
-  vtkZLibDataCompressor *compressor = vtkZLibDataCompressor::New();
+  vtkZLibDataCompressor* compressor = vtkZLibDataCompressor::New();
   for (cc = 0; cc < start_size; cc++)
   {
     buffer[cc] = static_cast<unsigned char>(cc % sizeof(unsigned char));
@@ -47,9 +36,10 @@ int TestCompressZLib(int argc, char *argv[])
   {
     ucbuffer = new unsigned char[start_size];
     rlen = compressor->Uncompress(cbuffer, rlen, ucbuffer, start_size);
-    if (rlen == start_size) {
-      cout << argv[0] << " Works " << argc << endl;
-      cout << ucbuffer[0] << ucbuffer[1] << ucbuffer[2] << endl;
+    if (rlen == start_size)
+    {
+      std::cout << argv[0] << " Works " << argc << std::endl;
+      std::cout << ucbuffer[0] << ucbuffer[1] << ucbuffer[2] << std::endl;
       res = 0;
     }
     delete[] ucbuffer;

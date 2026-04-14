@@ -1,42 +1,30 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 // This test is intended to benchmark render times for the vtkGPURayCastMapper
 
 #include "vtkCamera.h"
 #include "vtkColorTransferFunction.h"
 #include "vtkGPUVolumeRayCastMapper.h"
-#include "vtkImageData.h"
 #include "vtkNew.h"
 #include "vtkPiecewiseFunction.h"
+#include "vtkRTAnalyticSource.h"
 #include "vtkRegressionTestImage.h"
-#include "vtkRenderer.h"
 #include "vtkRenderWindow.h"
 #include "vtkRenderWindowInteractor.h"
-#include "vtkRTAnalyticSource.h"
+#include "vtkRenderer.h"
 #include "vtkTimerLog.h"
 #include "vtkVolume.h"
 #include "vtkVolumeProperty.h"
 
-//----------------------------------------------------------------------------
+#include <iostream>
+
+//------------------------------------------------------------------------------
 int TestGPURayCastMapperBenchmark(int argc, char* argv[])
 {
-  cout << "CTEST_FULL_OUTPUT (Avoid ctest truncation of output)" << endl;
+  std::cout << "CTEST_FULL_OUTPUT (Avoid ctest truncation of output)" << std::endl;
 
   vtkNew<vtkRTAnalyticSource> wavelet;
-  wavelet->SetWholeExtent(-127, 128,
-                          -127, 128,
-                          -127, 128);
+  wavelet->SetWholeExtent(-127, 128, -127, 128, -127, 128);
   wavelet->SetCenter(0.0, 0.0, 0.0);
 
   vtkNew<vtkGPUVolumeRayCastMapper> volumeMapper;
@@ -71,8 +59,7 @@ int TestGPURayCastMapperBenchmark(int argc, char* argv[])
   vtkNew<vtkRenderWindowInteractor> iren;
   iren->SetRenderWindow(renderWindow);
 
-  int valid = volumeMapper->IsRenderSupported(renderWindow,
-                                              volumeProperty);
+  int valid = volumeMapper->IsRenderSupported(renderWindow, volumeProperty);
   int retVal;
   if (valid)
   {
@@ -82,7 +69,7 @@ int TestGPURayCastMapperBenchmark(int argc, char* argv[])
     renderWindow->Render();
     timer->StopTimer();
     double firstRender = timer->GetElapsedTime();
-    cerr << "First Render Time: " << firstRender << endl;
+    std::cerr << "First Render Time: " << firstRender << std::endl;
 
     int numRenders = 20;
     for (int i = 0; i < numRenders; ++i)
@@ -103,11 +90,11 @@ int TestGPURayCastMapperBenchmark(int argc, char* argv[])
     }
     timer->StopTimer();
     double elapsed = timer->GetElapsedTime();
-    cerr << "Interactive Render Time: " << elapsed / numRenders << endl;
+    std::cerr << "Interactive Render Time: " << elapsed / numRenders << std::endl;
 
-    renderer->GetActiveCamera()->SetPosition(0,0,1);
-    renderer->GetActiveCamera()->SetFocalPoint(0,0,0);
-    renderer->GetActiveCamera()->SetViewUp(0,1,0);
+    renderer->GetActiveCamera()->SetPosition(0, 0, 1);
+    renderer->GetActiveCamera()->SetFocalPoint(0, 0, 0);
+    renderer->GetActiveCamera()->SetViewUp(0, 1, 0);
     renderer->ResetCamera();
 
     renderWindow->SetSize(300, 300);
@@ -115,8 +102,8 @@ int TestGPURayCastMapperBenchmark(int argc, char* argv[])
 
     iren->Initialize();
 
-    retVal = vtkRegressionTestImage( renderWindow );
-    if( retVal == vtkRegressionTester::DO_INTERACTOR)
+    retVal = vtkRegressionTestImage(renderWindow);
+    if (retVal == vtkRegressionTester::DO_INTERACTOR)
     {
       iren->Start();
     }
@@ -124,9 +111,8 @@ int TestGPURayCastMapperBenchmark(int argc, char* argv[])
   else
   {
     retVal = vtkTesting::PASSED;
-    cout << "Required extensions not supported." << endl;
+    std::cout << "Required extensions not supported." << std::endl;
   }
 
-  return !((retVal == vtkTesting::PASSED) ||
-           (retVal == vtkTesting::DO_INTERACTOR));
+  return !((retVal == vtkTesting::PASSED) || (retVal == vtkTesting::DO_INTERACTOR));
 }

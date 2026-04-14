@@ -1,55 +1,44 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkCommand.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkCommand.h"
+#include "vtkDebug.h"
 #include "vtkDebugLeaks.h"
 
 //----------------------------------------------------------------
-vtkCommand::vtkCommand():AbortFlag(0),PassiveObserver(0)
+VTK_ABI_NAMESPACE_BEGIN
+vtkCommand::vtkCommand()
+  : AbortFlag(0)
+  , PassiveObserver(0)
 {
-#ifdef VTK_DEBUG_LEAKS
-  vtkDebugLeaks::ConstructClass("vtkCommand or subclass");
-#endif
+  // This is "too early" to call this because `this->GetClassName()` is not set
+  // up for the subclasses yet. Instead, because `vtkCommand` has a public
+  // constructor, `GetDebugClassName` is implemented to handle this usage
+  // pattern.
+  this->InitializeObjectBase();
 }
 
 //----------------------------------------------------------------
 void vtkCommand::UnRegister()
 {
-  int refcount = this->GetReferenceCount()-1;
-  this->SetReferenceCount(refcount);
-  if (refcount <= 0)
-  {
-#ifdef VTK_DEBUG_LEAKS
-    vtkDebugLeaks::DestructClass("vtkCommand or subclass");
-#endif
-    delete this;
-  }
+  this->UnRegister(nullptr);
 }
 
 //----------------------------------------------------------------
-const char *vtkCommand::GetStringFromEventId(unsigned long event)
+const char* vtkCommand::GetStringFromEventId(unsigned long event)
 {
   switch (event)
   {
-#define _vtk_add_event(Enum)\
-  case Enum: return #Enum;
+// clang-format off
+#define _vtk_add_event(Enum)                                                                       \
+  case Enum:                                                                                       \
+    return #Enum;
 
   vtkAllEventsMacro()
 
 #undef _vtk_add_event
+    // clang-format on
 
-  case UserEvent:
+    case UserEvent:
     return "UserEvent";
 
   case NoEvent:
@@ -62,19 +51,27 @@ const char *vtkCommand::GetStringFromEventId(unsigned long event)
 }
 
 //----------------------------------------------------------------
-unsigned long vtkCommand::GetEventIdFromString(const char *event)
+unsigned long vtkCommand::GetEventIdFromString(const char* event)
 {
   if (event)
   {
-#define _vtk_add_event(Enum)\
-    if (strcmp(event, #Enum) == 0) {return Enum;}
+
+// clang-format off
+#define _vtk_add_event(Enum)                                                                       \
+  if (strcmp(event, #Enum) == 0)                                                                   \
+  {                                                                                                \
+    return Enum;                                                                                   \
+  }
+
     vtkAllEventsMacro()
+
 #undef _vtk_add_event
 
     if (strcmp("UserEvent",event) == 0)
     {
       return vtkCommand::UserEvent;
     }
+    // clang-format on
   }
 
   return vtkCommand::NoEvent;
@@ -86,8 +83,22 @@ bool vtkCommand::EventHasData(unsigned long event)
   {
     case vtkCommand::Button3DEvent:
     case vtkCommand::Move3DEvent:
+    case vtkCommand::ViewerMovement3DEvent:
+    case vtkCommand::Menu3DEvent:
+    case vtkCommand::NextPose3DEvent:
+    case vtkCommand::Clip3DEvent:
+    case vtkCommand::PositionProp3DEvent:
+    case vtkCommand::Pick3DEvent:
+    case vtkCommand::Select3DEvent:
+    case vtkCommand::Elevation3DEvent:
       return true;
     default:
       return false;
   }
 }
+
+const char* vtkCommand::GetDebugClassName() const
+{
+  return "vtkCommand or subclass";
+}
+VTK_ABI_NAMESPACE_END

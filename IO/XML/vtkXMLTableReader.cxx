@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkXMLTableReader.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkXMLTableReader.h"
 #include "vtkCallbackCommand.h"
 #include "vtkDataArraySelection.h"
@@ -23,9 +11,10 @@
 #include "vtkTable.h"
 #include "vtkXMLDataElement.h"
 
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkXMLTableReader);
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkXMLTableReader::vtkXMLTableReader()
 {
   this->NumberOfPieces = 0;
@@ -33,54 +22,48 @@ vtkXMLTableReader::vtkXMLTableReader()
   this->RowElements = nullptr;
   this->NumberOfRows = nullptr;
   this->TotalNumberOfRows = 0;
-
-  this->RowDataTimeStep = nullptr;
-  this->RowDataOffset = nullptr;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkXMLTableReader::~vtkXMLTableReader()
 {
   if (this->NumberOfPieces)
   {
     this->DestroyPieces();
   }
-
-  delete[] this->RowDataTimeStep;
-  delete[] this->RowDataOffset;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableReader::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os, indent);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkTable* vtkXMLTableReader::GetOutput()
 {
   return this->GetOutput(0);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkTable* vtkXMLTableReader::GetOutput(int idx)
 {
   return vtkTable::SafeDownCast(this->GetOutputDataObject(idx));
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 const char* vtkXMLTableReader::GetDataSetName()
 {
   return "Table";
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableReader::SetupEmptyOutput()
 {
   this->GetCurrentOutput()->Initialize();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableReader::GetOutputUpdateExtent(int& piece, int& numberOfPieces)
 {
   vtkInformation* outInfo = this->GetCurrentOutputInformation();
@@ -88,7 +71,7 @@ void vtkXMLTableReader::GetOutputUpdateExtent(int& piece, int& numberOfPieces)
   numberOfPieces = outInfo->Get(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_PIECES());
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableReader::SetupOutputTotals()
 {
   this->TotalNumberOfRows = 0;
@@ -99,13 +82,13 @@ void vtkXMLTableReader::SetupOutputTotals()
   this->StartPoint = 0;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableReader::SetupNextPiece()
 {
   this->StartPoint += this->NumberOfRows[this->Piece];
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableReader::SetupUpdateExtent(int piece, int numberOfPieces)
 {
   this->UpdatedPiece = piece;
@@ -113,10 +96,7 @@ void vtkXMLTableReader::SetupUpdateExtent(int piece, int numberOfPieces)
 
   // If more pieces are requested than available, just return empty
   // pieces for the extra ones.
-  if (this->UpdateNumberOfPieces > this->NumberOfPieces)
-  {
-    this->UpdateNumberOfPieces = this->NumberOfPieces;
-  }
+  this->UpdateNumberOfPieces = std::min(this->UpdateNumberOfPieces, this->NumberOfPieces);
 
   // Find the range of pieces to read.
   if (this->UpdatedPiece < this->UpdateNumberOfPieces)
@@ -134,7 +114,7 @@ void vtkXMLTableReader::SetupUpdateExtent(int piece, int numberOfPieces)
   this->SetupOutputTotals();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableReader::ReadXMLData()
 {
   // Get the update request.
@@ -202,7 +182,7 @@ void vtkXMLTableReader::ReadXMLData()
   }
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableReader::SetupPieces(int numPieces)
 {
   if (this->NumberOfPieces)
@@ -228,7 +208,7 @@ void vtkXMLTableReader::SetupPieces(int numPieces)
   }
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableReader::DestroyPieces()
 {
   delete[] this->RowElements;
@@ -241,26 +221,26 @@ void vtkXMLTableReader::DestroyPieces()
   this->NumberOfPieces = 0;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkIdType vtkXMLTableReader::GetNumberOfRows()
 {
   return this->TotalNumberOfRows;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkIdType vtkXMLTableReader::GetNumberOfPieces()
 {
   return this->NumberOfPieces;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkXMLTableReader::ColumnIsEnabled(vtkXMLDataElement* eRowData)
 {
   const char* name = eRowData->GetAttribute("Name");
   return (name && this->ColumnArraySelection->ArrayIsEnabled(name));
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableReader::SetupOutputInformation(vtkInformation* outInfo)
 {
   this->Superclass::SetupOutputInformation(outInfo);
@@ -293,7 +273,7 @@ void vtkXMLTableReader::SetupOutputInformation(vtkInformation* outInfo)
   }
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkXMLTableReader::ReadPrimaryElement(vtkXMLDataElement* ePrimary)
 {
   if (!this->Superclass::ReadPrimaryElement(ePrimary))
@@ -343,13 +323,13 @@ int vtkXMLTableReader::ReadPrimaryElement(vtkXMLDataElement* ePrimary)
   return 1;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableReader::CopyOutputInformation(vtkInformation* outInfo, int port)
 {
   this->Superclass::CopyOutputInformation(outInfo, port);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLTableReader::SetupOutputData()
 {
   this->Superclass::SetupOutputData();
@@ -364,64 +344,61 @@ void vtkXMLTableReader::SetupOutputData()
   // from one piece because all pieces have the same set of arrays.
   vtkXMLDataElement* eRowData = this->RowDataElements[0];
   this->NumberOfColumns = 0;
+  this->RowDataTimeStep.clear();
+  this->RowDataOffset.clear();
   if (eRowData)
   {
+    std::vector<vtkXMLDataElement*> elementsToRemove;
     for (int i = 0; i < eRowData->GetNumberOfNestedElements(); i++)
     {
       vtkXMLDataElement* eNested = eRowData->GetNestedElement(i);
-      if (this->ColumnIsEnabled(eNested) && !rowData->HasArray(eNested->GetAttribute("Name")))
+      const char* ename = eNested->GetAttribute("Name");
+      if (this->ColumnIsEnabled(eNested))
       {
-        this->NumberOfColumns++;
-        vtkAbstractArray* array = this->CreateArray(eNested);
-        if (array)
+        if (!rowData->HasArray(ename))
         {
-          array->SetNumberOfTuples(rowTuples);
-          // Manipulate directly RowData may have unexpected results
-          // passing by AddColumn() instead of AddArray()
-          output->AddColumn(array);
-          array->Delete();
+          this->NumberOfColumns++;
+          this->RowDataTimeStep[ename] = -1;
+          this->RowDataOffset[ename] = -1;
+          vtkAbstractArray* array = this->CreateArray(eNested);
+          if (array)
+          {
+            array->SetNumberOfTuples(rowTuples);
+            // Manipulate directly RowData may have unexpected results
+            // passing by AddColumn() instead of AddArray()
+            output->AddColumn(array);
+            array->Delete();
+          }
+          else
+          {
+            this->DataError = 1;
+          }
         }
         else
         {
-          this->DataError = 1;
+          vtkWarningMacro("Another row data array named " << ename << " already exists. Ignoring.");
+          elementsToRemove.push_back(eNested);
         }
       }
     }
-  }
-
-  if (this->NumberOfColumns != this->ColumnArraySelection->GetNumberOfArraysEnabled())
-  {
-    vtkErrorMacro("Number of arrays has changed.");
-    return;
+    for (const auto& elem : elementsToRemove)
+    {
+      eRowData->RemoveNestedElement(elem);
+    }
   }
 
   // Setup attribute indices for the row data and cell data.
   this->ReadAttributeIndices(eRowData, rowData);
-
-  // Since NumberOfColumns is valid lets allocate RowDataTimeStep & DataOffset
-  if (this->NumberOfColumns)
-  {
-    delete[] this->RowDataTimeStep;
-    delete[] this->RowDataOffset;
-
-    this->RowDataTimeStep = new int[this->NumberOfColumns];
-    this->RowDataOffset = new vtkTypeInt64[this->NumberOfColumns];
-    for (int i = 0; i < this->NumberOfColumns; i++)
-    {
-      this->RowDataTimeStep[i] = -1;
-      this->RowDataOffset[i] = -1;
-    }
-  }
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkXMLTableReader::ReadPiece(vtkXMLDataElement* ePiece, int piece)
 {
   this->Piece = piece;
   return this->ReadPiece(ePiece);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkXMLTableReader::ReadPiece(vtkXMLDataElement* ePiece)
 {
   // Find the RowData in the piece.
@@ -466,7 +443,7 @@ int vtkXMLTableReader::ReadPiece(vtkXMLDataElement* ePiece)
   return 1;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkXMLTableReader::ReadPieceData(int piece)
 {
   this->Piece = piece;
@@ -545,12 +522,11 @@ int vtkXMLTableReader::ReadPieceData(int piece)
   return this->AbortExecute ? 0 : 1;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkXMLTableReader::RowDataNeedToReadTimeStep(vtkXMLDataElement* eNested)
 {
   // First thing need to find the id of this dataarray from its name:
   const char* name = eNested->GetAttribute("Name");
-  int idx = this->ColumnArraySelection->GetEnabledArrayIndex(name);
 
   // Easy case no timestep:
   int numTimeSteps =
@@ -563,7 +539,7 @@ int vtkXMLTableReader::RowDataNeedToReadTimeStep(vtkXMLDataElement* eNested)
   }
   if (!numTimeSteps && !this->NumberOfTimeSteps)
   {
-    assert(this->RowDataTimeStep[idx] == -1); // No timestep in this file
+    assert(this->RowDataTimeStep.at(name) == -1); // No timestep in this file
     return 1;
   }
   // else TimeStep was specified but no TimeValues associated were found
@@ -582,11 +558,11 @@ int vtkXMLTableReader::RowDataNeedToReadTimeStep(vtkXMLDataElement* eNested)
   vtkTypeInt64 offset;
   if (eNested->GetScalarAttribute("offset", offset))
   {
-    if (this->RowDataOffset[idx] != offset)
+    if (this->RowDataOffset.at(name) != offset)
     {
       // save the pointsOffset
-      assert(this->RowDataTimeStep[idx] == -1); // cannot have mixture of binary and appended
-      this->RowDataOffset[idx] = offset;
+      assert(this->RowDataTimeStep.at(name) == -1); // cannot have mixture of binary and appended
+      this->RowDataOffset.at(name) = offset;
       return 1;
     }
   }
@@ -594,20 +570,20 @@ int vtkXMLTableReader::RowDataNeedToReadTimeStep(vtkXMLDataElement* eNested)
   {
     // No offset is specified this is a binary file
     // First thing to check if numTimeSteps == 0:
-    if (!numTimeSteps && this->NumberOfTimeSteps && this->RowDataTimeStep[idx] == -1)
+    if (!numTimeSteps && this->NumberOfTimeSteps && this->RowDataTimeStep.at(name) == -1)
     {
       // Update last PointsTimeStep read
-      this->RowDataTimeStep[idx] = this->CurrentTimeStep;
+      this->RowDataTimeStep.at(name) = this->CurrentTimeStep;
       return 1;
     }
-    int isLastTimeInArray =
-      vtkXMLReader::IsTimeStepInArray(this->RowDataTimeStep[idx], this->TimeSteps, numTimeSteps);
+    int isLastTimeInArray = vtkXMLReader::IsTimeStepInArray(
+      this->RowDataTimeStep.at(name), this->TimeSteps, numTimeSteps);
     // If no time is specified or if time is specified and match then read
     if (isCurrentTimeInArray && !isLastTimeInArray)
     {
       // CurrentTimeStep is in TimeSteps but Last is not := need to read
       // Update last PointsTimeStep read
-      this->RowDataTimeStep[idx] = this->CurrentTimeStep;
+      this->RowDataTimeStep.at(name) = this->CurrentTimeStep;
       return 1;
     }
   }
@@ -615,9 +591,10 @@ int vtkXMLTableReader::RowDataNeedToReadTimeStep(vtkXMLDataElement* eNested)
   return 0;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkXMLTableReader::FillOutputPortInformation(int, vtkInformation* info)
 {
   info->Set(vtkDataObject::DATA_TYPE_NAME(), "vtkTable");
   return 1;
 }
+VTK_ABI_NAMESPACE_END

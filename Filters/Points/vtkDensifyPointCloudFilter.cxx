@@ -1,48 +1,40 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkDensifyPointCloudFilter.cxx
-
-  Copyright (c) Kitware, Inc.
-  All rights reserved.
-  See LICENSE file for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkDensifyPointCloudFilter.h"
 
-#include "vtkObjectFactory.h"
-#include "vtkStaticPointLocator.h"
-#include "vtkPointSet.h"
-#include "vtkPoints.h"
-#include "vtkPointData.h"
+#include "vtkArrayDispatch.h"
+#include "vtkArrayDispatchDataSetArrayList.h"
+#include "vtkArrayListTemplate.h" // For processing attribute data
+#include "vtkDataArrayRange.h"
 #include "vtkFloatArray.h"
 #include "vtkIdList.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
 #include "vtkMath.h"
-#include "vtkSMPTools.h"
+#include "vtkObjectFactory.h"
+#include "vtkPointData.h"
+#include "vtkPointSet.h"
+#include "vtkPoints.h"
 #include "vtkSMPThreadLocalObject.h"
-#include "vtkArrayListTemplate.h" // For processing attribute data
+#include "vtkSMPTools.h"
+#include "vtkStaticPointLocator.h"
 
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkDensifyPointCloudFilter);
 
-
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // Helper classes to support efficient computing, and threaded execution.
-namespace {
-
-//----------------------------------------------------------------------------
-// Count the number of points that need generation
-template <typename T>
-struct CountPoints
+namespace
 {
-  T *InPoints;
-  vtkStaticPointLocator *Locator;
-  vtkIdType *Count;
+
+//------------------------------------------------------------------------------
+// Count the number of points that need generation
+template <typename TArray>
+struct CountPointsFunctor
+{
+  TArray* InPoints;
+  vtkStaticPointLocator* Locator;
+  vtkIdType* Count;
   int NeighborhoodType;
   int NClosest;
   double Radius;
@@ -52,10 +44,15 @@ struct CountPoints
   // storage prevents lots of new/delete.
   vtkSMPThreadLocalObject<vtkIdList> PIds;
 
-  CountPoints(T *inPts, vtkStaticPointLocator *loc, vtkIdType *count, int ntype,
-              int nclose, double r, double d) : InPoints(inPts), Locator(loc),
-                                                Count(count), NeighborhoodType(ntype),
-                                                NClosest(nclose), Radius(r), Distance(d)
+  CountPointsFunctor(TArray* inPts, vtkStaticPointLocator* loc, vtkIdType* count, int ntype,
+    int nclose, double r, double d)
+    : InPoints(inPts)
+    , Locator(loc)
+    , Count(count)
+    , NeighborhoodType(ntype)
+    , NClosest(nclose)
+    , Radius(r)
+    , Distance(d)
   {
   }
 
@@ -63,14 +60,15 @@ struct CountPoints
   void Initialize()
   {
     vtkIdList*& pIds = this->PIds.Local();
-    pIds->Allocate(128); //allocate some memory
+    pIds->Reserve(128); // allocate some memory
   }
 
-  void operator() (vtkIdType pointId, vtkIdType endPointId)
+  void operator()(vtkIdType pointId, vtkIdType endPointId)
   {
-    T *x, *p = this->InPoints + 3*pointId;
-    vtkStaticPointLocator *loc = this->Locator;
-    vtkIdType *count = this->Count + pointId;
+    auto points = vtk::DataArrayTupleRange<3>(this->InPoints);
+    auto p = points.begin() + pointId;
+    vtkStaticPointLocator* loc = this->Locator;
+    vtkIdType* count = this->Count + pointId;
     vtkIdList*& pIds = this->PIds.Local();
     vtkIdType i, id, numIds, numNewPts;
     double px[3], py[3];
@@ -79,16 +77,14 @@ struct CountPoints
     int nclose = this->NClosest;
     double d2 = this->Distance * this->Distance;
 
-    for ( ; pointId < endPointId; ++pointId, p+=3 )
+    for (; pointId < endPointId; ++pointId, ++p)
     {
       numNewPts = 0;
-      px[0] = static_cast<double>(p[0]);
-      px[1] = static_cast<double>(p[1]);
-      px[2] = static_cast<double>(p[2]);
-      if ( ntype == vtkDensifyPointCloudFilter::N_CLOSEST )
+      p->GetTuple(px);
+      if (ntype == vtkDensifyPointCloudFilter::N_CLOSEST)
       {
         // use nclose+1 because we want to discount ourselves
-        loc->FindClosestNPoints(nclose+1, px, pIds);
+        loc->FindClosestNPoints(nclose + 1, px, pIds);
       }
       else // ntype == vtkDensifyPointCloudFilter::RADIUS
       {
@@ -96,78 +92,81 @@ struct CountPoints
       }
       numIds = pIds->GetNumberOfIds();
 
-      for ( i=0; i < numIds; ++i)
+      for (i = 0; i < numIds; ++i)
       {
         id = pIds->GetId(i);
-        if ( id > pointId ) //only process points of larger id
+        if (id > pointId) // only process points of larger id
         {
-          x = this->InPoints + 3*id;
-          py[0] = static_cast<double>(x[0]);
-          py[1] = static_cast<double>(x[1]);
-          py[2] = static_cast<double>(x[2]);
+          points.GetTuple(id, py);
 
-          if ( vtkMath::Distance2BetweenPoints(px,py) >= d2 )
+          if (vtkMath::Distance2BetweenPoints(px, py) >= d2)
           {
             numNewPts++;
           }
-        }//larger id
-      }//for all neighbors
+        } // larger id
+      }   // for all neighbors
       *count++ = numNewPts;
-    }//for all points in this batch
+    } // for all points in this batch
   }
 
-  void Reduce()
-  {
-  }
+  void Reduce() {}
+}; // CountPoints
 
-  static void Execute(vtkIdType numPts, T *pts, vtkStaticPointLocator *loc,
-                      vtkIdType *count, int ntype, int nclose, double r, double d)
-  {
-    CountPoints countPts(pts, loc, count, ntype, nclose, r, d);
-    vtkSMPTools::For(0, numPts, countPts);
-  }
-
-}; //CountPoints
-
-//----------------------------------------------------------------------------
-// Count the number of points that need generation
-template <typename T>
-struct GeneratePoints
+struct CountPointsWorker
 {
-  T *InPoints;
-  vtkStaticPointLocator *Locator;
-  const vtkIdType *Offsets;
+  template <class TArray>
+  void operator()(TArray* pts, vtkStaticPointLocator* loc, vtkIdType* count, int ntype, int nclose,
+    double r, double d)
+  {
+    CountPointsFunctor<TArray> counter(pts, loc, count, ntype, nclose, r, d);
+    vtkSMPTools::For(0, pts->GetNumberOfTuples(), counter);
+  }
+};
+
+//------------------------------------------------------------------------------
+// Count the number of points that need generation
+template <typename TArray>
+struct GeneratePointsFunctor
+{
+  TArray* OutPoints;
+  vtkStaticPointLocator* Locator;
+  const vtkIdType* Offsets;
   int NeighborhoodType;
   int NClosest;
   double Radius;
   double Distance;
   ArrayList Arrays;
 
+  using T = vtk::GetAPIType<TArray>;
   // Don't want to allocate working arrays on every thread invocation. Thread local
   // storage prevents lots of new/delete.
   vtkSMPThreadLocalObject<vtkIdList> PIds;
 
-  GeneratePoints(T *inPts, vtkStaticPointLocator *loc, vtkIdType *offset,
-                 int ntype, int nclose, double r, double d, vtkIdType numPts,
-                 vtkPointData *attr) : InPoints(inPts), Locator(loc), Offsets(offset),
-                                       NeighborhoodType(ntype), NClosest(nclose),
-                                       Radius(r), Distance(d)
+  GeneratePointsFunctor(TArray* outPts, vtkStaticPointLocator* loc, const vtkIdType* offset,
+    int ntype, int nclose, double r, double d, vtkPointData* attr)
+    : OutPoints(outPts)
+    , Locator(loc)
+    , Offsets(offset)
+    , NeighborhoodType(ntype)
+    , NClosest(nclose)
+    , Radius(r)
+    , Distance(d)
   {
-    this->Arrays.AddSelfInterpolatingArrays(numPts, attr);
+    this->Arrays.AddSelfInterpolatingArrays(outPts->GetNumberOfTuples(), attr);
   }
 
   // Just allocate a little bit of memory to get started.
   void Initialize()
   {
     vtkIdList*& pIds = this->PIds.Local();
-    pIds->Allocate(128); //allocate some memory
+    pIds->Reserve(128); // allocate some memory
   }
 
-  void operator() (vtkIdType pointId, vtkIdType endPointId)
+  void operator()(vtkIdType pointId, vtkIdType endPointId)
   {
-    T *x, *p = this->InPoints + 3*pointId;
-    T *newX;
-    vtkStaticPointLocator *loc = this->Locator;
+    auto points = vtk::DataArrayTupleRange<3>(this->OutPoints);
+    auto p = points.begin() + pointId;
+    vtkStaticPointLocator* loc = this->Locator;
     vtkIdList*& pIds = this->PIds.Local();
     vtkIdType i, id, numIds;
     vtkIdType outPtId = this->Offsets[pointId];
@@ -177,15 +176,13 @@ struct GeneratePoints
     int nclose = this->NClosest;
     double d2 = this->Distance * this->Distance;
 
-    for ( ; pointId < endPointId; ++pointId, p+=3 )
+    for (; pointId < endPointId; ++pointId, ++p)
     {
-      px[0] = static_cast<double>(p[0]);
-      px[1] = static_cast<double>(p[1]);
-      px[2] = static_cast<double>(p[2]);
-      if ( ntype == vtkDensifyPointCloudFilter::N_CLOSEST )
+      p->GetTuple(px);
+      if (ntype == vtkDensifyPointCloudFilter::N_CLOSEST)
       {
         // use nclose+1 because we want to discount ourselves
-        loc->FindClosestNPoints(nclose+1, px, pIds);
+        loc->FindClosestNPoints(nclose + 1, px, pIds);
       }
       else // ntype == vtkDensifyPointCloudFilter::RADIUS
       {
@@ -193,49 +190,45 @@ struct GeneratePoints
       }
       numIds = pIds->GetNumberOfIds();
 
-      for ( i=0; i < numIds; ++i)
+      for (i = 0; i < numIds; ++i)
       {
         id = pIds->GetId(i);
-        if ( id > pointId ) //only process points of larger id
+        if (id > pointId) // only process points of larger id
         {
-          x = this->InPoints + 3*id;
-          py[0] = static_cast<double>(x[0]);
-          py[1] = static_cast<double>(x[1]);
-          py[2] = static_cast<double>(x[2]);
+          points.GetTuple(id, py);
 
-          if ( vtkMath::Distance2BetweenPoints(px,py) >= d2 )
+          if (vtkMath::Distance2BetweenPoints(px, py) >= d2)
           {
-            newX = this->InPoints + 3*outPtId;
-            *newX++ = static_cast<T>(0.5 * (px[0]+py[0]));
-            *newX++ = static_cast<T>(0.5 * (px[1]+py[1]));
-            *newX++ = static_cast<T>(0.5 * (px[2]+py[2]));
-            this->Arrays.InterpolateEdge(pointId,id,0.5,outPtId);
+            auto newX = points[outPtId];
+            newX[0] = static_cast<T>(0.5 * (px[0] + py[0]));
+            newX[1] = static_cast<T>(0.5 * (px[1] + py[1]));
+            newX[2] = static_cast<T>(0.5 * (px[2] + py[2]));
+            this->Arrays.InterpolateEdge(pointId, id, 0.5, outPtId);
             outPtId++;
           }
-        }//larger id
-      }//for all neighbor points
-    }//for all points in this batch
+        } // larger id
+      }   // for all neighbor points
+    }     // for all points in this batch
   }
 
-  void Reduce()
+  void Reduce() {}
+}; // GeneratePoints
+
+struct GeneratePointsWorker
+{
+  template <class TArray>
+  void operator()(TArray* pts, vtkIdType numInPts, vtkStaticPointLocator* loc, vtkIdType* offsets,
+    int ntype, int nclose, double r, double d, vtkPointData* pd)
   {
+    GeneratePointsFunctor<TArray> generator(pts, loc, offsets, ntype, nclose, r, d, pd);
+    vtkSMPTools::For(0, numInPts, generator);
   }
+};
 
-  static void Execute(vtkIdType numInPts, T *pts, vtkStaticPointLocator *loc,
-                      vtkIdType *offsets, int ntype, int nclose, double r,
-                      double d, vtkIdType numOutPts, vtkPointData *PD)
-  {
-    GeneratePoints genPts(pts, loc, offsets, ntype, nclose, r, d, numOutPts, PD);
-    vtkSMPTools::For(0, numInPts, genPts);
-  }
-
-}; //GeneratePoints
-
-} //anonymous namespace
-
+} // anonymous namespace
 
 //================= Begin VTK class proper =======================================
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkDensifyPointCloudFilter::vtkDensifyPointCloudFilter()
 {
 
@@ -248,33 +241,29 @@ vtkDensifyPointCloudFilter::vtkDensifyPointCloudFilter()
   this->MaximumNumberOfPoints = VTK_ID_MAX;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkDensifyPointCloudFilter::~vtkDensifyPointCloudFilter() = default;
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // Produce the output data
-int vtkDensifyPointCloudFilter::RequestData(
-  vtkInformation *vtkNotUsed(request),
-  vtkInformationVector **inputVector,
-  vtkInformationVector *outputVector)
+int vtkDensifyPointCloudFilter::RequestData(vtkInformation* vtkNotUsed(request),
+  vtkInformationVector** inputVector, vtkInformationVector* outputVector)
 {
   // get the info objects
-  vtkInformation *inInfo = inputVector[0]->GetInformationObject(0);
-  vtkInformation *outInfo = outputVector->GetInformationObject(0);
+  vtkInformation* inInfo = inputVector[0]->GetInformationObject(0);
+  vtkInformation* outInfo = outputVector->GetInformationObject(0);
 
   // get the input and output
-  vtkPointSet *input = vtkPointSet::SafeDownCast(
-    inInfo->Get(vtkDataObject::DATA_OBJECT()));
-  vtkPolyData *output = vtkPolyData::SafeDownCast(
-    outInfo->Get(vtkDataObject::DATA_OBJECT()));
+  vtkPointSet* input = vtkPointSet::SafeDownCast(inInfo->Get(vtkDataObject::DATA_OBJECT()));
+  vtkPolyData* output = vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
 
   // Check the input
-  if ( !input || !output )
+  if (!input || !output)
   {
     return 1;
   }
   vtkIdType numPts = input->GetNumberOfPoints();
-  if ( numPts < 1 )
+  if (numPts < 1)
   {
     return 1;
   }
@@ -282,28 +271,26 @@ int vtkDensifyPointCloudFilter::RequestData(
   // Start by building the locator, creating the output points and otherwise
   // and prepare for iteration.
   int iterNum;
-  vtkStaticPointLocator *locator = vtkStaticPointLocator::New();
+  vtkStaticPointLocator* locator = vtkStaticPointLocator::New();
 
-  vtkPoints *inPts = input->GetPoints();
-  int pointsType = inPts->GetDataType();
-  vtkPoints *newPts = inPts->NewInstance();
+  vtkPoints* inPts = input->GetPoints();
+  vtkPoints* newPts = inPts->NewInstance();
   newPts->DeepCopy(inPts);
   output->SetPoints(newPts);
-  vtkPointData *outPD=nullptr;
-  if ( this->InterpolateAttributeData )
+  vtkPointData* outPD = nullptr;
+  if (this->InterpolateAttributeData)
   {
     outPD = output->GetPointData();
     outPD->DeepCopy(input->GetPointData());
-    outPD->InterpolateAllocate(outPD,numPts);
+    outPD->InterpolateAllocate(outPD, numPts);
   }
 
   vtkIdType ptId, numInPts, numNewPts;
   vtkIdType npts, offset, *offsets;
-  void *pts=nullptr;
   double d = this->TargetDistance;
 
   // Loop over the data, bisecting connecting edges as required.
-  for ( iterNum=0; iterNum < this->MaximumNumberOfIterations; ++iterNum )
+  for (iterNum = 0; iterNum < this->MaximumNumberOfIterations; ++iterNum)
   {
     // Prepare to process
     locator->SetDataSet(output);
@@ -312,19 +299,19 @@ int vtkDensifyPointCloudFilter::RequestData(
 
     // Count the number of points to create
     numInPts = output->GetNumberOfPoints();
-    offsets = new vtkIdType [numInPts];
-    pts = output->GetPoints()->GetVoidPointer(0);
-    switch (pointsType)
+    offsets = new vtkIdType[numInPts];
+    CountPointsWorker countWorker;
+    if (!vtkArrayDispatch::DispatchByArray<vtkArrayDispatch::PointArrays>::Execute(
+          output->GetPoints()->GetData(), countWorker, locator, offsets, this->NeighborhoodType,
+          this->NumberOfClosestPoints, this->Radius, d))
     {
-      vtkTemplateMacro(CountPoints<VTK_TT>::Execute(numInPts,
-                      (VTK_TT *)pts, locator, offsets, this->NeighborhoodType,
-                      this->NumberOfClosestPoints, this->Radius, d));
+      countWorker(output->GetPoints()->GetData(), locator, offsets, this->NeighborhoodType,
+        this->NumberOfClosestPoints, this->Radius, d);
     }
 
     // Prefix sum to count the number of points created and build offsets
-    numNewPts = 0;
     offset = numInPts;
-    for (ptId=0; ptId < numInPts; ++ptId)
+    for (ptId = 0; ptId < numInPts; ++ptId)
     {
       npts = offsets[ptId];
       offsets[ptId] = offset;
@@ -333,26 +320,27 @@ int vtkDensifyPointCloudFilter::RequestData(
     numNewPts = offset - numInPts;
 
     // Check convergence
-    if ( numNewPts == 0 || offset > this->MaximumNumberOfPoints )
+    if (numNewPts == 0 || offset > this->MaximumNumberOfPoints)
     {
-      delete [] offsets;
+      delete[] offsets;
       break;
     }
 
     // Now add points and attribute data if requested. Allocate memory
     // for points and attributes.
-    newPts->InsertPoint(offset,0.0,0.0,0.0); //side effect reallocs memory
-    pts = output->GetPoints()->GetVoidPointer(0);
-    switch (pointsType)
+    newPts->InsertPoint(offset, 0.0, 0.0, 0.0); // side effect reallocs memory
+
+    GeneratePointsWorker genWorker;
+    if (!vtkArrayDispatch::DispatchByArray<vtkArrayDispatch::PointArrays>::Execute(
+          output->GetPoints()->GetData(), genWorker, numInPts, locator, offsets,
+          this->NeighborhoodType, this->NumberOfClosestPoints, this->Radius, d, outPD))
     {
-      vtkTemplateMacro(GeneratePoints<VTK_TT>::Execute(numInPts,
-                       (VTK_TT *)pts, locator, offsets, this->NeighborhoodType,
-                       this->NumberOfClosestPoints, this->Radius, d,
-                       offset, outPD));
+      genWorker(output->GetPoints()->GetData(), numInPts, locator, offsets, this->NeighborhoodType,
+        this->NumberOfClosestPoints, this->Radius, d, outPD);
     }
 
-    delete [] offsets;
-  } //while max num of iterations not exceeded
+    delete[] offsets;
+  } // while max num of iterations not exceeded
 
   // Clean up
   locator->Delete();
@@ -361,29 +349,25 @@ int vtkDensifyPointCloudFilter::RequestData(
   return 1;
 }
 
-
-//----------------------------------------------------------------------------
-int vtkDensifyPointCloudFilter::
-FillInputPortInformation(int, vtkInformation *info)
+//------------------------------------------------------------------------------
+int vtkDensifyPointCloudFilter::FillInputPortInformation(int, vtkInformation* info)
 {
   info->Set(vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkPointSet");
   return 1;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkDensifyPointCloudFilter::PrintSelf(ostream& os, vtkIndent indent)
 {
-  this->Superclass::PrintSelf(os,indent);
+  this->Superclass::PrintSelf(os, indent);
 
   os << indent << "Neighborhood Type: " << this->GetNeighborhoodType() << "\n";
   os << indent << "Radius: " << this->Radius << "\n";
-  os << indent << "Number Of Closest Points: "
-     << this->NumberOfClosestPoints << "\n";
+  os << indent << "Number Of Closest Points: " << this->NumberOfClosestPoints << "\n";
   os << indent << "Target Distance: " << this->TargetDistance << endl;
-  os << indent << "Maximum Number of Iterations: "
-     << this->MaximumNumberOfIterations << "\n";
-  os << indent << "Interpolate Attribute Data: "
-     << (this->InterpolateAttributeData ? "On\n" : "Off\n");
-  os << indent << "Maximum Number Of Points: "
-     << this->MaximumNumberOfPoints << "\n";
+  os << indent << "Maximum Number of Iterations: " << this->MaximumNumberOfIterations << "\n";
+  os << indent
+     << "Interpolate Attribute Data: " << (this->InterpolateAttributeData ? "On\n" : "Off\n");
+  os << indent << "Maximum Number Of Points: " << this->MaximumNumberOfPoints << "\n";
 }
+VTK_ABI_NAMESPACE_END

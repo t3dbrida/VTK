@@ -1,10 +1,11 @@
-set (Module_SRCS
-  vtkDataEncoder.cxx
-  vtkWebApplication.cxx
-  vtkWebInteractionEvent.cxx
-  vtkWebUtilities.cxx
-  vtkObjectIdMap.cxx
-)
+set(classes
+  vtkDataEncoder
+  vtkObjectIdMap
+  vtkRemoteInteractionAdapter
+  vtkWebApplication
+  vtkWebInteractionEvent
+  vtkWebUtilities)
 
-vtk_module_library(${vtk-module}
-  ${Module_SRCS})
+vtk_module_add_module(VTK::WebCore
+  CLASSES ${classes})
+vtk_add_test_mangling(VTK::WebCore)

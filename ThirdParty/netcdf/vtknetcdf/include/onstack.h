@@ -1,5 +1,5 @@
 /*
- *	Copyright 1997, University Corporation for Atmospheric Research
+ *	Copyright 2018, University Corporation for Atmospheric Research
  *	See netcdf/COPYRIGHT file for copying and redistribution conditions.
  */
 /* $Id: onstack.h,v 2.7 2006/09/15 20:40:39 ed Exp $ */
@@ -18,6 +18,8 @@
  *
  * The macro ALLOC_ONSTACK wraps a call to alloca() on most systems.
  */
+
+#include "vtk_netcdf_mangle.h"
 
 #ifdef _WIN32
 #ifdef HAVE_MALLOC_H
@@ -45,7 +47,7 @@
 #endif /* __GNUC__ */
 
 # if !defined(ALLOCA_ARG_T)
-# define ALLOCA_ARG_T int /* the usual type of the alloca argument */
+# define ALLOCA_ARG_T size_t /* the usual type of the alloca argument */
 # endif
 
 # define ALLOC_ONSTACK(name, type, nelems) \

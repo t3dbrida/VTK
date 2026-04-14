@@ -1,24 +1,13 @@
-/*=========================================================================
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
-  Program:   Visualization Toolkit
-  Module:    vtkDataObjectTreeIterator.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
 #include "vtkDataObjectTreeIterator.h"
 
 #include "vtkDataObjectTree.h"
 #include "vtkDataObjectTreeInternals.h"
 #include "vtkObjectFactory.h"
 
-
+VTK_ABI_NAMESPACE_BEGIN
 class vtkDataObjectTreeIterator::vtkInternals
 {
 public:
@@ -49,14 +38,12 @@ public:
       if (this->Reverse &&
         this->ReverseIter != this->GetInternals(this->CompositeDataSet)->Children.rend())
       {
-        this->ChildIterator->Initialize(this->Reverse,
-          this->ReverseIter->DataObject);
+        this->ChildIterator->Initialize(this->Reverse, this->ReverseIter->DataObject);
       }
       else if (!this->Reverse &&
         this->Iter != this->GetInternals(this->CompositeDataSet)->Children.end())
       {
-        this->ChildIterator->Initialize(this->Reverse,
-          this->Iter->DataObject);
+        this->ChildIterator->Initialize(this->Reverse, this->Iter->DataObject);
       }
     }
 
@@ -64,6 +51,7 @@ public:
     {
       return this->Parent->GetInternals(cd);
     }
+
   public:
     vtkIterator(vtkInternals* parent)
     {
@@ -77,11 +65,13 @@ public:
       this->ChildIterator = nullptr;
     }
 
-
-
     void Initialize(bool reverse, vtkDataObject* dataObj)
     {
-      vtkDataObjectTree* compositeData = vtkDataObjectTree::SafeDownCast(dataObj);
+      vtkDataObjectTree* compositeData = nullptr;
+      if (vtkDataObjectTreeIterator::IsDataObjectTree(dataObj))
+      {
+        compositeData = static_cast<vtkDataObjectTree*>(dataObj);
+      }
       this->Reverse = reverse;
       this->DataObject = dataObj;
       this->CompositeDataSet = compositeData;
@@ -118,7 +108,6 @@ public:
 
       return true;
     }
-
 
     bool IsDoneWithTraversal()
     {
@@ -158,8 +147,7 @@ public:
       {
         return this->DataObject;
       }
-      return this->ChildIterator?
-        this->ChildIterator->GetCurrentDataObject() : nullptr;
+      return this->ChildIterator ? this->ChildIterator->GetCurrentDataObject() : nullptr;
     }
 
     vtkInformation* GetCurrentMetaData()
@@ -191,7 +179,7 @@ public:
       return this->ChildIterator->GetCurrentMetaData();
     }
 
-    int HasCurrentMetaData()
+    vtkTypeBool HasCurrentMetaData()
     {
       if (this->PassSelf || !this->ChildIterator)
       {
@@ -200,9 +188,8 @@ public:
 
       if (this->ChildIterator->PassSelf)
       {
-        return this->Reverse?
-          (this->ReverseIter->MetaData != nullptr):
-          (this->Iter->MetaData != nullptr);
+        return this->Reverse ? (this->ReverseIter->MetaData != nullptr)
+                             : (this->Iter->MetaData != nullptr);
       }
 
       return this->ChildIterator->HasCurrentMetaData();
@@ -242,12 +229,12 @@ public:
       {
         return index;
       }
-      index.push_back(this->ChildIndex);
       vtkDataObjectTreeIndex childIndex = this->ChildIterator->GetCurrentIndex();
+      childIndex.reserve(childIndex.size() + 1);
+      index.push_back(this->ChildIndex);
       index.insert(index.end(), childIndex.begin(), childIndex.end());
       return index;
     }
-
   };
 
   // Description:
@@ -258,22 +245,19 @@ public:
     return this->CompositeDataIterator->GetInternals(cd);
   }
 
-  vtkInternals()
-  {
-    this->Iterator = new vtkIterator(this);
-  }
+  vtkInternals() { this->Iterator = new vtkIterator(this); }
   ~vtkInternals()
   {
     delete this->Iterator;
     this->Iterator = nullptr;
   }
 
-  vtkIterator *Iterator;
+  vtkIterator* Iterator;
   vtkDataObjectTreeIterator* CompositeDataIterator;
 };
 
 vtkStandardNewMacro(vtkDataObjectTreeIterator);
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkDataObjectTreeIterator::vtkDataObjectTreeIterator()
 {
   this->VisitOnlyLeaves = 1;
@@ -283,30 +267,59 @@ vtkDataObjectTreeIterator::vtkDataObjectTreeIterator()
   this->Internals->CompositeDataIterator = this;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkDataObjectTreeIterator::~vtkDataObjectTreeIterator()
 {
   delete this->Internals;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkDataObjectTreeIterator::IsDoneWithTraversal()
 {
   return this->Internals->Iterator->IsDoneWithTraversal();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+bool vtkDataObjectTreeIterator::IsDataObjectTree(vtkDataObject* dataObject)
+{
+  if (!dataObject)
+  {
+    return false;
+  }
+  switch (dataObject->GetDataObjectType())
+  {
+    case VTK_DATA_OBJECT_TREE:
+    case VTK_PARTITIONED_DATA_SET:
+    case VTK_PARTITIONED_DATA_SET_COLLECTION:
+    case VTK_MULTIPIECE_DATA_SET:
+    case VTK_MULTIBLOCK_DATA_SET:
+    case VTK_UNIFORM_GRID_AMR:
+    case VTK_NON_OVERLAPPING_AMR:
+    case VTK_OVERLAPPING_AMR:
+      return true;
+    default:
+      return false;
+  }
+}
+
+//------------------------------------------------------------------------------
+void vtkDataObjectTreeIterator::InitializeInternal()
+{
+  this->SetCurrentFlatIndex(0);
+  this->Internals->Iterator->Initialize(this->Reverse != 0, this->DataSet);
+}
+
+//------------------------------------------------------------------------------
 void vtkDataObjectTreeIterator::GoToFirstItem()
 {
-  this->CurrentFlatIndex = 0;
-  this->Internals->Iterator->Initialize(this->Reverse !=0, this->DataSet);
+  this->InitializeInternal();
   this->NextInternal();
 
   while (!this->Internals->Iterator->IsDoneWithTraversal())
   {
     vtkDataObject* dObj = this->Internals->Iterator->GetCurrentDataObject();
     if ((!dObj && this->SkipEmptyNodes) ||
-      (this->VisitOnlyLeaves && vtkDataObjectTree::SafeDownCast(dObj)))
+      (this->VisitOnlyLeaves && vtkDataObjectTreeIterator::IsDataObjectTree(dObj)))
     {
       this->NextInternal();
     }
@@ -317,7 +330,7 @@ void vtkDataObjectTreeIterator::GoToFirstItem()
   }
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkDataObjectTreeIterator::GoToNextItem()
 {
   if (!this->Internals->Iterator->IsDoneWithTraversal())
@@ -328,7 +341,7 @@ void vtkDataObjectTreeIterator::GoToNextItem()
     {
       vtkDataObject* dObj = this->Internals->Iterator->GetCurrentDataObject();
       if ((!dObj && this->SkipEmptyNodes) ||
-        (this->VisitOnlyLeaves && vtkDataObjectTree::SafeDownCast(dObj)))
+        (this->VisitOnlyLeaves && vtkDataObjectTreeIterator::IsDataObjectTree(dObj)))
       {
         this->NextInternal();
       }
@@ -340,18 +353,19 @@ void vtkDataObjectTreeIterator::GoToNextItem()
   }
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkDataObjectTreeIterator::NextInternal()
 {
   do
   {
     this->CurrentFlatIndex++;
     this->Internals->Iterator->Next();
-  }
-  while (!this->TraverseSubTree && this->Internals->Iterator->InSubTree());
+  } while (!this->TraverseSubTree && this->Internals->Iterator->InSubTree());
+
+  this->Modified();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkDataObject* vtkDataObjectTreeIterator::GetCurrentDataObject()
 {
   if (!this->IsDoneWithTraversal())
@@ -362,7 +376,7 @@ vtkDataObject* vtkDataObjectTreeIterator::GetCurrentDataObject()
   return nullptr;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkInformation* vtkDataObjectTreeIterator::GetCurrentMetaData()
 {
   if (!this->IsDoneWithTraversal())
@@ -373,8 +387,8 @@ vtkInformation* vtkDataObjectTreeIterator::GetCurrentMetaData()
   return nullptr;
 }
 
-//----------------------------------------------------------------------------
-int vtkDataObjectTreeIterator::HasCurrentMetaData()
+//------------------------------------------------------------------------------
+vtkTypeBool vtkDataObjectTreeIterator::HasCurrentMetaData()
 {
   if (!this->IsDoneWithTraversal())
   {
@@ -384,27 +398,25 @@ int vtkDataObjectTreeIterator::HasCurrentMetaData()
   return 0;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkDataObjectTreeIndex vtkDataObjectTreeIterator::GetCurrentIndex()
 {
   return this->Internals->Iterator->GetCurrentIndex();
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 unsigned int vtkDataObjectTreeIterator::GetCurrentFlatIndex()
 {
   if (this->Reverse)
   {
-    vtkErrorMacro(
-      "FlatIndex cannot be obtained when iterating in reverse order.");
+    vtkErrorMacro("FlatIndex cannot be obtained when iterating in reverse order.");
     return 0;
   }
   return this->CurrentFlatIndex;
 }
 
-//----------------------------------------------------------------------------
-vtkDataObjectTreeInternals* vtkDataObjectTreeIterator::GetInternals(
-  vtkDataObjectTree* cd)
+//------------------------------------------------------------------------------
+vtkDataObjectTreeInternals* vtkDataObjectTreeIterator::GetInternals(vtkDataObjectTree* cd)
 {
   if (cd)
   {
@@ -414,17 +426,14 @@ vtkDataObjectTreeInternals* vtkDataObjectTreeIterator::GetInternals(
   return nullptr;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkDataObjectTreeIterator::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os, indent);
-  os << indent << "VisitOnlyLeaves: "
-    << (this->VisitOnlyLeaves? "On" : "Off") << endl;
-  os << indent << "Reverse: "
-    << (this->Reverse? "On" : "Off") << endl;
-  os << indent << "TraverseSubTree: "
-    << (this->TraverseSubTree? "On" : "Off") << endl;
-  os << indent << "SkipEmptyNodes: "
-    << (this->SkipEmptyNodes? "On" : "Off") << endl;
+  os << indent << "VisitOnlyLeaves: " << (this->VisitOnlyLeaves ? "On" : "Off") << endl;
+  os << indent << "Reverse: " << (this->Reverse ? "On" : "Off") << endl;
+  os << indent << "TraverseSubTree: " << (this->TraverseSubTree ? "On" : "Off") << endl;
+  os << indent << "SkipEmptyNodes: " << (this->SkipEmptyNodes ? "On" : "Off") << endl;
   os << indent << "CurrentFlatIndex: " << this->CurrentFlatIndex << endl;
 }
+VTK_ABI_NAMESPACE_END

@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestRasterReprojectionFiltercxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-   This software is distributed WITHOUT ANY WARRANTY; without even
-   the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-   PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 // Description
 // Test for the vtkRasterReprojectionFilter using GDAL
@@ -31,17 +19,29 @@
 #include "vtkTestUtilities.h"
 #include "vtkTesting.h"
 
+#include <iostream>
+
 int TestRasterReprojectionFilter(int argc, char* argv[])
 {
-  cout << "CTEST_FULL_OUTPUT (Avoid ctest truncation of output)" << endl;
+  std::cout << "CTEST_FULL_OUTPUT (Avoid ctest truncation of output)" << std::endl;
 
-  char* fname =
-    vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/GIS/sa052483.tif");
+  char* fname = vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/GIS/sa052483.tif");
 
   // Load input file
   vtkNew<vtkGDALRasterReader> reader;
   reader->SetFileName(fname);
   delete[] fname;
+
+  // test that we read the NoData value correctly
+  reader->Update();
+  double nodata = reader->GetInvalidValue(0);
+  double expectedNodata = -32768;
+  if (nodata != expectedNodata)
+  {
+    std::cerr << "Error NoData value. Found: " << nodata << ". Expected: " << expectedNodata
+              << std::endl;
+    return 1;
+  }
 
   // Apply reprojection filter
   vtkNew<vtkRasterReprojectionFilter> filter;

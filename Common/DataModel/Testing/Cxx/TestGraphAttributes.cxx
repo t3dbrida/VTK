@@ -1,51 +1,36 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestGraphAttributes.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-/*----------------------------------------------------------------------------
- Copyright (c) Sandia Corporation
- See Copyright.txt or http://www.paraview.org/HTML/Copyright.html for details.
-----------------------------------------------------------------------------*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-FileCopyrightText: Copyright (c) Sandia Corporation
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "vtkAdjacentVertexIterator.h"
 #include "vtkDataSetAttributes.h"
 #include "vtkDirectedAcyclicGraph.h"
 #include "vtkEdgeListIterator.h"
 #include "vtkInEdgeIterator.h"
+#include "vtkIntArray.h"
 #include "vtkMutableDirectedGraph.h"
 #include "vtkMutableUndirectedGraph.h"
 #include "vtkOutEdgeIterator.h"
 #include "vtkSmartPointer.h"
-#include "vtkTree.h"
-#include "vtkVertexListIterator.h"
-#include "vtkVariantArray.h"
 #include "vtkStringArray.h"
-#include "vtkIntArray.h"
+#include "vtkTree.h"
+#include "vtkVariantArray.h"
+#include "vtkVertexListIterator.h"
 
+#include <iostream>
 
-#define VTK_CREATE(type, name) \
-  vtkSmartPointer<type> name = vtkSmartPointer<type>::New()
+#define VTK_CREATE(type, name) vtkSmartPointer<type> name = vtkSmartPointer<type>::New()
 
-void TestGraphAttribIterators(vtkGraph *g, int & errors)
+void TestGraphAttribIterators(vtkGraph* g, int& errors)
 {
   if (g->GetNumberOfVertices() != 10)
   {
-    cerr << "ERROR: Wrong number of vertices." << endl;
+    std::cerr << "ERROR: Wrong number of vertices." << std::endl;
     ++errors;
   }
   if (g->GetNumberOfEdges() != 9)
   {
-    cerr << "ERROR: Wrong number of edges." << endl;
+    std::cerr << "ERROR: Wrong number of edges." << std::endl;
     ++errors;
   }
   VTK_CREATE(vtkVertexListIterator, vertices);
@@ -58,7 +43,7 @@ void TestGraphAttribIterators(vtkGraph *g, int & errors)
   }
   if (numVertices != 10)
   {
-    cerr << "ERROR: Vertex list iterator failed." << endl;
+    std::cerr << "ERROR: Vertex list iterator failed." << std::endl;
     ++errors;
   }
   VTK_CREATE(vtkEdgeListIterator, edges);
@@ -71,7 +56,7 @@ void TestGraphAttribIterators(vtkGraph *g, int & errors)
   }
   if (numEdges != 9)
   {
-    cerr << "ERROR: Edge list iterator failed." << endl;
+    std::cerr << "ERROR: Edge list iterator failed." << std::endl;
     ++errors;
   }
   numEdges = 0;
@@ -94,12 +79,12 @@ void TestGraphAttribIterators(vtkGraph *g, int & errors)
   }
   if (vtkDirectedGraph::SafeDownCast(g) && numEdges != 9)
   {
-    cerr << "ERROR: Out edge iterator failed." << endl;
+    std::cerr << "ERROR: Out edge iterator failed." << std::endl;
     ++errors;
   }
   if (vtkUndirectedGraph::SafeDownCast(g) && numEdges != 18)
   {
-    cerr << "ERROR: Undirected out edge iterator failed." << endl;
+    std::cerr << "ERROR: Undirected out edge iterator failed." << std::endl;
     ++errors;
   }
   numEdges = 0;
@@ -122,12 +107,12 @@ void TestGraphAttribIterators(vtkGraph *g, int & errors)
   }
   if (vtkDirectedGraph::SafeDownCast(g) && numEdges != 9)
   {
-    cerr << "ERROR: In edge iterator failed." << endl;
+    std::cerr << "ERROR: In edge iterator failed." << std::endl;
     ++errors;
   }
   if (vtkUndirectedGraph::SafeDownCast(g) && numEdges != 18)
   {
-    cerr << "ERROR: Undirected in edge iterator failed." << endl;
+    std::cerr << "ERROR: Undirected in edge iterator failed." << std::endl;
     ++errors;
   }
   numEdges = 0;
@@ -150,12 +135,12 @@ void TestGraphAttribIterators(vtkGraph *g, int & errors)
   }
   if (vtkDirectedGraph::SafeDownCast(g) && numEdges != 9)
   {
-    cerr << "ERROR: In edge iterator failed." << endl;
+    std::cerr << "ERROR: In edge iterator failed." << std::endl;
     ++errors;
   }
   if (vtkUndirectedGraph::SafeDownCast(g) && numEdges != 18)
   {
-    cerr << "ERROR: Undirected in edge iterator failed." << endl;
+    std::cerr << "ERROR: Undirected in edge iterator failed." << std::endl;
     ++errors;
   }
 }
@@ -182,20 +167,19 @@ int TestGraphAttributes(int vtkNotUsed(argc), char* vtkNotUsed(argv)[])
   vertexProp1Array->SetName("weight");
   mdgTree->GetVertexData()->AddArray(vertexProp1Array);
 
-  const char *vertexLabel[] = {"Dick","Jane","Sally","Spot","Puff"};
+  const char* vertexLabel[] = { "Dick", "Jane", "Sally", "Spot", "Puff" };
 
-  const char *stringProp;
+  const char* stringProp;
   int weight;
 
   for (vtkIdType i = 0; i < 10; ++i)
   {
     stringProp = vertexLabel[rand() % 5];
     weight = rand() % 10;
-//    cout << myRank <<" vertex "<< v <<","<< stringProp <<","<<weight<< endl;
-    vertexPropertyArr->SetValue(0,stringProp);
-    vertexPropertyArr->SetValue(1,weight);
+    //    std::cout << myRank <<" vertex "<< v <<","<< stringProp <<","<<weight<< std::endl;
+    vertexPropertyArr->SetValue(0, stringProp);
+    vertexPropertyArr->SetValue(1, weight);
     mdgTree->AddVertex(vertexPropertyArr);
-
   }
 
   // Create a valid tree.
@@ -209,51 +193,52 @@ int TestGraphAttributes(int vtkNotUsed(argc), char* vtkNotUsed(argv)[])
   mdgTree->AddEdge(3, 8);
   mdgTree->AddEdge(3, 9);
 
-
-  cerr << "Testing graph conversions ..." << endl;
+  std::cerr << "Testing graph conversions ..." << std::endl;
   if (!t->CheckedShallowCopy(mdgTree))
   {
-    cerr << "ERROR: Cannot set valid tree." << endl;
+    std::cerr << "ERROR: Cannot set valid tree." << std::endl;
     ++errors;
   }
 
   if (!dg->CheckedShallowCopy(mdgTree))
   {
-    cerr << "ERROR: Cannot set valid directed graph." << endl;
+    std::cerr << "ERROR: Cannot set valid directed graph." << std::endl;
     ++errors;
   }
   if (!dg->CheckedShallowCopy(t))
   {
-    cerr << "ERROR: Cannot set tree to directed graph." << endl;
+    std::cerr << "ERROR: Cannot set tree to directed graph." << std::endl;
     ++errors;
   }
 
-  cerr << "... done." << endl;
+  std::cerr << "... done." << std::endl;
 
-  cerr << "Testing basic graph structure ..." << endl;
+  std::cerr << "Testing basic graph structure ..." << std::endl;
   TestGraphAttribIterators(mdgTree, errors);
   TestGraphAttribIterators(dg, errors);
   TestGraphAttribIterators(t, errors);
-  cerr << "... done." << endl;
+  std::cerr << "... done." << std::endl;
 
-  cerr << "Testing copy on write ..." << endl;
+  std::cerr << "Testing copy on write ..." << std::endl;
   if (!t->IsSameStructure(mdgTree))
   {
-    cerr << "ERROR: Tree and directed graph should be sharing the same structure." << endl;
+    std::cerr << "ERROR: Tree and directed graph should be sharing the same structure."
+              << std::endl;
     ++errors;
   }
   mdgTree->AddVertex();
   if (t->IsSameStructure(mdgTree))
   {
-    cerr << "ERROR: Tree and directed graph should not be sharing the same structure." << endl;
+    std::cerr << "ERROR: Tree and directed graph should not be sharing the same structure."
+              << std::endl;
     ++errors;
   }
   if (t->GetNumberOfVertices() != 10)
   {
-    cerr << "ERROR: Tree changed when modifying directed graph." << endl;
+    std::cerr << "ERROR: Tree changed when modifying directed graph." << std::endl;
     ++errors;
   }
-  cerr << "... done." << endl;
+  std::cerr << "... done." << std::endl;
 
   return errors;
 }

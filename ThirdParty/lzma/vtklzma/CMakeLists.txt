@@ -2,8 +2,10 @@
 # Los Alamos National Laboratory (2017).
 # Thanks to Lasse Collin for integration help
 
-project(LZMA VERSION 5.2.3 LANGUAGES C)
+if (FALSE) # XXX(kitware): hide subprojects.
+project(LZMA VERSION 5.2.5 LANGUAGES C)
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "LZMA compression library")
+endif ()
 
 # XXX(kitware): avoid quoted variable policy warning from CMake.
 IF(CMAKE_C_COMPILER_ID STREQUAL "GNU" OR
@@ -108,10 +110,10 @@ set(TUKLIB_FAST_UNALIGNED_ACCESS 1)
 set(TUKLIB_SYMBOL_PREFIX vtklzma_)
 
 find_package(Threads REQUIRED)
-if (CMAKE_USE_PTHREADS_INIT)
-  set(MYTHREAD_POSIX 1)
-elseif (CMAKE_USE_WIN32_THREADS_INIT)
+if (CMAKE_USE_WIN32_THREADS_INIT)
   set(MYTHREAD_VISTA 1)
+elseif (CMAKE_USE_PTHREADS_INIT)
+  set(MYTHREAD_POSIX 1)
 else ()
   message(FATAL_ERROR
     "Unsupported threading backend for LZMA.")
@@ -225,7 +227,7 @@ set(private_headers
   src/liblzma/check/crc32_table_le.h
   src/liblzma/check/crc64_table_be.h
   src/liblzma/check/crc64_table_le.h
-  src/liblzma/check/crc_macros.h
+  src/liblzma/check/crc_common.h
   src/liblzma/common/alone_decoder.h
   src/liblzma/common/block_buffer_encoder.h
   src/liblzma/common/block_decoder.h
@@ -283,27 +285,23 @@ set(headers
   src/liblzma/api/lzma/vli.h
   src/liblzma/api/vtk_lzma_mangle.h)
 
-vtk_add_library(vtklzma
-  ${sources}
-  ${headers}
-  ${private_headers})
-set_target_properties(vtklzma
-  PROPERTIES
-    C_STANDARD 99
-    POSITION_INDEPENDENT_CODE 1)
+vtk_module_add_module(VTK::lzma
+  HEADER_DIRECTORIES
+  SOURCES ${sources}
+  HEADERS ${headers}
+  PRIVATE_HEADERS ${private_headers}
+  HEADERS_SUBDIR "vtklzma")
+vtk_module_set_properties(VTK::lzma
+  C_STANDARD 99
+  POSITION_INDEPENDENT_CODE 1)
 
 if (BUILD_SHARED_LIBS)
-  set_target_properties(vtklzma
-    PROPERTIES
-      DEFINE_SYMBOL DLL_EXPORT)
-  if(CMAKE_USE_PTHREADS_INIT)
-    target_link_libraries(vtklzma ${CMAKE_THREAD_LIBS_INIT})
-  endif()
-endif ()
-
-if (NOT VTK_INSTALL_NO_DEVELOPMENT)
-  install(
-    DIRECTORY   "src/liblzma/api/"
-    DESTINATION "${VTK_INSTALL_INCLUDE_DIR}/vtklzma/src/liblzma/api/"
-    COMPONENT   Development)
+  vtk_module_set_property(VTK::lzma
+    PROPERTY  DEFINE_SYMBOL
+    VALUE     DLL_EXPORT)
+  if (CMAKE_USE_PTHREADS_INIT)
+    vtk_module_link(VTK::lzma
+      PRIVATE
+        ${CMAKE_THREAD_LIBS_INIT})
+  endif ()
 endif ()

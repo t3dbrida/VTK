@@ -1,16 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 //
 // This test is unlikely to fail if FXAA isn't working, but can be used to
 // quickly check the same scene with/without FXAA enabled.
@@ -34,21 +23,21 @@
 #include "vtkTextActor.h"
 #include "vtkTextProperty.h"
 
-namespace {
-
-void BuildRenderer(vtkRenderer *renderer, int widthBias)
+namespace
 {
-  const size_t NUM_LINES = 10;
+
+void BuildRenderer(vtkRenderer* renderer, int widthBias)
+{
+  constexpr size_t NUM_LINES = 10;
 
   vtkNew<vtkLineSource> lines[NUM_LINES];
   vtkNew<vtkPolyDataMapper> mappers[NUM_LINES];
   vtkNew<vtkActor> actors[NUM_LINES];
   for (size_t i = 0; i < NUM_LINES; ++i)
   {
-    double c = static_cast<double>(2 * i) /
-               static_cast<double>(NUM_LINES - 1) - 1.;
-    lines[i]->SetPoint1(-1,  c, 0.);
-    lines[i]->SetPoint2( 1, -c, 0.);
+    double c = static_cast<double>(2 * i) / static_cast<double>(NUM_LINES - 1) - 1.;
+    lines[i]->SetPoint1(-1, c, 0.);
+    lines[i]->SetPoint2(1, -c, 0.);
 
     mappers[i]->SetInputConnection(lines[i]->GetOutputPort());
 
@@ -127,7 +116,7 @@ void BuildRenderer(vtkRenderer *renderer, int widthBias)
 
 } // end anon namespace
 
-int TestFXAAFilter(int argc, char *argv[])
+int TestFXAAFilter(int argc, char* argv[])
 {
   vtkNew<vtkRenderWindowInteractor> iren;
   vtkNew<vtkRenderWindow> renWin;
@@ -144,7 +133,7 @@ int TestFXAAFilter(int argc, char *argv[])
   label->GetTextProperty()->SetJustificationToCentered();
   label->GetTextProperty()->SetVerticalJustificationToBottom();
   label->SetPosition(85, 10);
-  renderer->AddActor2D(label);
+  renderer->AddViewProp(label);
 
   vtkNew<vtkTextActor> labelFXAA;
   labelFXAA->SetInput("FXAA");
@@ -152,7 +141,7 @@ int TestFXAAFilter(int argc, char *argv[])
   labelFXAA->GetTextProperty()->SetJustificationToCentered();
   labelFXAA->GetTextProperty()->SetVerticalJustificationToBottom();
   labelFXAA->SetPosition(85, 10);
-  rendererFXAA->AddActor2D(labelFXAA);
+  rendererFXAA->AddViewProp(labelFXAA);
 
   renderer->SetViewport(0., 0., .5, 1.);
   BuildRenderer(renderer, 0);

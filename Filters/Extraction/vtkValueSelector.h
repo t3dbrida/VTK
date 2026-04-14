@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkValueSelector.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class vtkValueSelector
  * @brief selects elements matching chosen values.
@@ -44,23 +32,27 @@
 
 #include <memory> // unique_ptr
 
+VTK_ABI_NAMESPACE_BEGIN
+class vtkConvertSelection;
+
 class VTKFILTERSEXTRACTION_EXPORT vtkValueSelector : public vtkSelector
 {
+private:
+  friend class vtkConvertSelection;
+
 public:
   static vtkValueSelector* New();
   vtkTypeMacro(vtkValueSelector, vtkSelector);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
-  void Initialize(vtkSelectionNode* node, const std::string& insidednessArrayName) override;
+  void Initialize(vtkSelectionNode* node) override;
   void Finalize() override;
 
 protected:
   vtkValueSelector();
   ~vtkValueSelector() override;
 
-  bool ComputeSelectedElementsForBlock(vtkDataObject* input,
-    vtkSignedCharArray* insidednessArray, unsigned int compositeIndex,
-    unsigned int amrLevel, unsigned int amrIndex) override;
+  bool ComputeSelectedElements(vtkDataObject* input, vtkSignedCharArray* insidednessArray) override;
 
 private:
   vtkValueSelector(const vtkValueSelector&) = delete;
@@ -70,4 +62,5 @@ private:
   std::unique_ptr<vtkInternals> Internals;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

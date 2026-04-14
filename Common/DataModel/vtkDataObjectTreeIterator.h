@@ -1,24 +1,12 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkDataObjectTreeIterator.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkDataObjectTreeIterator
  * @brief   superclass for composite data iterators
  *
  * vtkDataObjectTreeIterator provides an interface for accessing datasets
  * in a collection (vtkDataObjectTreeIterator).
-*/
+ */
 
 #ifndef vtkDataObjectTreeIterator_h
 #define vtkDataObjectTreeIterator_h
@@ -27,6 +15,7 @@
 #include "vtkCompositeDataIterator.h"
 #include "vtkSmartPointer.h" //to store data sets
 
+VTK_ABI_NAMESPACE_BEGIN
 class vtkDataObjectTree;
 class vtkDataObjectTreeInternals;
 class vtkDataObjectTreeIndex;
@@ -75,16 +64,17 @@ public:
    * Returns if the a meta-data information object is present for the current
    * item. Return 1 on success, 0 otherwise.
    */
-  int HasCurrentMetaData() override;
+  vtkTypeBool HasCurrentMetaData() override;
 
   /**
    * Flat index is an index obtained by traversing the tree in preorder.
    * This can be used to uniquely identify nodes in the tree.
    * Not valid if IsDoneWithTraversal() returns true.
+   * Require ReverseOff
    */
   unsigned int GetCurrentFlatIndex() override;
 
-  //@{
+  ///@{
   /**
    * If VisitOnlyLeaves is true, the iterator will only visit nodes
    * (sub-datasets) that are not composite. If it encounters a composite
@@ -98,9 +88,9 @@ public:
   vtkSetMacro(VisitOnlyLeaves, vtkTypeBool);
   vtkGetMacro(VisitOnlyLeaves, vtkTypeBool);
   vtkBooleanMacro(VisitOnlyLeaves, vtkTypeBool);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * If TraverseSubTree is set to true, the iterator will visit the entire tree
    * structure, otherwise it only visits the first level children. Set to 1 by
@@ -109,18 +99,30 @@ public:
   vtkSetMacro(TraverseSubTree, vtkTypeBool);
   vtkGetMacro(TraverseSubTree, vtkTypeBool);
   vtkBooleanMacro(TraverseSubTree, vtkTypeBool);
-  //@}
+  ///@}
 
 protected:
   vtkDataObjectTreeIterator();
   ~vtkDataObjectTreeIterator() override;
 
-  // Takes the current location to the next dataset. This traverses the tree in
-  // preorder fashion.
-  // If the current location is a composite dataset, next is its 1st child dataset.
-  // If the current is not a composite dataset, then next is the next dataset.
-  // This method gives no guarantees whether the current dataset will be
-  // non-null or leaf.
+  /**
+   * Set the CurrentFlatIndex and call Modified()
+   */
+  vtkSetMacro(CurrentFlatIndex, unsigned int);
+
+  /**
+   *  Set FlatIndex to zero and Initialize internal fields
+   */
+  void InitializeInternal();
+
+  /*
+   * Takes the current location to the next dataset. This traverses the tree in
+   * preorder fashion.
+   * If the current location is a composite dataset, next is its 1st child dataset.
+   * If the current is not a composite dataset, then next is the next dataset.
+   * This method gives no guarantees whether the current dataset will be
+   * non-null or leaf.
+   */
   void NextInternal();
 
   /**
@@ -133,6 +135,11 @@ protected:
   friend class vtkMultiDataSetInternal;
 
   unsigned int CurrentFlatIndex;
+
+  /**
+   * Used to improve the speed of vtkDataObjectTree::SafeDownCast().
+   */
+  static bool IsDataObjectTree(vtkDataObject* dataObject);
 
 private:
   vtkDataObjectTreeIterator(const vtkDataObjectTreeIterator&) = delete;
@@ -153,7 +160,7 @@ private:
 
   // Cannot be called when this->IsDoneWithTraversal() return 1.
   void UpdateLocation();
-
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

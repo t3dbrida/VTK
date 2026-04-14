@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkHierarchicalDataLevelFilter.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkHierarchicalDataLevelFilter
  * @brief   generate scalars from levels
@@ -20,25 +8,29 @@
  *
  * @sa
  * vtkLevelIdScalars
-*/
+ */
 
 #ifndef vtkHierarchicalDataLevelFilter_h
 #define vtkHierarchicalDataLevelFilter_h
 
+#include "vtkDeprecation.h"          // for VTK_DEPRECATED_IN_9_7_0
 #include "vtkFiltersGeneralModule.h" // For export macro
 #include "vtkLevelIdScalars.h"
 
-class VTKFILTERSGENERAL_EXPORT vtkHierarchicalDataLevelFilter : public vtkLevelIdScalars
+VTK_ABI_NAMESPACE_BEGIN
+class VTK_DEPRECATED_IN_9_7_0(
+  "Use vtkLevelIdScalars") VTKFILTERSGENERAL_EXPORT vtkHierarchicalDataLevelFilter
+  : public vtkLevelIdScalars
 {
 public:
-  vtkTypeMacro(vtkHierarchicalDataLevelFilter,vtkLevelIdScalars);
+  vtkTypeMacro(vtkHierarchicalDataLevelFilter, vtkLevelIdScalars);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
   /**
    * Construct object with PointIds and CellIds on; and ids being generated
    * as scalars.
    */
-  static vtkHierarchicalDataLevelFilter *New();
+  static vtkHierarchicalDataLevelFilter* New();
 
 protected:
   vtkHierarchicalDataLevelFilter();
@@ -49,6 +41,5 @@ private:
   void operator=(const vtkHierarchicalDataLevelFilter&) = delete;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif
-
-

@@ -733,7 +733,7 @@ if( ( rank == 1 ) && ( *Dimensions == 1 ) ){
   status = H5Tinsert( this->DataType,
     Name,
     Offset,
-#if (!H5_USE_16_API && ((H5_VERS_MAJOR>1)||((H5_VERS_MAJOR==1)&&(H5_VERS_MINOR>=8))))
+#if (!defined(H5_USE_16_API) && ((H5_VERS_MAJOR>1)||((H5_VERS_MAJOR==1)&&(H5_VERS_MINOR>=8))))
     H5Tarray_create( HNumberType, rank, Dims));
 #else
     H5Tarray_create( HNumberType, rank, Dims, NULL ));
@@ -784,7 +784,7 @@ if( this->SelectionType == XDMF_COORDINATES ){
     for( i = 0 ; i < Total ; i++ ){
       Coordinates[i] = HCoordinates[i];
       }
-    delete HCoordinates;
+    delete[] HCoordinates;
     }
 }
 return( Coordinates );

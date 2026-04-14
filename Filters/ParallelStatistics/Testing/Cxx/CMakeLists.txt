@@ -1,12 +1,25 @@
-include(vtkMPI)
-
-vtk_add_test_mpi(vtkFiltersParallelStatisticsCxxTests-MPI tests
-  TestRandomPContingencyStatisticsMPI.cxx
-  TestRandomPKMeansStatisticsMPI.cxx
-  TestRandomPMomentStatisticsMPI.cxx
-  TestRandomPOrderStatisticsMPI.cxx
-  # # The following file was being compiled but never added as a testin older
-  # # vtk. Why is that so?
-  # TestRealDataPDescriptiveStatisticsMPI.cxx
+if(TARGET VTK::ParallelMPI)
+  vtk_add_test_mpi(vtkFiltersParallelStatisticsCxxTests-MPI tests
+    TestPDescriptiveStatistics.cxx
+    TestPCorrelativeStatistics.cxx
+    TestRandomPContingencyStatisticsMPI.cxx
+    TestRandomPKMeansStatisticsMPI.cxx
+    TestRandomPMomentStatisticsMPI.cxx
+    TestRandomPOrderStatisticsMPI.cxx
   )
-vtk_test_mpi_executable(vtkFiltersParallelStatisticsCxxTests-MPI tests)
+  if(TARGET VTK::IOParallelXML)
+    # Test vtkGenerateStatistics with simple, contrived input data
+    vtk_add_test_mpi(vtkFiltersParallelStatisticsCxxTests-MPI tests
+      TESTING_DATA
+      TestGenerateStatisticsSimple.cxx,NO_VALID
+    )
+    if(TARGET VTK::IOIOSS)
+      # Test vtkGenerateStatistics with complex, real-world input data
+      vtk_add_test_mpi(vtkFiltersParallelStatisticsCxxTests-MPI tests
+        TESTING_DATA
+        TestGenerateStatistics.cxx,NO_VALID
+      )
+    endif()
+  endif()
+  vtk_test_cxx_executable(vtkFiltersParallelStatisticsCxxTests-MPI tests)
+endif()

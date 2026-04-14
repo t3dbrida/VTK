@@ -94,7 +94,7 @@ typedef  signed int          HPDF_BOOL;
 typedef  unsigned long       HPDF_STATUS;
 
 
-/*  charactor-code type (16bit)
+/*  character-code type (16bit)
  */
 typedef  HPDF_UINT16         HPDF_CID;
 typedef  HPDF_UINT16         HPDF_UNICODE;
@@ -160,8 +160,19 @@ typedef enum _HPDF_InfoType {
 
 typedef enum _HPDF_PDFA_TYPE
 {
+    HPDF_PDFA_NON_PDFA = -1,
+
     HPDF_PDFA_1A = 0,
-    HPDF_PDFA_1B = 1
+    HPDF_PDFA_1B,
+    HPDF_PDFA_2A,
+    HPDF_PDFA_2B,
+    HPDF_PDFA_2U,
+    HPDF_PDFA_3A,
+    HPDF_PDFA_3B,
+    HPDF_PDFA_3U,
+    HPDF_PDFA_4,
+    HPDF_PDFA_4E,
+    HPDF_PDFA_4F
 } HPDF_PDFAType;
 
 
@@ -172,6 +183,7 @@ typedef enum _HPDF_PdfVer {
     HPDF_VER_15,
     HPDF_VER_16,
     HPDF_VER_17,
+    HPDF_VER_20,
     HPDF_VER_EOF
 } HPDF_PDFVer;
 
@@ -213,9 +225,9 @@ typedef struct _HPDF_TextWidth {
 /*------ dash mode ----------------------------------------------------------*/
 
 typedef struct _HPDF_DashMode {
-    HPDF_UINT16  ptn[8];
-    HPDF_UINT    num_ptn;
-    HPDF_UINT    phase;
+    HPDF_REAL  ptn[8];
+    HPDF_UINT  num_ptn;
+    HPDF_REAL  phase;
 } HPDF_DashMode;
 
 
@@ -291,7 +303,7 @@ typedef struct _HPDF_CMYKColor {
 typedef enum _HPDF_LineCap {
     HPDF_BUTT_END = 0,
     HPDF_ROUND_END,
-    HPDF_PROJECTING_SCUARE_END,
+    HPDF_PROJECTING_SQUARE_END,
     HPDF_LINECAP_EOF
 } HPDF_LineCap;
 
@@ -561,7 +573,7 @@ typedef enum  _HPDF_EncoderType {
 typedef enum _HPDF_ByteType {
     HPDF_BYTE_TYPE_SINGLE = 0,
     HPDF_BYTE_TYPE_LEAD,
-    HPDF_BYTE_TYPE_TRIAL,
+    HPDF_BYTE_TYPE_TRAIL,
     HPDF_BYTE_TYPE_UNKNOWN
 } HPDF_ByteType;
 
@@ -580,6 +592,27 @@ typedef enum _HPDF_NameDictKey {
     HPDF_NAME_EMBEDDED_FILES = 0,    /* TODO the rest */
     HPDF_NAME_EOF
 } HPDF_NameDictKey;
+
+typedef enum _HPDF_AFRelationship {
+    HPDF_AFRELATIONSHIP_SOURCE = 0,
+    HPDF_AFRELATIONSHIP_DATA,
+    HPDF_AFRELATIONSHIP_ALTERNATIVE,
+    HPDF_AFRELATIONSHIP_SUPPLEMENT,
+    HPDF_AFRELATIONSHIP_ENCRYPTEDPAYLOAD,
+    HPDF_AFRELATIONSHIP_FORMDATA,
+    HPDF_AFRELATIONSHIP_SCHEMA,
+    HPDF_AFRELATIONSHIP_UNSPECIFIED
+} HPDF_AFRelationship;
+
+/*----------------------------------------------------------------------------*/
+
+typedef enum _HPDF_PageBoundary {
+    HPDF_PAGE_MEDIABOX = 0,
+    HPDF_PAGE_CROPBOX,
+    HPDF_PAGE_BLEEDBOX,
+    HPDF_PAGE_TRIMBOX,
+    HPDF_PAGE_ARTBOX
+} HPDF_PageBoundary;
 
 /*----------------------------------------------------------------------------*/
 
@@ -600,4 +633,3 @@ typedef enum _HPDF_Shading_FreeFormTriangleMeshEdgeFlag {
 #endif /* __cplusplus */
 
 #endif /* _HPDF_TYPES_H */
-

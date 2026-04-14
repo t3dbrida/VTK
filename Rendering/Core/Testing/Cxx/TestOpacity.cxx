@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestOpacity.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 // This test covers rendering translucent materials with depth peeling
 // technique.
 //
@@ -19,23 +7,26 @@
 // -I        => run in interactive mode; unless this is used, the program will
 //              not allow interaction and exit
 
-#include "vtkTestUtilities.h"
 #include "vtkRegressionTestImage.h"
+#include "vtkTestUtilities.h"
 
-#include "vtkRenderWindowInteractor.h"
-#include "vtkRenderWindow.h"
-#include "vtkRenderer.h"
 #include "vtkActor.h"
-#include "vtkGlyph3D.h"
-#include "vtkSphereSource.h"
-#include "vtkImageGridSource.h"
-#include "vtkPolyDataMapper.h"
-#include "vtkImageData.h"
-#include "vtkPointData.h"
-#include "vtkPlaneSource.h"
-#include "vtkLookupTable.h"
-#include "vtkProperty.h"
 #include "vtkCubeSource.h"
+#include "vtkGlyph3D.h"
+#include "vtkImageData.h"
+#include "vtkImageGridSource.h"
+#include "vtkLookupTable.h"
+#include "vtkNew.h"
+#include "vtkPlaneSource.h"
+#include "vtkPointData.h"
+#include "vtkPolyDataMapper.h"
+#include "vtkProperty.h"
+#include "vtkRenderWindow.h"
+#include "vtkRenderWindowInteractor.h"
+#include "vtkRenderer.h"
+#include "vtkSphereSource.h"
+
+#include <iostream>
 
 // if not defined, we use spherical glyphs (slower) instead of cubic
 // glyphs (faster)
@@ -44,59 +35,60 @@
 int TestOpacity(int argc, char* argv[])
 {
   // Standard rendering classes
-  vtkRenderer *renderer = vtkRenderer::New();
-  vtkRenderWindow *renWin = vtkRenderWindow::New();
+  vtkNew<vtkRenderer> renderer;
+  vtkNew<vtkRenderWindow> renWin;
+  if (renWin->IsA("vtkWebAssemblyOpenGLRenderWindow"))
+  {
+    // WebAssembly OpenGL requires additional steps for dual depth peeling. See
+    // TestFramebufferPass.cxx for details.
+    std::cout << "Skipping test with dual-depth peeling for WebAssembly OpenGL\n";
+    return VTK_SKIP_RETURN_CODE;
+  }
   renWin->SetMultiSamples(0);
   renWin->SetAlphaBitPlanes(1);
   renWin->AddRenderer(renderer);
-  renderer->Delete();
-  vtkRenderWindowInteractor *iren = vtkRenderWindowInteractor::New();
+  vtkNew<vtkRenderWindowInteractor> iren;
   iren->SetRenderWindow(renWin);
-  renWin->Delete();
 
   // We create a bunch of translucent spheres with an opaque plane in
   // the middle
   // we create a uniform grid and glyph it with a spherical shape.
 
   // Create the glyph source
-  vtkSphereSource *sphere=vtkSphereSource::New();
+  vtkNew<vtkSphereSource> sphere;
   sphere->SetRadius(1);
-  sphere->SetCenter(0.0,0.0,0.0);
+  sphere->SetCenter(0.0, 0.0, 0.0);
   sphere->SetThetaResolution(10);
   sphere->SetPhiResolution(10);
   sphere->SetLatLongTessellation(0);
 
-  vtkCubeSource *cube=vtkCubeSource::New();
+  vtkNew<vtkCubeSource> cube;
   cube->SetXLength(1.0);
   cube->SetYLength(1.0);
   cube->SetZLength(1.0);
-  cube->SetCenter(0.0,0.0,0.0);
+  cube->SetCenter(0.0, 0.0, 0.0);
 
-
-  vtkImageGridSource *grid=vtkImageGridSource::New();
-  grid->SetGridSpacing(1,1,1);
-  grid->SetGridOrigin(0,0,0);
+  vtkNew<vtkImageGridSource> grid;
+  grid->SetGridSpacing(1, 1, 1);
+  grid->SetGridOrigin(0, 0, 0);
   grid->SetLineValue(1.0); // white
   grid->SetFillValue(0.5); // gray
   grid->SetDataScalarTypeToUnsignedChar();
-  grid->SetDataExtent(0,10,0,10,0,10);
-  grid->SetDataSpacing(0.1,0.1,0.1);
-  grid->SetDataOrigin(0.0,0.0,0.0);
+  grid->SetDataExtent(0, 10, 0, 10, 0, 10);
+  grid->SetDataSpacing(0.1, 0.1, 0.1);
+  grid->SetDataOrigin(0.0, 0.0, 0.0);
   grid->Update(); // to get the range
 
   double range[2];
   grid->GetOutput()->GetPointData()->GetScalars()->GetRange(range);
 
-  vtkGlyph3D *glyph=vtkGlyph3D::New();
-  glyph->SetInputConnection(0,grid->GetOutputPort(0));
-  grid->Delete();
+  vtkNew<vtkGlyph3D> glyph;
+  glyph->SetInputConnection(0, grid->GetOutputPort(0));
 #ifdef VTK_TEST_OPACITY_CUBE
   glyph->SetSourceConnection(cube->GetOutputPort(0));
 #else
   glyph->SetSourceConnection(sphere->GetOutputPort(0));
 #endif
-  sphere->Delete();
-  cube->Delete();
   glyph->SetScaling(1); // on
   glyph->SetScaleModeToScaleByScalar();
   glyph->SetColorModeToColorByScale();
@@ -108,49 +100,40 @@ int TestOpacity(int argc, char* argv[])
   glyph->SetIndexModeToOff();
   glyph->SetGeneratePointIds(0);
 
-  vtkPolyDataMapper *mapper=vtkPolyDataMapper::New();
+  vtkNew<vtkPolyDataMapper> mapper;
   mapper->SetInputConnection(glyph->GetOutputPort(0));
-  glyph->Delete();
 
   // This creates a blue to red lut.
-  vtkLookupTable *lut = vtkLookupTable::New();
-  lut->SetHueRange (0.667, 0.0);
+  vtkNew<vtkLookupTable> lut;
+  lut->SetHueRange(0.667, 0.0);
   mapper->SetLookupTable(lut);
-  lut->Delete();
   mapper->SetScalarRange(range);
 
-  vtkActor *actor=vtkActor::New();
+  vtkNew<vtkActor> actor;
   actor->SetMapper(mapper);
-  mapper->Delete();
   renderer->AddActor(actor);
-  actor->Delete();
 
-  vtkProperty *property=vtkProperty::New();
+  vtkNew<vtkProperty> property;
   property->SetOpacity(0.2);
-  property->SetColor(0.0,1.0,0.0);
+  property->SetColor(0.0, 1.0, 0.0);
   actor->SetProperty(property);
-  property->Delete();
 
-  vtkPlaneSource *plane=vtkPlaneSource::New();
-  plane->SetCenter(0.5,0.5,0.5);
+  vtkNew<vtkPlaneSource> plane;
+  plane->SetCenter(0.5, 0.5, 0.5);
 
-  vtkPolyDataMapper *planeMapper=vtkPolyDataMapper::New();
-  planeMapper->SetInputConnection(0,plane->GetOutputPort(0));
-  plane->Delete();
+  vtkNew<vtkPolyDataMapper> planeMapper;
+  planeMapper->SetInputConnection(0, plane->GetOutputPort(0));
 
-  vtkActor *planeActor=vtkActor::New();
+  vtkNew<vtkActor> planeActor;
   planeActor->SetMapper(planeMapper);
-  planeMapper->Delete();
   renderer->AddActor(planeActor);
 
-  vtkProperty *planeProperty=vtkProperty::New();
+  vtkNew<vtkProperty> planeProperty;
   planeProperty->SetOpacity(1.0);
-  planeProperty->SetColor(1.0,0.0,0.0);
+  planeProperty->SetColor(1.0, 0.0, 0.0);
   planeActor->SetProperty(planeProperty);
-  planeProperty->Delete();
   planeProperty->SetBackfaceCulling(0);
   planeProperty->SetFrontfaceCulling(0);
-  planeActor->Delete();
 
   renderer->SetUseDepthPeeling(1);
   // reasonable depth peeling settings
@@ -163,26 +146,23 @@ int TestOpacity(int argc, char* argv[])
   property->SetFrontfaceCulling(0);
 
   // Standard testing code.
-  renderer->SetBackground(0.0,0.5,0.0);
-  renWin->SetSize(300,300);
+  renderer->SetBackground(0.0, 0.5, 0.0);
+  renWin->SetSize(300, 300);
   renWin->Render();
 
-  if(renderer->GetLastRenderingUsedDepthPeeling())
+  if (renderer->GetLastRenderingUsedDepthPeeling())
   {
-    cout<<"depth peeling was used"<<endl;
+    std::cout << "depth peeling was used" << std::endl;
   }
   else
   {
-    cout<<"depth peeling was not used (alpha blending instead)"<<endl;
+    std::cout << "depth peeling was not used (alpha blending instead)" << std::endl;
   }
-  int retVal = vtkRegressionTestImage( renWin );
-  if ( retVal == vtkRegressionTester::DO_INTERACTOR)
+  int retVal = vtkRegressionTestImage(renWin);
+  if (retVal == vtkRegressionTester::DO_INTERACTOR)
   {
     iren->Start();
   }
-
-  // Cleanup
-  iren->Delete();
 
   return !retVal;
 }

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 //
 // GenerateCubesFromLabels
 //   Usage: GenerateCubesFromLabels InputVolume Startlabel Endlabel
@@ -10,59 +12,55 @@
 //          not exist in the volume, it will be skipped.
 //
 //
-#include <vtkMetaImageReader.h>
+#include <vtkGeometryFilter.h>
 #include <vtkImageAccumulate.h>
 #include <vtkImageWrapPad.h>
 #include <vtkMaskFields.h>
+#include <vtkMetaImageReader.h>
+#include <vtkSmartPointer.h>
+#include <vtkStringScanner.h>
 #include <vtkThreshold.h>
 #include <vtkTransformFilter.h>
-#include <vtkGeometryFilter.h>
 #include <vtkXMLPolyDataWriter.h>
-#include <vtkSmartPointer.h>
 
-#include <vtkTransform.h>
+#include <sstream>
+#include <vtkCellData.h>
 #include <vtkImageData.h>
 #include <vtkPointData.h>
-#include <vtkCellData.h>
+#include <vtkTransform.h>
 #include <vtkUnstructuredGrid.h>
-#include <sstream>
 
-int main (int argc, char *argv[])
+#include <iostream>
+
+int main(int argc, char* argv[])
 {
   if (argc < 4)
   {
-    cout << "Usage: " << argv[0] << " InputVolume StartLabel EndLabel" << endl;
+    std::cout << "Usage: " << argv[0] << " InputVolume StartLabel EndLabel" << endl;
     return EXIT_FAILURE;
   }
 
   // Create all of the classes we will need
-  vtkSmartPointer<vtkMetaImageReader> reader =
-    vtkSmartPointer<vtkMetaImageReader>::New();
-  vtkSmartPointer<vtkImageAccumulate> histogram =
-    vtkSmartPointer<vtkImageAccumulate>::New();
-  vtkSmartPointer<vtkImageWrapPad> pad =
-    vtkSmartPointer<vtkImageWrapPad>::New();
-  vtkSmartPointer<vtkMaskFields> scalarsOff =
-    vtkSmartPointer<vtkMaskFields>::New();
-  vtkSmartPointer<vtkThreshold> selector =
-    vtkSmartPointer<vtkThreshold>::New();
-  vtkSmartPointer<vtkGeometryFilter> geometry =
-    vtkSmartPointer<vtkGeometryFilter>::New();
-  vtkSmartPointer<vtkTransformFilter> transformModel =
-    vtkSmartPointer<vtkTransformFilter>::New();
-  vtkSmartPointer<vtkTransform> transform =
-    vtkSmartPointer<vtkTransform>::New();
-  vtkSmartPointer<vtkXMLPolyDataWriter> writer =
-    vtkSmartPointer<vtkXMLPolyDataWriter>::New();
+  vtkSmartPointer<vtkMetaImageReader> reader = vtkSmartPointer<vtkMetaImageReader>::New();
+  vtkSmartPointer<vtkImageAccumulate> histogram = vtkSmartPointer<vtkImageAccumulate>::New();
+  vtkSmartPointer<vtkImageWrapPad> pad = vtkSmartPointer<vtkImageWrapPad>::New();
+  vtkSmartPointer<vtkMaskFields> scalarsOff = vtkSmartPointer<vtkMaskFields>::New();
+  vtkSmartPointer<vtkThreshold> selector = vtkSmartPointer<vtkThreshold>::New();
+  vtkSmartPointer<vtkGeometryFilter> geometry = vtkSmartPointer<vtkGeometryFilter>::New();
+  vtkSmartPointer<vtkTransformFilter> transformModel = vtkSmartPointer<vtkTransformFilter>::New();
+  vtkSmartPointer<vtkTransform> transform = vtkSmartPointer<vtkTransform>::New();
+  vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
 
   // Define all of the variables
-  unsigned int startLabel = atoi(argv[2]);
+  unsigned int startLabel;
+  VTK_FROM_CHARS_IF_ERROR_RETURN(argv[2], startLabel, EXIT_FAILURE);
   if (startLabel > VTK_SHORT_MAX)
   {
     std::cout << "ERROR: startLabel is larger than " << VTK_SHORT_MAX << std::endl;
     return EXIT_FAILURE;
   }
-  unsigned int endLabel = atoi(argv[3]);
+  unsigned int endLabel;
+  VTK_FROM_CHARS_IF_ERROR_RETURN(argv[3], endLabel, EXIT_FAILURE);
   if (endLabel > VTK_SHORT_MAX)
   {
     std::cout << "ERROR: endLabel is larger than " << VTK_SHORT_MAX << std::endl;
@@ -86,34 +84,28 @@ int main (int argc, char *argv[])
 
   // Pad the volume so that we can change the point data into cell
   // data.
-  int *extent = reader->GetOutput()->GetExtent();
+  int* extent = reader->GetOutput()->GetExtent();
   pad->SetInputConnection(reader->GetOutputPort());
-  pad->SetOutputWholeExtent(extent[0], extent[1] + 1,
-                            extent[2], extent[3] + 1,
-                            extent[4], extent[5] + 1);
+  pad->SetOutputWholeExtent(
+    extent[0], extent[1] + 1, extent[2], extent[3] + 1, extent[4], extent[5] + 1);
   pad->Update();
 
   // Copy the scalar point data of the volume into the scalar cell data
-  pad->GetOutput()->GetCellData()->SetScalars(
-    reader->GetOutput()->GetPointData()->GetScalars());
+  pad->GetOutput()->GetCellData()->SetScalars(reader->GetOutput()->GetPointData()->GetScalars());
 
   selector->SetInputConnection(pad->GetOutputPort());
-  selector->SetInputArrayToProcess(0, 0, 0,
-                                   vtkDataObject::FIELD_ASSOCIATION_CELLS,
-                                   vtkDataSetAttributes::SCALARS);
-
+  selector->SetInputArrayToProcess(
+    0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_CELLS, vtkDataSetAttributes::SCALARS);
 
   // Shift the geometry by 1/2
-  transform->Translate (-.5, -.5, -.5);
+  transform->Translate(-.5, -.5, -.5);
   transformModel->SetTransform(transform);
   transformModel->SetInputConnection(selector->GetOutputPort());
 
   // Strip the scalars from the output
   scalarsOff->SetInputConnection(transformModel->GetOutputPort());
-  scalarsOff->CopyAttributeOff(vtkMaskFields::POINT_DATA,
-                               vtkDataSetAttributes::SCALARS);
-  scalarsOff->CopyAttributeOff(vtkMaskFields::CELL_DATA,
-                               vtkDataSetAttributes::SCALARS);
+  scalarsOff->CopyAttributeOff(vtkMaskFields::POINT_DATA, vtkDataSetAttributes::SCALARS);
+  scalarsOff->CopyAttributeOff(vtkMaskFields::CELL_DATA, vtkDataSetAttributes::SCALARS);
 
   geometry->SetInputConnection(scalarsOff->GetOutputPort());
 
@@ -122,24 +114,24 @@ int main (int argc, char *argv[])
   for (unsigned int i = startLabel; i <= endLabel; i++)
   {
     // see if the label exists, if not skip it
-    double frequency =
-      histogram->GetOutput()->GetPointData()->GetScalars()->GetTuple1(i);
+    double frequency = histogram->GetOutput()->GetPointData()->GetScalars()->GetTuple1(i);
     if (frequency == 0.0)
     {
       continue;
     }
 
     // select the cells for a given label
-    selector->ThresholdBetween(i, i);
+    selector->SetThresholdFunction(vtkThreshold::THRESHOLD_BETWEEN);
+    selector->SetLowerThreshold(i);
+    selector->SetUpperThreshold(i);
 
     // output the polydata
     std::stringstream ss;
     ss << filePrefix << i << ".vtp";
-    cout << argv[0] << " writing " << ss.str() << endl;
+    std::cout << argv[0] << " writing " << ss.str() << endl;
 
     writer->SetFileName(ss.str().c_str());
     writer->Write();
-
   }
   return EXIT_SUCCESS;
 }

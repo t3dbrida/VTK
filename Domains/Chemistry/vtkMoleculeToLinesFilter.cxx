@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkMoleculeToLinesFilter.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkMoleculeToLinesFilter.h"
 
 #include "vtkCellArray.h"
@@ -20,19 +8,25 @@
 #include "vtkMolecule.h"
 #include "vtkPointData.h"
 
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkMoleculeToLinesFilter);
 
-//----------------------------------------------------------------------------
-int vtkMoleculeToLinesFilter::RequestData(vtkInformation*,
-  vtkInformationVector** inputVector,
-  vtkInformationVector* outputVector)
+//------------------------------------------------------------------------------
+void vtkMoleculeToLinesFilter::PrintSelf(ostream& os, vtkIndent indent)
+{
+  this->Superclass::PrintSelf(os, indent);
+}
+
+//------------------------------------------------------------------------------
+int vtkMoleculeToLinesFilter::RequestData(
+  vtkInformation*, vtkInformationVector** inputVector, vtkInformationVector* outputVector)
 {
   vtkMolecule* input = vtkMolecule::SafeDownCast(vtkDataObject::GetData(inputVector[0]));
   vtkPolyData* output = vtkPolyData::SafeDownCast(vtkDataObject::GetData(outputVector));
 
   vtkNew<vtkCellArray> bonds;
   // 2 point ids + 1 VTKCellType = 3 values per bonds
-  bonds->Allocate(3 * input->GetNumberOfBonds());
+  bonds->AllocateEstimate(input->GetNumberOfBonds(), 2);
 
   for (vtkIdType bondInd = 0; bondInd < input->GetNumberOfBonds(); ++bondInd)
   {
@@ -48,3 +42,4 @@ int vtkMoleculeToLinesFilter::RequestData(vtkInformation*,
 
   return 1;
 }
+VTK_ABI_NAMESPACE_END

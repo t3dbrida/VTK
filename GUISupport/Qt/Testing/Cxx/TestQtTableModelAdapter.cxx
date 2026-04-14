@@ -1,22 +1,6 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestQtTableModelAdapter.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-/*-------------------------------------------------------------------------
-  Copyright 2008 Sandia Corporation.
-  Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-  the U.S. Government retains certain rights in this software.
--------------------------------------------------------------------------*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-FileCopyrightText: Copyright 2008 Sandia Corporation
+// SPDX-License-Identifier: LicenseRef-BSD-3-Clause-Sandia-USGov
 // Tests vtkQtTableModelAdapter.
 
 #include "vtkDoubleArray.h"
@@ -25,8 +9,9 @@
 #include "vtkSmartPointer.h"
 #include "vtkTable.h"
 
-#define VTK_CREATE(type, name) \
-  vtkSmartPointer<type> name = vtkSmartPointer<type>::New()
+#include <iostream>
+
+#define VTK_CREATE(type, name) vtkSmartPointer<type> name = vtkSmartPointer<type>::New()
 
 int TestQtTableModelAdapter(int, char*[])
 {
@@ -47,12 +32,12 @@ int TestQtTableModelAdapter(int, char*[])
   vtkQtTableModelAdapter adapter(table);
   if (adapter.rowCount(QModelIndex()) != numRows)
   {
-    cerr << "ERROR: Wrong number of rows." << endl;
+    std::cerr << "ERROR: Wrong number of rows." << std::endl;
     ++errors;
   }
   if (adapter.columnCount(QModelIndex()) != 2)
   {
-    cerr << "ERROR: Wrong number of columns." << endl;
+    std::cerr << "ERROR: Wrong number of columns." << std::endl;
     ++errors;
   }
   for (int i = 0; i < numRows; ++i)
@@ -62,22 +47,20 @@ int TestQtTableModelAdapter(int, char*[])
     QModelIndex pind = adapter.PedigreeToQModelIndex(i);
     if (ind != pind)
     {
-      cerr << "ERROR: Pedigree lookup failed." << endl;
+      std::cerr << "ERROR: Pedigree lookup failed." << std::endl;
       ++errors;
     }
 #endif
     if (adapter.rowCount(ind) != 0)
     {
-      cerr << "ERROR: Row should have zero sub-rows." << endl;
+      std::cerr << "ERROR: Row should have zero sub-rows." << std::endl;
       ++errors;
     }
     if (adapter.parent(ind) != QModelIndex())
     {
-      cerr << "ERROR: Wrong parent." << endl;
+      std::cerr << "ERROR: Wrong parent." << std::endl;
       ++errors;
     }
   }
   return errors;
 }
-
-

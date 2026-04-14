@@ -1,36 +1,9 @@
 /*
- * Copyright (c) 2005-2017 National Technology & Engineering Solutions
+ * Copyright(C) 1999-2021 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met:
- *
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *
- *     * Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following
- *       disclaimer in the documentation and/or other materials provided
- *       with the distribution.
- *
- *     * Neither the name of NTESS nor the names of its
- *       contributors may be used to endorse or promote products derived
- *       from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
+ * See packages/seacas/LICENSE for details
  */
 /*****************************************************************************
  *
@@ -54,13 +27,9 @@
  * revision history -
  *
  */
+
 #include "exodusII.h"     // for ex_err, ex_name_of_object, etc
-#include "exodusII_int.h" // for ex_check_valid_file_id, etc
-#include "vtk_netcdf.h"       // for NC_NOERR, nc_get_vara_int, etc
-#include <inttypes.h>     // for PRId64
-#include <stddef.h>       // for size_t, NULL
-#include <stdint.h>       // for int64_t
-#include <stdio.h>        // for snprintf
+#include "exodusII_int.h" // for exi_check_valid_file_id, etc
 
 /*
  * reads the connectivity array for an element block
@@ -93,7 +62,9 @@ int ex_get_partial_conn(int exoid, ex_entity_type blk_type, ex_entity_id blk_id,
   const char *vfaceconn  = NULL;
 
   EX_FUNC_ENTER();
-  ex_check_valid_file_id(exoid, __func__);
+  if (exi_check_valid_file_id(exoid, __func__) == EX_FATAL) {
+    EX_FUNC_LEAVE(EX_FATAL);
+  }
 
   /* The partial connectivity input function can currently only handle nodal
    * connectivity.  Print a warning if edgeconn or faceconn is non-NULL
@@ -103,12 +74,12 @@ int ex_get_partial_conn(int exoid, ex_entity_type blk_type, ex_entity_id blk_id,
              "Warning: ex_get_partial_conn only supports nodal "
              "connectivity at this time. %s %" PRId64 " in file id %d",
              ex_name_of_object(blk_type), blk_id, exoid);
-    ex_err(__func__, errmsg, EX_BADPARAM);
+    ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
   }
 
   /* Locate index of element block id in VAR_ID_EL_BLK array */
 
-  blk_id_ndx = ex_id_lkup(exoid, blk_type, blk_id);
+  blk_id_ndx = exi_id_lkup(exoid, blk_type, blk_id);
   if (blk_id_ndx <= 0) {
     ex_get_err(NULL, NULL, &status);
 
@@ -117,14 +88,14 @@ int ex_get_partial_conn(int exoid, ex_entity_type blk_type, ex_entity_id blk_id,
         snprintf(errmsg, MAX_ERR_LENGTH,
                  "Warning: no connectivity array for NULL %s %" PRId64 " in file id %d",
                  ex_name_of_object(blk_type), blk_id, exoid);
-        ex_err(__func__, errmsg, EX_NULLENTITY);
+        ex_err_fn(exoid, __func__, errmsg, EX_NULLENTITY);
         EX_FUNC_LEAVE(EX_WARN); /* no connectivity array for this element block */
       }
 
       snprintf(errmsg, MAX_ERR_LENGTH,
                "ERROR: failed to locate %s id %" PRId64 " in id array in file id %d",
                ex_name_of_object(blk_type), blk_id, exoid);
-      ex_err(__func__, errmsg, status);
+      ex_err_fn(exoid, __func__, errmsg, status);
       EX_FUNC_LEAVE(EX_FATAL);
     }
   }
@@ -132,19 +103,19 @@ int ex_get_partial_conn(int exoid, ex_entity_type blk_type, ex_entity_id blk_id,
   switch (blk_type) {
   case EX_EDGE_BLOCK:
     dnumnodent = DIM_NUM_NOD_PER_ED(blk_id_ndx);
-    dnumedgent = 0;
-    dnumfacent = 0;
+    dnumedgent = NULL;
+    dnumfacent = NULL;
     vnodeconn  = VAR_EBCONN(blk_id_ndx);
-    vedgeconn  = 0;
-    vfaceconn  = 0;
+    vedgeconn  = NULL;
+    vfaceconn  = NULL;
     break;
   case EX_FACE_BLOCK:
     dnumnodent = DIM_NUM_NOD_PER_FA(blk_id_ndx);
-    dnumedgent = 0;
-    dnumfacent = 0;
+    dnumedgent = NULL;
+    dnumfacent = NULL;
     vnodeconn  = VAR_FBCONN(blk_id_ndx);
-    vedgeconn  = 0;
-    vfaceconn  = 0;
+    vedgeconn  = NULL;
+    vfaceconn  = NULL;
     break;
   case EX_ELEM_BLOCK:
     dnumnodent = DIM_NUM_NOD_PER_EL(blk_id_ndx);
@@ -158,7 +129,7 @@ int ex_get_partial_conn(int exoid, ex_entity_type blk_type, ex_entity_id blk_id,
     snprintf(errmsg, MAX_ERR_LENGTH,
              "Internal ERROR: unrecognized block type in switch: %d in file id %d", blk_type,
              exoid);
-    ex_err(__func__, errmsg, EX_BADPARAM);
+    ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
     EX_FUNC_LEAVE(EX_FATAL); /* number of attributes not defined */
   }
   /* inquire id's of previously defined dimensions  */
@@ -167,7 +138,7 @@ int ex_get_partial_conn(int exoid, ex_entity_type blk_type, ex_entity_id blk_id,
     snprintf(errmsg, MAX_ERR_LENGTH,
              "ERROR: failed to locate number of nodes/entity for %s %" PRId64 " in file id %d",
              ex_name_of_object(blk_type), blk_id, exoid);
-    ex_err(__func__, errmsg, status);
+    ex_err_fn(exoid, __func__, errmsg, status);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -175,7 +146,7 @@ int ex_get_partial_conn(int exoid, ex_entity_type blk_type, ex_entity_id blk_id,
     snprintf(errmsg, MAX_ERR_LENGTH,
              "ERROR: failed to get number of nodes/entity for %s %" PRId64 " in file id %d",
              ex_name_of_object(blk_type), blk_id, exoid);
-    ex_err(__func__, errmsg, status);
+    ex_err_fn(exoid, __func__, errmsg, status);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -189,7 +160,7 @@ int ex_get_partial_conn(int exoid, ex_entity_type blk_type, ex_entity_id blk_id,
         snprintf(errmsg, MAX_ERR_LENGTH,
                  "ERROR: failed to get number of edges/entry for %s %" PRId64 " in file id %d",
                  ex_name_of_object(blk_type), blk_id, exoid);
-        ex_err(__func__, errmsg, status);
+        ex_err_fn(exoid, __func__, errmsg, status);
         EX_FUNC_LEAVE(EX_FATAL);
       }
     }
@@ -205,7 +176,7 @@ int ex_get_partial_conn(int exoid, ex_entity_type blk_type, ex_entity_id blk_id,
         snprintf(errmsg, MAX_ERR_LENGTH,
                  "ERROR: failed to get number of faces/entry for %s %" PRId64 " in file id %d",
                  ex_name_of_object(blk_type), blk_id, exoid);
-        ex_err(__func__, errmsg, status);
+        ex_err_fn(exoid, __func__, errmsg, status);
         EX_FUNC_LEAVE(EX_FATAL);
       }
     }
@@ -215,7 +186,7 @@ int ex_get_partial_conn(int exoid, ex_entity_type blk_type, ex_entity_id blk_id,
     snprintf(errmsg, MAX_ERR_LENGTH,
              "ERROR: failed to locate connectivity array for %s %" PRId64 " in file id %d",
              ex_name_of_object(blk_type), blk_id, exoid);
-    ex_err(__func__, errmsg, status);
+    ex_err_fn(exoid, __func__, errmsg, status);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -225,7 +196,7 @@ int ex_get_partial_conn(int exoid, ex_entity_type blk_type, ex_entity_id blk_id,
     snprintf(errmsg, MAX_ERR_LENGTH,
              "ERROR: failed to locate edge connectivity array for %s %" PRId64 " in file id %d",
              ex_name_of_object(blk_type), blk_id, exoid);
-    ex_err(__func__, errmsg, status);
+    ex_err_fn(exoid, __func__, errmsg, status);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -234,7 +205,7 @@ int ex_get_partial_conn(int exoid, ex_entity_type blk_type, ex_entity_id blk_id,
     snprintf(errmsg, MAX_ERR_LENGTH,
              "ERROR: failed to locate face connectivity array for %s %" PRId64 " in file id %d",
              ex_name_of_object(blk_type), blk_id, exoid);
-    ex_err(__func__, errmsg, status);
+    ex_err_fn(exoid, __func__, errmsg, status);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -261,7 +232,7 @@ int ex_get_partial_conn(int exoid, ex_entity_type blk_type, ex_entity_id blk_id,
       snprintf(errmsg, MAX_ERR_LENGTH,
                "ERROR: failed to get edge connectivity array for %s %" PRId64 " in file id %d",
                ex_name_of_object(blk_type), blk_id, exoid);
-      ex_err(__func__, errmsg, status);
+      ex_err_fn(exoid, __func__, errmsg, status);
       EX_FUNC_LEAVE(EX_FATAL);
     }
   }
@@ -288,7 +259,7 @@ int ex_get_partial_conn(int exoid, ex_entity_type blk_type, ex_entity_id blk_id,
       snprintf(errmsg, MAX_ERR_LENGTH,
                "ERROR: failed to get face connectivity array for %s %" PRId64 " in file id %d",
                ex_name_of_object(blk_type), blk_id, exoid);
-      ex_err(__func__, errmsg, status);
+      ex_err_fn(exoid, __func__, errmsg, status);
       EX_FUNC_LEAVE(EX_FATAL);
     }
   }
@@ -315,7 +286,7 @@ int ex_get_partial_conn(int exoid, ex_entity_type blk_type, ex_entity_id blk_id,
       snprintf(errmsg, MAX_ERR_LENGTH,
                "ERROR: failed to get connectivity array for %s %" PRId64 " in file id %d",
                ex_name_of_object(blk_type), blk_id, exoid);
-      ex_err(__func__, errmsg, status);
+      ex_err_fn(exoid, __func__, errmsg, status);
       EX_FUNC_LEAVE(EX_FATAL);
     }
   }

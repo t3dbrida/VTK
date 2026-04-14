@@ -1,20 +1,10 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkAxisActor.cxx
-  Thanks:    Kathleen Bonnell, B Division, Lawrence Livermore Nat'l Laboratory
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-    This software is distributed WITHOUT ANY WARRANTY; without even
-    the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-    PURPOSE.  See the above copyright notice for more information.
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkAxisActor.h"
 
+#include "Private/vtkTextActorInterfaceInternal.h"
 #include "vtkAxisFollower.h"
+#include "vtkBoundingBox.h"
 #include "vtkCamera.h"
 #include "vtkCellArray.h"
 #include "vtkCoordinate.h"
@@ -25,503 +15,132 @@
 #include "vtkPolyData.h"
 #include "vtkPolyDataMapper.h"
 #include "vtkProp3DAxisFollower.h"
+#include "vtkPropCollection.h"
 #include "vtkProperty.h"
-#include "vtkProperty2D.h"
 #include "vtkRenderer.h"
 #include "vtkStringArray.h"
+#include "vtkStringFormatter.h"
 #include "vtkTextActor.h"
 #include "vtkTextActor3D.h"
 #include "vtkTextProperty.h"
 #include "vtkTextRenderer.h"
-#include "vtkTransform.h"
-#include "vtkVectorText.h"
 #include "vtkViewport.h"
 #include "vtkWindow.h"
 
+#include <memory>
+
 #define VTK_MAX_TICKS 1000
 
-#include <sstream>
-
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkAxisActor);
-vtkCxxSetObjectMacro(vtkAxisActor, Camera, vtkCamera);
-vtkCxxSetObjectMacro(vtkAxisActor, LabelTextProperty, vtkTextProperty);
-vtkCxxSetObjectMacro(vtkAxisActor, TitleTextProperty, vtkTextProperty);
+vtkCxxSetSmartPointerMacro(vtkAxisActor, LabelTextProperty, vtkTextProperty);
+vtkCxxSetSmartPointerMacro(vtkAxisActor, TitleTextProperty, vtkTextProperty);
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // Instantiate this object.
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 
 vtkAxisActor::vtkAxisActor()
+  : TitleProp(std::make_unique<vtkTextActorInterfaceInternal>())
+  , ExponentProp(std::make_unique<vtkTextActorInterfaceInternal>())
 {
-  this->Point1Coordinate = vtkCoordinate::New();
   this->Point1Coordinate->SetCoordinateSystemToWorld();
   this->Point1Coordinate->SetValue(0.0, 0.0, 0.0);
 
-  this->Point2Coordinate = vtkCoordinate::New();
   this->Point2Coordinate->SetCoordinateSystemToWorld();
   this->Point2Coordinate->SetValue(0.75, 0.0, 0.0);
-
-  this->Camera = nullptr;
-  this->Title = nullptr;
-  this->Exponent = nullptr;
-  this->MinorTicksVisible = 1;
-  this->MajorTickSize = 1.0;
-  this->MinorTickSize = 0.5;
-  this->TickLocation = VTK_TICKS_INSIDE;
-  this->Range[0] = 0.0;
-  this->Range[1] = 1.0;
-  this->ScreenSize = 10.;
-  this->LabelOffset = 30.;
-  this->TitleOffset = 20.;
-  this->ExponentOffset = 20.;
-  this->TitleAlignLocation = VTK_ALIGN_BOTTOM;
-  this->ExponentLocation = VTK_ALIGN_POINT2;
-  this->LastMajorTickPointCorrection = false;
 
   this->Bounds[0] = this->Bounds[2] = this->Bounds[4] = -1;
   this->Bounds[1] = this->Bounds[3] = this->Bounds[5] = 1;
 
-  this->UseTextActor3D = 0;
-  this->LabelFormat = new char[8];
-  snprintf(this->LabelFormat, 8, "%s", "%-#6.3g");
+  this->LabelFormat = new char[10];
+  auto result = vtk::format_to_n(this->LabelFormat, 10, "{:s}", "{:<#6.3g}");
+  *result.out = '\0';
 
-  this->TitleTextProperty = vtkTextProperty::New();
+  this->TitleTextProperty = vtkSmartPointer<vtkTextProperty>::New();
   this->TitleTextProperty->SetColor(0., 0., 0.);
   this->TitleTextProperty->SetFontFamilyToArial();
   this->TitleTextProperty->SetFontSize(18.);
   this->TitleTextProperty->SetVerticalJustificationToCentered();
   this->TitleTextProperty->SetJustificationToCentered();
 
-  this->TitleVector = vtkVectorText::New();
-  this->TitleMapper = vtkPolyDataMapper::New();
-  this->TitleMapper->SetInputConnection(this->TitleVector->GetOutputPort());
-  this->TitleActor = vtkAxisFollower::New();
-  this->TitleActor->SetAxis(this);
-  this->TitleActor->SetMapper(this->TitleMapper);
-  this->TitleActor->SetEnableDistanceLOD(0);
+  this->TitleProp->SetAxis(this);
 
-  this->TitleProp3D = vtkProp3DAxisFollower::New();
-  this->TitleProp3D->SetAxis(this);
-  this->TitleProp3D->SetEnableDistanceLOD(0);
-  this->TitleActor3D = vtkTextActor3D::New();
-  this->TitleProp3D->SetProp3D(this->TitleActor3D);
-  this->TitleActor2D = vtkTextActor::New();
-
-  this->NumberOfLabelsBuilt = 0;
-  this->LabelVectors = nullptr;
-  this->LabelMappers = nullptr;
-  this->LabelActors = nullptr;
-  this->LabelProps3D = nullptr;
-  this->LabelActors3D = nullptr;
-  this->LabelActors2D = nullptr;
-
-  this->LabelTextProperty = vtkTextProperty::New();
+  this->LabelTextProperty = vtkSmartPointer<vtkTextProperty>::New();
   this->LabelTextProperty->SetColor(0., 0., 0.);
   this->LabelTextProperty->SetFontFamilyToArial();
   this->LabelTextProperty->SetFontSize(14.);
   this->LabelTextProperty->SetVerticalJustificationToBottom();
   this->LabelTextProperty->SetJustificationToLeft();
 
-  this->ExponentVector = vtkVectorText::New();
-  this->ExponentMapper = vtkPolyDataMapper::New();
-  this->ExponentMapper->SetInputConnection(this->ExponentVector->GetOutputPort());
-  this->ExponentActor = vtkAxisFollower::New();
-  this->ExponentActor->SetAxis(this);
-  this->ExponentActor->SetMapper(this->ExponentMapper);
-  this->ExponentActor->SetEnableDistanceLOD(0);
-  this->ExponentActor2D = vtkTextActor::New();
-
-  this->ExponentProp3D = vtkProp3DAxisFollower::New();
-  this->ExponentProp3D->SetAxis(this);
-  this->ExponentProp3D->SetEnableDistanceLOD(0);
-  this->ExponentActor3D = vtkTextActor3D::New();
-  this->ExponentProp3D->SetProp3D(this->ExponentActor3D);
+  this->ExponentProp->SetAxis(this);
 
   // Main line of axis
-  this->AxisLines = vtkPolyData::New();
-  this->AxisLinesMapper = vtkPolyDataMapper::New();
-  this->AxisLinesMapper->SetInputData(this->AxisLines);
-  this->AxisLinesActor = vtkActor::New();
-  this->AxisLinesActor->SetMapper(this->AxisLinesMapper);
+  vtkNew<vtkPolyDataMapper> axisLinesMapper;
+  axisLinesMapper->SetInputData(this->AxisLines);
+  this->AxisLinesActor->SetMapper(axisLinesMapper);
 
   // Major ticks
-  this->AxisMajorTicks = vtkPolyData::New();
-  this->AxisMajorTicksMapper = vtkPolyDataMapper::New();
-  this->AxisMajorTicksMapper->SetInputData(this->AxisMajorTicks);
-  this->AxisMajorTicksActor = vtkActor::New();
-  this->AxisMajorTicksActor->SetMapper(this->AxisMajorTicksMapper);
+  vtkNew<vtkPolyDataMapper> axisMajorTicksMapper;
+  axisMajorTicksMapper->SetInputData(this->AxisMajorTicks);
+  this->AxisMajorTicksActor->SetMapper(axisMajorTicksMapper);
 
   // Minor ticks
-  this->AxisMinorTicks = vtkPolyData::New();
-  this->AxisMinorTicksMapper = vtkPolyDataMapper::New();
-  this->AxisMinorTicksMapper->SetInputData(this->AxisMinorTicks);
-  this->AxisMinorTicksActor = vtkActor::New();
-  this->AxisMinorTicksActor->SetMapper(this->AxisMinorTicksMapper);
+  vtkNew<vtkPolyDataMapper> axisMinorTicksMapper;
+  axisMinorTicksMapper->SetInputData(this->AxisMinorTicks);
+  this->AxisMinorTicksActor->SetMapper(axisMinorTicksMapper);
 
-  this->Gridlines = vtkPolyData::New();
-  this->GridlinesMapper = vtkPolyDataMapper::New();
-  this->GridlinesMapper->SetInputData(this->Gridlines);
-  this->GridlinesActor = vtkActor::New();
-  this->GridlinesActor->SetMapper(this->GridlinesMapper);
-  this->InnerGridlines = vtkPolyData::New();
-  this->InnerGridlinesMapper = vtkPolyDataMapper::New();
-  this->InnerGridlinesMapper->SetInputData(this->InnerGridlines);
-  this->InnerGridlinesActor = vtkActor::New();
-  this->InnerGridlinesActor->SetMapper(this->InnerGridlinesMapper);
-  this->Gridpolys = vtkPolyData::New();
-  this->GridpolysMapper = vtkPolyDataMapper::New();
-  this->GridpolysMapper->SetInputData(this->Gridpolys);
-  this->GridpolysActor = vtkActor::New();
-  this->GridpolysActor->SetMapper(this->GridpolysMapper);
+  vtkNew<vtkPolyDataMapper> gridlinesMapper;
+  gridlinesMapper->SetInputData(this->Gridlines);
+  this->GridlinesActor->SetMapper(gridlinesMapper);
 
-  this->AxisVisibility = 1;
-  this->TickVisibility = 1;
-  this->LabelVisibility = 1;
-  this->TitleVisibility = 1;
-  this->ExponentVisibility = false;
+  vtkNew<vtkPolyDataMapper> innerGridlinesMapper;
+  innerGridlinesMapper->SetInputData(this->InnerGridlines);
+  this->InnerGridlinesActor->SetMapper(innerGridlinesMapper);
 
-  this->DrawGridlines = 0;
-  this->DrawGridlinesOnly = 0;
-  this->GridlineXLength = 1.;
-  this->GridlineYLength = 1.;
-  this->GridlineZLength = 1.;
+  vtkNew<vtkPolyDataMapper> gridpolysMapper;
+  gridpolysMapper->SetInputData(this->Gridpolys);
+  this->GridpolysActor->SetMapper(gridpolysMapper);
 
-  this->DrawInnerGridlines = 0;
-
-  this->DrawGridpolys = 0;
-
-  this->AxisType = VTK_AXIS_TYPE_X;
-  this->Log = false;
-  //
-  // AxisPosition denotes which of the four possibilities in relation
-  // to the bounding box.  An x-Type axis with min min, means the x-axis
-  // at minimum y and minimum z values of the bbox.
-  //
-  this->AxisPosition = VTK_AXIS_POS_MINMIN;
-
-  this->LastLabelStart = 100000;
-
-  this->LastAxisPosition = -1;
-  this->LastTickLocation = -1;
-  this->LastTickVisibility = -1;
-  this->LastDrawGridlines = -1;
-  this->LastDrawInnerGridlines = -1;
-  this->LastDrawGridpolys = -1;
-  this->LastMinorTicksVisible = -1;
-  this->LastRange[0] = -1.0;
-  this->LastRange[1] = -1.0;
-
-  this->MinorTickPts = vtkPoints::New();
-  this->MajorTickPts = vtkPoints::New();
-  this->GridlinePts = vtkPoints::New();
-  this->InnerGridlinePts = vtkPoints::New();
-  this->GridpolyPts = vtkPoints::New();
-
-  this->AxisHasZeroLength = false;
-
-  this->MinorStart = 0.;
-  for (int i = 0; i < 3; i++)
-  {
-    this->MajorStart[i] = 0.;
-  }
-  this->DeltaMinor = 1.;
-  for (int i = 0; i < 3; i++)
-  {
-    this->DeltaMajor[i] = 1.;
-  }
-
-  this->MinorRangeStart = 0.;
-  this->MajorRangeStart = 0.;
-  this->DeltaRangeMinor = 1.;
-  this->DeltaRangeMajor = 1.;
-
-  this->CalculateTitleOffset = 0;
-  this->CalculateLabelOffset = 0;
-
-  // Instance variables specific to 2D mode
-  this->Use2DMode = 0;
-  this->SaveTitlePosition = 0;
-  this->TitleConstantPosition[0] = this->TitleConstantPosition[1] = 0.;
-  this->VerticalOffsetXTitle2D = -40.;
-  this->HorizontalOffsetYTitle2D = -50.;
-  this->LastMinDisplayCoordinate[0] = 0;
-  this->LastMinDisplayCoordinate[1] = 0;
-  this->LastMinDisplayCoordinate[2] = 0;
-  this->LastMaxDisplayCoordinate[0] = 0;
-  this->LastMaxDisplayCoordinate[1] = 0;
-  this->LastMaxDisplayCoordinate[2] = 0;
-
-  // 0: All locations
-  this->DrawGridlinesLocation = this->LastDrawGridlinesLocation = 0;
-
-  // reset the base
-  for (int i = 0; i < 3; i++)
-  {
-    this->AxisBaseForX[i] = this->AxisBaseForY[i] = this->AxisBaseForZ[i] = 0.0;
-  }
-  this->AxisBaseForX[0] = this->AxisBaseForY[1] = this->AxisBaseForZ[2] = 1.0;
-  this->AxisOnOrigin = 0;
+  this->GetProperty()->SetAmbient(1.);
+  this->GetProperty()->SetDiffuse(0.);
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkAxisActor::~vtkAxisActor()
 {
   this->SetCamera(nullptr);
 
-  if (this->Point1Coordinate)
-  {
-    this->Point1Coordinate->Delete();
-    this->Point1Coordinate = nullptr;
-  }
-
-  if (this->Point2Coordinate)
-  {
-    this->Point2Coordinate->Delete();
-    this->Point2Coordinate = nullptr;
-  }
-
   delete[] this->LabelFormat;
   this->LabelFormat = nullptr;
-
-  if (this->TitleVector)
-  {
-    this->TitleVector->Delete();
-    this->TitleVector = nullptr;
-  }
-  if (this->TitleMapper)
-  {
-    this->TitleMapper->Delete();
-    this->TitleMapper = nullptr;
-  }
-  if (this->TitleActor)
-  {
-    this->TitleActor->Delete();
-    this->TitleActor = nullptr;
-  }
-  this->TitleProp3D->Delete();
-  this->TitleProp3D = nullptr;
-  this->TitleActor3D->Delete();
-  this->TitleActor3D = nullptr;
-  if (this->TitleActor2D)
-  {
-    this->TitleActor2D->Delete();
-    this->TitleActor2D = nullptr;
-  }
-
-  delete[] this->Title;
-  this->Title = nullptr;
-
-  delete[] this->Exponent;
-  this->Exponent = nullptr;
-
-  // delete exponent components
-  if (this->ExponentVector)
-  {
-    this->ExponentVector->Delete();
-    this->ExponentVector = nullptr;
-  }
-  if (this->ExponentMapper)
-  {
-    this->ExponentMapper->Delete();
-    this->ExponentMapper = nullptr;
-  }
-  if (this->ExponentActor)
-  {
-    this->ExponentActor->Delete();
-    this->ExponentActor = nullptr;
-  }
-  this->ExponentProp3D->Delete();
-  this->ExponentProp3D = nullptr;
-  this->ExponentActor3D->Delete();
-  this->ExponentActor3D = nullptr;
-  if (this->ExponentActor2D)
-  {
-    this->ExponentActor2D->Delete();
-    this->ExponentActor2D = nullptr;
-  }
-
-  if (this->TitleTextProperty)
-  {
-    this->TitleTextProperty->Delete();
-    this->TitleTextProperty = nullptr;
-  }
-
-  if (this->LabelMappers != nullptr)
-  {
-    for (int i = 0; i < this->NumberOfLabelsBuilt; i++)
-    {
-      this->LabelVectors[i]->Delete();
-      this->LabelMappers[i]->Delete();
-      this->LabelActors[i]->Delete();
-      this->LabelProps3D[i]->Delete();
-      this->LabelActors3D[i]->Delete();
-      this->LabelActors2D[i]->Delete();
-    }
-    this->NumberOfLabelsBuilt = 0;
-    delete[] this->LabelVectors;
-    delete[] this->LabelMappers;
-    delete[] this->LabelActors;
-    delete[] this->LabelProps3D;
-    delete[] this->LabelActors3D;
-    delete[] this->LabelActors2D;
-    this->LabelVectors = nullptr;
-    this->LabelMappers = nullptr;
-    this->LabelActors = nullptr;
-    this->LabelProps3D = nullptr;
-    this->LabelActors3D = nullptr;
-    this->LabelActors2D = nullptr;
-  }
-  if (this->LabelTextProperty)
-  {
-    this->LabelTextProperty->Delete();
-    this->LabelTextProperty = nullptr;
-  }
-
-  // main line of the axis
-  if (this->AxisLines)
-  {
-    this->AxisLines->Delete();
-    this->AxisLines = nullptr;
-  }
-  if (this->AxisLinesMapper)
-  {
-    this->AxisLinesMapper->Delete();
-    this->AxisLinesMapper = nullptr;
-  }
-  if (this->AxisLinesActor)
-  {
-    this->AxisLinesActor->Delete();
-    this->AxisLinesActor = nullptr;
-  }
-
-  // major ticks components
-  if (this->AxisMajorTicks)
-  {
-    this->AxisMajorTicks->Delete();
-    this->AxisMajorTicks = nullptr;
-  }
-  if (this->AxisMajorTicksMapper)
-  {
-    this->AxisMajorTicksMapper->Delete();
-    this->AxisMajorTicksMapper = nullptr;
-  }
-  if (this->AxisMajorTicksActor)
-  {
-    this->AxisMajorTicksActor->Delete();
-    this->AxisMajorTicksActor = nullptr;
-  }
-
-  // minor ticks components
-  if (this->AxisMinorTicks)
-  {
-    this->AxisMinorTicks->Delete();
-    this->AxisMinorTicks = nullptr;
-  }
-  if (this->AxisMinorTicksMapper)
-  {
-    this->AxisMinorTicksMapper->Delete();
-    this->AxisMinorTicksMapper = nullptr;
-  }
-  if (this->AxisMinorTicksActor)
-  {
-    this->AxisMinorTicksActor->Delete();
-    this->AxisMinorTicksActor = nullptr;
-  }
-
-  if (this->Gridlines)
-  {
-    this->Gridlines->Delete();
-    this->Gridlines = nullptr;
-  }
-  if (this->GridlinesMapper)
-  {
-    this->GridlinesMapper->Delete();
-    this->GridlinesMapper = nullptr;
-  }
-  if (this->GridlinesActor)
-  {
-    this->GridlinesActor->Delete();
-    this->GridlinesActor = nullptr;
-  }
-
-  if (this->InnerGridlines)
-  {
-    this->InnerGridlines->Delete();
-    this->InnerGridlines = nullptr;
-  }
-  if (this->InnerGridlinesMapper)
-  {
-    this->InnerGridlinesMapper->Delete();
-    this->InnerGridlinesMapper = nullptr;
-  }
-  if (this->InnerGridlinesActor)
-  {
-    this->InnerGridlinesActor->Delete();
-    this->InnerGridlinesActor = nullptr;
-  }
-
-  if (this->Gridpolys)
-  {
-    this->Gridpolys->Delete();
-    this->Gridpolys = nullptr;
-  }
-  if (this->GridpolysMapper)
-  {
-    this->GridpolysMapper->Delete();
-    this->GridpolysMapper = nullptr;
-  }
-  if (this->GridpolysActor)
-  {
-    this->GridpolysActor->Delete();
-    this->GridpolysActor = nullptr;
-  }
-
-  if (this->MinorTickPts)
-  {
-    this->MinorTickPts->Delete();
-    this->MinorTickPts = nullptr;
-  }
-  if (this->MajorTickPts)
-  {
-    this->MajorTickPts->Delete();
-    this->MajorTickPts = nullptr;
-  }
-  if (this->GridlinePts)
-  {
-    this->GridlinePts->Delete();
-    this->GridlinePts = nullptr;
-  }
-  if (this->InnerGridlinePts)
-  {
-    this->InnerGridlinePts->Delete();
-    this->InnerGridlinePts = nullptr;
-  }
-  if (this->GridpolyPts)
-  {
-    this->GridpolyPts->Delete();
-    this->GridpolyPts = nullptr;
-  }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+void vtkAxisActor::SetLabelFormat(const char* formatArg)
+{
+  std::string format = formatArg ? vtk::to_std_format(formatArg) : "";
+  const char* formatStr = format.c_str();
+  vtkSetStringBodyMacro(LabelFormat, formatStr);
+}
+
+//------------------------------------------------------------------------------
 void vtkAxisActor::ReleaseGraphicsResources(vtkWindow* win)
 {
-  this->TitleActor->ReleaseGraphicsResources(win);
-  this->TitleProp3D->ReleaseGraphicsResources(win);
-  this->TitleActor3D->ReleaseGraphicsResources(win);
-  this->TitleActor2D->ReleaseGraphicsResources(win);
-  this->ExponentActor->ReleaseGraphicsResources(win);
-  this->ExponentProp3D->ReleaseGraphicsResources(win);
-  this->ExponentActor3D->ReleaseGraphicsResources(win);
-  this->ExponentActor2D->ReleaseGraphicsResources(win);
+  vtkNew<vtkPropCollection> textActors;
+  this->TitleProp->GetActors(textActors);
+  this->ExponentProp->GetActors(textActors);
 
   for (int i = 0; i < this->NumberOfLabelsBuilt; i++)
   {
-    this->LabelActors[i]->ReleaseGraphicsResources(win);
-    this->LabelProps3D[i]->ReleaseGraphicsResources(win);
-    this->LabelActors3D[i]->ReleaseGraphicsResources(win);
-    this->LabelActors2D[i]->ReleaseGraphicsResources(win);
+    this->LabelProps[i]->GetActors(textActors);
   }
+  textActors->InitTraversal();
+  for (int idx = 0; idx < textActors->GetNumberOfItems(); idx++)
+  {
+    vtkProp* prop = textActors->GetNextProp();
+    prop->ReleaseGraphicsResources(win);
+  }
+
   this->AxisLinesActor->ReleaseGraphicsResources(win);
   this->AxisMajorTicksActor->ReleaseGraphicsResources(win);
   this->AxisMinorTicksActor->ReleaseGraphicsResources(win);
@@ -531,17 +150,17 @@ void vtkAxisActor::ReleaseGraphicsResources(vtkWindow* win)
   this->GridpolysActor->ReleaseGraphicsResources(win);
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkAxisActor::RenderOpaqueGeometry(vtkViewport* viewport)
 {
-  int renderedSomething = 0;
+  int numberOfRenderedProps = 0;
 
   this->BuildAxis(viewport, false);
 
   // Everything is built, just have to render
 
   // pass keys to sub props
-  vtkInformation *propKeys = this->GetPropertyKeys();
+  vtkInformation* propKeys = this->GetPropertyKeys();
 
   if (!this->AxisHasZeroLength)
   {
@@ -551,365 +170,148 @@ int vtkAxisActor::RenderOpaqueGeometry(vtkViewport* viewport)
       this->GridlinesActor->SetPropertyKeys(propKeys);
       return this->GridlinesActor->RenderOpaqueGeometry(viewport);
     }
-    if (this->Title != nullptr && this->Title[0] != 0 && this->TitleVisibility)
+    if (!this->Title.empty() && this->TitleVisibility)
     {
-      if (this->Use2DMode)
-      {
-        this->TitleActor2D->SetPropertyKeys(propKeys);
-        renderedSomething += this->TitleActor2D->RenderOpaqueGeometry(viewport);
-      }
-      else if (this->UseTextActor3D)
-      {
-        this->TitleProp3D->SetPropertyKeys(propKeys);
-        renderedSomething += this->TitleProp3D->RenderOpaqueGeometry(viewport);
-      }
-      else
-      {
-        this->TitleActor->SetPropertyKeys(propKeys);
-        renderedSomething += this->TitleActor->RenderOpaqueGeometry(viewport);
-      }
+      vtkProp* titleActor = this->GetTitleActorInternal();
+      titleActor->SetPropertyKeys(propKeys);
+      numberOfRenderedProps += titleActor->RenderOpaqueGeometry(viewport);
     }
     if (this->AxisVisibility)
     {
       this->AxisLinesActor->SetPropertyKeys(propKeys);
-      renderedSomething += this->AxisLinesActor->RenderOpaqueGeometry(viewport);
+      numberOfRenderedProps += this->AxisLinesActor->RenderOpaqueGeometry(viewport);
       if (this->TickVisibility)
       {
         this->AxisMajorTicksActor->SetPropertyKeys(propKeys);
-        renderedSomething += this->AxisMajorTicksActor->RenderOpaqueGeometry(viewport);
+        numberOfRenderedProps += this->AxisMajorTicksActor->RenderOpaqueGeometry(viewport);
         this->AxisMinorTicksActor->SetPropertyKeys(propKeys);
-        renderedSomething += this->AxisMinorTicksActor->RenderOpaqueGeometry(viewport);
+        numberOfRenderedProps += this->AxisMinorTicksActor->RenderOpaqueGeometry(viewport);
       }
     }
     if (this->DrawGridlines)
     {
       this->GridlinesActor->SetPropertyKeys(propKeys);
-      renderedSomething += this->GridlinesActor->RenderOpaqueGeometry(viewport);
+      numberOfRenderedProps += this->GridlinesActor->RenderOpaqueGeometry(viewport);
     }
     if (this->DrawInnerGridlines)
     {
       this->InnerGridlinesActor->SetPropertyKeys(propKeys);
-      renderedSomething += this->InnerGridlinesActor->RenderOpaqueGeometry(viewport);
+      numberOfRenderedProps += this->InnerGridlinesActor->RenderOpaqueGeometry(viewport);
     }
     if (this->LabelVisibility)
     {
       for (int i = 0; i < this->NumberOfLabelsBuilt; i++)
       {
-        if (this->Use2DMode)
-        {
-          this->LabelActors2D[i]->SetPropertyKeys(propKeys);
-          renderedSomething += this->LabelActors2D[i]->RenderOpaqueGeometry(viewport);
-        }
-        else if (this->UseTextActor3D)
-        {
-          this->LabelActors3D[i]->SetPropertyKeys(propKeys);
-          renderedSomething += this->LabelActors3D[i]->RenderOpaqueGeometry(viewport);
-        }
-        else
-        {
-          this->LabelActors[i]->SetPropertyKeys(propKeys);
-          renderedSomething += this->LabelActors[i]->RenderOpaqueGeometry(viewport);
-        }
+        vtkProp* labelActor = this->GetLabelActorInternal(i);
+        labelActor->SetPropertyKeys(propKeys);
+        numberOfRenderedProps += labelActor->RenderOpaqueGeometry(viewport);
       }
 
-      if (this->ExponentVisibility && this->Exponent != nullptr && this->Exponent[0] != 0)
+      if (this->ExponentVisibility && !this->Exponent.empty())
       {
-        if (this->Use2DMode)
-        {
-          this->ExponentActor2D->SetPropertyKeys(propKeys);
-          renderedSomething += this->ExponentActor2D->RenderOpaqueGeometry(viewport);
-        }
-        else if (this->UseTextActor3D)
-        {
-          this->ExponentProp3D->SetPropertyKeys(propKeys);
-          renderedSomething += this->ExponentProp3D->RenderOpaqueGeometry(viewport);
-        }
-        else
-        {
-          this->ExponentActor->SetPropertyKeys(propKeys);
-          renderedSomething += this->ExponentActor->RenderOpaqueGeometry(viewport);
-        }
+        vtkProp* exponentActor = this->GetExponentActorInternal();
+        exponentActor->SetPropertyKeys(propKeys);
+        exponentActor->RenderOpaqueGeometry(viewport);
       }
     }
   }
 
-  return renderedSomething;
+  return numberOfRenderedProps;
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // Build the translucent poly actors and render.
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkAxisActor::RenderTranslucentGeometry(vtkViewport* viewport)
 {
   return this->RenderTranslucentPolygonalGeometry(viewport);
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // Build the translucent poly actors and render.
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkAxisActor::RenderTranslucentPolygonalGeometry(vtkViewport* viewport)
 {
-
-  int renderedSomething = 0;
+  int numberOfRenderedProps = 0;
 
   this->BuildAxis(viewport, false);
 
   // Everything is built, just have to render
 
   // pass keys to sub props
-  vtkInformation *propKeys = this->GetPropertyKeys();
+  vtkInformation* propKeys = this->GetPropertyKeys();
 
-  if (!this->AxisHasZeroLength && !this->DrawGridlinesOnly)
+  vtkNew<vtkPropCollection> translucentProps;
+  this->GetTranslucentProps(translucentProps);
+  translucentProps->InitTraversal();
+
+  for (int idx = 0; idx < translucentProps->GetNumberOfItems(); idx++)
   {
-    if (this->DrawGridpolys)
-    {
-      this->GridpolysActor->SetPropertyKeys(propKeys);
-      renderedSomething += this->GridpolysActor->RenderTranslucentPolygonalGeometry(viewport);
-    }
-    if (this->Title != nullptr && this->Title[0] != 0 && this->TitleVisibility)
-    {
-      if (this->Use2DMode)
-      {
-        this->TitleActor2D->SetPropertyKeys(propKeys);
-        renderedSomething += this->TitleActor2D->RenderTranslucentPolygonalGeometry(viewport);
-      }
-      else if (this->UseTextActor3D)
-      {
-        this->TitleProp3D->SetPropertyKeys(propKeys);
-        renderedSomething += this->TitleProp3D->RenderTranslucentPolygonalGeometry(viewport);
-      }
-      else
-      {
-        this->TitleActor->SetPropertyKeys(propKeys);
-        renderedSomething += this->TitleActor->RenderTranslucentPolygonalGeometry(viewport);
-      }
-    }
-    if (this->LabelVisibility)
-    {
-      for (int i = 0; i < this->NumberOfLabelsBuilt; i++)
-      {
-        if (this->Use2DMode)
-        {
-          this->LabelActors2D[i]->SetPropertyKeys(propKeys);
-          renderedSomething += this->LabelActors2D[i]->RenderTranslucentPolygonalGeometry(viewport);
-        }
-        else if (this->UseTextActor3D)
-        {
-          this->LabelProps3D[i]->SetPropertyKeys(propKeys);
-          renderedSomething += this->LabelProps3D[i]->RenderTranslucentPolygonalGeometry(viewport);
-        }
-        else
-        {
-          this->LabelActors[i]->SetPropertyKeys(propKeys);
-          renderedSomething += this->LabelActors[i]->RenderTranslucentPolygonalGeometry(viewport);
-        }
-      }
-      if (this->ExponentVisibility)
-      {
-        if (this->Use2DMode)
-        {
-          this->ExponentActor2D->SetPropertyKeys(propKeys);
-          renderedSomething += this->ExponentActor2D->RenderTranslucentPolygonalGeometry(viewport);
-        }
-        else if (this->UseTextActor3D)
-        {
-          this->ExponentProp3D->SetPropertyKeys(propKeys);
-          renderedSomething += this->ExponentProp3D->RenderTranslucentPolygonalGeometry(viewport);
-        }
-        else
-        {
-          this->ExponentActor->SetPropertyKeys(propKeys);
-          renderedSomething += this->ExponentActor->RenderTranslucentPolygonalGeometry(viewport);
-        }
-      }
-    }
+    vtkProp* prop = translucentProps->GetNextProp();
+    prop->SetPropertyKeys(propKeys);
+    numberOfRenderedProps += prop->RenderTranslucentPolygonalGeometry(viewport);
   }
-  return renderedSomething;
+
+  return numberOfRenderedProps;
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // Render the 2d annotations.
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkAxisActor::RenderOverlay(vtkViewport* viewport)
 {
-  int renderedSomething = 0;
+  int numberOfRenderedProps = 0;
 
   // Everything is built, just have to render
   if (!this->AxisHasZeroLength && !this->DrawGridlinesOnly)
   {
     if (this->TitleVisibility)
     {
-      if (this->Use2DMode)
-      {
-        renderedSomething += this->TitleActor2D->RenderOverlay(viewport);
-      }
-      else if (this->UseTextActor3D)
-      {
-        renderedSomething += this->TitleProp3D->RenderOverlay(viewport);
-      }
-      else
-      {
-        renderedSomething += this->TitleActor->RenderOverlay(viewport);
-      }
+      vtkProp* titleActor = this->GetTitleActorInternal();
+      titleActor->SetPropertyKeys(this->GetPropertyKeys());
+      numberOfRenderedProps += titleActor->RenderOverlay(viewport);
     }
     if (this->LabelVisibility)
     {
       for (int i = 0; i < this->NumberOfLabelsBuilt; i++)
       {
-        if (this->Use2DMode)
-        {
-          renderedSomething += this->LabelActors2D[i]->RenderOverlay(viewport);
-        }
-        else if (this->UseTextActor3D)
-        {
-          renderedSomething += this->LabelProps3D[i]->RenderOverlay(viewport);
-        }
-        else
-        {
-          renderedSomething += this->LabelActors[i]->RenderOverlay(viewport);
-        }
+        vtkProp* labelActor = this->GetLabelActorInternal(i);
+        labelActor->SetPropertyKeys(this->GetPropertyKeys());
+        numberOfRenderedProps += labelActor->RenderOverlay(viewport);
       }
       if (this->ExponentVisibility)
       {
-        if (this->Use2DMode)
-        {
-          renderedSomething += this->ExponentActor2D->RenderOverlay(viewport);
-        }
-        else if (this->UseTextActor3D)
-        {
-          renderedSomething += this->ExponentProp3D->RenderOverlay(viewport);
-        }
-        else
-        {
-          renderedSomething += this->ExponentActor->RenderOverlay(viewport);
-        }
+        vtkProp* exponentActor = this->GetExponentActorInternal();
+        exponentActor->SetPropertyKeys(this->GetPropertyKeys());
+        numberOfRenderedProps += exponentActor->RenderOverlay(viewport);
       }
     }
   }
-  return renderedSomething;
+  return numberOfRenderedProps;
 }
 
-//-----------------------------------------------------------------------------*
+//------------------------------------------------------------------------------
 vtkTypeBool vtkAxisActor::HasTranslucentPolygonalGeometry()
 {
-  if (this->Visibility && !this->AxisHasZeroLength)
+  if (!this->Visibility || this->AxisHasZeroLength)
   {
-    if (this->TitleVisibility)
-    {
-      if (this->Use2DMode)
-      {
-        if (this->TitleActor2D->HasTranslucentPolygonalGeometry())
-        {
-          return 1;
-        }
-      }
-      else if (this->UseTextActor3D)
-      {
-        if (this->TitleProp3D->HasTranslucentPolygonalGeometry())
-        {
-          return 1;
-        }
-      }
-      else
-      {
-        if (this->TitleActor->HasTranslucentPolygonalGeometry())
-        {
-          return 1;
-        }
-      }
-    }
+    return 0;
+  }
 
-    if (this->LabelVisibility)
-    {
-      if (this->Use2DMode)
-      {
-        for (int i = 0; i < this->NumberOfLabelsBuilt; ++i)
-        {
-          if (this->LabelActors2D[i]->HasTranslucentPolygonalGeometry())
-          {
-            return 1;
-          } // end if
-        }   // end for
-      }     // end 2D
-      else if (this->UseTextActor3D)
-      {
-        for (int i = 0; i < this->NumberOfLabelsBuilt; ++i)
-        {
-          // if (this->LabelActors3D[i]->HasTranslucentPolygonalGeometry())
-          if (this->LabelProps3D[i]->HasTranslucentPolygonalGeometry())
-          {
-            return 1;
-          } // end if
-        }   // end for
-      }     // end 3D
-      else
-      {
-        for (int i = 0; i < this->NumberOfLabelsBuilt; ++i)
-        {
-          if (this->LabelActors[i]->HasTranslucentPolygonalGeometry())
-          {
-            return 1;
-          } // end if
-        }   // end for
-      }     // end 3D
-      if (this->ExponentVisibility)
-      {
-        if (this->Use2DMode)
-        {
-          if (this->ExponentActor2D->HasTranslucentPolygonalGeometry())
-          {
-            return 1;
-          }
-        }
-        else if (this->UseTextActor3D)
-        {
-          if (this->ExponentProp3D->HasTranslucentPolygonalGeometry())
-          {
-            return 1;
-          }
-        }
-        else
-        {
-          if (this->ExponentActor->HasTranslucentPolygonalGeometry())
-          {
-            return 1;
-          }
-        }
-      }
-    } // end label vis
+  vtkNew<vtkPropCollection> translucentProps;
+  this->GetTranslucentProps(translucentProps);
+  translucentProps->InitTraversal();
 
-    if (this->AxisLinesActor->HasTranslucentPolygonalGeometry())
+  for (int idx = 0; idx < translucentProps->GetNumberOfItems(); idx++)
+  {
+    vtkProp* prop = translucentProps->GetNextProp();
+    if (prop->HasTranslucentPolygonalGeometry())
     {
       return 1;
     }
+  }
 
-    if (this->TickVisibility && this->AxisMajorTicksActor->HasTranslucentPolygonalGeometry())
-    {
-      return 1;
-    }
-    if (this->TickVisibility && this->AxisMinorTicksActor->HasTranslucentPolygonalGeometry())
-    {
-      return 1;
-    }
-
-    if (this->DrawGridlines && this->GridlinesActor->HasTranslucentPolygonalGeometry())
-    {
-      return 1;
-    }
-
-    if (this->DrawInnerGridlines && this->InnerGridlinesActor->HasTranslucentPolygonalGeometry())
-    {
-      return 1;
-    }
-
-    if (this->DrawGridpolys && this->GridpolysActor->HasTranslucentPolygonalGeometry())
-    {
-      return 1;
-    }
-
-    return this->Superclass::HasTranslucentPolygonalGeometry();
-  } // end this vis
-  return 0;
+  return this->Superclass::HasTranslucentPolygonalGeometry();
 }
 
 //-----------------------------------------------------------------------------*
@@ -972,14 +374,7 @@ void vtkAxisActor::BuildAxis(vtkViewport* viewport, bool force)
 
   if (force || this->GetProperty()->GetMTime() > this->BuildTime.GetMTime())
   {
-    // this->AxisLinesActor->SetProperty(this->GetProperty());
-    this->TitleActor->SetProperty(this->GetProperty());
-    this->TitleActor->GetProperty()->SetColor(this->TitleTextProperty->GetColor());
-    this->TitleActor->GetProperty()->SetOpacity(this->TitleTextProperty->GetOpacity());
-    if (this->UseTextActor3D)
-    {
-      this->TitleActor3D->GetTextProperty()->ShallowCopy(this->TitleTextProperty);
-    }
+    this->UpdateTitleActorProperty();
   }
 
   //
@@ -1005,17 +400,17 @@ void vtkAxisActor::BuildAxis(vtkViewport* viewport, bool force)
     this->BuildLabels2D(viewport, force || ticksRebuilt);
   }
 
-  if (this->Title != nullptr && this->Title[0] != 0)
+  if (!this->Title.empty())
   {
-    this->InitTitle();
+    this->UpdateTitleActorProperty();
   }
 
-  if (this->ExponentVisibility && this->Exponent != nullptr && this->Exponent[0] != 0)
+  if (this->ExponentVisibility && !this->Exponent.empty())
   {
-    this->InitExponent();
+    this->UpdateExponentActorProperty();
   }
 
-  if (this->Title != nullptr && this->Title[0] != 0)
+  if (!this->Title.empty())
   {
     this->BuildTitle(force || ticksRebuilt);
     if (this->Use2DMode == 1)
@@ -1024,7 +419,7 @@ void vtkAxisActor::BuildAxis(vtkViewport* viewport, bool force)
     }
   }
 
-  if (this->ExponentVisibility && this->Exponent != nullptr && this->Exponent[0] != 0)
+  if (this->ExponentVisibility && !this->Exponent.empty())
   {
     // build exponent
     this->BuildExponent(force);
@@ -1040,9 +435,9 @@ void vtkAxisActor::BuildAxis(vtkViewport* viewport, bool force)
   this->BuildTime.Modified();
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 //  Set label values and properties.
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::BuildLabels(vtkViewport* viewport, bool force)
 {
   if (!force && !this->LabelVisibility)
@@ -1050,42 +445,12 @@ void vtkAxisActor::BuildLabels(vtkViewport* viewport, bool force)
     return;
   }
 
-  double maxLabelScale = 0.0;
   for (int i = 0; i < this->NumberOfLabelsBuilt; i++)
   {
-    this->LabelActors[i]->SetCamera(this->Camera);
-    this->LabelProps3D[i]->SetCamera(this->Camera);
-    this->LabelActors[i]->GetProperty()->SetColor(this->LabelTextProperty->GetColor());
-    this->LabelActors[i]->GetProperty()->SetOpacity(this->LabelTextProperty->GetOpacity());
-    this->LabelActors[i]->SetOrientation(0., 0., this->LabelTextProperty->GetOrientation());
-    this->LabelProps3D[i]->SetOrientation(0., 0., this->LabelTextProperty->GetOrientation());
-
-    if (this->UseTextActor3D)
-    {
-      this->LabelActors3D[i]->GetTextProperty()->ShallowCopy(this->LabelTextProperty);
-
-      double labelActorsBounds[6];
-      this->LabelActors[i]->GetMapper()->GetBounds(labelActorsBounds);
-      const double labelActorsWidth = (labelActorsBounds[1] - labelActorsBounds[0]);
-
-      int labelActors3DBounds[4];
-      this->LabelActors3D[i]->GetBoundingBox(labelActors3DBounds);
-      const double labelActors3DWidth =
-        static_cast<double>(labelActors3DBounds[1] - labelActors3DBounds[0]);
-
-      if (labelActorsWidth / labelActors3DWidth > maxLabelScale)
-      {
-        maxLabelScale = labelActorsWidth / labelActors3DWidth;
-      }
-    }
-
-    this->LabelActors[i]->SetAutoCenter(1);
-    this->LabelProps3D[i]->SetAutoCenter(1);
-  }
-
-  for (int i = 0; i < this->NumberOfLabelsBuilt; i++)
-  {
-    this->LabelActors3D[i]->SetScale(maxLabelScale);
+    vtkTextActorInterfaceInternal* currentLabel = this->LabelProps[i].get();
+    this->UpdateLabelActorProperty(i);
+    currentLabel->SetCamera(this->Camera);
+    currentLabel->AdjustScale();
   }
 
   if (force || this->BuildTime.GetMTime() < this->BoundsTime.GetMTime() ||
@@ -1096,12 +461,12 @@ void vtkAxisActor::BuildLabels(vtkViewport* viewport, bool force)
   }
 }
 
-static const int vtkAxisActorMultiplierTable1[4] = { -1, -1, 1, 1 };
-static const int vtkAxisActorMultiplierTable2[4] = { -1, 1, 1, -1 };
+static constexpr int vtkAxisActorMultiplierTable1[4] = { -1, -1, 1, 1 };
+static constexpr int vtkAxisActorMultiplierTable2[4] = { -1, 1, 1, -1 };
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // Determine and set scale factor and position for labels.
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::SetLabelPositions(vtkViewport* viewport, bool force)
 {
   if (!force && (!this->LabelVisibility || this->NumberOfLabelsBuilt == 0))
@@ -1123,13 +488,14 @@ void vtkAxisActor::SetLabelPositions(vtkViewport* viewport, bool force)
   double labelSin = fabs(sin(labelAngle));
   vtkAxisFollower* pAxisFollower = nullptr;
 
-  for (int i = 0, ptIdx = 0; i < this->NumberOfLabelsBuilt &&
-    ((ptIdx + 1) < this->MajorTickPts->GetNumberOfPoints()); i++, ptIdx += 4)
+  for (int i = 0, ptIdx = 0;
+       i < this->NumberOfLabelsBuilt && ((ptIdx + 1) < this->MajorTickPts->GetNumberOfPoints());
+       i++, ptIdx += 4)
   {
     this->MajorTickPts->GetPoint(ptIdx, tickTop);
     this->MajorTickPts->GetPoint(ptIdx + 1, tickBottom);
 
-    pAxisFollower = this->LabelActors[i];
+    pAxisFollower = this->LabelProps[i]->GetFollower();
 
     // get Label actor Transform matrix
     vtkRenderer* ren = vtkRenderer::SafeDownCast(viewport);
@@ -1140,19 +506,10 @@ void vtkAxisActor::SetLabelPositions(vtkViewport* viewport, bool force)
 
     // WARNING: calling GetBounds() before ComputeTransformMatrix(), prevent this->Transform to be
     // updated
-
-    // previous version: this->LabelActors[i]->GetMapper()->GetBounds(bounds); didn't include scale
-    // labels
-    // vtkProp3D::GetBounds() include previous transform (scale, orientation, translation)
     pAxisFollower->GetBounds(bounds);
     double labelWidth = (bounds[1] - bounds[0]);
     double labelHeight = (bounds[3] - bounds[2]);
     double labelMagnitude = sqrt(labelWidth * labelWidth + labelHeight * labelHeight);
-
-    if (this->CalculateLabelOffset)
-    {
-      vtkWarningMacro("CalculateLabelOffset flag is now deprecated and has no effect");
-    }
 
     if (this->TickVisibility)
     {
@@ -1167,19 +524,16 @@ void vtkAxisActor::SetLabelPositions(vtkViewport* viewport, bool force)
       pos[2] = (tickTop[2] + tickBottom[2]) / 2;
     }
 
-    double deltaPixels =
-      0.5 * (labelWidth * labelSin + labelHeight * labelCos) / labelMagnitude;
-    pAxisFollower->SetScreenOffset(this->LabelOffset + deltaPixels * this->ScreenSize);
-    this->LabelProps3D[i]->SetScreenOffset(this->LabelOffset + deltaPixels * this->ScreenSize);
+    double deltaPixels = 0.5 * (labelWidth * labelSin + labelHeight * labelCos) / labelMagnitude;
+    this->LabelProps[i]->SetScreenOffset(this->LabelOffset + deltaPixels * this->ScreenSize);
 
-    pAxisFollower->SetPosition(pos[0], pos[1], pos[2]);
-    this->LabelProps3D[i]->SetPosition(pos[0], pos[1], pos[2]);
+    this->LabelProps[i]->SetPosition(pos);
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 //  Set 2D label values and properties.
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::BuildLabels2D(vtkViewport* viewport, bool force)
 {
   if (!force && (!this->LabelVisibility || this->NumberOfLabelsBuilt == 0))
@@ -1189,9 +543,7 @@ void vtkAxisActor::BuildLabels2D(vtkViewport* viewport, bool force)
 
   for (int i = 0; i < this->NumberOfLabelsBuilt; i++)
   {
-    this->LabelActors2D[i]->GetProperty()->SetColor(this->LabelTextProperty->GetColor());
-    this->LabelActors2D[i]->GetProperty()->SetOpacity(this->LabelTextProperty->GetOpacity());
-    this->LabelActors2D[i]->GetTextProperty()->ShallowCopy(this->LabelTextProperty);
+    this->UpdateLabelActorProperty(i);
   }
 
   this->NeedBuild2D = this->BoundsDisplayCoordinateChanged(viewport);
@@ -1201,9 +553,9 @@ void vtkAxisActor::BuildLabels2D(vtkViewport* viewport, bool force)
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // Determine and set scale factor and position for 2D labels.
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::SetLabelPositions2D(vtkViewport* viewport, bool force)
 {
   if (!force && (!this->LabelVisibility || this->NumberOfLabelsBuilt == 0))
@@ -1262,8 +614,9 @@ void vtkAxisActor::SetLabelPositions2D(vtkViewport* viewport, bool force)
     return;
   }
 
-  for (int i = 0, ptIdx = 1; i < this->NumberOfLabelsBuilt &&
-    ((ptIdx + 1) < this->MajorTickPts->GetNumberOfPoints()); i++, ptIdx += 4)
+  for (int i = 0, ptIdx = 1;
+       i < this->NumberOfLabelsBuilt && ((ptIdx + 1) < this->MajorTickPts->GetNumberOfPoints());
+       i++, ptIdx += 4)
   {
     this->MajorTickPts->GetPoint(ptIdx, tick);
 
@@ -1276,11 +629,11 @@ void vtkAxisActor::SetLabelPositions2D(vtkViewport* viewport, bool force)
     viewport->GetDisplayPoint(transpos);
 
     int bbox[4];
-    if (!tren->GetBoundingBox(this->LabelActors2D[i]->GetTextProperty(),
-          this->LabelActors2D[i]->GetInput(), bbox, win->GetDPI()))
+    if (!tren->GetBoundingBox(
+          this->LabelTextProperty, this->LabelProps[i]->GetInputText(), bbox, win->GetDPI()))
     {
       vtkErrorMacro(<< "Unable to calculate bounding box for label "
-                    << this->LabelActors2D[i]->GetInput());
+                    << this->LabelProps[i]->GetInputText());
       continue;
     }
 
@@ -1290,57 +643,14 @@ void vtkAxisActor::SetLabelPositions2D(vtkViewport* viewport, bool force)
     pos[0] = (transpos[0] - xadjust * width * xcoeff);
     pos[1] = (transpos[1] - yadjust * height * ycoeff);
 
-    this->LabelActors2D[i]->SetPosition(pos[0], pos[1]);
+    this->LabelProps[i]->SetDisplayPosition(pos[0], pos[1]);
   }
 }
 
-//-----------------------------------------------------------------------------
-void vtkAxisActor::InitTitle()
-{
-  // ---------- Title ----------
-  // Classic
-  // Source => Mapper => Actor
-  // TitleVector => TitleMapper => TitleActor
-
-  // Text 3D
-  // vtkTextActor3D::TitleActor3D _ vtkProp3DAxisFollower::TitleProp3D
-  // relation: TitleProp3D->SetProp3D(this->TitleActor3D)
-  this->TitleVector->SetText(this->Title);
-  this->TitleActor3D->SetInput(this->Title);
-
-  this->TitleActor->SetProperty(this->GetProperty());
-  this->TitleActor->GetProperty()->SetColor(this->TitleTextProperty->GetColor());
-  this->TitleActor->GetProperty()->SetOpacity(this->TitleTextProperty->GetOpacity());
-
-  this->TitleActor3D->SetTextProperty(this->TitleTextProperty);
-
-  this->TitleActor->SetCamera(this->Camera);
-  this->TitleProp3D->SetCamera(this->Camera);
-
-  // axis follower origin is on top-left corner, auto-center put it on the center of the label
-  this->TitleActor->SetAutoCenter(1);
-  this->TitleProp3D->SetAutoCenter(1);
-}
-
-//-----------------------------------------------------------------------------
-void vtkAxisActor::InitExponent()
-{
-  std::stringstream expStr;
-  expStr << "e" << this->Exponent;
-  this->ExponentVector->SetText(expStr.str().c_str());
-  this->ExponentActor3D->SetInput(expStr.str().c_str());
-  this->ExponentActor->SetProperty(this->GetProperty());
-  this->ExponentActor3D->SetTextProperty(this->TitleTextProperty);
-  this->ExponentActor->SetCamera(this->Camera);
-  this->ExponentProp3D->SetCamera(this->Camera);
-  this->ExponentActor->SetAutoCenter(1);
-  this->ExponentProp3D->SetAutoCenter(1);
-}
-
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 //  Determines scale and position for the Title.  Currently,
 //  title can only be centered with respect to its axis.
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::BuildTitle(bool force)
 {
   this->NeedBuild2D = false;
@@ -1357,16 +667,20 @@ void vtkAxisActor::BuildTitle(bool force)
     return;
   }
 
-  // Text property
-  this->TitleActor->GetProperty()->SetColor(this->TitleTextProperty->GetColor());
-  this->TitleActor->GetProperty()->SetOpacity(this->TitleTextProperty->GetOpacity());
+  this->UpdateTitleActorProperty();
 
   // ---------- labels size ----------
   // local orientation (in the plane of the label)
   double labelAngle = vtkMath::RadiansFromDegrees(this->LabelTextProperty->GetOrientation());
   double labelCos = fabs(cos(labelAngle)), labelSin = fabs(sin(labelAngle));
   double labBounds[6];
-  double offset[2] = { 0, this->TitleOffset };
+  double offset[2] = { 0, this->TitleOffset[1] };
+
+  // Side offset when not centered
+  if (this->TitleAlignLocation == VTK_ALIGN_POINT1 || this->TitleAlignLocation == VTK_ALIGN_POINT2)
+  {
+    offset[0] += this->TitleOffset[0];
+  }
 
   // find max height label (with the label text property considered)
   // only when title is on bottom
@@ -1376,7 +690,7 @@ void vtkAxisActor::BuildTitle(bool force)
     labelMaxHeight = labHeight = 0;
     for (int i = 0; i < this->NumberOfLabelsBuilt; i++)
     {
-      this->LabelActors[i]->GetMapper()->GetBounds(labBounds);
+      this->LabelProps[i]->GetBounds(labBounds);
 
       // labels actor aren't oriented yet, width and height are considered in
       // their local coordinate system
@@ -1390,24 +704,19 @@ void vtkAxisActor::BuildTitle(bool force)
 
   // ---------- title size ----------
   double titleBounds[6];
-  this->TitleActor->GetMapper()->GetBounds(titleBounds);
+  this->TitleProp->GetBounds(titleBounds);
   double halfTitleHeight = (titleBounds[3] - titleBounds[2]) * 0.5;
   double halfTitleWidth = (titleBounds[1] - titleBounds[0]) * 0.5;
-  offset[1] += this->ScreenSize * halfTitleHeight;
 
   double* p1 = this->Point1Coordinate->GetValue();
   double* p2 = this->Point2Coordinate->GetValue();
   double pos[3];
-  if (this->CalculateTitleOffset)
-  {
-    vtkWarningMacro("CalculateTitleOffset flag is now deprecated and has no effect");
-  }
   int vertOffsetSign = 1;
   switch (this->TitleAlignLocation)
   {
     case (VTK_ALIGN_TOP):
       vertOffsetSign = -1;
-      VTK_FALLTHROUGH;
+      [[fallthrough]];
     // NO BREAK
     case (VTK_ALIGN_BOTTOM):
       // Position to center of axis
@@ -1415,6 +724,7 @@ void vtkAxisActor::BuildTitle(bool force)
       {
         pos[i] = p1[i] + (p2[i] - p1[i]) / 2.0;
       }
+      offset[1] += this->ScreenSize * halfTitleHeight;
       break;
     case (VTK_ALIGN_POINT1):
       // Position to p1
@@ -1422,7 +732,8 @@ void vtkAxisActor::BuildTitle(bool force)
       {
         pos[i] = p1[i];
       }
-      offset[0] += this->ScreenSize * halfTitleWidth + 3;
+      offset[0] += this->ScreenSize * halfTitleWidth;
+      offset[1] += this->ScreenSize * halfTitleHeight;
       break;
     case (VTK_ALIGN_POINT2):
       // Position to p2
@@ -1430,7 +741,7 @@ void vtkAxisActor::BuildTitle(bool force)
       {
         pos[i] = p2[i];
       }
-      offset[0] += this->ScreenSize * halfTitleWidth + 3;
+      offset[0] += this->ScreenSize * halfTitleWidth;
       break;
     default:
       // shouldn't get there
@@ -1449,27 +760,16 @@ void vtkAxisActor::BuildTitle(bool force)
   }
 
   offset[1] *= vertOffsetSign;
-  this->TitleActor->SetScreenOffsetVector(offset);
-  this->TitleProp3D->SetScreenOffsetVector(offset);
+  this->TitleProp->SetScreenOffsetVector(offset);
 
-  if (this->UseTextActor3D)
-  {
-    int titleActor3DBounds[4];
-    this->TitleActor3D->GetBoundingBox(titleActor3DBounds);
-    const double titleActor3DWidth =
-      static_cast<double>(titleActor3DBounds[1] - titleActor3DBounds[0]);
-
-    // Convert from font coordinate system to world coordinate system:
-    this->TitleActor3D->SetScale((titleBounds[1] - titleBounds[0]) / titleActor3DWidth);
-  }
-  this->TitleActor->SetPosition(pos);
-  this->TitleProp3D->SetPosition(pos);
+  this->TitleProp->AdjustScale();
+  this->TitleProp->SetPosition(pos);
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::BuildExponent(bool force)
 {
-  if (!force && (!this->ExponentVisibility || !this->Exponent))
+  if (!force && (!this->ExponentVisibility || this->Exponent.empty()))
   {
     return;
   }
@@ -1481,9 +781,7 @@ void vtkAxisActor::BuildExponent(bool force)
     return;
   }
 
-  // Text property
-  this->ExponentActor->GetProperty()->SetColor(this->TitleTextProperty->GetColor());
-  this->ExponentActor->GetProperty()->SetOpacity(this->TitleTextProperty->GetOpacity());
+  this->UpdateExponentActorProperty();
 
   // ---------- labels size ----------
   // local orientation (in the plane of the label)
@@ -1500,7 +798,7 @@ void vtkAxisActor::BuildExponent(bool force)
     labelMaxHeight = labHeight = 0;
     for (int i = 0; i < this->NumberOfLabelsBuilt; i++)
     {
-      this->LabelActors[i]->GetMapper()->GetBounds(labBounds);
+      this->LabelProps[i]->GetBounds(labBounds);
 
       // labels actor aren't oriented yet, width and height are considered in
       // their local coordinate system
@@ -1514,18 +812,17 @@ void vtkAxisActor::BuildExponent(bool force)
 
   // ---------- title size ----------
   double titleBounds[6];
-  this->TitleActor->GetMapper()->GetBounds(titleBounds);
+  this->TitleProp->GetBounds(titleBounds);
   if (this->TitleVisibility && this->TitleAlignLocation == this->ExponentLocation)
   {
-    offset[1] += this->TitleOffset + this->ScreenSize * titleBounds[3] - titleBounds[2];
+    offset[1] += this->TitleOffset[1] + this->ScreenSize * titleBounds[3] - titleBounds[2];
   }
 
   // ---------- exponent size ----------
   double exponentBounds[6];
-  this->ExponentActor->GetMapper()->GetBounds(exponentBounds);
+  this->ExponentProp->GetBounds(exponentBounds);
   double halfExponentHeight = (exponentBounds[3] - exponentBounds[2]) * 0.5;
   double halfExponentWidth = (exponentBounds[1] - exponentBounds[0]) * 0.5;
-  offset[1] += this->ScreenSize * halfExponentHeight;
 
   double* p1 = this->Point1Coordinate->GetValue();
   double* p2 = this->Point2Coordinate->GetValue();
@@ -1536,7 +833,7 @@ void vtkAxisActor::BuildExponent(bool force)
   {
     case (VTK_ALIGN_TOP):
       offsetSign = -1;
-      VTK_FALLTHROUGH;
+      [[fallthrough]];
     // NO BREAK
     case (VTK_ALIGN_BOTTOM):
       // Position to center of axis
@@ -1544,6 +841,7 @@ void vtkAxisActor::BuildExponent(bool force)
       {
         pos[i] = p1[i] + (p2[i] - p1[i]) / 2.0;
       }
+      offset[1] += this->ScreenSize * halfExponentHeight;
       break;
     case (VTK_ALIGN_POINT1):
       // Position to p1
@@ -1551,7 +849,8 @@ void vtkAxisActor::BuildExponent(bool force)
       {
         pos[i] = p1[i];
       }
-      offset[0] += this->ScreenSize * halfExponentWidth + 3;
+      offset[0] += this->ScreenSize * halfExponentWidth;
+      offset[1] += this->ScreenSize * halfExponentHeight;
       break;
     case (VTK_ALIGN_POINT2):
       // Position to p2
@@ -1559,7 +858,7 @@ void vtkAxisActor::BuildExponent(bool force)
       {
         pos[i] = p2[i];
       }
-      offset[0] += this->ScreenSize * halfExponentWidth + 3;
+      offset[0] += this->ScreenSize * halfExponentWidth;
       break;
     default:
       // shouldn't get there
@@ -1580,28 +879,15 @@ void vtkAxisActor::BuildExponent(bool force)
   // Offset is: ExponentOffset + TitleOffset is visible + LabelOffset if visible
   // + ScreenSize of all
   offset[1] *= offsetSign;
-  this->ExponentActor->SetScreenOffsetVector(offset);
-  this->ExponentProp3D->SetScreenOffsetVector(offset);
-
-  if (this->UseTextActor3D)
-  {
-    int exponentActor3DBounds[4];
-    this->ExponentActor3D->GetBoundingBox(exponentActor3DBounds);
-    const double exponentActor3DWidth =
-      static_cast<double>(exponentActor3DBounds[1] - exponentActor3DBounds[0]);
-
-    // Convert from font coordinate system to world coordinate system:
-    this->ExponentActor3D->SetScale((exponentBounds[1] - exponentBounds[0]) / exponentActor3DWidth);
-  }
-
-  this->ExponentActor->SetPosition(pos);
-  this->ExponentProp3D->SetPosition(pos);
+  this->ExponentProp->SetScreenOffsetVector(offset);
+  this->ExponentProp->AdjustScale();
+  this->ExponentProp->SetPosition(pos);
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 //  Determines scale and position for the 2D Title.  Currently,
 //  title can only be centered with respect to its axis.
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::BuildTitle2D(vtkViewport* viewport, bool force)
 {
   if (!this->NeedBuild2D && !force && !this->TitleVisibility)
@@ -1609,34 +895,40 @@ void vtkAxisActor::BuildTitle2D(vtkViewport* viewport, bool force)
     return;
   }
 
-  // for textactor instead of follower
-  this->TitleActor2D->SetInput(this->TitleVector->GetText());
-  this->TitleActor2D->GetProperty()->SetColor(this->TitleTextProperty->GetColor());
-  this->TitleActor2D->GetProperty()->SetOpacity(this->TitleTextProperty->GetOpacity());
-  this->TitleActor2D->GetTextProperty()->ShallowCopy(this->TitleTextProperty);
+  this->UpdateTitleActorProperty();
 
-  if (this->AxisType == VTK_AXIS_TYPE_Y)
+  double scenePos[3];
+  this->TitleProp->GetReferencePosition(scenePos);
+
+  double position[2];
+  this->Get2DPosition(viewport, 1., scenePos, position);
+
+  if (this->SaveTitlePosition > 0)
   {
-    if (strlen(this->TitleActor2D->GetInput()) > 2)
+    if (this->SaveTitlePosition == 1)
     {
-      // warning : orientation have to be set on vtkTextActor and not on the vtkTextActor's
-      // vtkTextProperty
-      // otherwise there is a strange effect (first letter is not align with the others)
-      this->TitleActor2D->SetOrientation(90);
+      this->TitleConstantPosition[0] = position[0];
+      this->TitleConstantPosition[1] = position[1];
+      this->SaveTitlePosition = 2;
     }
-    else
-    {
-      // if in the previous rendering, the orientation was set.
-      this->TitleActor2D->SetOrientation(0);
-    }
+    position[0] = this->TitleConstantPosition[0];
+    position[1] = this->TitleConstantPosition[1];
   }
 
-  // stuff for 2D axis with TextActor
-  double transpos[3];
-  double* pos = this->TitleActor->GetPosition();
-  viewport->SetWorldPoint(pos[0], pos[1], pos[2], 1.0);
+  this->TitleProp->SetDisplayPosition(position[0], position[1]);
+  this->TitleProp->RotateActor2DFromAxisProjection(this->GetPoint1(), this->GetPoint2());
+}
+
+//------------------------------------------------------------------------------
+void vtkAxisActor::Get2DPosition(
+  vtkViewport* viewport, double multi, double scenePos[3], double displayPos[2])
+{
+  double display[3];
+  viewport->SetWorldPoint(scenePos[0], scenePos[1], scenePos[2], 1.0);
   viewport->WorldToDisplay();
-  viewport->GetDisplayPoint(transpos);
+  viewport->GetDisplayPoint(display);
+  displayPos[0] = display[0];
+  displayPos[1] = display[1];
 
   int offsetSign = 1;
   if (this->TitleAlignLocation == VTK_ALIGN_TOP)
@@ -1646,39 +938,18 @@ void vtkAxisActor::BuildTitle2D(vtkViewport* viewport, bool force)
 
   if (this->AxisType == VTK_AXIS_TYPE_X)
   {
-    transpos[1] += offsetSign * this->VerticalOffsetXTitle2D;
+    displayPos[1] += offsetSign * multi * this->VerticalOffsetXTitle2D;
   }
   else if (this->AxisType == VTK_AXIS_TYPE_Y)
   {
-    transpos[0] += offsetSign * this->HorizontalOffsetYTitle2D;
-  }
-  if (transpos[1] < 10.)
-  {
-    transpos[1] = 10.;
-  }
-  if (transpos[0] < 10.)
-  {
-    transpos[0] = 10.;
+    displayPos[0] += offsetSign * multi * this->HorizontalOffsetYTitle2D;
   }
 
-  if (this->SaveTitlePosition == 0)
-  {
-    this->TitleActor2D->SetPosition(transpos[0], transpos[1]);
-  }
-  else
-  {
-    if (this->SaveTitlePosition == 1)
-    {
-      this->TitleConstantPosition[0] = transpos[0];
-      this->TitleConstantPosition[1] = transpos[1];
-      this->SaveTitlePosition = 2;
-    }
-    this->TitleActor2D->SetPosition(this->TitleConstantPosition[0], this->TitleConstantPosition[1]);
-  }
-  this->RotateActor2DFromAxisProjection(this->TitleActor2D);
+  displayPos[0] = std::max(displayPos[0], 10.);
+  displayPos[1] = std::max(displayPos[1], 10.);
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::BuildExponent2D(vtkViewport* viewport, bool force)
 {
   if (!this->NeedBuild2D && !force && !this->LabelVisibility)
@@ -1687,39 +958,7 @@ void vtkAxisActor::BuildExponent2D(vtkViewport* viewport, bool force)
   }
 
   // for textactor instead of follower
-  this->ExponentActor2D->SetInput(this->ExponentVector->GetText());
-  this->ExponentActor2D->GetProperty()->SetColor(this->TitleTextProperty->GetColor());
-  this->ExponentActor2D->GetProperty()->SetOpacity(this->TitleTextProperty->GetOpacity());
-  this->ExponentActor2D->GetTextProperty()->ShallowCopy(this->TitleTextProperty);
-
-  if (this->AxisType == VTK_AXIS_TYPE_Y)
-  {
-    if (strlen(this->ExponentActor2D->GetInput()) > 2)
-    {
-      // warning : orientation have to be set on vtkTextActor and not on the vtkTextActor's
-      // vtkTextProperty
-      // otherwise there is a strange effect (first letter is not align with the others)
-      this->ExponentActor2D->SetOrientation(90);
-    }
-    else
-    {
-      // if in the previous rendering, the orientation was set.
-      this->ExponentActor2D->SetOrientation(0);
-    }
-  }
-
-  // stuff for 2D axis with TextActor
-  double transpos[3];
-  double* pos = this->ExponentActor->GetPosition();
-  viewport->SetWorldPoint(pos[0], pos[1], pos[2], 1.0);
-  viewport->WorldToDisplay();
-  viewport->GetDisplayPoint(transpos);
-
-  int offsetSign = 1;
-  if (this->ExponentLocation == VTK_ALIGN_TOP)
-  {
-    offsetSign = -1;
-  }
+  this->UpdateExponentActorProperty();
 
   int titleMult = 1;
   if (this->TitleVisibility && this->TitleAlignLocation == this->ExponentLocation)
@@ -1727,32 +966,20 @@ void vtkAxisActor::BuildExponent2D(vtkViewport* viewport, bool force)
     titleMult = 2;
   }
 
-  if (this->AxisType == VTK_AXIS_TYPE_X)
-  {
-    transpos[1] += offsetSign * titleMult * this->VerticalOffsetXTitle2D;
-  }
-  else if (this->AxisType == VTK_AXIS_TYPE_Y)
-  {
-    transpos[0] += offsetSign * titleMult * this->HorizontalOffsetYTitle2D;
-  }
-  if (transpos[1] < 10.)
-  {
-    transpos[1] = 10.;
-  }
-  if (transpos[0] < 10.)
-  {
-    transpos[0] = 10.;
-  }
+  double scenePos[3];
+  this->ExponentProp->GetReferencePosition(scenePos);
 
-  this->ExponentActor2D->SetPosition(transpos[0], transpos[1]);
+  double position[2];
+  this->Get2DPosition(viewport, titleMult, scenePos, position);
 
-  this->RotateActor2DFromAxisProjection(this->ExponentActor2D);
+  this->ExponentProp->SetDisplayPosition(position[0], position[1]);
+  this->ExponentProp->RotateActor2DFromAxisProjection(this->GetPoint1(), this->GetPoint2());
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 //  Transform the bounding box to display coordinates.  Used
 //  in determining orientation of the axis.
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::TransformBounds(vtkViewport* viewport, double bnds[6])
 {
   double minPt[3], maxPt[3], transMinPt[3], transMaxPt[3];
@@ -1778,12 +1005,12 @@ void vtkAxisActor::TransformBounds(vtkViewport* viewport, double bnds[6])
   bnds[5] = transMaxPt[2];
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os, indent);
 
-  os << indent << "Title: " << (this->Title ? this->Title : "(none)") << "\n";
+  os << indent << "Title: " << (!this->Title.empty() ? this->Title : "(none)") << "\n";
   os << indent << "Number Of Labels Built: " << this->NumberOfLabelsBuilt << "\n";
   os << indent << "Range: (" << this->Range[0] << ", " << this->Range[1] << ")\n";
 
@@ -1804,6 +1031,10 @@ void vtkAxisActor::PrintSelf(ostream& os, vtkIndent indent)
   os << indent << "Point2 Coordinate: " << this->Point2Coordinate << "\n";
   this->Point2Coordinate->PrintSelf(os, indent.GetNextIndent());
 
+  os << indent << "Title offset: " << this->TitleOffset[0] << ", " << this->TitleOffset[1] << "\n";
+  os << indent << "Label Y-offset: " << this->LabelOffset << "\n";
+  os << indent << "Exponent Y-offset: " << this->ExponentOffset << "\n";
+
   os << indent << "AxisType: ";
   switch (this->AxisType)
   {
@@ -1823,23 +1054,12 @@ void vtkAxisActor::PrintSelf(ostream& os, vtkIndent indent)
 
   os << indent << "DeltaMajor: " << this->DeltaMajor[0] << "," << this->DeltaMajor[1] << ","
      << this->DeltaMajor[2] << endl;
-  os << indent << "DeltaMinor: " << this->DeltaMinor << endl;
   os << indent << "DeltaRangeMajor: " << this->DeltaRangeMajor << endl;
   os << indent << "DeltaRangeMinor: " << this->DeltaRangeMinor << endl;
   os << indent << "MajorRangeStart: " << this->MajorRangeStart << endl;
   os << indent << "MinorRangeStart: " << this->MinorRangeStart << endl;
 
   os << indent << "MinorTicksVisible: " << this->MinorTicksVisible << endl;
-
-  os << indent << "TitleActor: ";
-  if (this->TitleActor)
-  {
-    os << indent << "TitleActor: (" << this->TitleActor << ")\n";
-  }
-  else
-  {
-    os << "(none)" << endl;
-  }
 
   os << indent << "Camera: ";
   if (this->Camera)
@@ -1870,9 +1090,6 @@ void vtkAxisActor::PrintSelf(ostream& os, vtkIndent indent)
 
   os << indent << "TickLocation: " << this->TickLocation << endl;
 
-  os << indent << "CalculateLabelOffset: " << this->CalculateLabelOffset << std::endl;
-  os << indent << "CalculateTitleOffset: " << this->CalculateTitleOffset << std::endl;
-
   os << indent << "LabelTextProperty: " << this->LabelTextProperty << endl;
   os << indent << "TitleTextProperty: " << this->TitleTextProperty << endl;
 
@@ -1888,9 +1105,9 @@ void vtkAxisActor::PrintSelf(ostream& os, vtkIndent indent)
      << endl;
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // Sets text string for label vectors.  Allocates memory if necessary.
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::SetLabels(vtkStringArray* labels)
 {
   //
@@ -1905,51 +1122,14 @@ void vtkAxisActor::SetLabels(vtkStringArray* labels)
   }
   if (this->NumberOfLabelsBuilt != numLabels)
   {
-    if (this->LabelMappers != nullptr)
-    {
-      for (int i = 0; i < this->NumberOfLabelsBuilt; i++)
-      {
-        this->LabelVectors[i]->Delete();
-        this->LabelMappers[i]->Delete();
-        this->LabelActors[i]->Delete();
-        this->LabelProps3D[i]->Delete();
-        this->LabelActors3D[i]->Delete();
-        this->LabelActors2D[i]->Delete();
-      }
-      delete[] this->LabelVectors;
-      delete[] this->LabelMappers;
-      delete[] this->LabelActors;
-      delete[] this->LabelProps3D;
-      delete[] this->LabelActors3D;
-      delete[] this->LabelActors2D;
-    }
-
-    this->LabelVectors = new vtkVectorText*[numLabels];
-    this->LabelMappers = new vtkPolyDataMapper*[numLabels];
-    this->LabelActors = new vtkAxisFollower*[numLabels];
-    this->LabelProps3D = new vtkProp3DAxisFollower*[numLabels];
-    this->LabelActors3D = new vtkTextActor3D*[numLabels];
-    this->LabelActors2D = new vtkTextActor*[numLabels];
+    this->LabelProps.clear();
+    this->LabelProps.reserve(numLabels);
 
     for (int i = 0; i < numLabels; i++)
     {
-      this->LabelVectors[i] = vtkVectorText::New();
-      this->LabelMappers[i] = vtkPolyDataMapper::New();
-      this->LabelMappers[i]->SetInputConnection(this->LabelVectors[i]->GetOutputPort());
-      this->LabelActors[i] = vtkAxisFollower::New();
-      this->LabelActors[i]->SetAxis(this);
-      this->LabelActors[i]->SetMapper(this->LabelMappers[i]);
-      this->LabelActors[i]->SetEnableDistanceLOD(0);
-      this->LabelActors[i]->GetProperty()->SetAmbient(1.);
-      this->LabelActors[i]->GetProperty()->SetDiffuse(0.);
-      this->LabelActors[i]->GetProperty()->SetColor(this->LabelTextProperty->GetColor());
-      this->LabelActors[i]->GetProperty()->SetOpacity(this->LabelTextProperty->GetOpacity());
-      this->LabelProps3D[i] = vtkProp3DAxisFollower::New();
-      this->LabelProps3D[i]->SetAxis(this);
-      this->LabelProps3D[i]->SetEnableDistanceLOD(0);
-      this->LabelActors3D[i] = vtkTextActor3D::New();
-      this->LabelProps3D[i]->SetProp3D(this->LabelActors3D[i]);
-      this->LabelActors2D[i] = vtkTextActor::New();
+      auto currentLabel = std::make_shared<vtkTextActorInterfaceInternal>();
+      currentLabel->SetAxis(this);
+      this->LabelProps.push_back(currentLabel);
     }
   }
 
@@ -1958,9 +1138,8 @@ void vtkAxisActor::SetLabels(vtkStringArray* labels)
   //
   for (int i = 0; i < numLabels; i++)
   {
-    this->LabelVectors[i]->SetText(labels->GetValue(i).c_str());
-    this->LabelActors3D[i]->SetInput(this->LabelVectors[i]->GetText());
-    this->LabelActors2D[i]->SetInput(this->LabelVectors[i]->GetText());
+    vtkTextActorInterfaceInternal* currentLabel = this->LabelProps[i].get();
+    currentLabel->SetInputText(labels->GetValue(i));
   }
   this->NumberOfLabelsBuilt = numLabels;
   this->LabelBuildTime.Modified();
@@ -2184,71 +1363,39 @@ void vtkAxisActor::GetBounds(double b[6])
   }
 }
 
-//-----------------------------------------------------------------------------**
-// Method:  vtkAxisActor::ComputeMaxLabelLength
-//-----------------------------------------------------------------------------**
-double vtkAxisActor::ComputeMaxLabelLength(const double vtkNotUsed(center)[3])
+//-----------------------------------------------------------------------------
+double vtkAxisActor::ComputeMaxLabelLength()
 {
-  double bounds[6];
-  double xsize, ysize;
-  vtkProperty* newProp = this->NewLabelProperty();
   double maxXSize = 0;
   double maxYSize = 0;
   for (int i = 0; i < this->NumberOfLabelsBuilt; i++)
   {
-    if (this->UseTextActor3D)
-    {
-      this->LabelProps3D[i]->SetCamera(this->Camera);
-      this->LabelActors3D[i]->GetBounds(bounds);
-    }
-    else
-    {
-      this->LabelActors[i]->SetCamera(this->Camera);
-      this->LabelActors[i]->SetProperty(newProp);
-      this->LabelActors[i]->GetMapper()->GetBounds(bounds);
-    }
-    xsize = bounds[1] - bounds[0];
-    ysize = bounds[3] - bounds[2];
-    maxXSize = (xsize > maxXSize ? xsize : maxXSize);
-    maxYSize = (ysize > maxYSize ? ysize : maxYSize);
+    vtkTextActorInterfaceInternal* currentLabel = this->LabelProps[i].get();
+    double bounds[6];
+    currentLabel->GetBounds(bounds);
+    double xsize = bounds[1] - bounds[0];
+    double ysize = bounds[3] - bounds[2];
+
+    maxXSize = std::max(xsize, maxXSize);
+    maxYSize = std::max(ysize, maxYSize);
   }
-  newProp->Delete();
-  return sqrt(maxXSize * maxXSize + maxYSize * maxYSize);
+
+  return std::sqrt((maxXSize * maxXSize) + (maxYSize * maxYSize));
 }
 
-//-----------------------------------------------------------------------------**
-// Method:  vtkAxisActor::ComputeTitleLength
-//-----------------------------------------------------------------------------**
-double vtkAxisActor::ComputeTitleLength(const double vtkNotUsed(center)[3])
+//-----------------------------------------------------------------------------
+double vtkAxisActor::ComputeTitleLength()
 {
   double bounds[6];
-  double xsize, ysize;
-  double length;
+  this->TitleProp->GetBounds(bounds);
 
-  if (this->UseTextActor3D)
-  {
-    this->TitleActor3D->SetInput(this->Title);
-    this->TitleProp3D->SetCamera(this->Camera);
-    this->TitleActor3D->GetBounds(bounds);
-  }
-  else
-  {
-    this->TitleVector->SetText(this->Title);
-    this->TitleActor->SetCamera(this->Camera);
-    vtkProperty* newProp = this->NewTitleProperty();
-    this->TitleActor->SetProperty(newProp);
-    newProp->Delete();
-    this->TitleActor->GetMapper()->GetBounds(bounds);
-  }
-  xsize = bounds[1] - bounds[0];
-  ysize = bounds[3] - bounds[2];
-  length = sqrt(xsize * xsize + ysize * ysize);
-
-  return length;
+  double xsize = bounds[1] - bounds[0];
+  double ysize = bounds[3] - bounds[2];
+  return std::sqrt((xsize * xsize) + (ysize * ysize));
 }
 
 //-----------------------------------------------------------------------------**
-void vtkAxisActor::SetLabelScale(const double s)
+void vtkAxisActor::SetLabelScale(double s)
 {
   for (int i = 0; i < this->NumberOfLabelsBuilt; i++)
   {
@@ -2257,44 +1404,34 @@ void vtkAxisActor::SetLabelScale(const double s)
 }
 
 //-----------------------------------------------------------------------------**
-void vtkAxisActor::SetLabelScale(int label, const double s)
+void vtkAxisActor::SetLabelScale(int label, double s)
 {
-  this->LabelActors[label]->SetScale(s);
-  this->LabelProps3D[label]->SetScale(s);
+  this->LabelProps[label]->SetScale(s);
 }
 
 //-----------------------------------------------------------------------------**
-void vtkAxisActor::SetTitleScale(const double s)
+void vtkAxisActor::SetTitleScale(double s)
 {
-  this->TitleActor->SetScale(s);
-  this->TitleProp3D->SetScale(s);
-  this->ExponentActor->SetScale(s);
-  this->ExponentProp3D->SetScale(s);
+  this->TitleProp->SetScale(s);
+  this->SetExponentScale(s);
 }
 
 //-----------------------------------------------------------------------------**
-void vtkAxisActor::SetTitle(const char* t)
+void vtkAxisActor::SetExponentScale(double s)
 {
-  if (this->Title == nullptr && t == nullptr)
+  this->ExponentProp->SetScale(s);
+}
+
+//-----------------------------------------------------------------------------**
+void vtkAxisActor::SetTitle(const std::string& title)
+{
+  if (this->Title != title)
   {
-    return;
+    this->TitleProp->SetInputText(title);
+    this->Title = title;
+    this->TitleTextTime.Modified();
+    this->Modified();
   }
-  if (this->Title && t && (!strcmp(this->Title, t)))
-  {
-    return;
-  }
-  delete[] this->Title;
-  if (t)
-  {
-    this->Title = new char[strlen(t) + 1];
-    strcpy(this->Title, t);
-  }
-  else
-  {
-    this->Title = nullptr;
-  }
-  this->TitleTextTime.Modified();
-  this->Modified();
 }
 
 //-----------------------------------------------------------------------------**
@@ -2323,28 +1460,16 @@ void vtkAxisActor::SetTitleAlignLocation(int location)
 }
 
 //-----------------------------------------------------------------------------**
-void vtkAxisActor::SetExponent(const char* t)
+void vtkAxisActor::SetExponent(const std::string& exponent)
 {
-  if (this->Exponent == nullptr && t == nullptr)
+  if (this->Exponent != exponent)
   {
-    return;
+    this->Exponent = exponent;
+    static const std::string prefix = "e";
+    this->ExponentProp->SetInputText(prefix + exponent);
+    this->ExponentTextTime.Modified();
+    this->Modified();
   }
-  if (this->Exponent && t && (!strcmp(this->Exponent, t)))
-  {
-    return;
-  }
-  delete[] this->Exponent;
-  if (t)
-  {
-    this->Exponent = new char[strlen(t) + 1];
-    strcpy(this->Exponent, t);
-  }
-  else
-  {
-    this->Exponent = nullptr;
-  }
-  this->ExponentTextTime.Modified();
-  this->Modified();
 }
 
 //-----------------------------------------------------------------------------**
@@ -2372,7 +1497,7 @@ void vtkAxisActor::SetExponentLocation(int location)
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::SetAxisLinesProperty(vtkProperty* prop)
 {
   this->SetAxisMainLineProperty(prop);
@@ -2381,13 +1506,13 @@ void vtkAxisActor::SetAxisLinesProperty(vtkProperty* prop)
   this->Modified();
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkProperty* vtkAxisActor::GetAxisLinesProperty()
 {
   return this->AxisLinesActor->GetProperty();
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::SetAxisMainLineProperty(vtkProperty* prop)
 {
   this->AxisLinesActor->SetProperty(prop);
@@ -2399,72 +1524,84 @@ vtkProperty* vtkAxisActor::GetAxisMainLineProperty()
   return this->GetAxisLinesProperty();
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::SetAxisMajorTicksProperty(vtkProperty* prop)
 {
   this->AxisMajorTicksActor->SetProperty(prop);
   this->Modified();
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkProperty* vtkAxisActor::GetAxisMajorTicksProperty()
 {
   return this->AxisMajorTicksActor->GetProperty();
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::SetAxisMinorTicksProperty(vtkProperty* prop)
 {
   this->AxisMinorTicksActor->SetProperty(prop);
   this->Modified();
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkProperty* vtkAxisActor::GetAxisMinorTicksProperty()
 {
   return this->AxisMinorTicksActor->GetProperty();
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::SetGridlinesProperty(vtkProperty* prop)
 {
   this->GridlinesActor->SetProperty(prop);
   this->Modified();
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkProperty* vtkAxisActor::GetGridlinesProperty()
 {
   return this->GridlinesActor->GetProperty();
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::SetInnerGridlinesProperty(vtkProperty* prop)
 {
   this->InnerGridlinesActor->SetProperty(prop);
   this->Modified();
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkProperty* vtkAxisActor::GetInnerGridlinesProperty()
 {
   return this->InnerGridlinesActor->GetProperty();
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::SetGridpolysProperty(vtkProperty* prop)
 {
   this->GridpolysActor->SetProperty(prop);
   this->Modified();
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkProperty* vtkAxisActor::GetGridpolysProperty()
 {
   return this->GridpolysActor->GetProperty();
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+vtkTextProperty* vtkAxisActor::GetTitleTextProperty()
+{
+  return this->TitleTextProperty.Get();
+}
+
+//------------------------------------------------------------------------------
+vtkTextProperty* vtkAxisActor::GetLabelTextProperty()
+{
+  return this->LabelTextProperty.Get();
+}
+
+//------------------------------------------------------------------------------
 vtkProperty* vtkAxisActor::NewTitleProperty()
 {
   vtkProperty* newProp = vtkProperty::New();
@@ -2473,7 +1610,7 @@ vtkProperty* vtkAxisActor::NewTitleProperty()
   return newProp;
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkProperty* vtkAxisActor::NewLabelProperty()
 {
   vtkProperty* newProp = vtkProperty::New();
@@ -2482,13 +1619,31 @@ vtkProperty* vtkAxisActor::NewLabelProperty()
   return newProp;
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+void vtkAxisActor::SetCamera(vtkCamera* camera)
+{
+  if (this->Camera != camera)
+  {
+    this->Camera = camera;
+    this->TitleProp->SetCamera(camera);
+    this->ExponentProp->SetCamera(camera);
+    this->Modified();
+  }
+}
+
+//------------------------------------------------------------------------------
+vtkCamera* vtkAxisActor::GetCamera()
+{
+  return this->Camera;
+}
+
+//------------------------------------------------------------------------------
 double vtkAxisActor::GetDeltaMajor(int axis)
 {
   return (axis >= 0 && axis <= 2) ? this->DeltaMajor[axis] : 0;
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::SetDeltaMajor(int axis, double value)
 {
   if (axis >= 0 && axis <= 2)
@@ -2497,13 +1652,13 @@ void vtkAxisActor::SetDeltaMajor(int axis, double value)
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 double vtkAxisActor::GetMajorStart(int axis)
 {
   return (axis >= 0 && axis <= 2) ? this->MajorStart[axis] : 0;
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::SetMajorStart(int axis, double value)
 {
   if (axis >= 0 && axis <= 2)
@@ -2512,7 +1667,7 @@ void vtkAxisActor::SetMajorStart(int axis, double value)
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 bool vtkAxisActor::BoundsDisplayCoordinateChanged(vtkViewport* viewport)
 {
   double transMinPt[3], transMaxPt[3];
@@ -2540,9 +1695,9 @@ bool vtkAxisActor::BoundsDisplayCoordinateChanged(vtkViewport* viewport)
 
   return false;
 }
-//---------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // endpoint-related methods
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkCoordinate* vtkAxisActor::GetPoint1Coordinate()
 {
   vtkDebugMacro(<< this->GetClassName() << " (" << this << "): returning Point1 Coordinate address "
@@ -2550,7 +1705,7 @@ vtkCoordinate* vtkAxisActor::GetPoint1Coordinate()
   return this->Point1Coordinate;
 }
 
-//---------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkCoordinate* vtkAxisActor::GetPoint2Coordinate()
 {
   vtkDebugMacro(<< this->GetClassName() << " (" << this << "): returning Point2 Coordinate address "
@@ -2558,34 +1713,34 @@ vtkCoordinate* vtkAxisActor::GetPoint2Coordinate()
   return this->Point2Coordinate;
 }
 
-//---------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::SetPoint1(double x, double y, double z)
 {
   this->Point1Coordinate->SetValue(x, y, z);
 }
 
-//---------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::SetPoint2(double x, double y, double z)
 {
   this->Point2Coordinate->SetValue(x, y, z);
 }
 
-//---------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 double* vtkAxisActor::GetPoint1()
 {
   return this->Point1Coordinate->GetValue();
 }
 
-//---------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 double* vtkAxisActor::GetPoint2()
 {
   return this->Point2Coordinate->GetValue();
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // Creates points for ticks (minor, major, gridlines) in correct position
 // for a generic axis.
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 bool vtkAxisActor::BuildTickPoints(double p1[3], double p2[3], bool force)
 {
   // Prevent any unwanted computation
@@ -2674,7 +1829,7 @@ bool vtkAxisActor::BuildTickPoints(double p1[3], double p2[3], bool force)
   return true;
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::BuildAxisGridLines(double p1[3], double p2[3], double localCoordSys[3][3])
 {
   int uIndex = 0, vIndex = 0;
@@ -2731,6 +1886,12 @@ void vtkAxisActor::BuildAxisGridLines(double p1[3], double p2[3], double localCo
   double axisLength = vtkMath::Norm(deltaVector);
   double rangeScale = axisLength / (this->Range[1] - this->Range[0]);
 
+  // - Test that the delta is numerically different from zero
+  if (fabs(this->DeltaMajor[this->AxisType]) <= FLT_EPSILON)
+  {
+    return;
+  }
+
   // - Reduce the deltaVector to correspond to a major tick step
   vtkMath::Normalize(deltaVector);
   for (int i = 0; i < 3; i++)
@@ -2758,6 +1919,14 @@ void vtkAxisActor::BuildAxisGridLines(double p1[3], double p2[3], double localCo
 
   // - Insert Gridlines points along the axis using the DeltaMajor vector
   double nbIterationAsDouble = (axisLength - axisShift) / vtkMath::Norm(deltaVector);
+
+  // - Test number of points for numerical difficulties
+  if (!std::isfinite(nbIterationAsDouble) || (nbIterationAsDouble <= 0) ||
+    (nbIterationAsDouble > VTK_MAX_TICKS))
+  {
+    return;
+  }
+
   int nbIteration = vtkMath::Floor(nbIterationAsDouble + 2 * FLT_EPSILON) + 1;
   nbIteration = (nbIteration < VTK_MAX_TICKS) ? nbIteration : VTK_MAX_TICKS;
   for (int nbTicks = 0; nbTicks < nbIteration; nbTicks++)
@@ -2766,7 +1935,7 @@ void vtkAxisActor::BuildAxisGridLines(double p1[3], double p2[3], double localCo
     this->GridlinePts->InsertNextPoint(gridPointClosest);
     this->GridlinePts->InsertNextPoint(gridPointU);
 
-    // Farest U
+    // Farthest U
     this->GridlinePts->InsertNextPoint(gridPointFarest);
     this->GridlinePts->InsertNextPoint(gridPointU);
 
@@ -2774,7 +1943,7 @@ void vtkAxisActor::BuildAxisGridLines(double p1[3], double p2[3], double localCo
     this->GridlinePts->InsertNextPoint(gridPointClosest);
     this->GridlinePts->InsertNextPoint(gridPointV);
 
-    // Farest V
+    // Farthest V
     this->GridlinePts->InsertNextPoint(gridPointFarest);
     this->GridlinePts->InsertNextPoint(gridPointV);
 
@@ -2814,7 +1983,7 @@ void vtkAxisActor::BuildAxisGridLines(double p1[3], double p2[3], double localCo
 
       // u lines
       u = this->MajorStart[uIndex];
-      while (u <= p2[uIndex] && this->DeltaMajor[uIndex] > 0)
+      while (u <= p2[uIndex] && this->DeltaMajor[uIndex] > FLT_EPSILON)
       {
         innerGridPointClosestU[uIndex] = innerGridPointFarestU[uIndex] = u;
         this->InnerGridlinePts->InsertNextPoint(innerGridPointClosestU);
@@ -2824,7 +1993,7 @@ void vtkAxisActor::BuildAxisGridLines(double p1[3], double p2[3], double localCo
 
       // v lines
       v = this->MajorStart[vIndex];
-      while (v <= p2[vIndex] && this->DeltaMajor[vIndex] > 0)
+      while (v <= p2[vIndex] && this->DeltaMajor[vIndex] > FLT_EPSILON)
       {
         innerGridPointClosestV[vIndex] = innerGridPointFarestV[vIndex] = v;
         this->InnerGridlinePts->InsertNextPoint(innerGridPointClosestV);
@@ -2837,7 +2006,7 @@ void vtkAxisActor::BuildAxisGridLines(double p1[3], double p2[3], double localCo
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::BuildMinorTicks(double p1[3], double p2[3], double localCoordSys[3][3])
 {
   // (p2 - p1) vector
@@ -2904,6 +2073,13 @@ void vtkAxisActor::BuildMinorTicks(double p1[3], double p2[3], double localCoord
     return;
   }
 
+  // - Estimate number of steps to catch numerical difficulties
+  double nTicks = axisLength / deltaMinor;
+  if (!std::isfinite(nTicks) || (nTicks <= 0) || (nTicks > VTK_MAX_TICKS))
+  {
+    return;
+  }
+
   // - Insert tick points along the axis using the deltaVector
 
   // step is a multiple of deltaMajor value
@@ -2945,7 +2121,7 @@ void vtkAxisActor::BuildMinorTicks(double p1[3], double p2[3], double localCoord
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::BuildMajorTicks(double p1[3], double p2[3], double localCoordSys[3][3])
 {
   double deltaVector[3];
@@ -3019,6 +2195,13 @@ void vtkAxisActor::BuildMajorTicks(double p1[3], double p2[3], double localCoord
     return;
   }
 
+  // - Estimate number of steps to catch numerical difficulties
+  double nTicks = axisLength / deltaMajor;
+  if (!std::isfinite(nTicks) || (nTicks <= 0) || (nTicks > VTK_MAX_TICKS))
+  {
+    return;
+  }
+
   // - Insert tick points along the axis using the deltaVector
 
   // step is a multiple of deltaMajor value
@@ -3057,7 +2240,7 @@ void vtkAxisActor::BuildMajorTicks(double p1[3], double p2[3], double localCoord
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::BuildMinorTicksLog(double p1[3], double p2[3], double localCoordSys[3][3])
 {
   double deltaVector[3];
@@ -3123,6 +2306,12 @@ void vtkAxisActor::BuildMinorTicksLog(double p1[3], double p2[3], double localCo
   double log10Range0 = log10(this->Range[0]), log10Range1 = log10(this->Range[1]);
   double lowBound = pow(base, floor(log10Range0)), upBound = pow(base, ceil(log10Range1));
 
+  // log scale can't work with lowBound <= 0
+  if (!std::isfinite(lowBound) || (lowBound <= 0))
+  {
+    return;
+  }
+
   double minorTickPoint[3], minorTickOnAxis[3];
 
   // step match the minor tick log step, varying between each major tick.
@@ -3177,7 +2366,7 @@ void vtkAxisActor::BuildMinorTicksLog(double p1[3], double p2[3], double localCo
   }
 }
 
-//-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkAxisActor::BuildMajorTicksLog(double p1[3], double p2[3], double localCoordSys[3][3])
 {
   double deltaVector[3];
@@ -3249,6 +2438,12 @@ void vtkAxisActor::BuildMajorTicksLog(double p1[3], double p2[3], double localCo
   double log10Range0 = log10(this->Range[0]), log10Range1 = log10(this->Range[1]);
   double lowBound = pow(base, (int)floor(log10Range0)), upBound = pow(base, (int)ceil(log10Range1));
 
+  // log scale can't work with lowBound <= 0
+  if (!std::isfinite(lowBound) || (lowBound <= 0))
+  {
+    return;
+  }
+
   double majorTickOnAxis[3], majorTickPoint[3];
   for (indexTickRangeValue = lowBound; indexTickRangeValue <= upBound; indexTickRangeValue *= base)
   {
@@ -3288,57 +2483,137 @@ void vtkAxisActor::BuildMajorTicksLog(double p1[3], double p2[3], double localCo
   }
 }
 
-//-----------------------------------------------------------------------------
-void vtkAxisActor::RotateActor2DFromAxisProjection(vtkTextActor* pActor2D)
+//------------------------------------------------------------------------------
+vtkProp* vtkAxisActor::GetTitleActorInternal()
 {
-  double* p1 = this->Point1Coordinate->GetValue();
-  double* p2 = this->Point2Coordinate->GetValue();
-
-  vtkMatrix4x4* matModelView = this->Camera->GetModelViewTransformMatrix();
-  double near = this->Camera->GetClippingRange()[0];
-
-  // Need view coordinate points.
-  double viewPt1[4] = { p1[0], p1[1], p1[2], 1.0 };
-  double viewPt2[4] = { p2[0], p2[1], p2[2], 1.0 };
-
-  matModelView->MultiplyPoint(viewPt1, viewPt1);
-  matModelView->MultiplyPoint(viewPt2, viewPt2);
-
-  if (viewPt1[2] == 0.0 || viewPt2[2] == 0.0)
-  {
-    return;
-  }
-
-  double p1Pjt[3] = { -near * viewPt1[0] / viewPt1[2], -near * viewPt1[1] / viewPt1[2], -near };
-  double p2Pjt[3] = { -near * viewPt2[0] / viewPt2[2], -near * viewPt2[1] / viewPt2[2], -near };
-
-  double axisOnScreen[2] = { p2Pjt[0] - p1Pjt[0], p2Pjt[1] - p1Pjt[1] };
-  double x[2] = { 1.0, 0.0 }, y[2] = { 0.0, 1.0 };
-
-  double dotProd = vtkMath::Dot2D(x, axisOnScreen);
-
-  double orient = 0.0;
-  if (vtkMath::Norm2D(axisOnScreen) == 0.0)
-  {
-    pActor2D->SetOrientation(0.0);
-    return;
-  }
-  else
-  {
-    orient = acos(dotProd / vtkMath::Norm2D(axisOnScreen));
-    orient = vtkMath::DegreesFromRadians(orient);
-  }
-
-  // adjust angle
-  if (vtkMath::Dot2D(y, axisOnScreen) < 0.0)
-  {
-    orient *= -1.0;
-  }
-
-  if (vtkMath::Dot2D(x, axisOnScreen) < 0.0)
-  {
-    orient += 180.0;
-  }
-
-  pActor2D->SetOrientation(orient);
+  return this->TitleProp->GetActiveProp(this->Use2DMode, !this->UseTextActor3D);
 }
+
+//------------------------------------------------------------------------------
+vtkProp* vtkAxisActor::GetLabelActorInternal(int index)
+{
+  vtkTextActorInterfaceInternal* currentLabel = this->LabelProps[index].get();
+  return currentLabel->GetActiveProp(this->Use2DMode, !this->UseTextActor3D);
+}
+
+//------------------------------------------------------------------------------
+vtkProp* vtkAxisActor::GetExponentActorInternal()
+{
+  return this->ExponentProp->GetActiveProp(this->Use2DMode, !this->UseTextActor3D);
+}
+
+//------------------------------------------------------------------------------
+void vtkAxisActor::UpdateLabelActorProperty(int idx)
+{
+  vtkTextActorInterfaceInternal* labelProp = this->LabelProps[idx].get();
+  labelProp->SetTextProperty(this->LabelTextProperty, this->GetProperty());
+}
+
+//------------------------------------------------------------------------------
+void vtkAxisActor::UpdateTitleActorProperty()
+{
+  this->TitleProp->SetTextProperty(this->TitleTextProperty, this->GetProperty());
+}
+
+//------------------------------------------------------------------------------
+void vtkAxisActor::UpdateExponentActorProperty()
+{
+  this->ExponentProp->SetTextProperty(this->TitleTextProperty, this->GetProperty());
+}
+
+//------------------------------------------------------------------------------
+void vtkAxisActor::GetTranslucentProps(vtkPropCollection* collection)
+{
+  if (this->AxisHasZeroLength)
+  {
+    return;
+  }
+
+  if (this->DrawGridlines)
+  {
+    collection->AddItem(this->GridlinesActor);
+    if (this->DrawGridlinesOnly)
+    {
+      return;
+    }
+  }
+  if (this->DrawInnerGridlines)
+  {
+    collection->AddItem(this->InnerGridlinesActor);
+  }
+  if (this->DrawGridpolys)
+  {
+    collection->AddItem(this->GridpolysActor);
+  }
+
+  if (!this->Title.empty() && this->TitleVisibility)
+  {
+    collection->AddItem(this->GetTitleActorInternal());
+  }
+  if (this->LabelVisibility)
+  {
+    for (int i = 0; i < this->NumberOfLabelsBuilt; i++)
+    {
+      collection->AddItem(this->GetLabelActorInternal(i));
+    }
+    if (this->ExponentVisibility)
+    {
+      collection->AddItem(this->GetExponentActorInternal());
+    }
+  }
+
+  collection->AddItem(this->AxisLinesActor);
+  if (this->TickVisibility)
+  {
+    collection->AddItem(this->AxisMajorTicksActor);
+    collection->AddItem(this->AxisMinorTicksActor);
+  }
+}
+
+//------------------------------------------------------------------------------
+vtkProp3DAxisFollower* vtkAxisActor::GetLabelFollower3D(int index)
+{
+  if (static_cast<int>(this->LabelProps.size()) > index)
+  {
+    return this->LabelProps[index]->GetFollower3D();
+  }
+
+  return nullptr;
+}
+
+//------------------------------------------------------------------------------
+vtkAxisFollower* vtkAxisActor::GetLabelFollower(int index)
+{
+  if (static_cast<int>(this->LabelProps.size()) > index)
+  {
+    return this->LabelProps[index]->GetFollower();
+  }
+
+  return nullptr;
+}
+
+//------------------------------------------------------------------------------
+vtkAxisFollower* vtkAxisActor::GetTitleActor()
+{
+  return this->TitleProp->GetFollower();
+}
+
+//------------------------------------------------------------------------------
+vtkAxisFollower* vtkAxisActor::GetExponentActor()
+{
+  return this->ExponentProp->GetFollower();
+}
+
+//------------------------------------------------------------------------------
+vtkProp3DAxisFollower* vtkAxisActor::GetTitleProp3D()
+{
+  return this->TitleProp->GetFollower3D();
+}
+
+//------------------------------------------------------------------------------
+vtkProp3DAxisFollower* vtkAxisActor::GetExponentProp3D()
+{
+  return this->ExponentProp->GetFollower3D();
+}
+
+VTK_ABI_NAMESPACE_END

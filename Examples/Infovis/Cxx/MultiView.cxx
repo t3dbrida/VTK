@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    MultiView.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 //
 // This example...
 //
@@ -31,11 +19,12 @@
 
 #include <vector>
 
+#include <iostream>
+
 class ViewUpdater : public vtkCommand
 {
 public:
-  static ViewUpdater* New()
-  { return new ViewUpdater; }
+  static ViewUpdater* New() { return new ViewUpdater; }
 
   void AddView(vtkView* view)
   {
@@ -50,6 +39,7 @@ public:
       this->Views[i]->Update();
     }
   }
+
 private:
   ViewUpdater() = default;
   ~ViewUpdater() override = default;
@@ -87,8 +77,7 @@ int main(int, char*[])
     return EXIT_FAILURE;
   }
   vtkGraphLayoutView* view = vtkGraphLayoutView::New();
-  vtkDataRepresentation* rep =
-    view->SetRepresentationFromInput(tree);
+  vtkDataRepresentation* rep = view->SetRepresentationFromInput(tree);
   vtkViewTheme* theme = vtkViewTheme::CreateMellowTheme();
   view->ApplyViewTheme(theme);
   view->SetVertexColorArrayName("VertexDegree");
@@ -97,8 +86,7 @@ int main(int, char*[])
   view->SetVertexLabelVisibility(true);
 
   vtkGraphLayoutView* view2 = vtkGraphLayoutView::New();
-  vtkDataRepresentation* rep2 =
-    view2->SetRepresentationFromInput(tree);
+  vtkDataRepresentation* rep2 = view2->SetRepresentationFromInput(tree);
   view2->SetVertexLabelArrayName("Label");
   view2->SetVertexLabelVisibility(true);
 
@@ -127,4 +115,3 @@ int main(int, char*[])
 
   return EXIT_SUCCESS;
 }
-

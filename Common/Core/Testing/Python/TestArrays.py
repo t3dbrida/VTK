@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
-import vtk
-from vtk.util.misc import vtkGetDataRoot
+from vtkmodules.util.misc import vtkGetDataRoot
+import vtkmodules.vtkCommonCore
 VTK_DATA_ROOT = vtkGetDataRoot()
 
 arrayType = ['Bit', 'Char', 'Double', 'Float', 'Int', 'Long', 'Short',\
@@ -10,8 +10,8 @@ arrayType = ['Bit', 'Char', 'Double', 'Float', 'Int', 'Long', 'Short',\
 for array in arrayType:
     print(array + ' array')
     vtkClass = 'vtk' + array + 'Array'
-    a = getattr(vtk, vtkClass)()
-    a.Allocate(1,1)
+    a = getattr(vtkmodules.vtkCommonCore, vtkClass)()
+    a.ReserveValues(1)
     a.SetNumberOfComponents(3)
     a.SetNumberOfTuples(4)
 
@@ -30,8 +30,8 @@ for array in arrayType:
             k += 1
 
     # DeepCopy
-    b = getattr(vtk, vtkClass)()
-    b.Allocate(1000, 100)
+    b = getattr(vtkmodules.vtkCommonCore, vtkClass)()
+    b.ReserveValues(1000)
     # force a resize
     b.InsertComponent(2001, 0, 1)
     b.DeepCopy(a)
@@ -50,7 +50,7 @@ for array in arrayType:
             k += 1
 
     b.InsertComponent(2001, 0, 1)
-    b.Resize(3000)
+    b.ReserveTuples(3000)
 
     a.Squeeze()
     a.Initialize()

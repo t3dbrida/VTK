@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkPTSReader.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkPTSReader
  * @brief   Read ASCII PTS Files.
@@ -19,32 +7,56 @@
  * vtkPTSReader reads either a text file of
  *  points. The first line is the number of points. Point information is
  *  either x y z intensity or x y z intensity r g b
-*/
+ *
+ * This reader supports reading streams.
+ */
 
 #ifndef vtkPTSReader_h
 #define vtkPTSReader_h
 
+#include "vtkBoundingBox.h"      // For Bounding Box Data Member
 #include "vtkIOGeometryModule.h" // For export macro
 #include "vtkPolyDataAlgorithm.h"
-#include "vtkBoundingBox.h" // For Bounding Box Data Member
+#include "vtkSmartPointer.h" // for vtkSmartPointer
 
-
+VTK_ABI_NAMESPACE_BEGIN
+class vtkResourceStream;
 class VTKIOGEOMETRY_EXPORT vtkPTSReader : public vtkPolyDataAlgorithm
 {
 public:
-  static vtkPTSReader *New();
-  vtkTypeMacro(vtkPTSReader,vtkPolyDataAlgorithm);
+  static vtkPTSReader* New();
+  vtkTypeMacro(vtkPTSReader, vtkPolyDataAlgorithm);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
-  //@{
+  ///@{
   /**
    * Specify file name.
    */
-  void SetFileName(const char *filename);
-  vtkGetStringMacro(FileName);
-  //@}
+  void SetFileName(VTK_FILEPATH const char* filename);
+  vtkGetFilePathMacro(FileName);
+  ///@}
 
-  //@{
+  ///@{
+  /**
+   * Specify stream to read from
+   * When both `Stream` and `Filename` are set, stream is used.
+   */
+  void SetStream(vtkResourceStream* stream);
+  vtkResourceStream* GetStream();
+  ///@}
+
+  ///@{
+  /**
+   * Return true if, after a quick check of file header, it looks like the provided file or stream
+   * can be read. Return false if it is sure it cannot be read. The stream version may move the
+   * stream cursor. This only checks that the first line of this file contains either an integer
+   * number (eg: "234") or three floats separated by spaces (eg: "1846.8  2725.1  61.6").
+   */
+  static bool CanReadFile(VTK_FILEPATH const char* name);
+  static bool CanReadFile(vtkResourceStream* stream);
+  ///@}
+
+  ///@{
   /**
    * Boolean value indicates whether or not to limit points read to a specified
    * (ReadBounds) region.
@@ -52,26 +64,26 @@ public:
   vtkBooleanMacro(LimitReadToBounds, bool);
   vtkSetMacro(LimitReadToBounds, bool);
   vtkGetMacro(LimitReadToBounds, bool);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Bounds to use if LimitReadToBounds is On
    */
   vtkSetVector6Macro(ReadBounds, double);
   vtkGetVector6Macro(ReadBounds, double);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * The output type defaults to float, but can instead be double.
    */
   vtkBooleanMacro(OutputDataTypeIsDouble, bool);
   vtkSetMacro(OutputDataTypeIsDouble, bool);
   vtkGetMacro(OutputDataTypeIsDouble, bool);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Boolean value indicates whether or not to limit number of points read
    * based on MaxNumbeOfPoints.
@@ -79,18 +91,18 @@ public:
   vtkBooleanMacro(LimitToMaxNumberOfPoints, bool);
   vtkSetMacro(LimitToMaxNumberOfPoints, bool);
   vtkGetMacro(LimitToMaxNumberOfPoints, bool);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * The maximum number of points to load if LimitToMaxNumberOfPoints is on/true.
    * Sets a temporary onRatio.
    */
-  vtkSetClampMacro(MaxNumberOfPoints,vtkIdType,1,VTK_INT_MAX);
-  vtkGetMacro(MaxNumberOfPoints,vtkIdType);
-  //@}
+  vtkSetClampMacro(MaxNumberOfPoints, vtkIdType, 1, VTK_INT_MAX);
+  vtkGetMacro(MaxNumberOfPoints, vtkIdType);
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Boolean value indicates whether or not to create cells
    * for this dataset. Otherwise only points and scalars
@@ -99,9 +111,9 @@ public:
   vtkBooleanMacro(CreateCells, bool);
   vtkSetMacro(CreateCells, bool);
   vtkGetMacro(CreateCells, bool);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Boolean value indicates when color values are present
    * if luminance should be read in as well
@@ -110,29 +122,37 @@ public:
   vtkBooleanMacro(IncludeColorAndLuminance, bool);
   vtkSetMacro(IncludeColorAndLuminance, bool);
   vtkGetMacro(IncludeColorAndLuminance, bool);
-  //@}
+  ///@}
+
+  /**
+   * Overridden to take into account mtime from the internal vtkResourceStream.
+   */
+  vtkMTimeType GetMTime() override;
 
 protected:
   vtkPTSReader();
   ~vtkPTSReader() override;
 
-  int RequestInformation(vtkInformation *, vtkInformationVector **, vtkInformationVector *) override;
-  int RequestData(vtkInformation *, vtkInformationVector **, vtkInformationVector *) override;
+  int RequestInformation(vtkInformation*, vtkInformationVector**, vtkInformationVector*) override;
+  int RequestData(vtkInformation*, vtkInformationVector**, vtkInformationVector*) override;
 
-  char *FileName;
-  bool OutputDataTypeIsDouble;
-
-  bool LimitReadToBounds;
+  char* FileName = nullptr;
+  bool OutputDataTypeIsDouble = false;
+  bool LimitReadToBounds = false;
   double ReadBounds[6];
+  bool LimitToMaxNumberOfPoints = false;
+  vtkIdType MaxNumberOfPoints = 1000000;
+  bool CreateCells = true;
+  bool IncludeColorAndLuminance = true;
+
   vtkBoundingBox ReadBBox;
-  bool LimitToMaxNumberOfPoints;
-  vtkIdType MaxNumberOfPoints;
-  bool CreateCells;
-  bool IncludeColorAndLuminance;
 
 private:
   vtkPTSReader(const vtkPTSReader&) = delete;
   void operator=(const vtkPTSReader&) = delete;
+
+  vtkSmartPointer<vtkResourceStream> Stream;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

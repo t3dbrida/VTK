@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkOpenGLImageSliceMapper.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkOpenGLImageSliceMapper
  * @brief   OpenGL mapper for image slice display
@@ -21,37 +9,44 @@
  * @par Thanks:
  * Thanks to David Gobbi at the Seaman Family MR Centre and Dept. of Clinical
  * Neurosciences, Foothills Medical Centre, Calgary, for providing this class.
-*/
+ */
 
 #ifndef vtkOpenGLImageSliceMapper_h
 #define vtkOpenGLImageSliceMapper_h
 
-#include "vtkRenderingOpenGL2Module.h" // For export macro
 #include "vtkImageSliceMapper.h"
+#include "vtkRenderingOpenGL2Module.h" // For export macro
+#include "vtkWrappingHints.h"          // For VTK_MARSHALAUTO
 
-class vtkRenderWindow;
-class vtkOpenGLRenderWindow;
+VTK_ABI_NAMESPACE_BEGIN
+// Forward declarations
 class vtkActor;
+class vtkHardwareSelector;
+class vtkOpenGLHelper;
+class vtkOverrideAttribute;
+class vtkRenderWindow;
 
-class VTKRENDERINGOPENGL2_EXPORT vtkOpenGLImageSliceMapper :
-  public vtkImageSliceMapper
+class VTKRENDERINGOPENGL2_EXPORT VTK_MARSHALAUTO vtkOpenGLImageSliceMapper
+  : public vtkImageSliceMapper
 {
 public:
-  static vtkOpenGLImageSliceMapper *New();
+  static vtkOpenGLImageSliceMapper* New();
+  VTK_NEWINSTANCE
+  static vtkOverrideAttribute* CreateOverrideAttributes();
   vtkTypeMacro(vtkOpenGLImageSliceMapper, vtkImageSliceMapper);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
   /**
    * Implement base class method.  Perform the render.
    */
-  void Render(vtkRenderer *ren, vtkImageSlice *prop) override;
+  void Render(vtkRenderer* ren, vtkImageSlice* prop) override;
 
   /**
    * Release any graphics resources that are being consumed by this
    * mapper, the image texture in particular. Using the same texture
    * in multiple render windows is NOT currently supported.
    */
-  void ReleaseGraphicsResources(vtkWindow *) override;
+  void ReleaseGraphicsResources(vtkWindow*) override;
 
 protected:
   vtkOpenGLImageSliceMapper();
@@ -62,40 +57,33 @@ protected:
    * as many times as necessary if the texture must be broken up into
    * pieces that are small enough for the GPU to render
    */
-  void RecursiveRenderTexturedPolygon(
-    vtkRenderer *ren, vtkImageProperty *property,
-    vtkImageData *image, int extent[6], bool recursive);
+  void RecursiveRenderTexturedPolygon(vtkRenderer* ren, vtkImageProperty* property,
+    vtkImageData* image, int extent[6], bool recursive);
 
   /**
    * Non-recursive internal method, generate a single texture
    * and its corresponding geometry.
    */
-  void RenderTexturedPolygon(
-    vtkRenderer *ren, vtkImageProperty *property,
-    vtkImageData *image, int extent[6], bool recursive);
+  void RenderTexturedPolygon(vtkRenderer* ren, vtkImageProperty* property, vtkImageData* image,
+    int extent[6], bool recursive);
 
   /**
    * Basic polygon rendering, if the textured parameter is set the tcoords
    * are included, otherwise they aren't.
    */
-  void RenderPolygon(vtkActor *actor, vtkPoints *points, const int extent[6], vtkRenderer *ren);
+  void RenderPolygon(vtkActor* actor, vtkPoints* points, const int extent[6], vtkRenderer* ren);
 
   /**
    * Render the background, which means rendering everything within the
    * plane of the image except for the polygon that displays the image data.
    */
-  void RenderBackground(
-    vtkActor *actor, vtkPoints *points, const int extent[6], vtkRenderer *ren);
+  void RenderBackground(vtkActor* actor, vtkPoints* points, const int extent[6], vtkRenderer* ren);
 
   /**
-   * Bind the fragment program, and generate it first if necessary.
+   * Render for selection.  This method uses a special shader program
+   * to encode the cell IDs into the texture that is rendered.
    */
-  void BindFragmentProgram(vtkRenderer *ren, vtkImageProperty *property);
-
-  /**
-   * Build the fragment program to use with the texture.
-   */
-  vtkStdString BuildFragmentProgram(vtkImageProperty *property);
+  void RenderForSelection(vtkRenderer* ren, vtkImageSlice* prop, vtkHardwareSelector* selector);
 
   /**
    * Given an extent that describes a slice (it must have unit thickness
@@ -105,39 +93,32 @@ protected:
    * requires).
    */
   void ComputeTextureSize(
-    const int extent[6], int &xdim, int &ydim,
-    int imageSize[2], int textureSize[2]) override;
+    const int extent[6], int& xdim, int& ydim, int imageSize[2], int textureSize[2]) override;
 
   /**
    * Test whether a given texture size is supported.  This includes a
    * check of whether the texture will fit into texture memory.
    */
-  bool TextureSizeOK(const int size[2], vtkRenderer *ren);
+  bool TextureSizeOK(const int size[2], vtkRenderer* ren);
 
-  /**
-   * Check various OpenGL capabilities
-   */
-  void CheckOpenGLCapabilities(vtkOpenGLRenderWindow *renWin);
-
-  vtkRenderWindow *RenderWindow; // RenderWindow used for previous render
+  vtkRenderWindow* RenderWindow; // RenderWindow used for previous render
   int TextureSize[2];
   int TextureBytesPerPixel;
   int LastOrientation;
   int LastSliceNumber;
 
-  vtkActor *PolyDataActor;
-  vtkActor *BackingPolyDataActor;
-  vtkActor *BackgroundPolyDataActor;
+  vtkActor* PolyDataActor;
+  vtkActor* BackingPolyDataActor;
+  vtkActor* BackgroundPolyDataActor;
+  vtkOpenGLHelper* SelectionHelper;
 
   vtkTimeStamp LoadTime;
-  int LoadCount;
-
-  bool UseClampToEdge;
-  bool UseFragmentProgram;
 
 private:
   vtkOpenGLImageSliceMapper(const vtkOpenGLImageSliceMapper&) = delete;
   void operator=(const vtkOpenGLImageSliceMapper&) = delete;
 };
-
+#define vtkOpenGLImageSliceMapper_OVERRIDE_ATTRIBUTES                                              \
+  vtkOpenGLImageSliceMapper::CreateOverrideAttributes()
+VTK_ABI_NAMESPACE_END
 #endif

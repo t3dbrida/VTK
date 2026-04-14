@@ -1,23 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+# SPDX-FileCopyrightText: Copyright 2012 Kitware, Inc.
+# SPDX-License-Identifier: BSD-3-Clause
 # - Find FontConfig library
 # Find the FontConfig includes and library
 # This module defines
 #  FONTCONFIG_INCLUDE_DIR, where to find fontconfig.h
 #  FONTCONFIG_LIBRARIES, libraries to link against to use the FontConfig API.
 #  FONTCONFIG_FOUND, If false, do not try to use FontConfig.
-
-#=============================================================================
-# Copyright 2012 Kitware, Inc.
-#
-# Distributed under the OSI-approved BSD License (the "License");
-# see accompanying file Copyright.txt for details.
-#
-# This software is distributed WITHOUT ANY WARRANTY; without even the
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-# See the License for more information.
-#=============================================================================
-# (To distribute this file outside of VTK, substitute the full
-#  License text for the above reference.)
-
 find_path(FONTCONFIG_INCLUDE_DIR fontconfig/fontconfig.h)
 
 find_library(FONTCONFIG_LIBRARY NAMES fontconfig)
@@ -29,6 +18,12 @@ find_package_handle_standard_args(FontConfig DEFAULT_MSG
   FONTCONFIG_LIBRARY  FONTCONFIG_INCLUDE_DIR)
 
 if(FONTCONFIG_FOUND)
+  if (NOT TARGET FontConfig::FontConfig)
+    add_library(FontConfig::FontConfig UNKNOWN IMPORTED)
+    set_target_properties(FontConfig::FontConfig PROPERTIES
+      IMPORTED_LOCATION "${FONTCONFIG_LIBRARY}"
+      INTERFACE_INCLUDE_DIRECTORIES "${FONTCONFIG_INCLUDE_DIR}")
+  endif ()
   set( FONTCONFIG_LIBRARIES ${FONTCONFIG_LIBRARY} )
 endif()
 

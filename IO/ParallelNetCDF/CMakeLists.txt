@@ -1,8 +1,18 @@
-include(vtkMPI)
+set(classes
+  vtkPNetCDFPOPReader
+  vtkPSLACReader)
 
-set(Module_SRCS
-  vtkPNetCDFPOPReader.cxx
-  )
+vtk_object_factory_declare(
+  BASE      vtkSLACReader
+  OVERRIDE  vtkPSLACReader)
 
-vtk_module_library(vtkIOParallelNetCDF ${Module_SRCS})
-vtk_mpi_link(vtkIOParallelNetCDF)
+vtk_object_factory_configure(
+  SOURCE_FILE vtk_object_factory_source
+  HEADER_FILE vtk_object_factory_header
+  EXPORT_MACRO "VTKIOPARALLELNETCDF_EXPORT")
+
+vtk_module_add_module(VTK::IOParallelNetCDF
+  CLASSES ${classes}
+  SOURCES ${vtk_object_factory_source}
+  PRIVATE_HEADERS ${vtk_object_factory_header})
+vtk_add_test_mangling(VTK::IOParallelNetCDF)

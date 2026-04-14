@@ -9,18 +9,20 @@ or
 """
 
 import sys
-import vtk
-from vtk.test import Testing
+from vtkmodules.vtkCommonCore import (
+    VTK_INT,
+    vtkBitArray,
+    vtkLongArray,
+)
+from vtkmodules.test import Testing
 try:
     import numpy
 except ImportError:
-    print("Numpy (http://numpy.scipy.org) not found.")
     print("This test requires numpy!")
-    from vtk.test import Testing
     Testing.skip()
 
-from vtk.util.numpy_support import numpy_to_vtk, vtk_to_numpy
-import vtk.numpy_interface.dataset_adapter as dsa
+from vtkmodules.util.numpy_support import numpy_to_vtk,vtk_to_numpy
+import vtkmodules.numpy_interface.dataset_adapter as dsa
 
 
 class TestNumpySupport(Testing.vtkTest):
@@ -49,10 +51,6 @@ class TestNumpySupport(Testing.vtkTest):
 
         # Test the different types of arrays.
         t_z.append(numpy.array([-128, 0, 127], numpy.int8))
-
-        # FIXME: character arrays are a problem since there is no
-        # unique mapping to a VTK data type and back.
-        #t_z.append(numpy.array([-128, 0, 127], numpy.character))
         t_z.append(numpy.array([-32768, 0, 32767], numpy.int16))
         t_z.append(numpy.array([-2147483648, 0, 2147483647], numpy.int32))
         t_z.append(numpy.array([0, 255], numpy.uint8))
@@ -85,6 +83,16 @@ class TestNumpySupport(Testing.vtkTest):
                 self.assertEqual(len(z1.shape), 1)
             self.assertEqual(sum(numpy.ravel(z) - numpy.ravel(z1)), 0)
 
+        vtk_arr = vtkBitArray()
+        bits = [0, 1, 0, 1, 1, 1, 0, 0, 1, 0]
+        for bit in bits:
+            vtk_arr.InsertNextValue(bit)
+
+        res = vtk_to_numpy(vtk_arr)
+        self._check_arrays(res, vtk_arr)
+        vtk_arr = numpy_to_vtk(res)
+        self._check_arrays(res, vtk_arr)
+
     def testNumpyView(self):
         "Test if the numpy and VTK array share the same data."
         # ----------------------------------------
@@ -101,19 +109,11 @@ class TestNumpySupport(Testing.vtkTest):
         # ----------------------------------------
         # Test if the array is copied or not.
         a = numpy.array([[1, 2, 3],[4, 5, 6]], 'd')
-        vtk_arr = numpy_to_vtk(a, 0, vtk.VTK_INT)
+        vtk_arr = numpy_to_vtk(a, 0, VTK_INT)
         # Change the numpy array and see if the changes are
         # reflected in the VTK array.
         a[0] = [10.0, 20.0, 30.0]
         self.assertEqual(vtk_arr.GetTuple3(0), (1., 2., 3.))
-
-    def testExceptions(self):
-        "Test if the right assertion errors are raised."
-        # Test if bit arrays raise an exception.
-        vtk_arr = vtk.vtkBitArray()
-        vtk_arr.InsertNextValue(0)
-        vtk_arr.InsertNextValue(1)
-        self.assertRaises(AssertionError, vtk_to_numpy, vtk_arr)
 
     def testNonContiguousArray(self):
         "Test if the non contiguous array are supported"
@@ -139,7 +139,7 @@ class TestNumpySupport(Testing.vtkTest):
 
     def testNumpyReduce(self):
         "Test that reducing methods return scalars."
-        vtk_array = vtk.vtkLongArray()
+        vtk_array = vtkLongArray()
         for i in range(0, 10):
             vtk_array.InsertNextValue(i)
 
@@ -154,4 +154,3 @@ class TestNumpySupport(Testing.vtkTest):
 
 if __name__ == "__main__":
     Testing.main([(TestNumpySupport, 'test')])
-

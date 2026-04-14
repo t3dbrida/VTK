@@ -1,246 +1,387 @@
-/*=========================================================================
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
-  Program:   Visualization Toolkit
-  Module:    vtkUniformGridAMR.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
 #include "vtkOverlappingAMR.h"
-#include "vtkUniformGridAMRDataIterator.h"
-#include "vtkObjectFactory.h"
-#include "vtkAMRInformation.h"
-#include "vtkUnsignedCharArray.h"
-#include "vtkUniformGrid.h"
-#include "vtkInformationIdTypeKey.h"
+#include "vtkBoundingBox.h"
+#include "vtkCartesianGrid.h"
 #include "vtkCellData.h"
+#include "vtkDataSet.h"
 #include "vtkDataSetAttributes.h"
+#include "vtkInformationIdTypeKey.h"
+#include "vtkObjectFactory.h"
+#include "vtkOverlappingAMRMetaData.h"
+#include "vtkUniformGrid.h"
+#include "vtkUniformGridAMRIterator.h"
+#include "vtkUnsignedCharArray.h"
+
+#include <utility>
 #include <vector>
 
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkOverlappingAMR);
 
-vtkInformationKeyMacro(vtkOverlappingAMR,NUMBER_OF_BLANKED_POINTS,IdType);
+vtkInformationKeyMacro(vtkOverlappingAMR, NUMBER_OF_BLANKED_POINTS, IdType);
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkOverlappingAMR::vtkOverlappingAMR() = default;
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkOverlappingAMR::~vtkOverlappingAMR() = default;
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkOverlappingAMR::PrintSelf(ostream& os, vtkIndent indent)
 {
-  this->Superclass::PrintSelf(os,indent);
-  if(this->AMRInfo)
+  this->Superclass::PrintSelf(os, indent);
+}
+
+//------------------------------------------------------------------------------
+void vtkOverlappingAMR::InstantiateMetaData()
+{
+  this->SetAMRMetaData(vtkSmartPointer<vtkOverlappingAMRMetaData>::New());
+}
+
+//------------------------------------------------------------------------------
+void vtkOverlappingAMR::SetRefinementRatio(unsigned int level, int ratio)
+{
+  vtkOverlappingAMRMetaData* oamrMetaData = this->GetOverlappingAMRMetaData();
+  if (oamrMetaData)
   {
-    this->AMRInfo->PrintSelf(os,indent);
+    oamrMetaData->SetRefinementRatio(level, ratio);
   }
 }
 
-//----------------------------------------------------------------------------
-vtkCompositeDataIterator* vtkOverlappingAMR::NewIterator()
-{
-  vtkUniformGridAMRDataIterator* iter =  vtkUniformGridAMRDataIterator::New();
-  iter->SetDataSet( this );
-  return iter;
-}
-
-//----------------------------------------------------------------------------
-void vtkOverlappingAMR::SetRefinementRatio(unsigned int level,
-                                                   int ratio)
-{
-  this->AMRInfo->SetRefinementRatio(level,ratio);
-}
-
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkOverlappingAMR::GetRefinementRatio(unsigned int level)
 {
-  if(!AMRInfo->HasRefinementRatio())
+  vtkOverlappingAMRMetaData* oamrMetaData = this->GetOverlappingAMRMetaData();
+  if (oamrMetaData)
   {
-    AMRInfo->GenerateRefinementRatio();
+    if (!oamrMetaData->HasRefinementRatio())
+    {
+      oamrMetaData->GenerateRefinementRatio();
+    }
+    return oamrMetaData->GetRefinementRatio(level);
   }
-  return this->AMRInfo->GetRefinementRatio(level);
+  else
+  {
+    return -1;
+  }
 }
 
-
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkOverlappingAMR::GetRefinementRatio(vtkCompositeDataIterator* iter)
 {
-  vtkUniformGridAMRDataIterator *amrIter =
-      vtkUniformGridAMRDataIterator::SafeDownCast( iter );
+  vtkUniformGridAMRIterator* amrIter = vtkUniformGridAMRIterator::SafeDownCast(iter);
+  if (!amrIter)
+  {
+    return -1;
+  }
 
   unsigned int level = amrIter->GetCurrentLevel();
-  return this->AMRInfo->GetRefinementRatio(level);
+  vtkOverlappingAMRMetaData* oamrMetaData = this->GetOverlappingAMRMetaData();
+  return oamrMetaData ? oamrMetaData->GetRefinementRatio(level) : -1;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkOverlappingAMR::GenerateParentChildInformation()
 {
-  this->AMRInfo->GenerateParentChildInformation();
-}
-
-//----------------------------------------------------------------------------
-bool vtkOverlappingAMR::
-HasChildrenInformation()
-{
-  return AMRInfo->HasChildrenInformation();
-}
-
-//----------------------------------------------------------------------------
-unsigned int *vtkOverlappingAMR::
-GetParents(unsigned int level, unsigned int index, unsigned int& num)
-{
-  return this->AMRInfo->GetParents(level,index,num);
+  vtkOverlappingAMRMetaData* oamrMetaData = this->GetOverlappingAMRMetaData();
+  if (oamrMetaData)
+  {
+    oamrMetaData->GenerateParentChildInformation();
+  }
 }
 
 //------------------------------------------------------------------------------
-unsigned int *vtkOverlappingAMR::
-GetChildren(unsigned int level, unsigned int index, unsigned int& num)
+bool vtkOverlappingAMR::HasChildrenInformation()
 {
-  return this->AMRInfo->GetChildren(level,index,num);
+  vtkOverlappingAMRMetaData* oamrMetaData = this->GetOverlappingAMRMetaData();
+  return oamrMetaData ? oamrMetaData->HasChildrenInformation() : false;
 }
 
 //------------------------------------------------------------------------------
-void vtkOverlappingAMR::
-PrintParentChildInfo(unsigned int level, unsigned int index)
+unsigned int* vtkOverlappingAMR::GetParents(
+  unsigned int level, unsigned int index, unsigned int& num)
 {
-  this->AMRInfo->PrintParentChildInfo(level,index);
+  vtkOverlappingAMRMetaData* oamrMetaData = this->GetOverlappingAMRMetaData();
+  return oamrMetaData ? oamrMetaData->GetParents(level, index, num) : nullptr;
+}
+
+//------------------------------------------------------------------------------
+unsigned int* vtkOverlappingAMR::GetChildren(
+  unsigned int level, unsigned int index, unsigned int& num)
+{
+  vtkOverlappingAMRMetaData* oamrMetaData = this->GetOverlappingAMRMetaData();
+  return oamrMetaData ? oamrMetaData->GetChildren(level, index, num) : nullptr;
+}
+
+//------------------------------------------------------------------------------
+void vtkOverlappingAMR::PrintParentChildInfo(unsigned int level, unsigned int index)
+{
+  vtkOverlappingAMRMetaData* oamrMetaData = this->GetOverlappingAMRMetaData();
+  if (oamrMetaData)
+  {
+    oamrMetaData->PrintParentChildInfo(level, index);
+  }
 }
 
 //------------------------------------------------------------------------------
 void vtkOverlappingAMR::SetAMRBox(unsigned int level, unsigned int id, const vtkAMRBox& box)
 {
-  this->AMRInfo->SetAMRBox(level,id,box);
+  vtkOverlappingAMRMetaData* oamrMetaData = this->GetOverlappingAMRMetaData();
+  if (oamrMetaData)
+  {
+    oamrMetaData->SetAMRBox(level, id, box);
+  }
 }
 
 //------------------------------------------------------------------------------
 const vtkAMRBox& vtkOverlappingAMR::GetAMRBox(unsigned int level, unsigned int id)
 {
-  const vtkAMRBox& box = this->AMRInfo->GetAMRBox(level,id);
-  if(box.IsInvalid())
-  {
-    vtkErrorMacro("Invalid AMR box");
-  }
-  return box;
+  // XXX: Ideally this method should not return a reference
+  vtkOverlappingAMRMetaData* oamrMetaData = this->GetOverlappingAMRMetaData();
+  assert(oamrMetaData);
+  return oamrMetaData->GetAMRBox(level, id);
 }
 
 //------------------------------------------------------------------------------
-void vtkOverlappingAMR::SetSpacing(unsigned int level,const double spacing[3])
+void vtkOverlappingAMR::SetDataSet(unsigned int level, unsigned int idx, vtkDataSet* grid)
 {
-  this->AMRInfo->SetSpacing(level,spacing);
+  vtkOverlappingAMRMetaData* oamrMetaData = this->GetOverlappingAMRMetaData();
+  if (oamrMetaData)
+  {
+    // Check GridType coherency
+    unsigned int gridType = oamrMetaData->GetGridType();
+    if (gridType != VTK_DATA_SET)
+    {
+      unsigned int newGridType = grid->GetDataObjectType();
+      if (newGridType != gridType)
+      {
+        vtkErrorMacro(<< "Inconsistent grid type: " << gridType << " is different than "
+                      << newGridType);
+        return;
+      }
+      else
+      {
+        oamrMetaData->SetGridType(gridType);
+      }
+    }
+  }
+
+  this->Superclass::SetDataSet(level, idx, grid);
+
+  // Check the grid was indeed set
+  vtkCartesianGrid* cg = this->GetDataSetAsCartesianGrid(level, idx);
+  if (cg && oamrMetaData)
+  {
+    // Set the bounds
+    double bb[6];
+    cg->GetBounds(bb);
+    oamrMetaData->SetBounds(level, idx, bb);
+  }
+}
+
+//------------------------------------------------------------------------------
+void vtkOverlappingAMR::SetSpacing(unsigned int level, const double spacing[3])
+{
+  vtkOverlappingAMRMetaData* oamrMetaData = this->GetOverlappingAMRMetaData();
+  if (oamrMetaData)
+  {
+    oamrMetaData->SetSpacing(level, spacing);
+  }
 }
 
 //------------------------------------------------------------------------------
 void vtkOverlappingAMR::GetSpacing(unsigned int level, double spacing[3])
 {
-  return this->AMRInfo->GetSpacing(level,spacing);
+  vtkOverlappingAMRMetaData* oamrMetaData = this->GetOverlappingAMRMetaData();
+  if (oamrMetaData)
+  {
+    oamrMetaData->GetSpacing(level, spacing);
+  }
 }
 
-//----------------------------------------------------------------------------
-void vtkOverlappingAMR::GetBounds(unsigned int level, unsigned int id, double* bb)
+//------------------------------------------------------------------------------
+void vtkOverlappingAMR::GetBounds(unsigned int level, unsigned int id, double bb[6])
 {
-  this->AMRInfo->GetBounds(level, id, bb);
+  vtkOverlappingAMRMetaData* oamrMetaData = this->GetOverlappingAMRMetaData();
+  if (oamrMetaData)
+  {
+    oamrMetaData->GetBounds(level, id, bb);
+  }
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkOverlappingAMR::GetOrigin(unsigned int level, unsigned int id, double origin[3])
 {
   double bb[6];
-  this->GetBounds(level,id,bb);
+  this->GetBounds(level, id, bb);
   origin[0] = bb[0];
   origin[1] = bb[2];
   origin[2] = bb[4];
 }
 
-
-//----------------------------------------------------------------------------
-void vtkOverlappingAMR::SetOrigin(const double* origin)
+//------------------------------------------------------------------------------
+void vtkOverlappingAMR::SetOrigin(const double origin[3])
 {
-  return this->AMRInfo->SetOrigin(origin);
+  vtkOverlappingAMRMetaData* oamrMetaData = this->GetOverlappingAMRMetaData();
+  if (oamrMetaData)
+  {
+    oamrMetaData->SetOrigin(origin);
+  }
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 double* vtkOverlappingAMR::GetOrigin()
 {
-  return this->AMRInfo? this->AMRInfo->GetOrigin() : nullptr;
+  vtkOverlappingAMRMetaData* oamrMetaData = this->GetOverlappingAMRMetaData();
+  return oamrMetaData ? oamrMetaData->GetOrigin() : nullptr;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkOverlappingAMR::SetAMRBlockSourceIndex(unsigned int level, unsigned int id, int sourceId)
 {
-  unsigned int index = this->AMRInfo->GetIndex(level,id);
-  this->AMRInfo->SetAMRBlockSourceIndex(index, sourceId);
+  vtkOverlappingAMRMetaData* oamrMetaData = this->GetOverlappingAMRMetaData();
+  if (oamrMetaData)
+  {
+    unsigned int index = oamrMetaData->GetAbsoluteBlockIndex(level, id);
+    oamrMetaData->SetAMRBlockSourceIndex(index, sourceId);
+  }
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkOverlappingAMR::GetAMRBlockSourceIndex(unsigned int level, unsigned int id)
 {
-  unsigned int index = this->AMRInfo->GetIndex(level,id);
-  return this->AMRInfo->GetAMRBlockSourceIndex(index);
+  vtkOverlappingAMRMetaData* oamrMetaData = this->GetOverlappingAMRMetaData();
+  if (oamrMetaData)
+  {
+    unsigned int index = oamrMetaData->GetAbsoluteBlockIndex(level, id);
+    return oamrMetaData->GetAMRBlockSourceIndex(index);
+  }
+  else
+  {
+    return -1;
+  }
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkOverlappingAMR::Audit()
 {
-  this->AMRInfo->Audit();
+  std::ignore = this->CheckValidity();
+}
+
+//------------------------------------------------------------------------------
+bool vtkOverlappingAMR::CheckValidity()
+{
+  vtkOverlappingAMRMetaData* oamrMetaData = this->GetOverlappingAMRMetaData();
+  if (!oamrMetaData)
+  {
+    return false;
+  }
+
+  bool ret = oamrMetaData->CheckValidity();
 
   int emptyDimension(-1);
   switch (this->GetGridDescription())
   {
-    case VTK_YZ_PLANE: emptyDimension = 0; break;
-    case VTK_XZ_PLANE: emptyDimension = 1; break;
-    case VTK_XY_PLANE: emptyDimension = 2; break;
+    case vtkStructuredData::VTK_STRUCTURED_YZ_PLANE:
+      emptyDimension = 0;
+      break;
+    case vtkStructuredData::VTK_STRUCTURED_XZ_PLANE:
+      emptyDimension = 1;
+      break;
+    case vtkStructuredData::VTK_STRUCTURED_XY_PLANE:
+      emptyDimension = 2;
+      break;
   }
 
-  vtkSmartPointer<vtkUniformGridAMRDataIterator> iter;
-  iter.TakeReference(vtkUniformGridAMRDataIterator::SafeDownCast(this->NewIterator()));
+  vtkSmartPointer<vtkUniformGridAMRIterator> iter;
+  iter.TakeReference(vtkUniformGridAMRIterator::SafeDownCast(this->NewIterator()));
   iter->SetSkipEmptyNodes(1);
-  for(iter->GoToFirstItem(); !iter->IsDoneWithTraversal(); iter->GoToNextItem())
+  for (iter->GoToFirstItem(); !iter->IsDoneWithTraversal(); iter->GoToNextItem())
   {
-    vtkUniformGrid* grid = vtkUniformGrid::SafeDownCast(iter->GetCurrentDataObject());
-    int hasGhost  = grid->HasAnyGhostCells();
+    vtkDataSet* ds = vtkDataSet::SafeDownCast(iter->GetCurrentDataObject());
+    vtkCartesianGrid* cg = vtkCartesianGrid::SafeDownCast(ds);
+    vtkUniformGrid* ug = vtkUniformGrid::SafeDownCast(cg);
+    int hasGhost = ds->HasAnyGhostCells();
 
     unsigned int level = iter->GetCurrentLevel();
     unsigned int id = iter->GetCurrentIndex();
-    const vtkAMRBox& box = this->AMRInfo->GetAMRBox(level,id);
+    const vtkAMRBox& box = oamrMetaData->GetAMRBox(level, id);
     int dims[3];
     box.GetNumberOfNodes(dims);
 
     double spacing[3];
-    this->GetSpacing(level,spacing);
+    this->GetSpacing(level, spacing);
 
     double origin[3];
-    this->GetOrigin(level,id,origin);
+    this->GetOrigin(level, id, origin);
 
-    for(int d = 0; d<3; d++)
+    for (int d = 0; d < 3; d++)
     {
-      if(d==emptyDimension)
+      if (d == emptyDimension)
       {
-        if(grid->GetSpacing()[d]!=spacing[d])
+        if (!hasGhost && cg->GetDimensions()[d] != dims[d])
         {
-          vtkErrorMacro("The grid spacing does not match AMRInfo at ("<<level<<", "<<id<<")");
+          vtkErrorMacro(
+            "The grid dimensions does not match AMRInfo at (" << level << ", " << id << ")");
+          ret = false;
         }
-        if(!hasGhost && grid->GetOrigin()[d]!=origin[d])
+
+        if (ug)
         {
-          vtkErrorMacro("The grid origin does not match AMRInfo at ("<<level<<", "<<id<<")");
-        }
-        if(!hasGhost && grid->GetDimensions()[d]!=dims[d])
-        {
-          vtkErrorMacro("The grid dimensions does not match AMRInfo at ("<<level<<", "<<id<<")");
+          if (ug->GetSpacing()[d] != spacing[d])
+          {
+            vtkErrorMacro(
+              "The grid spacing does not match AMRInfo at (" << level << ", " << id << ")");
+            ret = false;
+          }
+          if (!hasGhost && ug->GetOrigin()[d] != origin[d])
+          {
+            vtkErrorMacro(
+              "The grid origin does not match AMRInfo at (" << level << ", " << id << ")");
+            ret = false;
+          }
         }
       }
     }
   }
+  return ret;
 }
 
-
+//------------------------------------------------------------------------------
 bool vtkOverlappingAMR::FindGrid(double q[3], unsigned int& level, unsigned int& gridId)
 {
-  return this->AMRInfo->FindGrid(q,level,gridId);
+  vtkOverlappingAMRMetaData* oamrMetaData = this->GetOverlappingAMRMetaData();
+  return oamrMetaData ? oamrMetaData->FindGrid(q, level, gridId) : false;
 }
+
+//------------------------------------------------------------------------------
+const double* vtkOverlappingAMR::GetBounds()
+{
+  const double* bounds = this->Superclass::GetBounds();
+  if (vtkBoundingBox::IsValid(bounds))
+  {
+    return bounds;
+  }
+  else
+  {
+    vtkOverlappingAMRMetaData* oamrMetaData = this->GetOverlappingAMRMetaData();
+    return oamrMetaData ? oamrMetaData->GetBounds() : bounds;
+  }
+}
+
+//------------------------------------------------------------------------------
+vtkOverlappingAMRMetaData* vtkOverlappingAMR::GetOverlappingAMRMetaData()
+{
+  return vtkOverlappingAMRMetaData::SafeDownCast(this->GetAMRMetaData());
+}
+
+// VTK_DEPRECATED_IN_9_6_0
+//------------------------------------------------------------------------------
+void vtkOverlappingAMR::SetAMRInfo(vtkOverlappingAMRMetaData* info)
+{
+  this->SetAMRMetaData(info);
+}
+
+VTK_ABI_NAMESPACE_END

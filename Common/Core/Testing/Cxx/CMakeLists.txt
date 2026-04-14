@@ -15,16 +15,6 @@ function(add_data_array_test test_name array_header array_valuetype array_type)
   list(APPEND data_array_tests "${VTK_TESTDATAARRAYAPI_TESTNAME},${CMAKE_CURRENT_BINARY_DIR}/${test_source}" PARENT_SCOPE)
 endfunction()
 
-# Legacy -- test that the vtkDataArrayTemplate interface still works:
-if(NOT VTK_LEGACY_REMOVE)
-  add_data_array_test(
-    vtkDataArrayTemplate_LEGACY
-    vtkDataArrayTemplate.h
-    float
-    vtkDataArrayTemplate<float>
-  )
-endif()
-
 # Non-templated classes:
 add_data_array_test(vtkCharArray vtkCharArray.h "char" vtkCharArray)
 add_data_array_test(vtkDoubleArray vtkDoubleArray.h "double" vtkDoubleArray)
@@ -70,7 +60,20 @@ foreach(value_type ${value_types})
     vtkSOADataArrayTemplate.h
     "${value_type}"
     "vtkSOADataArrayTemplate<${value_type}>")
+
+  add_data_array_test(
+    "ScaleSoA_${pretty_value_type}"
+    vtkScaledSOADataArrayTemplate.h
+    "${value_type}"
+    "vtkScaledSOADataArrayTemplate<${value_type}>")
 endforeach()
+
+set(serdes_data_array_tests)
+if (VTK_WRAP_SERIALIZATION)
+  list(APPEND serdes_data_array_tests
+    TestDataArraySerDesDemangledNames.cxx
+  )
+endif ()
 
 # Tell TestSystemInformation where to find the build trees.
 set(TestSystemInformation_ARGS ${CMAKE_BINARY_DIR})
@@ -78,14 +81,26 @@ set(TestSystemInformation_ARGS ${CMAKE_BINARY_DIR})
 # Tell TestXMLFileOutputWindow where to write test file
 set(TestXMLFileOutputWindow_ARGS ${CMAKE_BINARY_DIR}/Testing/Temporary/XMLFileOutputWindow.txt)
 
+set(TestCLI11_ARGS --file=sample.vtk -c 100 --flag)
+
+set(TestSMP_ARGS
+  --Sequential=$<BOOL:${VTK_SMP_ENABLE_SEQUENTIAL}>
+  --STDThread=$<BOOL:${VTK_SMP_ENABLE_STDTHREAD}>
+  --TBB=$<OR:$<BOOL:${VTK_SMP_ENABLE_TBB}>,$<STREQUAL:"${VTK_SMP_IMPLEMENTATION_TYPE}","TBB">>
+  --OpenMP=$<OR:$<BOOL:${VTK_SMP_ENABLE_OPENMP}>,$<STREQUAL:"${VTK_SMP_IMPLEMENTATION_TYPE}","OpenMP">>)
+
 vtk_add_test_cxx(vtkCommonCoreCxxTests tests
   NO_DATA NO_VALID NO_OUTPUT
+  ExampleDataArrayRangeAPI.cxx
+  ExampleDataArrayRangeDispatch.cxx
   UnitTestMath.cxx
+  TestAbstractArraySize.cxx
   TestArrayAPI.cxx
   TestArrayAPIConvenience.cxx
   TestArrayAPIDense.cxx
   TestArrayAPISparse.cxx
   TestArrayBool.cxx
+  TestArrayComponents.cxx
   TestArrayDispatchers.cxx
   TestAtomic.cxx
   TestScalarsToColors.cxx
@@ -99,38 +114,58 @@ vtk_add_test_cxx(vtkCommonCoreCxxTests tests
   TestArrayUniqueValueDetection.cxx
   TestArrayUserTypes.cxx
   TestArrayVariants.cxx
+  TestBitArray.cxx
+  TestCLI11.cxx
   TestCollection.cxx
-  TestConditionVariable.cxx
   # TestCxxFeatures.cxx # This is in its own exe too.
   TestDataArray.cxx
   TestDataArrayComponentNames.cxx
-  TestDataArrayIterators.cxx
   TestDataArraySelection.cxx
+  TestDataArrayTupleRange.cxx
+  TestDataArrayValueRange.cxx
+  TestFMT.cxx
   TestGarbageCollector.cxx
   TestGenericDataArrayAPI.cxx
+  TestGlobalStaticvtkObject.cxx
   TestInformationKeyLookup.cxx
+  TestInherits.cxx
+  TestLogger.cxx
+  TestLoggerThreadName.cxx
   TestLookupTable.cxx
   TestLookupTableThreaded.cxx
   TestMath.cxx
   TestMersenneTwister.cxx
   TestMinimalStandardRandomSequence.cxx
   TestNew.cxx
+  TestNumberOfGenerationsFromBase.cxx
+  TestNumberToString.cxx
   TestObjectFactory.cxx
+  TestObjectFactoryOverrideAttribute.cxx
+  TestObjectFactoryPreferencesFromCommandLine.cxx
   TestObservers.cxx
   TestObserversPerformance.cxx
   TestOStreamWrapper.cxx
+  TestPrintArrayValues.cxx
+  TestPrintfToStdFormatConversion.cxx
+  TestSCN.cxx
   TestSMP.cxx
+  TestSMPScan.cxx
   TestSmartPointer.cxx
+  TestSetBuffer.cxx
+  TestSOADataArray.cxx
   TestSortDataArray.cxx
   TestSparseArrayValidation.cxx
+  TestStringToken.cxx
   TestSystemInformation.cxx
   TestTemplateMacro.cxx
   TestTimePointUtility.cxx
-  TestUnicodeStringAPI.cxx
-  TestUnicodeStringArrayAPI.cxx
+  TestValueFromString.cxx
   TestVariant.cxx
+  TestVariantArray.cxx
   TestVariantComparison.cxx
+  TestVariantConversionFromString.cxx
   TestWeakPointer.cxx
+  TestWeakPtr.cxx
   TestXMLFileOutputWindow.cxx
   UnitTestInformationKeys.cxx
   otherArrays.cxx
@@ -142,8 +177,36 @@ vtk_add_test_cxx(vtkCommonCoreCxxTests tests
   otherStringArray.cxx
 
   ${data_array_tests}
-  )
+  ${serdes_data_array_tests}
+
+  TestAffineArray.cxx
+  TestCompositeArray.cxx
+  TestCompositeImplicitBackend.cxx
+  TestConstantArray.cxx
+  TestImplicitArraysBase.cxx
+  TestImplicitTypedArray.cxx
+  TestImplicitArrayTraits.cxx
+  TestIndexedArray.cxx
+  TestIndexedImplicitBackend.cxx
+  TestStridedArray.cxx
+  TestStructuredPointArray.cxx)
+
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  # On emscripten platform, loguru does not have stack trace ability.
+  # Special test to check whether disabling loguru signal handling, i.e.,
+  # stack trace printing when it catches a signal, works. We add an
+  # executable where the stack trace is disabled. The actual test is a
+  # CMake script that runs the test executable and analyzes the output to
+  # determine whether a stack trace was printed or not.
+  add_executable(TestLoggerDisableSignalHandlerCxx
+    TestLoggerDisableSignalHandler.cxx)
+  target_link_libraries(TestLoggerDisableSignalHandlerCxx
+    PRIVATE VTK::CommonCore VTK::CommonDataModel)
+  add_test(NAME TestLoggerDisableSignalHandler
+    COMMAND ${CMAKE_COMMAND}
+    -DEXECUTABLE_PATH:FILEPATH=$<TARGET_FILE:TestLoggerDisableSignalHandlerCxx>
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/TestLoggerDisableSignalHandler.cmake)
+endif ()
 
 vtk_test_cxx_executable(vtkCommonCoreCxxTests tests
-  vtkTestNewVar.cxx
-  )
+  vtkTestNewVar.cxx)

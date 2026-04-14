@@ -1,25 +1,12 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkAdaptiveDataSetSurfaceFilter.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkAdaptiveDataSetSurfaceFilter
  * @brief   Adaptively extract dataset surface
  *
  * vtkAdaptiveDataSetSurfaceFilter uses view and dataset properties to
- * create the outside surface mesh with the minimum minimorum of facets
- * @warning
- * Only implemented currently for 2-dimensional vtkHyperTreeGrid objects
+ * create the outside surface mesh with the minimum number of faces.
+ * This reduces the memory usage at the expense of compute time.
  * @sa
  * vtkHyperTreeGrid vtkDataSetSurfaceFilter
  * @par Thanks:
@@ -27,160 +14,192 @@
  * This class was rewritten by Philippe Pebay, 2016
  * This class was modified by Rogeli Grima, 2016
  * This work was supported by Commissariat a l'Energie Atomique (CEA/DIF)
-*/
+ * CEA, DAM, DIF, F-91297 Arpajon, France.
+ */
 
 #ifndef vtkAdaptiveDataSetSurfaceFilter_h
 #define vtkAdaptiveDataSetSurfaceFilter_h
 
 #include "vtkFiltersHybridModule.h" // For export macro
-#include "vtkDataSetSurfaceFilter.h"
+#include "vtkGeometryFilter.h"
 
+VTK_ABI_NAMESPACE_BEGIN
 class vtkBitArray;
 class vtkCamera;
 class vtkHyperTreeGrid;
-class vtkHyperTreeGridCursor;
+class vtkMatrix4x4;
 class vtkRenderer;
 
-class VTKFILTERSHYBRID_EXPORT vtkAdaptiveDataSetSurfaceFilter : public vtkDataSetSurfaceFilter
+class vtkHyperTreeGridNonOrientedGeometryCursor;
+class vtkHyperTreeGridNonOrientedVonNeumannSuperCursorLight;
+
+class VTKFILTERSHYBRID_EXPORT vtkAdaptiveDataSetSurfaceFilter : public vtkGeometryFilter
 {
 public:
   static vtkAdaptiveDataSetSurfaceFilter* New();
-  vtkTypeMacro( vtkAdaptiveDataSetSurfaceFilter, vtkDataSetSurfaceFilter );
-  void PrintSelf( ostream&, vtkIndent ) override;
+  vtkTypeMacro(vtkAdaptiveDataSetSurfaceFilter, vtkGeometryFilter);
+  void PrintSelf(ostream& os, vtkIndent indent) override;
 
-  //@{
+  ///@{
   /**
    * Set/Get the renderer attached to this adaptive surface extractor
    */
-  void SetRenderer( vtkRenderer* ren );
+  void SetRenderer(vtkRenderer* ren);
   vtkGetObjectMacro(Renderer, vtkRenderer);
-  //@}
-
-  /**
-   * Set the scale factor
-   */
-  vtkSetMacro(Scale,double);
+  ///@}
 
   /**
    * Get the mtime of this object.
    */
   vtkMTimeType GetMTime() override;
 
+  ///@{
+  /**
+   * Set/Get the dependence to the point of view.
+   *
+   * Default is true.
+   */
+  vtkSetMacro(ViewPointDepend, bool);
+  vtkGetMacro(ViewPointDepend, bool);
+  ///@}
+
+  ///@{
+  /**
+   * Set/Get for forced a fixed the level max (lost dynamicity)
+   *
+   * Default is -1
+   */
+  vtkSetMacro(FixedLevelMax, int);
+  vtkGetMacro(FixedLevelMax, int);
+  ///@}
+
 protected:
   vtkAdaptiveDataSetSurfaceFilter();
   ~vtkAdaptiveDataSetSurfaceFilter() override;
 
-  int RequestData( vtkInformation* vtkNotUsed(request),
-                   vtkInformationVector** inputVector,
-                   vtkInformationVector* outputVector ) override;
-  int DataSetExecute( vtkDataSet* input, vtkPolyData* output ) override;
+  int RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVector** inputVector,
+    vtkInformationVector* outputVector) override;
+  int DataObjectExecute(vtkDataObject* input, vtkPolyData* output);
+  int FillInputPortInformation(int port, vtkInformation* info) override;
+
+private:
+  vtkAdaptiveDataSetSurfaceFilter(const vtkAdaptiveDataSetSurfaceFilter&) = delete;
+  void operator=(const vtkAdaptiveDataSetSurfaceFilter&) = delete;
+
+  enum class ShapeState : uint8_t;
+
+  /**
+   * Check whether a shape is visible on the screen.
+   * @param points Points of the shape
+   * @param level The current depth level of the cell
+   * @return Whether the shape is visible on the screen (fully or partially).
+   */
+  template <int N>
+  ShapeState IsShapeVisible(const std::array<std::array<double, 3>, N>& points, int level);
 
   /**
    * Main routine to generate external boundary
    */
-  void ProcessTrees( vtkHyperTreeGrid* input, vtkPolyData* output );
+  void ProcessTrees(vtkHyperTreeGrid* input, vtkPolyData* output);
 
   /**
    * Recursively descend into tree down to leaves
    */
-  void RecursivelyProcessTree( vtkHyperTreeGridCursor*, vtkBitArray*, int );
+  void RecursivelyProcessTree1D(vtkHyperTreeGridNonOrientedGeometryCursor*, int);
+  void RecursivelyProcessTree2D(vtkHyperTreeGridNonOrientedGeometryCursor*, int);
+  void RecursivelyProcessTree3D(vtkHyperTreeGridNonOrientedVonNeumannSuperCursorLight*, int);
 
   /**
    * Process 1D leaves and issue corresponding edges (lines)
    */
-  void ProcessLeaf1D( vtkHyperTreeGridCursor* );
+  void ProcessLeaf1D(vtkHyperTreeGridNonOrientedGeometryCursor*);
 
   /**
    * Process 2D leaves and issue corresponding faces (quads)
    */
-  void ProcessLeaf2D( vtkHyperTreeGridCursor*, vtkBitArray* );
+  void ProcessLeaf2D(vtkHyperTreeGridNonOrientedGeometryCursor*);
 
   /**
    * Process 3D leaves and issue corresponding cells (voxels)
    */
-  void ProcessLeaf3D( vtkHyperTreeGridCursor*, vtkBitArray* );
+  void ProcessLeaf3D(vtkHyperTreeGridNonOrientedVonNeumannSuperCursorLight*);
 
   /**
    * Helper method to generate a face based on its normal and offset from cursor origin
    */
-  void AddFace( vtkIdType, double*, double*, int, unsigned int );
+  void AddFace(vtkIdType, const double*, const double*, int, unsigned int);
 
-  vtkDataSetAttributes* InData;
-  vtkDataSetAttributes* OutData;
+  vtkDataSetAttributes* InData = nullptr;
+  vtkDataSetAttributes* OutData = nullptr;
 
   /**
    * Dimension of input grid
    */
-  unsigned int Dimension;
+  unsigned int Dimension = 0;
 
   /**
    * Orientation of input grid when dimension < 3
    */
-  unsigned int Orientation;
+  unsigned int Orientation = 0;
+
+  /**
+   * Visibility Mask
+   */
+  vtkBitArray* Mask;
 
   /**
    * Storage for points of output unstructured mesh
    */
-  vtkPoints* Points;
+  vtkPoints* Points = nullptr;
 
   /**
    * Storage for cells of output unstructured mesh
    */
-  vtkCellArray* Cells;
+  vtkCellArray* Cells = nullptr;
 
   /**
    * Pointer to the renderer in use
    */
-  vtkRenderer *Renderer;
-
-  /**
-   * Radius parameter for adaptive view
-   */
-  double Radius;
+  vtkRenderer* Renderer = nullptr;
 
   /**
    * First axis parameter for adaptive view
    */
-  int Axis1;
+  unsigned int Axis1;
 
   /**
    * Second axis parameter for adaptive view
    */
-  int Axis2;
-
-  /**
-   * Maximum depth parameter for adaptive view
-   */
-  int LevelMax;
-
-  /**
-   * Parallel projection parameter for adaptive view
-   */
-  bool ParallelProjection;
+  unsigned int Axis2;
 
   /**
    * Last renderer size parameters for adaptive view
    */
-  int LastRendererSize[2];
+  int LastRendererSize[2] = { 0, 0 };
 
   /**
-   * Last camera focal point coordinates for adaptive view
+   * Whether to use the camera frustum to decimate cells.
    */
-  double LastCameraFocalPoint[3];
+  bool ViewPointDepend = true;
 
   /**
-   * Last camera parallel scale for adaptive view
+   * Forced, fixed the level depth, ignored automatic determination
    */
-  double LastCameraParallelScale;
+  int FixedLevelMax = -1;
 
   /**
-   * Scale factor for adaptive view
+   * Whether ParallelProjection is enabled on the renderer's camera
    */
-  double Scale;
+  bool IsParallel = false;
 
-private:
-  vtkAdaptiveDataSetSurfaceFilter( const vtkAdaptiveDataSetSurfaceFilter& ) = delete;
-  void operator = ( const vtkAdaptiveDataSetSurfaceFilter& ) = delete;
+  /**
+   * Max depth to be rendered, any deeper is smaller than one pixel.
+   */
+  int MaxLevel = VTK_INT_MAX;
+
+  vtkSmartPointer<vtkMatrix4x4> ModelViewMatrix;
+  vtkSmartPointer<vtkMatrix4x4> ProjectionMatrix;
 };
 
-#endif
+VTK_ABI_NAMESPACE_END
+#endif // vtkAdaptiveDataSetSurfaceFilter_h

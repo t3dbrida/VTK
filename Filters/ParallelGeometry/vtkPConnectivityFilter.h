@@ -1,17 +1,7 @@
-/*=========================================================================
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
-  Program:   Visualization Toolkit
-  Module:    vtkPConnectivityFilter.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// clang-format off
 /**
  * @class   vtkPConnectivityFilter
  * @brief   Parallel version of vtkConnectivityFilter
@@ -127,29 +117,33 @@
  *   - VTK_EXTRACT_SPECIFIED_REGIONS extraction mode
  */
 
+// clang-format on
+
 #ifndef vtkPConnectivityFilter_h
 #define vtkPConnectivityFilter_h
 
-#include "vtkFiltersParallelGeometryModule.h" // For export macro
 #include "vtkConnectivityFilter.h"
+#include "vtkFiltersParallelGeometryModule.h" // For export macro
 
+VTK_ABI_NAMESPACE_BEGIN
 class VTKFILTERSPARALLELGEOMETRY_EXPORT vtkPConnectivityFilter : public vtkConnectivityFilter
 {
 public:
-  vtkTypeMacro(vtkPConnectivityFilter,vtkConnectivityFilter);
+  vtkTypeMacro(vtkPConnectivityFilter, vtkConnectivityFilter);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
-  static vtkPConnectivityFilter *New();
+  static vtkPConnectivityFilter* New();
 
 protected:
   vtkPConnectivityFilter();
   ~vtkPConnectivityFilter() override;
 
-  int RequestData(vtkInformation *, vtkInformationVector **, vtkInformationVector *) override;
+  int RequestData(vtkInformation*, vtkInformationVector**, vtkInformationVector*) override;
 
 private:
   vtkPConnectivityFilter(const vtkPConnectivityFilter&) = delete;
   void operator=(const vtkPConnectivityFilter&) = delete;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

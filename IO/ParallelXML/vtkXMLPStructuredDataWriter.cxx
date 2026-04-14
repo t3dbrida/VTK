@@ -1,41 +1,30 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkXMLPStructuredDataWriter.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkXMLPStructuredDataWriter.h"
-#include "vtkXMLStructuredDataWriter.h"
-#include "vtkExecutive.h"
-#include "vtkErrorCode.h"
+#include "vtkCommunicator.h"
 #include "vtkDataSet.h"
+#include "vtkErrorCode.h"
+#include "vtkExecutive.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
-#include "vtkStreamingDemandDrivenPipeline.h"
-#include "vtkCommunicator.h"
 #include "vtkMultiProcessController.h"
+#include "vtkStreamingDemandDrivenPipeline.h"
+#include "vtkXMLStructuredDataWriter.h"
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+VTK_ABI_NAMESPACE_BEGIN
 vtkXMLPStructuredDataWriter::vtkXMLPStructuredDataWriter() = default;
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkXMLPStructuredDataWriter::~vtkXMLPStructuredDataWriter() = default;
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLPStructuredDataWriter::PrintSelf(ostream& os, vtkIndent indent)
 {
-  this->Superclass::PrintSelf(os,indent);
+  this->Superclass::PrintSelf(os, indent);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkXMLPStructuredDataWriter::WriteInternal()
 {
   int retVal = this->Superclass::WriteInternal();
@@ -46,21 +35,21 @@ int vtkXMLPStructuredDataWriter::WriteInternal()
   return retVal;
 }
 
-//----------------------------------------------------------------------------
-void vtkXMLPStructuredDataWriter::WritePrimaryElementAttributes(ostream &os, vtkIndent indent)
+//------------------------------------------------------------------------------
+void vtkXMLPStructuredDataWriter::WritePrimaryElementAttributes(ostream& os, vtkIndent indent)
 {
-  int* wExt = this->GetInputInformation(0, 0)->Get(
-    vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT());
+  int* wExt =
+    this->GetInputInformation(0, 0)->Get(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT());
   this->WriteVectorAttribute("WholeExtent", 6, wExt);
   this->Superclass::WritePrimaryElementAttributes(os, indent);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLPStructuredDataWriter::WritePPieceAttributes(int index)
 {
   if (this->Extents.find(index) != this->Extents.end())
   {
-    this->WriteVectorAttribute("Extent", 6, &this->Extents[index][0]);
+    this->WriteVectorAttribute("Extent", 6, this->Extents[index].data());
     if (this->ErrorCode == vtkErrorCode::OutOfDiskSpaceError)
     {
       return;
@@ -69,7 +58,7 @@ void vtkXMLPStructuredDataWriter::WritePPieceAttributes(int index)
   this->Superclass::WritePPieceAttributes(index);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkXMLWriter* vtkXMLPStructuredDataWriter::CreatePieceWriter(int index)
 {
   vtkXMLStructuredDataWriter* pWriter = this->CreateStructuredPieceWriter();
@@ -80,7 +69,7 @@ vtkXMLWriter* vtkXMLPStructuredDataWriter::CreatePieceWriter(int index)
   return pWriter;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkXMLPStructuredDataWriter::PrepareSummaryFile()
 {
   this->Superclass::PrepareSummaryFile();
@@ -100,69 +89,55 @@ void vtkXMLPStructuredDataWriter::PrepareSummaryFile()
     int nPiecesTotal = 0;
     vtkIdType nPieces = static_cast<vtkIdType>(this->Extents.size());
 
-    vtkIdType* offsets = nullptr;
-    vtkIdType* nPiecesAll = nullptr;
-    vtkIdType* recvLengths = nullptr;
-    if (rank == 0)
+    std::vector<vtkIdType> offsets(nRanks);
+    std::vector<vtkIdType> nPiecesAll(nRanks);
+    std::vector<vtkIdType> recvLengths(nRanks);
+
+    this->Controller->AllGather(&nPieces, nPiecesAll.data(), 1);
+    for (int i = 0; i < nRanks; i++)
     {
-      nPiecesAll = new vtkIdType[nRanks];
-      recvLengths = new vtkIdType[nRanks];
-      offsets = new vtkIdType[nRanks];
+      offsets[i] = nPiecesTotal * 7;
+      nPiecesTotal += nPiecesAll[i];
+      recvLengths[i] = nPiecesAll[i] * 7;
     }
-    this->Controller->Gather(&nPieces, nPiecesAll, 1, 0);
-    if (rank == 0)
-    {
-      for (int i=0; i<nRanks; i++)
-      {
-        offsets[i] = nPiecesTotal*7;
-        nPiecesTotal += nPiecesAll[i];
-        recvLengths[i] = nPiecesAll[i]*7;
-      }
-    }
-    int* sendBuffer = nullptr;
-    int sendSize = nPieces*7;
+
+    std::vector<int> sendBuffer;
+    int sendSize = nPieces * 7;
     if (nPieces > 0)
     {
-      sendBuffer = new int[sendSize];
+      sendBuffer.resize(sendSize);
       ExtentsType::iterator iter = this->Extents.begin();
       for (int count = 0; iter != this->Extents.end(); ++iter, ++count)
       {
-        sendBuffer[count*7] = iter->first;
-        memcpy(&sendBuffer[count*7+1], &iter->second[0], 6*sizeof(int));
+        sendBuffer[count * 7] = iter->first;
+        memcpy(&sendBuffer[count * 7 + 1], iter->second.data(), 6 * sizeof(int));
       }
     }
-    int* recvBuffer = nullptr;
+    std::vector<int> recvBuffer;
     if (rank == 0)
     {
-      recvBuffer = new int[nPiecesTotal*7];
+      recvBuffer.resize(nPiecesTotal * 7);
     }
-    this->Controller->GatherV(sendBuffer, recvBuffer, sendSize,
-      recvLengths, offsets, 0);
+    this->Controller->GatherV(
+      sendBuffer.data(), recvBuffer.data(), sendSize, recvLengths.data(), offsets.data(), 0);
 
     if (rank == 0)
     {
       // Add all received values to Extents.
       // These are later written in WritePPieceAttributes()
-      for (int i=1; i<nRanks; i++)
+      for (int i = 1; i < nRanks; i++)
       {
-        for (int j=0; j<nPiecesAll[i]; j++)
+        for (int j = 0; j < nPiecesAll[i]; j++)
         {
-          int* buffer = recvBuffer + offsets[i] + j*7;
-          this->Extents[*buffer] =
-            std::vector<int>(buffer+1, buffer+7);
+          int* buffer = recvBuffer.data() + offsets[i] + j * 7;
+          this->Extents[*buffer] = std::vector<int>(buffer + 1, buffer + 7);
         }
       }
     }
-
-    delete[] nPiecesAll;
-    delete[] recvBuffer;
-    delete[] offsets;
-    delete[] recvLengths;
-    delete[] sendBuffer;
   }
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkXMLPStructuredDataWriter::WritePiece(int index)
 {
   int result = this->Superclass::WritePiece(index);
@@ -170,9 +145,10 @@ int vtkXMLPStructuredDataWriter::WritePiece(int index)
   {
     // Store the extent of this piece in Extents. This is later used
     // in WritePPieceAttributes to write the summary file.
-    vtkDataSet* input = this->GetInputAsDataSet();
+    vtkDataSet* input = this->GetDataSetInput();
     int* ext = input->GetInformation()->Get(vtkDataObject::DATA_EXTENT());
-    this->Extents[index] = std::vector<int>(ext, ext+6);
+    this->Extents[index] = std::vector<int>(ext, ext + 6);
   }
   return result;
 }
+VTK_ABI_NAMESPACE_END

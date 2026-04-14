@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkInteractorStyleTrackball.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkInteractorStyleTrackball
  * @brief   provides trackball motion control
@@ -23,19 +11,25 @@
  *
  * @sa
  * vtkInteractorStyleSwitch vtkInteractorStyleTrackballActor vtkInteractorStyleJoystickCamera
-*/
+ */
 
 #ifndef vtkInteractorStyleTrackball_h
 #define vtkInteractorStyleTrackball_h
 
+#include "vtkDeprecation.h"            // For deprecation macro
 #include "vtkInteractionStyleModule.h" // For export macro
 #include "vtkInteractorStyleSwitch.h"
+#include "vtkWrappingHints.h" // For VTK_MARSHALAUTO
 
-class VTKINTERACTIONSTYLE_EXPORT vtkInteractorStyleTrackball : public vtkInteractorStyleSwitch
+VTK_ABI_NAMESPACE_BEGIN
+
+class VTK_DEPRECATED_IN_9_6_0("Please use vtkInteractorStyleSwitch instead.")
+  VTKINTERACTIONSTYLE_EXPORT VTK_MARSHALAUTO vtkInteractorStyleTrackball
+  : public vtkInteractorStyleSwitch
 {
 public:
-  static vtkInteractorStyleTrackball *New();
-  vtkTypeMacro(vtkInteractorStyleTrackball,vtkInteractorStyleSwitch);
+  static vtkInteractorStyleTrackball* New();
+  vtkTypeMacro(vtkInteractorStyleTrackball, vtkInteractorStyleSwitch);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
 protected:
@@ -47,4 +41,5 @@ private:
   void operator=(const vtkInteractorStyleTrackball&) = delete;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

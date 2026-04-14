@@ -1,14 +1,42 @@
-include(CMakeDependentOption)
+vtk_third_party_extract(
+  FILE "${CMAKE_CURRENT_SOURCE_DIR}/update.sh"
+  TAGS
+    repo libharu_repo
+    tag  libharu_tag
+  VERSION_FROM_TAG
+    tag  libharu_version "^for/vtk-[0-9]*-([0-9\\.]+)-g[0-9a-f]+$")
 
-cmake_dependent_option(VTK_MODULE_vtklibharu_IS_SHARED "Whether the system libharu in use is a shared library or not" ON
-  VTK_USE_SYSTEM_LIBHARU "${BUILD_SHARED_LIBS}")
+vtk_module_third_party(
+  INTERNAL
+    LICENSE_FILES
+      "vtklibharu/LICENSE"
+    SPDX_LICENSE_IDENTIFIER
+      "Zlib"
+    SPDX_COPYRIGHT_TEXT
+      "Copyright (C) 1999-2006 Takeshi Kanno"
+      "Copyright (C) 2007-2009 Antony Dovgal"
+    SPDX_DOWNLOAD_LOCATION
+      "git+${libharu_repo}@${libharu_tag}"
+    VERSION
+      "${libharu_version}"
+    STANDARD_INCLUDE_DIRS
+  EXTERNAL
+    PACKAGE LibHaru
+    VERSION 2.4.0
+    TARGETS LibHaru::LibHaru
+    STANDARD_INCLUDE_DIRS)
 
-if (WIN32 AND VTK_MODULE_vtklibharu_IS_SHARED)
+include(vtkDetectLibraryType)
+vtk_detect_library_shared(vtklibharu LibHaru::LibHaru)
+
+set(HPDF_DLL 0)
+if (WIN32 AND vtklibharu_is_shared)
   set(HPDF_DLL 1)
-endif()
+endif ()
 
-vtk_module_third_party(LibHaru
-  INCLUDE_DIRS
-    "${CMAKE_CURRENT_SOURCE_DIR}/vtklibharu/include"
-    "${CMAKE_CURRENT_BINARY_DIR}/vtklibharu/include"
-)
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/vtk_libharu.h.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/vtk_libharu.h")
+
+vtk_module_install_headers(
+  FILES "${CMAKE_CURRENT_BINARY_DIR}/vtk_libharu.h")

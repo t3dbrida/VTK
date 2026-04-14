@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkTesting.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkTesting
  * @brief   a unified VTK regression testing framework
@@ -57,21 +45,26 @@
  *    Test failed
  *    }
  *
-*/
+ */
 
 #ifndef vtkTesting_h
 #define vtkTesting_h
 
-#include "vtkTestingRenderingModule.h" // For export macro
+#include "vtkDeprecation.h" // VTK_DEPRECATED_IN_9_6_0()
 #include "vtkObject.h"
-#include <vector> // STL Header used for argv
-#include <string> // STL Header used for argv
+#include "vtkSmartPointer.h"           // for vtkSmartPointer
+#include "vtkTestingRenderingModule.h" // For export macro
 
+#include <string> // STL Header used for argv
+#include <vector> // STL Header used for argv
+
+VTK_ABI_NAMESPACE_BEGIN
 class vtkAlgorithm;
 class vtkRenderWindow;
 class vtkImageData;
 class vtkDataArray;
 class vtkDataSet;
+class vtkMultiProcessController;
 class vtkRenderWindowInteractor;
 
 /**
@@ -84,18 +77,19 @@ const int VTK_SKIP_RETURN_CODE = 125;
 class VTKTESTINGRENDERING_EXPORT vtkTesting : public vtkObject
 {
 public:
-  static vtkTesting *New();
-  vtkTypeMacro(vtkTesting,vtkObject);
+  static vtkTesting* New();
+  vtkTypeMacro(vtkTesting, vtkObject);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
-  enum ReturnValue {
+  enum ReturnValue
+  {
     FAILED = 0,
     PASSED = 1,
     NOT_RUN = 2,
     DO_INTERACTOR = 3
   };
 
-  static int Test(int argc, char *argv[], vtkRenderWindow *rw, double thresh);
+  static int Test(int argc, char* argv[], vtkRenderWindow* rw, double thresh);
 
   /**
    * This method is intended to be a comprehensive, one line replacement for
@@ -152,116 +146,124 @@ public:
    * return vtkTesting::InteractorEventLoop( argc, argv, iren );
    * }
    */
-  static int InteractorEventLoop(int argc, char *argv[],
-                                 vtkRenderWindowInteractor *iren,
-                                 const char *stream = nullptr);
+  static int InteractorEventLoop(
+    int argc, char* argv[], vtkRenderWindowInteractor* iren, const char* stream = nullptr);
 
-  //@{
+  ///@{
   /**
-   * Use the front buffer first for regression test comparisons. By
-   * default use back buffer first, then try the front buffer if the
-   * test fails when comparing to the back buffer.
+   * Deprecated, no-op, do not use.
    */
-  vtkBooleanMacro(FrontBuffer, vtkTypeBool);
-  vtkGetMacro(FrontBuffer, vtkTypeBool);
-  void SetFrontBuffer(vtkTypeBool frontBuffer);
-  //@}
+  VTK_DEPRECATED_IN_9_6_0("This function is deprecated, use SetPolyhedralCells")
+  void FrontBufferOn() {}
+  VTK_DEPRECATED_IN_9_6_0("This function is deprecated, use SetPolyhedralCells")
+  void FrontBufferOff() {}
+  VTK_DEPRECATED_IN_9_6_0("This function is deprecated, use SetPolyhedralCells")
+  vtkTypeBool GetFrontBuffer() { return false; }
+  VTK_DEPRECATED_IN_9_6_0("This function is deprecated, use SetPolyhedralCells")
+  void SetFrontBuffer(vtkTypeBool vtkNotUsed(fb)) {}
+  ///@}
 
   /**
-   * Perform the test and return the result. Delegates to
-   * RegressionTestAndCaptureOutput, sending the output to cout.
+   * Perform the test and return the result.
+   *
+   * The output of the test will be written to cout (including timing information), @output, or @os.
    */
   virtual int RegressionTest(double thresh);
+  virtual int RegressionTest(double thresh, std::string& output);
+  virtual int RegressionTest(double thresh, ostream& os);
+  ///@}
 
-  /**
-   * Perform the test and return the result. At the same time, write
-   * the output to the output stream os. Includes timing information
-   * in the output.
-   */
-  virtual int RegressionTestAndCaptureOutput(double thresh, ostream &os);
-
-  /**
-   * Perform the test and return the result. At the same time, write
-   * the output to the output stream os. This method is nearly the
-   * same as RegressionTestAndCaptureOutput, but does not include
-   * timing information in the output.
-   */
-  virtual int RegressionTest(double thresh,ostream &os);
-
-  //@{
+  ///@{
   /**
    * Perform the test and return result. The test image will be read from the
    * png file at pngFileName.
+   *
+   * The output of the test will be written to cout (including timing information), @output, or @os.
    */
-  virtual int RegressionTest(const std::string &pngFileName, double thresh);
-  virtual int RegressionTest(const std::string &pngFileName,
-                             double thresh, ostream& os);
-  //@}
+  virtual int RegressionTest(const std::string& pngFileName, double thresh);
+  virtual int RegressionTest(const std::string& pngFileName, double thresh, std::string& output);
+  virtual int RegressionTest(const std::string& pngFileName, double thresh, ostream& os);
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Compare the image with the valid image.
+   *
+   * The output of the test will be written to cout (including timing information), @output, or @os.
    */
   virtual int RegressionTest(vtkAlgorithm* imageSource, double thresh);
-  virtual int RegressionTest(vtkAlgorithm* imageSource, double thresh,
-                             ostream& os);
-  //@}
+  virtual int RegressionTest(vtkAlgorithm* imageSource, double thresh, std::string& output);
+  virtual int RegressionTest(vtkAlgorithm* imageSource, double thresh, ostream& os);
+  ///@}
+
+  /**
+   * Perform a regression test after serializing and deserializing the window.
+   * Returns vtkTesting::NOT_RUN if the SerializationManager module is not enabled.
+   */
+  int SerDesTest(double thresh);
 
   /**
    * Compute the average L2 norm between all point data data arrays
    * of types float and double present in the data sets "dsA" and "dsB"
    * (this includes instances of vtkPoints) Compare the result of
-   * each L2 comutation to "tol".
+   * each L2 computation to "tol".
    */
-  int CompareAverageOfL2Norm(vtkDataSet *pdA, vtkDataSet *pdB, double tol);
+  int CompareAverageOfL2Norm(vtkDataSet* dsA, vtkDataSet* dsB, double tol);
 
   /**
    * Compute the average L2 norm between two data arrays "daA" and "daB"
    * and compare against "tol".
    */
-  int CompareAverageOfL2Norm(vtkDataArray *daA, vtkDataArray *daB, double tol);
+  int CompareAverageOfL2Norm(vtkDataArray* daA, vtkDataArray* daB, double tol);
 
-  //@{
+  ///@{
   /**
    * Set and get the render window that will be used for regression testing.
    */
   virtual void SetRenderWindow(vtkRenderWindow* rw);
   vtkGetObjectMacro(RenderWindow, vtkRenderWindow);
-  //@}
+  ///@}
 
-  //@{
+  /**
+   * Get Mesa version if Mesa drivers are in use.
+   * version is populated with major, minor and patch numbers
+   * Returns true if mesa is in use, false otherwise.
+   */
+  static bool GetMesaVersion(vtkRenderWindow* renderWindow, int version[3]);
+
+  ///@{
   /**
    * Set/Get the name of the valid image file
    */
-  vtkSetStringMacro(ValidImageFileName);
-  const char *GetValidImageFileName();
-  //@}
+  vtkSetFilePathMacro(ValidImageFileName);
+  VTK_FILEPATH const char* GetValidImageFileName();
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Get the image difference.
    */
   vtkGetMacro(ImageDifference, double);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Pass the command line arguments into this class to be processed. Many of
    * the Get methods such as GetValidImage and GetBaselineRoot rely on the
    * arguments to be passed in prior to retrieving these values. Just call
    * AddArgument for each argument that was passed into the command line
    */
-  void AddArgument(const char *argv);
-  void AddArguments(int argc,const char **argv);
-  void AddArguments(int argc, char **argv);
-  //@}
+  void AddArgument(const char* argv);
+  void AddArguments(int argc, const char** argv);
+  void AddArguments(int argc, char** argv);
+  ///@}
 
   /**
    * Search for a specific argument by name and return its value
    * (assumed to be the next on the command tail). Up to caller
    * to delete the returned string.
    */
-  char *GetArgument(const char *arg);
+  char* GetArgument(const char* arg);
 
   /**
    * This method delete all arguments in vtkTesting, this way you can reuse
@@ -269,24 +271,25 @@ public:
    */
   void CleanArguments();
 
-  //@{
+  ///@{
   /**
    * Get some parameters from the command line arguments, env, or defaults
    */
-  const char *GetDataRoot();
-  vtkSetStringMacro(DataRoot);
-  //@}
+  VTK_FILEPATH const char* GetDataRoot();
+  vtkSetFilePathMacro(DataRoot);
+  ///@}
 
-  //@{
+  ///@{
   /**
-   * Get some parameters from the command line arguments, env, or defaults
+   * Get the temp directory from the command line arguments, env, or defaults
+   * This folder may not exists yet
    */
-  const char *GetTempDirectory();
-  vtkSetStringMacro(TempDirectory);
-  //@}
+  VTK_FILEPATH const char* GetTempDirectory();
+  vtkSetFilePathMacro(TempDirectory);
+  ///@}
 
   /**
-   * Is a valid image specified on the command line areguments?
+   * Is a valid image specified on the command line arguments?
    */
   int IsValidImageSpecified();
 
@@ -298,24 +301,33 @@ public:
   /**
    * Is some arbitrary user flag ("-X", "-Z" etc) specified
    */
-  int IsFlagSpecified(const char *flag);
+  int IsFlagSpecified(const char* flag);
 
-  //@{
+  ///@{
   /**
    * Number of pixels added as borders to avoid problems with
    * window decorations added by some window managers.
    */
   vtkSetMacro(BorderOffset, int);
   vtkGetMacro(BorderOffset, int);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Get/Set verbosity level. A level of 0 is quiet.
    */
   vtkSetMacro(Verbose, int);
   vtkGetMacro(Verbose, int);
-  //@}
+  ///@}
+
+  ///@{
+  /**
+   * Get/Set the controller in an MPI environment. If one sets the controller to `nullptr`,
+   * an instance of `vtkDummyController` is stored instead. `GetController` never returns `nullptr`.
+   */
+  vtkMultiProcessController* GetController() const;
+  void SetController(vtkMultiProcessController* controller);
+  ///@}
 
 protected:
   vtkTesting();
@@ -328,21 +340,22 @@ protected:
   vtkRenderWindow* RenderWindow;
   char* ValidImageFileName;
   double ImageDifference;
-  char *TempDirectory;
+  char* TempDirectory;
   int BorderOffset;
   int Verbose;
 
   std::vector<std::string> Args;
 
-  char *DataRoot;
+  char* DataRoot;
   double StartWallTime;
   double StartCPUTime;
+
+  vtkSmartPointer<vtkMultiProcessController> Controller;
 
 private:
   vtkTesting(const vtkTesting&) = delete;
   void operator=(const vtkTesting&) = delete;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif
-
-

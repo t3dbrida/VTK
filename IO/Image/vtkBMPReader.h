@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkBMPReader.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkBMPReader
  * @brief   read Windows BMP files
@@ -34,91 +22,96 @@
  * The default behavior is to read a single file. In this case, the form
  * of the file is simply "FileName" (e.g., foo.bmp).
  *
+ * This reader supports reading streams.
+ *
  * @sa
  * vtkBMPWriter
-*/
+ */
 
 #ifndef vtkBMPReader_h
 #define vtkBMPReader_h
 
 #include "vtkIOImageModule.h" // For export macro
 #include "vtkImageReader.h"
+VTK_ABI_NAMESPACE_BEGIN
 class vtkLookupTable;
 
 class VTKIOIMAGE_EXPORT vtkBMPReader : public vtkImageReader
 {
 public:
-  static vtkBMPReader *New();
-  vtkTypeMacro(vtkBMPReader,vtkImageReader);
+  static vtkBMPReader* New();
+  vtkTypeMacro(vtkBMPReader, vtkImageReader);
 
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
-  //@{
+  ///@{
   /**
    * Returns the depth of the BMP, either 8 or 24.
    */
-  vtkGetMacro(Depth,int);
-  //@}
+  vtkGetMacro(Depth, int);
+  ///@}
 
+  ///@{
   /**
-   * Is the given file a BMP file?
+   * Return 1 if, after a quick check of file header, it looks like the provided file or stream
+   * can be read as a BMP file. Return 0 if it is sure it cannot be read. The stream version may
+   * move the stream cursor. This checks the magic "BM" and correct header InfoSize.
    */
-  int CanReadFile(const char* fname) override;
+  int CanReadFile(VTK_FILEPATH const char* fname) override;
+  int CanReadFile(vtkResourceStream* stream) override;
+  ///@}
 
   /**
    * Get the file extensions for this format.
    * Returns a string with a space separated list of extensions in
    * the format .extension
    */
-  const char* GetFileExtensions() override
-  {
-      return ".bmp";
-  }
+  const char* GetFileExtensions() override { return ".bmp"; }
 
   /**
    * Return a descriptive name for the file format that might be useful in a GUI.
    */
-  const char* GetDescriptiveName() override
-  {
-      return "Windows BMP";
-  }
+  const char* GetDescriptiveName() override { return "Windows BMP"; }
 
-  //@{
+  ///@{
   /**
    * If this flag is set and the BMP reader encounters an 8bit file,
    * the data will be kept as unsigned chars and a lookuptable will be
    * exported
    */
-  vtkSetMacro(Allow8BitBMP,vtkTypeBool);
-  vtkGetMacro(Allow8BitBMP,vtkTypeBool);
-  vtkBooleanMacro(Allow8BitBMP,vtkTypeBool);
-  //@}
+  vtkSetMacro(Allow8BitBMP, vtkTypeBool);
+  vtkGetMacro(Allow8BitBMP, vtkTypeBool);
+  vtkBooleanMacro(Allow8BitBMP, vtkTypeBool);
+  ///@}
 
   vtkGetObjectMacro(LookupTable, vtkLookupTable);
 
-  //@{
+  ///@{
   /**
    * Returns the color lut.
    */
-  vtkGetMacro(Colors,unsigned char *);
-  //@}
+  vtkGetMacro(Colors, unsigned char*);
+  ///@}
 
 protected:
   vtkBMPReader();
   ~vtkBMPReader() override;
 
-  unsigned char *Colors;
+  unsigned char* Colors;
   short Depth;
   vtkTypeBool Allow8BitBMP;
-  vtkLookupTable *LookupTable;
+  vtkLookupTable* LookupTable;
 
   void ComputeDataIncrements() override;
   void ExecuteInformation() override;
-  void ExecuteDataWithInformation(vtkDataObject *out, vtkInformation* outInfo) override;
+  void ExecuteDataWithInformation(vtkDataObject* out, vtkInformation* outInfo) override;
+
 private:
   vtkBMPReader(const vtkBMPReader&) = delete;
   void operator=(const vtkBMPReader&) = delete;
+
+  static bool ReadAndCheckHeader(
+    vtkResourceStream* stream, bool quiet, vtkTypeInt32& offset, vtkTypeInt32& infoSize);
 };
+VTK_ABI_NAMESPACE_END
 #endif
-
-

@@ -1,30 +1,19 @@
-/*=========================================================================
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
-  Program:   Visualization Toolkit
-  Module:    vtkDataWriter.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
 #include "vtkDataWriter.h"
 
+#include "vtkArrayDispatch.h"
 #include "vtkBitArray.h"
 #include "vtkByteSwap.h"
 #include "vtkCellArray.h"
+#include "vtkCellArrayIterator.h"
 #include "vtkCellData.h"
-#include "vtkCharArray.h"
+#include "vtkDataArrayRange.h"
 #include "vtkDataSet.h"
-#include "vtkDoubleArray.h"
 #include "vtkErrorCode.h"
 #include "vtkExecutive.h"
 #include "vtkFieldData.h"
-#include "vtkFloatArray.h"
 #include "vtkGraph.h"
 #include "vtkInformation.h"
 #include "vtkInformationDoubleKey.h"
@@ -39,49 +28,38 @@
 #include "vtkInformationUnsignedLongKey.h"
 #include "vtkIntArray.h"
 #include "vtkLegacyReaderVersion.h"
-#include "vtkLongArray.h"
 #include "vtkLookupTable.h"
 #include "vtkMath.h"
 #include "vtkNew.h"
 #include "vtkObjectFactory.h"
 #include "vtkPointData.h"
 #include "vtkPoints.h"
-#include "vtkShortArray.h"
-#include "vtkSignedCharArray.h"
-#include "vtkSOADataArrayTemplate.h"
 #include "vtkStringArray.h"
+#include "vtkStringFormatter.h"
 #include "vtkTable.h"
-#include "vtkTypeInt64Array.h"
 #include "vtkTypeTraits.h"
-#include "vtkTypeUInt64Array.h"
-#include "vtkUnicodeStringArray.h"
 #include "vtkUnsignedCharArray.h"
-#include "vtkUnsignedIntArray.h"
-#include "vtkUnsignedLongArray.h"
-#include "vtkUnsignedShortArray.h"
 #include "vtkVariantArray.h"
+
+#include "vtksys/FStream.hxx"
 
 #include <cstdio>
 #include <sstream>
 
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkDataWriter);
 
-// this undef is required on the hp. vtkMutexLock ends up including
-// /usr/include/dce/cma_ux.h which has the gall to #define write as cma_write
-
-#ifdef write
-#undef write
-#endif
-
-// Created object with default header, ASCII format, and default names for
+//------------------------------------------------------------------------------
+// Created object with a default header, ASCII format, and default names for
 // scalars, vectors, tensors, normals, and texture coordinates.
 vtkDataWriter::vtkDataWriter()
 {
   this->FileName = nullptr;
 
   this->Header = new char[257];
-  strcpy(this->Header,"vtk output");
+  strcpy(this->Header, "vtk output");
   this->FileType = VTK_ASCII;
+  this->FileVersion = VTK_LEGACY_READER_VERSION_5_1;
 
   this->ScalarsName = nullptr;
   this->VectorsName = nullptr;
@@ -92,11 +70,14 @@ vtkDataWriter::vtkDataWriter()
   this->PedigreeIdsName = nullptr;
   this->EdgeFlagsName = nullptr;
 
+  this->Precision = 11;
+  this->PrecisionFormat = "{:.11g} ";
+
   this->LookupTableName = new char[13];
-  strcpy(this->LookupTableName,"lookup_table");
+  strcpy(this->LookupTableName, "lookup_table");
 
   this->FieldDataName = new char[10];
-  strcpy(this->FieldDataName,"FieldData");
+  strcpy(this->FieldDataName, "FieldData");
 
   this->WriteToOutputString = 0;
   this->OutputString = nullptr;
@@ -104,44 +85,46 @@ vtkDataWriter::vtkDataWriter()
   this->WriteArrayMetaData = true;
 }
 
+//------------------------------------------------------------------------------
 vtkDataWriter::~vtkDataWriter()
 {
-  delete [] this->FileName;
-  delete [] this->Header;
-  delete [] this->ScalarsName;
-  delete [] this->VectorsName;
-  delete [] this->TensorsName;
-  delete [] this->NormalsName;
-  delete [] this->TCoordsName;
-  delete [] this->GlobalIdsName;
-  delete [] this->PedigreeIdsName;
-  delete [] this->EdgeFlagsName;
-  delete [] this->LookupTableName;
-  delete [] this->FieldDataName;
+  delete[] this->FileName;
+  delete[] this->Header;
+  delete[] this->ScalarsName;
+  delete[] this->VectorsName;
+  delete[] this->TensorsName;
+  delete[] this->NormalsName;
+  delete[] this->TCoordsName;
+  delete[] this->GlobalIdsName;
+  delete[] this->PedigreeIdsName;
+  delete[] this->EdgeFlagsName;
+  delete[] this->LookupTableName;
+  delete[] this->FieldDataName;
 
-  delete [] this->OutputString;
+  delete[] this->OutputString;
   this->OutputString = nullptr;
   this->OutputStringLength = 0;
 }
 
+//------------------------------------------------------------------------------
 // Open a vtk data file. Returns nullptr if error.
-ostream *vtkDataWriter::OpenVTKFile()
+ostream* vtkDataWriter::OpenVTKFile()
 {
-  ostream *fptr;
+  ostream* fptr;
 
-  if ((!this->WriteToOutputString) && ( !this->FileName ))
+  if ((!this->WriteToOutputString) && (!this->FileName))
   {
     vtkErrorMacro(<< "No FileName specified! Can't write!");
     this->SetErrorCode(vtkErrorCode::NoFileNameError);
     return nullptr;
   }
 
-  vtkDebugMacro(<<"Opening vtk file for writing...");
+  vtkDebugMacro(<< "Opening vtk file for writing...");
 
   if (this->WriteToOutputString)
   {
     // Get rid of any old output string.
-    delete [] this->OutputString;
+    delete[] this->OutputString;
     this->OutputString = nullptr;
     this->OutputStringLength = 0;
 
@@ -161,41 +144,80 @@ ostream *vtkDataWriter::OpenVTKFile()
   }
   else
   {
-    if ( this->FileType == VTK_ASCII )
+    if (this->FileType == VTK_ASCII)
     {
-      fptr = new ofstream(this->FileName, ios::out);
+      fptr = new vtksys::ofstream(this->FileName, ios::out);
     }
     else
     {
 #ifdef _WIN32
-      fptr = new ofstream(this->FileName, ios::out | ios::binary);
+      fptr = new vtksys::ofstream(this->FileName, ios::out | ios::binary);
 #else
-      fptr = new ofstream(this->FileName, ios::out);
+      fptr = new vtksys::ofstream(this->FileName, ios::out);
 #endif
     }
   }
 
   if (fptr->fail())
   {
-    vtkErrorMacro(<< "Unable to open file: "<< this->FileName);
+    vtkErrorMacro(<< "Unable to open file: " << this->FileName);
     this->SetErrorCode(vtkErrorCode::CannotOpenFileError);
     delete fptr;
     return nullptr;
   }
+  // Save current locale settings and set standard one to
+  // avoid locale issues - for instance with the decimal separator.
+  // Assumption made here that each OpenVTKFile is matched with a
+  // CloseVTKFile and that no nested Open/Close calls are made.
+  this->OriginalStreamLocale = fptr->getloc();
+  fptr->imbue(std::locale::classic());
 
   return fptr;
 }
 
-// Write the header of a vtk data file. Returns 0 if error.
-int vtkDataWriter::WriteHeader(ostream *fp)
+//------------------------------------------------------------------------------
+void vtkDataWriter::SetFileVersion(int version)
 {
-  vtkDebugMacro(<<"Writing header...");
+  if (version == this->FileVersion)
+  {
+    return;
+  }
 
-  *fp << "# vtk DataFile Version " << vtkLegacyReaderMajorVersion << "."
-      << vtkLegacyReaderMinorVersion << "\n";
+  this->Modified();
+  this->FileVersion = version;
+  this->FileMajorVersion = version / 10;
+  this->FileMinorVersion = version - (10 * this->FileMajorVersion);
+}
+
+//------------------------------------------------------------------------------
+// Write the header of a vtk data file. Returns 0 if error.
+int vtkDataWriter::WriteHeader(ostream* fp)
+{
+  vtkDebugMacro(<< "Writing header...");
+
+  // This code will update as the compile time
+  // major and minor versions are updated.
+  int majVersion, minVersion;
+  if (this->FileVersion == VTK_LEGACY_READER_VERSION_4_2)
+  {
+    majVersion = 4;
+    minVersion = 2;
+  }
+  else if (this->FileVersion == VTK_LEGACY_READER_VERSION_5_1)
+  {
+    majVersion = 5;
+    minVersion = 1;
+  }
+  else // future?
+  {
+    majVersion = vtkLegacyReaderMajorVersion;
+    minVersion = vtkLegacyReaderMinorVersion;
+  }
+
+  *fp << "# vtk DataFile Version " << majVersion << "." << minVersion << "\n";
   *fp << this->Header << "\n";
 
-  if ( this->FileType == VTK_ASCII )
+  if (this->FileType == VTK_ASCII)
   {
     *fp << "ASCII\n";
   }
@@ -214,65 +236,66 @@ int vtkDataWriter::WriteHeader(ostream *fp)
   return 1;
 }
 
+//------------------------------------------------------------------------------
 // Write the cell data (e.g., scalars, vectors, ...) of a vtk dataset.
 // Returns 0 if error.
-int vtkDataWriter::WriteCellData(ostream *fp, vtkDataSet *ds)
+int vtkDataWriter::WriteCellData(ostream* fp, vtkDataSet* ds)
 {
   vtkIdType numCells;
-  vtkDataArray *scalars;
-  vtkDataArray *vectors;
-  vtkDataArray *normals;
-  vtkDataArray *tcoords;
-  vtkDataArray *tensors;
-  vtkDataArray *globalIds;
-  vtkAbstractArray *pedigreeIds;
-  vtkFieldData *field;
-  vtkCellData *cd=ds->GetCellData();
+  vtkDataArray* scalars;
+  vtkDataArray* vectors;
+  vtkDataArray* normals;
+  vtkDataArray* tcoords;
+  vtkDataArray* tensors;
+  vtkDataArray* globalIds;
+  vtkAbstractArray* pedigreeIds;
+  vtkFieldData* field;
+  vtkCellData* cd = ds->GetCellData();
 
-  vtkDebugMacro(<<"Writing cell data...");
+  vtkDebugMacro(<< "Writing cell data...");
 
   numCells = ds->GetNumberOfCells();
-  if(numCells <= 0)
+  if (numCells <= 0)
   {
-    vtkDebugMacro(<<"No cell data to write!");
+    vtkDebugMacro(<< "No cell data to write!");
     return 1;
   }
 
   scalars = cd->GetScalars();
-  if(scalars && scalars->GetNumberOfTuples() <= 0)
+  if (scalars && scalars->GetNumberOfTuples() <= 0)
     scalars = nullptr;
 
   vectors = cd->GetVectors();
-  if(vectors && vectors->GetNumberOfTuples() <= 0)
+  if (vectors && vectors->GetNumberOfTuples() <= 0)
     vectors = nullptr;
 
   normals = cd->GetNormals();
-  if(normals && normals->GetNumberOfTuples() <= 0)
+  if (normals && normals->GetNumberOfTuples() <= 0)
     normals = nullptr;
 
   tcoords = cd->GetTCoords();
-  if(tcoords && tcoords->GetNumberOfTuples() <= 0)
+  if (tcoords && tcoords->GetNumberOfTuples() <= 0)
     tcoords = nullptr;
 
   tensors = cd->GetTensors();
-  if(tensors && tensors->GetNumberOfTuples() <= 0)
+  if (tensors && tensors->GetNumberOfTuples() <= 0)
     tensors = nullptr;
 
   globalIds = cd->GetGlobalIds();
-  if(globalIds && globalIds->GetNumberOfTuples() <= 0)
+  if (globalIds && globalIds->GetNumberOfTuples() <= 0)
     globalIds = nullptr;
 
   pedigreeIds = cd->GetPedigreeIds();
-  if(pedigreeIds && pedigreeIds->GetNumberOfTuples() <= 0)
+  if (pedigreeIds && pedigreeIds->GetNumberOfTuples() <= 0)
     pedigreeIds = nullptr;
 
   field = cd;
-  if(field && field->GetNumberOfTuples() <= 0)
+  if (field && field->GetNumberOfTuples() <= 0)
     field = nullptr;
 
-  if(!(scalars || vectors || normals || tcoords || tensors || globalIds || pedigreeIds || field))
+  if (!(scalars || vectors || normals || tcoords || tensors || globalIds || pedigreeIds || field))
   {
-    vtkDebugMacro(<<"No cell data to write!");
+    vtkDebugMacro(<< "No cell data to write!");
     return 1;
   }
 
@@ -280,9 +303,9 @@ int vtkDataWriter::WriteCellData(ostream *fp, vtkDataSet *ds)
   //
   // Write scalar data
   //
-  if( scalars )
+  if (scalars)
   {
-    if ( ! this->WriteScalarData(fp, scalars, numCells) )
+    if (!this->WriteScalarData(fp, scalars, numCells))
     {
       return 0;
     }
@@ -290,9 +313,9 @@ int vtkDataWriter::WriteCellData(ostream *fp, vtkDataSet *ds)
   //
   // Write vector data
   //
-  if( vectors )
+  if (vectors)
   {
-    if ( ! this->WriteVectorData(fp, vectors, numCells) )
+    if (!this->WriteVectorData(fp, vectors, numCells))
     {
       return 0;
     }
@@ -300,9 +323,9 @@ int vtkDataWriter::WriteCellData(ostream *fp, vtkDataSet *ds)
   //
   // Write normals
   //
-  if ( normals )
+  if (normals)
   {
-    if ( ! this->WriteNormalData(fp, normals, numCells) )
+    if (!this->WriteNormalData(fp, normals, numCells))
     {
       return 0;
     }
@@ -310,9 +333,9 @@ int vtkDataWriter::WriteCellData(ostream *fp, vtkDataSet *ds)
   //
   // Write texture coords
   //
-  if ( tcoords )
+  if (tcoords)
   {
-    if ( ! this->WriteTCoordData(fp, tcoords, numCells) )
+    if (!this->WriteTCoordData(fp, tcoords, numCells))
     {
       return 0;
     }
@@ -320,9 +343,9 @@ int vtkDataWriter::WriteCellData(ostream *fp, vtkDataSet *ds)
   //
   // Write tensors
   //
-  if ( tensors )
+  if (tensors)
   {
-    if ( ! this->WriteTensorData(fp, tensors, numCells) )
+    if (!this->WriteTensorData(fp, tensors, numCells))
     {
       return 0;
     }
@@ -330,9 +353,9 @@ int vtkDataWriter::WriteCellData(ostream *fp, vtkDataSet *ds)
   //
   // Write global ids
   //
-  if ( globalIds )
+  if (globalIds)
   {
-    if ( ! this->WriteGlobalIdData(fp, globalIds, numCells) )
+    if (!this->WriteGlobalIdData(fp, globalIds, numCells))
     {
       return 0;
     }
@@ -340,9 +363,9 @@ int vtkDataWriter::WriteCellData(ostream *fp, vtkDataSet *ds)
   //
   // Write pedigree ids
   //
-  if ( pedigreeIds )
+  if (pedigreeIds)
   {
-    if ( ! this->WritePedigreeIdData(fp, pedigreeIds, numCells) )
+    if (!this->WritePedigreeIdData(fp, pedigreeIds, numCells))
     {
       return 0;
     }
@@ -350,9 +373,9 @@ int vtkDataWriter::WriteCellData(ostream *fp, vtkDataSet *ds)
   //
   // Write field
   //
-  if ( field )
+  if (field)
   {
-    if ( ! this->WriteFieldData(fp, field) )
+    if (!this->WriteFieldData(fp, field))
     {
       return 0;
     }
@@ -361,70 +384,72 @@ int vtkDataWriter::WriteCellData(ostream *fp, vtkDataSet *ds)
   return 1;
 }
 
+//------------------------------------------------------------------------------
 // Write the point data (e.g., scalars, vectors, ...) of a vtk dataset.
 // Returns 0 if error.
-int vtkDataWriter::WritePointData(ostream *fp, vtkDataSet *ds)
+int vtkDataWriter::WritePointData(ostream* fp, vtkDataSet* ds)
 {
   vtkIdType numPts;
-  vtkDataArray *scalars;
-  vtkDataArray *vectors;
-  vtkDataArray *normals;
-  vtkDataArray *tcoords;
-  vtkDataArray *tensors;
-  vtkDataArray *globalIds;
-  vtkAbstractArray *pedigreeIds;
-  vtkDataArray *edgeFlags;
-  vtkFieldData *field;
-  vtkPointData *pd=ds->GetPointData();
+  vtkDataArray* scalars;
+  vtkDataArray* vectors;
+  vtkDataArray* normals;
+  vtkDataArray* tcoords;
+  vtkDataArray* tensors;
+  vtkDataArray* globalIds;
+  vtkAbstractArray* pedigreeIds;
+  vtkDataArray* edgeFlags;
+  vtkFieldData* field;
+  vtkPointData* pd = ds->GetPointData();
 
-  vtkDebugMacro(<<"Writing point data...");
+  vtkDebugMacro(<< "Writing point data...");
 
   numPts = ds->GetNumberOfPoints();
-  if(numPts <= 0)
+  if (numPts <= 0)
   {
-    vtkDebugMacro(<<"No point data to write!");
+    vtkDebugMacro(<< "No point data to write!");
     return 1;
   }
 
   scalars = pd->GetScalars();
-  if(scalars && scalars->GetNumberOfTuples() <= 0)
+  if (scalars && scalars->GetNumberOfTuples() <= 0)
     scalars = nullptr;
 
   vectors = pd->GetVectors();
-  if(vectors && vectors->GetNumberOfTuples() <= 0)
+  if (vectors && vectors->GetNumberOfTuples() <= 0)
     vectors = nullptr;
 
   normals = pd->GetNormals();
-  if(normals && normals->GetNumberOfTuples() <= 0)
+  if (normals && normals->GetNumberOfTuples() <= 0)
     normals = nullptr;
 
   tcoords = pd->GetTCoords();
-  if(tcoords && tcoords->GetNumberOfTuples() <= 0)
+  if (tcoords && tcoords->GetNumberOfTuples() <= 0)
     tcoords = nullptr;
 
   tensors = pd->GetTensors();
-  if(tensors && tensors->GetNumberOfTuples() <= 0)
+  if (tensors && tensors->GetNumberOfTuples() <= 0)
     tensors = nullptr;
 
   globalIds = pd->GetGlobalIds();
-  if(globalIds && globalIds->GetNumberOfTuples() <= 0)
+  if (globalIds && globalIds->GetNumberOfTuples() <= 0)
     globalIds = nullptr;
 
   pedigreeIds = pd->GetPedigreeIds();
-  if(pedigreeIds && pedigreeIds->GetNumberOfTuples() <= 0)
+  if (pedigreeIds && pedigreeIds->GetNumberOfTuples() <= 0)
     pedigreeIds = nullptr;
 
   edgeFlags = pd->GetAttribute(vtkDataSetAttributes::EDGEFLAG);
-  if(edgeFlags && edgeFlags->GetNumberOfTuples() <= 0)
+  if (edgeFlags && edgeFlags->GetNumberOfTuples() <= 0)
     edgeFlags = nullptr;
 
   field = pd;
-  if(field && field->GetNumberOfTuples() <= 0)
+  if (field && field->GetNumberOfTuples() <= 0)
     field = nullptr;
 
-  if(!(scalars || vectors || normals || tcoords || tensors || globalIds || pedigreeIds || edgeFlags || field))
+  if (!(scalars || vectors || normals || tcoords || tensors || globalIds || pedigreeIds ||
+        edgeFlags || field))
   {
-    vtkDebugMacro(<<"No point data to write!");
+    vtkDebugMacro(<< "No point data to write!");
     return 1;
   }
 
@@ -432,9 +457,9 @@ int vtkDataWriter::WritePointData(ostream *fp, vtkDataSet *ds)
   //
   // Write scalar data
   //
-  if ( scalars )
+  if (scalars)
   {
-    if ( ! this->WriteScalarData(fp, scalars, numPts) )
+    if (!this->WriteScalarData(fp, scalars, numPts))
     {
       return 0;
     }
@@ -442,9 +467,9 @@ int vtkDataWriter::WritePointData(ostream *fp, vtkDataSet *ds)
   //
   // Write vector data
   //
-  if ( vectors )
+  if (vectors)
   {
-    if ( ! this->WriteVectorData(fp, vectors, numPts) )
+    if (!this->WriteVectorData(fp, vectors, numPts))
     {
       return 0;
     }
@@ -452,9 +477,9 @@ int vtkDataWriter::WritePointData(ostream *fp, vtkDataSet *ds)
   //
   // Write normals
   //
-  if ( normals )
+  if (normals)
   {
-    if ( ! this->WriteNormalData(fp, normals, numPts) )
+    if (!this->WriteNormalData(fp, normals, numPts))
     {
       return 0;
     }
@@ -462,9 +487,9 @@ int vtkDataWriter::WritePointData(ostream *fp, vtkDataSet *ds)
   //
   // Write texture coords
   //
-  if ( tcoords )
+  if (tcoords)
   {
-    if ( ! this->WriteTCoordData(fp, tcoords, numPts) )
+    if (!this->WriteTCoordData(fp, tcoords, numPts))
     {
       return 0;
     }
@@ -472,9 +497,9 @@ int vtkDataWriter::WritePointData(ostream *fp, vtkDataSet *ds)
   //
   // Write tensors
   //
-  if ( tensors )
+  if (tensors)
   {
-    if ( ! this->WriteTensorData(fp, tensors, numPts) )
+    if (!this->WriteTensorData(fp, tensors, numPts))
     {
       return 0;
     }
@@ -482,9 +507,9 @@ int vtkDataWriter::WritePointData(ostream *fp, vtkDataSet *ds)
   //
   // Write global ids
   //
-  if ( globalIds )
+  if (globalIds)
   {
-    if ( ! this->WriteGlobalIdData(fp, globalIds, numPts) )
+    if (!this->WriteGlobalIdData(fp, globalIds, numPts))
     {
       return 0;
     }
@@ -492,9 +517,9 @@ int vtkDataWriter::WritePointData(ostream *fp, vtkDataSet *ds)
   //
   // Write pedigree ids
   //
-  if ( pedigreeIds )
+  if (pedigreeIds)
   {
-    if ( ! this->WritePedigreeIdData(fp, pedigreeIds, numPts) )
+    if (!this->WritePedigreeIdData(fp, pedigreeIds, numPts))
     {
       return 0;
     }
@@ -502,9 +527,9 @@ int vtkDataWriter::WritePointData(ostream *fp, vtkDataSet *ds)
   //
   // Write edge flags
   //
-  if ( edgeFlags )
+  if (edgeFlags)
   {
-    if ( ! this->WriteEdgeFlagsData(fp, edgeFlags, numPts) )
+    if (!this->WriteEdgeFlagsData(fp, edgeFlags, numPts))
     {
       return 0;
     }
@@ -512,9 +537,9 @@ int vtkDataWriter::WritePointData(ostream *fp, vtkDataSet *ds)
   //
   // Write field
   //
-  if ( field )
+  if (field)
   {
-    if ( ! this->WriteFieldData(fp, field) )
+    if (!this->WriteFieldData(fp, field))
     {
       return 0;
     }
@@ -523,65 +548,66 @@ int vtkDataWriter::WritePointData(ostream *fp, vtkDataSet *ds)
   return 1;
 }
 
+//------------------------------------------------------------------------------
 // Write the vertex data (e.g., scalars, vectors, ...) of a vtk graph.
 // Returns 0 if error.
-int vtkDataWriter::WriteVertexData(ostream *fp, vtkGraph *ds)
+int vtkDataWriter::WriteVertexData(ostream* fp, vtkGraph* ds)
 {
   vtkIdType numVertices;
-  vtkDataArray *scalars;
-  vtkDataArray *vectors;
-  vtkDataArray *normals;
-  vtkDataArray *tcoords;
-  vtkDataArray *tensors;
-  vtkDataArray *globalIds;
-  vtkAbstractArray *pedigreeIds;
-  vtkFieldData *field;
-  vtkDataSetAttributes *cd=ds->GetVertexData();
+  vtkDataArray* scalars;
+  vtkDataArray* vectors;
+  vtkDataArray* normals;
+  vtkDataArray* tcoords;
+  vtkDataArray* tensors;
+  vtkDataArray* globalIds;
+  vtkAbstractArray* pedigreeIds;
+  vtkFieldData* field;
+  vtkDataSetAttributes* cd = ds->GetVertexData();
 
-  vtkDebugMacro(<<"Writing vertex data...");
+  vtkDebugMacro(<< "Writing vertex data...");
 
   numVertices = ds->GetNumberOfVertices();
-  if(numVertices <= 0)
+  if (numVertices <= 0)
   {
-    vtkDebugMacro(<<"No vertex data to write!");
+    vtkDebugMacro(<< "No vertex data to write!");
     return 1;
   }
 
   scalars = cd->GetScalars();
-  if(scalars && scalars->GetNumberOfTuples() <= 0)
+  if (scalars && scalars->GetNumberOfTuples() <= 0)
     scalars = nullptr;
 
   vectors = cd->GetVectors();
-  if(vectors && vectors->GetNumberOfTuples() <= 0)
+  if (vectors && vectors->GetNumberOfTuples() <= 0)
     vectors = nullptr;
 
   normals = cd->GetNormals();
-  if(normals && normals->GetNumberOfTuples() <= 0)
+  if (normals && normals->GetNumberOfTuples() <= 0)
     normals = nullptr;
 
   tcoords = cd->GetTCoords();
-  if(tcoords && tcoords->GetNumberOfTuples() <= 0)
+  if (tcoords && tcoords->GetNumberOfTuples() <= 0)
     tcoords = nullptr;
 
   tensors = cd->GetTensors();
-  if(tensors && tensors->GetNumberOfTuples() <= 0)
+  if (tensors && tensors->GetNumberOfTuples() <= 0)
     tensors = nullptr;
 
   globalIds = cd->GetGlobalIds();
-  if(globalIds && globalIds->GetNumberOfTuples() <= 0)
+  if (globalIds && globalIds->GetNumberOfTuples() <= 0)
     globalIds = nullptr;
 
   pedigreeIds = cd->GetPedigreeIds();
-  if(pedigreeIds && pedigreeIds->GetNumberOfTuples() <= 0)
+  if (pedigreeIds && pedigreeIds->GetNumberOfTuples() <= 0)
     pedigreeIds = nullptr;
 
   field = cd;
-  if(field && field->GetNumberOfTuples() <= 0)
+  if (field && field->GetNumberOfTuples() <= 0)
     field = nullptr;
 
-  if(!(scalars || vectors || normals || tcoords || tensors || globalIds || pedigreeIds || field))
+  if (!(scalars || vectors || normals || tcoords || tensors || globalIds || pedigreeIds || field))
   {
-    vtkDebugMacro(<<"No cell data to write!");
+    vtkDebugMacro(<< "No cell data to write!");
     return 1;
   }
 
@@ -589,9 +615,9 @@ int vtkDataWriter::WriteVertexData(ostream *fp, vtkGraph *ds)
   //
   // Write scalar data
   //
-  if( scalars )
+  if (scalars)
   {
-    if ( ! this->WriteScalarData(fp, scalars, numVertices) )
+    if (!this->WriteScalarData(fp, scalars, numVertices))
     {
       return 0;
     }
@@ -599,9 +625,9 @@ int vtkDataWriter::WriteVertexData(ostream *fp, vtkGraph *ds)
   //
   // Write vector data
   //
-  if( vectors )
+  if (vectors)
   {
-    if ( ! this->WriteVectorData(fp, vectors, numVertices) )
+    if (!this->WriteVectorData(fp, vectors, numVertices))
     {
       return 0;
     }
@@ -609,9 +635,9 @@ int vtkDataWriter::WriteVertexData(ostream *fp, vtkGraph *ds)
   //
   // Write normals
   //
-  if ( normals )
+  if (normals)
   {
-    if ( ! this->WriteNormalData(fp, normals, numVertices) )
+    if (!this->WriteNormalData(fp, normals, numVertices))
     {
       return 0;
     }
@@ -619,9 +645,9 @@ int vtkDataWriter::WriteVertexData(ostream *fp, vtkGraph *ds)
   //
   // Write texture coords
   //
-  if ( tcoords )
+  if (tcoords)
   {
-    if ( ! this->WriteTCoordData(fp, tcoords, numVertices) )
+    if (!this->WriteTCoordData(fp, tcoords, numVertices))
     {
       return 0;
     }
@@ -629,9 +655,9 @@ int vtkDataWriter::WriteVertexData(ostream *fp, vtkGraph *ds)
   //
   // Write tensors
   //
-  if ( tensors )
+  if (tensors)
   {
-    if ( ! this->WriteTensorData(fp, tensors, numVertices) )
+    if (!this->WriteTensorData(fp, tensors, numVertices))
     {
       return 0;
     }
@@ -639,9 +665,9 @@ int vtkDataWriter::WriteVertexData(ostream *fp, vtkGraph *ds)
   //
   // Write global ids
   //
-  if ( globalIds )
+  if (globalIds)
   {
-    if ( ! this->WriteGlobalIdData(fp, globalIds, numVertices) )
+    if (!this->WriteGlobalIdData(fp, globalIds, numVertices))
     {
       return 0;
     }
@@ -649,9 +675,9 @@ int vtkDataWriter::WriteVertexData(ostream *fp, vtkGraph *ds)
   //
   // Write pedigree ids
   //
-  if ( pedigreeIds )
+  if (pedigreeIds)
   {
-    if ( ! this->WritePedigreeIdData(fp, pedigreeIds, numVertices) )
+    if (!this->WritePedigreeIdData(fp, pedigreeIds, numVertices))
     {
       return 0;
     }
@@ -659,9 +685,9 @@ int vtkDataWriter::WriteVertexData(ostream *fp, vtkGraph *ds)
   //
   // Write field
   //
-  if ( field )
+  if (field)
   {
-    if ( ! this->WriteFieldData(fp, field) )
+    if (!this->WriteFieldData(fp, field))
     {
       return 0;
     }
@@ -670,65 +696,66 @@ int vtkDataWriter::WriteVertexData(ostream *fp, vtkGraph *ds)
   return 1;
 }
 
+//------------------------------------------------------------------------------
 // Write the edge data (e.g., scalars, vectors, ...) of a vtk graph.
 // Returns 0 if error.
-int vtkDataWriter::WriteEdgeData(ostream *fp, vtkGraph *g)
+int vtkDataWriter::WriteEdgeData(ostream* fp, vtkGraph* g)
 {
   vtkIdType numEdges;
-  vtkDataArray *scalars;
-  vtkDataArray *vectors;
-  vtkDataArray *normals;
-  vtkDataArray *tcoords;
-  vtkDataArray *tensors;
-  vtkDataArray *globalIds;
-  vtkAbstractArray *pedigreeIds;
-  vtkFieldData *field;
-  vtkDataSetAttributes *cd=g->GetEdgeData();
+  vtkDataArray* scalars;
+  vtkDataArray* vectors;
+  vtkDataArray* normals;
+  vtkDataArray* tcoords;
+  vtkDataArray* tensors;
+  vtkDataArray* globalIds;
+  vtkAbstractArray* pedigreeIds;
+  vtkFieldData* field;
+  vtkDataSetAttributes* cd = g->GetEdgeData();
 
-  vtkDebugMacro(<<"Writing edge data...");
+  vtkDebugMacro(<< "Writing edge data...");
 
   numEdges = g->GetNumberOfEdges();
-  if(numEdges <= 0)
+  if (numEdges <= 0)
   {
-    vtkDebugMacro(<<"No edge data to write!");
+    vtkDebugMacro(<< "No edge data to write!");
     return 1;
   }
 
   scalars = cd->GetScalars();
-  if(scalars && scalars->GetNumberOfTuples() <= 0)
+  if (scalars && scalars->GetNumberOfTuples() <= 0)
     scalars = nullptr;
 
   vectors = cd->GetVectors();
-  if(vectors && vectors->GetNumberOfTuples() <= 0)
+  if (vectors && vectors->GetNumberOfTuples() <= 0)
     vectors = nullptr;
 
   normals = cd->GetNormals();
-  if(normals && normals->GetNumberOfTuples() <= 0)
+  if (normals && normals->GetNumberOfTuples() <= 0)
     normals = nullptr;
 
   tcoords = cd->GetTCoords();
-  if(tcoords && tcoords->GetNumberOfTuples() <= 0)
+  if (tcoords && tcoords->GetNumberOfTuples() <= 0)
     tcoords = nullptr;
 
   tensors = cd->GetTensors();
-  if(tensors && tensors->GetNumberOfTuples() <= 0)
+  if (tensors && tensors->GetNumberOfTuples() <= 0)
     tensors = nullptr;
 
   globalIds = cd->GetGlobalIds();
-  if(globalIds && globalIds->GetNumberOfTuples() <= 0)
+  if (globalIds && globalIds->GetNumberOfTuples() <= 0)
     globalIds = nullptr;
 
   pedigreeIds = cd->GetPedigreeIds();
-  if(pedigreeIds && pedigreeIds->GetNumberOfTuples() <= 0)
+  if (pedigreeIds && pedigreeIds->GetNumberOfTuples() <= 0)
     pedigreeIds = nullptr;
 
   field = cd;
-  if(field && field->GetNumberOfTuples() <= 0)
+  if (field && field->GetNumberOfTuples() <= 0)
     field = nullptr;
 
-  if(!(scalars || vectors || normals || tcoords || tensors || globalIds || pedigreeIds || field))
+  if (!(scalars || vectors || normals || tcoords || tensors || globalIds || pedigreeIds || field))
   {
-    vtkDebugMacro(<<"No edge data to write!");
+    vtkDebugMacro(<< "No edge data to write!");
     return 1;
   }
 
@@ -736,9 +763,9 @@ int vtkDataWriter::WriteEdgeData(ostream *fp, vtkGraph *g)
   //
   // Write scalar data
   //
-  if( scalars )
+  if (scalars)
   {
-    if ( ! this->WriteScalarData(fp, scalars, numEdges) )
+    if (!this->WriteScalarData(fp, scalars, numEdges))
     {
       return 0;
     }
@@ -746,9 +773,9 @@ int vtkDataWriter::WriteEdgeData(ostream *fp, vtkGraph *g)
   //
   // Write vector data
   //
-  if( vectors )
+  if (vectors)
   {
-    if ( ! this->WriteVectorData(fp, vectors, numEdges) )
+    if (!this->WriteVectorData(fp, vectors, numEdges))
     {
       return 0;
     }
@@ -756,9 +783,9 @@ int vtkDataWriter::WriteEdgeData(ostream *fp, vtkGraph *g)
   //
   // Write normals
   //
-  if ( normals )
+  if (normals)
   {
-    if ( ! this->WriteNormalData(fp, normals, numEdges) )
+    if (!this->WriteNormalData(fp, normals, numEdges))
     {
       return 0;
     }
@@ -766,9 +793,9 @@ int vtkDataWriter::WriteEdgeData(ostream *fp, vtkGraph *g)
   //
   // Write texture coords
   //
-  if ( tcoords )
+  if (tcoords)
   {
-    if ( ! this->WriteTCoordData(fp, tcoords, numEdges) )
+    if (!this->WriteTCoordData(fp, tcoords, numEdges))
     {
       return 0;
     }
@@ -776,9 +803,9 @@ int vtkDataWriter::WriteEdgeData(ostream *fp, vtkGraph *g)
   //
   // Write tensors
   //
-  if ( tensors )
+  if (tensors)
   {
-    if ( ! this->WriteTensorData(fp, tensors, numEdges) )
+    if (!this->WriteTensorData(fp, tensors, numEdges))
     {
       return 0;
     }
@@ -786,9 +813,9 @@ int vtkDataWriter::WriteEdgeData(ostream *fp, vtkGraph *g)
   //
   // Write global ids
   //
-  if ( globalIds )
+  if (globalIds)
   {
-    if ( ! this->WriteGlobalIdData(fp, globalIds, numEdges) )
+    if (!this->WriteGlobalIdData(fp, globalIds, numEdges))
     {
       return 0;
     }
@@ -796,9 +823,9 @@ int vtkDataWriter::WriteEdgeData(ostream *fp, vtkGraph *g)
   //
   // Write pedigree ids
   //
-  if ( pedigreeIds )
+  if (pedigreeIds)
   {
-    if ( ! this->WritePedigreeIdData(fp, pedigreeIds, numEdges) )
+    if (!this->WritePedigreeIdData(fp, pedigreeIds, numEdges))
     {
       return 0;
     }
@@ -806,9 +833,9 @@ int vtkDataWriter::WriteEdgeData(ostream *fp, vtkGraph *g)
   //
   // Write field
   //
-  if ( field )
+  if (field)
   {
-    if ( ! this->WriteFieldData(fp, field) )
+    if (!this->WriteFieldData(fp, field))
     {
       return 0;
     }
@@ -817,60 +844,61 @@ int vtkDataWriter::WriteEdgeData(ostream *fp, vtkGraph *g)
   return 1;
 }
 
+//------------------------------------------------------------------------------
 // Write the row data (e.g., scalars, vectors, ...) of a vtk table.
 // Returns 0 if error.
-int vtkDataWriter::WriteRowData(ostream *fp, vtkTable *t)
+int vtkDataWriter::WriteRowData(ostream* fp, vtkTable* t)
 {
   vtkIdType numRows;
-  vtkDataArray *scalars;
-  vtkDataArray *vectors;
-  vtkDataArray *normals;
-  vtkDataArray *tcoords;
-  vtkDataArray *tensors;
-  vtkDataArray *globalIds;
-  vtkAbstractArray *pedigreeIds;
-  vtkFieldData *field;
-  vtkDataSetAttributes *cd=t->GetRowData();
+  vtkDataArray* scalars;
+  vtkDataArray* vectors;
+  vtkDataArray* normals;
+  vtkDataArray* tcoords;
+  vtkDataArray* tensors;
+  vtkDataArray* globalIds;
+  vtkAbstractArray* pedigreeIds;
+  vtkFieldData* field;
+  vtkDataSetAttributes* cd = t->GetRowData();
 
   numRows = t->GetNumberOfRows();
 
-  vtkDebugMacro(<<"Writing row data...");
+  vtkDebugMacro(<< "Writing row data...");
 
   scalars = cd->GetScalars();
-  if(scalars && scalars->GetNumberOfTuples() <= 0)
+  if (scalars && scalars->GetNumberOfTuples() <= 0)
     scalars = nullptr;
 
   vectors = cd->GetVectors();
-  if(vectors && vectors->GetNumberOfTuples() <= 0)
+  if (vectors && vectors->GetNumberOfTuples() <= 0)
     vectors = nullptr;
 
   normals = cd->GetNormals();
-  if(normals && normals->GetNumberOfTuples() <= 0)
+  if (normals && normals->GetNumberOfTuples() <= 0)
     normals = nullptr;
 
   tcoords = cd->GetTCoords();
-  if(tcoords && tcoords->GetNumberOfTuples() <= 0)
+  if (tcoords && tcoords->GetNumberOfTuples() <= 0)
     tcoords = nullptr;
 
   tensors = cd->GetTensors();
-  if(tensors && tensors->GetNumberOfTuples() <= 0)
+  if (tensors && tensors->GetNumberOfTuples() <= 0)
     tensors = nullptr;
 
   globalIds = cd->GetGlobalIds();
-  if(globalIds && globalIds->GetNumberOfTuples() <= 0)
+  if (globalIds && globalIds->GetNumberOfTuples() <= 0)
     globalIds = nullptr;
 
   pedigreeIds = cd->GetPedigreeIds();
-  if(pedigreeIds && pedigreeIds->GetNumberOfTuples() <= 0)
+  if (pedigreeIds && pedigreeIds->GetNumberOfTuples() <= 0)
     pedigreeIds = nullptr;
 
   field = cd;
-  if(field && field->GetNumberOfTuples() <= 0)
+  if (field && field->GetNumberOfTuples() <= 0)
     field = nullptr;
 
-  if(!(scalars || vectors || normals || tcoords || tensors || globalIds || pedigreeIds || field))
+  if (!(scalars || vectors || normals || tcoords || tensors || globalIds || pedigreeIds || field))
   {
-    vtkDebugMacro(<<"No row data to write!");
+    vtkDebugMacro(<< "No row data to write!");
     return 1;
   }
 
@@ -878,9 +906,9 @@ int vtkDataWriter::WriteRowData(ostream *fp, vtkTable *t)
   //
   // Write scalar data
   //
-  if( scalars )
+  if (scalars)
   {
-    if ( ! this->WriteScalarData(fp, scalars, numRows) )
+    if (!this->WriteScalarData(fp, scalars, numRows))
     {
       return 0;
     }
@@ -888,9 +916,9 @@ int vtkDataWriter::WriteRowData(ostream *fp, vtkTable *t)
   //
   // Write vector data
   //
-  if( vectors )
+  if (vectors)
   {
-    if ( ! this->WriteVectorData(fp, vectors, numRows) )
+    if (!this->WriteVectorData(fp, vectors, numRows))
     {
       return 0;
     }
@@ -898,9 +926,9 @@ int vtkDataWriter::WriteRowData(ostream *fp, vtkTable *t)
   //
   // Write normals
   //
-  if ( normals )
+  if (normals)
   {
-    if ( ! this->WriteNormalData(fp, normals, numRows) )
+    if (!this->WriteNormalData(fp, normals, numRows))
     {
       return 0;
     }
@@ -908,9 +936,9 @@ int vtkDataWriter::WriteRowData(ostream *fp, vtkTable *t)
   //
   // Write texture coords
   //
-  if ( tcoords )
+  if (tcoords)
   {
-    if ( ! this->WriteTCoordData(fp, tcoords, numRows) )
+    if (!this->WriteTCoordData(fp, tcoords, numRows))
     {
       return 0;
     }
@@ -918,9 +946,9 @@ int vtkDataWriter::WriteRowData(ostream *fp, vtkTable *t)
   //
   // Write tensors
   //
-  if ( tensors )
+  if (tensors)
   {
-    if ( ! this->WriteTensorData(fp, tensors, numRows) )
+    if (!this->WriteTensorData(fp, tensors, numRows))
     {
       return 0;
     }
@@ -928,9 +956,9 @@ int vtkDataWriter::WriteRowData(ostream *fp, vtkTable *t)
   //
   // Write global ids
   //
-  if ( globalIds )
+  if (globalIds)
   {
-    if ( ! this->WriteGlobalIdData(fp, globalIds, numRows) )
+    if (!this->WriteGlobalIdData(fp, globalIds, numRows))
     {
       return 0;
     }
@@ -938,9 +966,9 @@ int vtkDataWriter::WriteRowData(ostream *fp, vtkTable *t)
   //
   // Write pedigree ids
   //
-  if ( pedigreeIds )
+  if (pedigreeIds)
   {
-    if ( ! this->WritePedigreeIdData(fp, pedigreeIds, numRows) )
+    if (!this->WritePedigreeIdData(fp, pedigreeIds, numRows))
     {
       return 0;
     }
@@ -948,9 +976,9 @@ int vtkDataWriter::WriteRowData(ostream *fp, vtkTable *t)
   //
   // Write field
   //
-  if ( field )
+  if (field)
   {
-    if ( ! this->WriteFieldData(fp, field) )
+    if (!this->WriteFieldData(fp, field))
     {
       return 0;
     }
@@ -963,103 +991,98 @@ namespace
 {
 // Template to handle writing data in ascii or binary
 // We could change the format into C++ io standard ...
-template <class T>
-void vtkWriteDataArray(ostream *fp, T *data, int fileType,
-                       const char *format, vtkIdType num, vtkIdType numComp)
+struct vtkWriteDataArray
 {
-  vtkIdType i, j, idx, sizeT;
-  char str[1024];
-
-  sizeT = sizeof(T);
-
-  if ( fileType == VTK_ASCII )
+  template <class TArray, class T = vtk::GetAPIType<TArray>>
+  void operator()(
+    TArray* array, ostream* fp, int fileType, const char* format, vtkIdType num, vtkIdType numComp)
   {
-    for (j=0; j<num; j++)
+    auto data = vtk::DataArrayValueRange<vtk::detail::DynamicTupleSize>(array).begin();
+    vtkIdType i, j, idx, sizeT;
+    char str[1024];
+
+    sizeT = sizeof(T);
+
+    if (fileType == VTK_ASCII)
     {
-      for (i=0; i<numComp; i++)
+      for (j = 0; j < num; j++)
       {
-        idx = i + j*numComp;
-        snprintf (str, sizeof(str), format, *data++); *fp << str;
-        if ( !((idx+1)%9) )
+        for (i = 0; i < numComp; i++)
         {
-          *fp << "\n";
+          idx = i + j * numComp;
+          auto result = vtk::format_to_n(str, sizeof(str), format, static_cast<T>(*data++));
+          *result.out = '\0';
+          *fp << str;
+          if (!((idx + 1) % 9))
+          {
+            *fp << "\n";
+          }
         }
       }
     }
-  }
-  else
-  {
-    if (num*numComp > 0)
+    else
     {
-      // need to byteswap ??
-      switch (sizeT)
+      vtkNew<vtkAOSDataArrayTemplate<T>> aosArray;
+      aosArray->ShallowCopy(array); // DeepCopy if needed internally
+      if (num * numComp > 0)
       {
-        case 2:
-          // no typecast needed here; method call takes void* data
-          vtkByteSwap::SwapWrite2BERange(data, num*numComp, fp);
-          break;
-        case 4:
-          // no typecast needed here; method call takes void* data
-          vtkByteSwap::SwapWrite4BERange(data, num*numComp, fp);
-          break;
-        case 8:
-          // no typecast needed here; method call takes void* data
-          vtkByteSwap::SwapWrite8BERange(data, num*numComp, fp);
-          break;
-        default:
-          fp->write(reinterpret_cast<char*>(data), sizeof(T) * (num*numComp));
-          break;
+        // need to byteswap ??
+        switch (sizeT)
+        {
+          case 2:
+            // no typecast needed here; method call takes void* data
+            vtkByteSwap::SwapWrite2BERange(aosArray->GetPointer(0), num * numComp, fp);
+            break;
+          case 4:
+            // no typecast needed here; method call takes void* data
+            vtkByteSwap::SwapWrite4BERange(aosArray->GetPointer(0), num * numComp, fp);
+            break;
+          case 8:
+            // no typecast needed here; method call takes void* data
+            vtkByteSwap::SwapWrite8BERange(aosArray->GetPointer(0), num * numComp, fp);
+            break;
+          default:
+            fp->write(
+              reinterpret_cast<char*>(aosArray->GetPointer(0)), sizeof(T) * (num * numComp));
+            break;
+        }
       }
     }
+    *fp << "\n";
   }
-  *fp << "\n";
-}
-
-// Returns a pointer to the data ordered in original VTK style ordering
-// of the data. If this is an SOA array it has to allocate the memory
-// for that in which case the calling function must delete it.
-template <class T>
-T* GetArrayRawPointer(vtkAbstractArray* array, T* ptr, int isAOSArray)
-{
-  if (isAOSArray)
-  {
-    return ptr;
-  }
-  T* data = new T[array->GetNumberOfComponents()*array->GetNumberOfTuples()];
-  vtkSOADataArrayTemplate<T>* typedArray =
-    vtkSOADataArrayTemplate<T>::SafeDownCast(array);
-  typedArray->ExportToVoidPointer(data);
-  return data;
-}
+};
 
 } // end anonymous namespace
 
+//------------------------------------------------------------------------------
 // Write out data to file specified.
-int vtkDataWriter::WriteArray(ostream *fp, int dataType, vtkAbstractArray *data,
-                              const char *format, vtkIdType num, vtkIdType numComp)
+int vtkDataWriter::WriteArray(ostream* fp, int dataType, vtkAbstractArray* data, const char* format,
+  vtkIdType num, vtkIdType numComp)
 {
   vtkIdType i, j, idx;
   char str[1024];
 
-  bool isAOSArray = data->HasStandardMemoryLayout();
-
   char* outputFormat = new char[10];
+  auto da = vtkDataArray::SafeDownCast(data);
+  vtkWriteDataArray worker;
   switch (dataType)
   {
     case VTK_BIT:
     { // assume that bit array is always in original AOS ordering
-      snprintf (str, sizeof(str), format, "bit"); *fp << str;
-      if ( this->FileType == VTK_ASCII )
+      auto result = vtk::format_to_n(str, sizeof(str), format, "bit");
+      *result.out = '\0';
+      *fp << str;
+      if (this->FileType == VTK_ASCII)
       {
         int s;
-        for (j=0; j<num; j++)
+        for (j = 0; j < num; j++)
         {
-          for (i=0; i<numComp; i++)
+          for (i = 0; i < numComp; i++)
           {
-            idx = i + j*numComp;
-            s = static_cast<vtkBitArray *>(data)->GetValue(idx);
-            *fp << (s!=0.0?1:0);
-            if ( !((idx+1)%8) )
+            idx = i + j * numComp;
+            s = static_cast<vtkBitArray*>(data)->GetValue(idx);
+            *fp << (s != 0.0 ? 1 : 0);
+            if (!((idx + 1) % 8))
             {
               *fp << "\n";
             }
@@ -1072,11 +1095,8 @@ int vtkDataWriter::WriteArray(ostream *fp, int dataType, vtkAbstractArray *data,
       }
       else
       {
-        unsigned char *cptr=
-          static_cast<vtkUnsignedCharArray *>(data)->GetPointer(0);
-        fp->write(reinterpret_cast<char *>(cptr),
-                  (sizeof(unsigned char))*((num-1)/8+1));
-
+        unsigned char* cptr = static_cast<vtkBitArray*>(data)->GetPointer(0);
+        fp->write(reinterpret_cast<char*>(cptr), (sizeof(unsigned char)) * ((num - 1) / 8 + 1));
       }
       *fp << "\n";
     }
@@ -1084,177 +1104,182 @@ int vtkDataWriter::WriteArray(ostream *fp, int dataType, vtkAbstractArray *data,
 
     case VTK_CHAR:
     {
-      snprintf (str, sizeof(str), format, "char"); *fp << str;
-      char *s=GetArrayRawPointer(
-        data, static_cast<vtkCharArray *>(data)->GetPointer(0), isAOSArray);
-#if VTK_TYPE_CHAR_IS_SIGNED
-      vtkWriteDataArray(fp, s, this->FileType, "%hhd ", num, numComp);
-#else
-      vtkWriteDataArray(fp, s, this->FileType, "%hhu ", num, numComp);
-#endif
-      if (!isAOSArray)
+      auto result = vtk::format_to_n(str, sizeof(str), format, "char");
+      *result.out = '\0';
+      *fp << str;
+      if (!vtkArrayDispatch::DispatchByValueType<vtkTypeList::Create<char>>::Execute(
+            data, worker, fp, this->FileType, "{:d} ", num, numComp))
       {
-        delete [] s;
+        worker.template operator()<vtkDataArray, char>(
+          da, fp, this->FileType, "{:d} ", num, numComp);
       }
     }
     break;
 
     case VTK_SIGNED_CHAR:
     {
-      snprintf (str, sizeof(str), format, "signed_char"); *fp << str;
-      signed char *s=GetArrayRawPointer(
-        data, static_cast<vtkSignedCharArray *>(data)->GetPointer(0), isAOSArray);
-      vtkWriteDataArray(fp, s, this->FileType, "%hhd ", num, numComp);
-      if (!isAOSArray)
+      auto result = vtk::format_to_n(str, sizeof(str), format, "signed_char");
+      *result.out = '\0';
+      *fp << str;
+      if (!vtkArrayDispatch::DispatchByValueType<vtkTypeList::Create<signed char>>::Execute(
+            data, worker, fp, this->FileType, "{:d} ", num, numComp))
       {
-        delete [] s;
+        worker.template operator()<vtkDataArray, signed char>(
+          da, fp, this->FileType, "{:d} ", num, numComp);
       }
     }
     break;
 
     case VTK_UNSIGNED_CHAR:
     {
-      snprintf (str, sizeof(str), format, "unsigned_char"); *fp << str;
-      unsigned char *s=GetArrayRawPointer(
-        data, static_cast<vtkUnsignedCharArray *>(data)->GetPointer(0), isAOSArray);
-      vtkWriteDataArray(fp, s, this->FileType, "%hhu ", num, numComp);
-      if (!isAOSArray)
+      auto result = vtk::format_to_n(str, sizeof(str), format, "unsigned_char");
+      *result.out = '\0';
+      *fp << str;
+      if (!vtkArrayDispatch::DispatchByValueType<vtkTypeList::Create<unsigned char>>::Execute(
+            data, worker, fp, this->FileType, "{:d} ", num, numComp))
       {
-        delete [] s;
+        worker.template operator()<vtkDataArray, unsigned char>(
+          da, fp, this->FileType, "{:d} ", num, numComp);
       }
     }
     break;
 
     case VTK_SHORT:
     {
-      snprintf (str, sizeof(str), format, "short"); *fp << str;
-      short *s=GetArrayRawPointer(
-        data, static_cast<vtkShortArray *>(data)->GetPointer(0), isAOSArray);
-      vtkWriteDataArray(fp, s, this->FileType, "%hd ", num, numComp);
-      if (!isAOSArray)
+      auto result = vtk::format_to_n(str, sizeof(str), format, "short");
+      *result.out = '\0';
+      *fp << str;
+      if (!vtkArrayDispatch::DispatchByValueType<vtkTypeList::Create<short>>::Execute(
+            data, worker, fp, this->FileType, "{:d} ", num, numComp))
       {
-        delete [] s;
+        worker.template operator()<vtkDataArray, short>(
+          da, fp, this->FileType, "{:d} ", num, numComp);
       }
     }
     break;
 
     case VTK_UNSIGNED_SHORT:
     {
-      snprintf (str, sizeof(str), format, "unsigned_short"); *fp << str;
-      unsigned short *s=GetArrayRawPointer(
-        data, static_cast<vtkUnsignedShortArray *>(data)->GetPointer(0), isAOSArray);
-      vtkWriteDataArray(fp, s, this->FileType, "%hu ", num, numComp);
-      if (!isAOSArray)
+      auto result = vtk::format_to_n(str, sizeof(str), format, "unsigned_short");
+      *result.out = '\0';
+      *fp << str;
+      if (!vtkArrayDispatch::DispatchByValueType<vtkTypeList::Create<unsigned short>>::Execute(
+            data, worker, fp, this->FileType, "{:d} ", num, numComp))
       {
-        delete [] s;
+        worker.template operator()<vtkDataArray, unsigned short>(
+          da, fp, this->FileType, "{:d} ", num, numComp);
       }
     }
     break;
 
     case VTK_INT:
     {
-      snprintf (str, sizeof(str), format, "int"); *fp << str;
-      int *s=GetArrayRawPointer(
-        data, static_cast<vtkIntArray *>(data)->GetPointer(0), isAOSArray);
-      vtkWriteDataArray(fp, s, this->FileType, "%d ", num, numComp);
-      if (!isAOSArray)
+      auto result = vtk::format_to_n(str, sizeof(str), format, "int");
+      *result.out = '\0';
+      *fp << str;
+      if (!vtkArrayDispatch::DispatchByValueType<vtkTypeList::Create<int>>::Execute(
+            data, worker, fp, this->FileType, "{:d} ", num, numComp))
       {
-        delete [] s;
+        worker.template operator()<vtkDataArray, int>(
+          da, fp, this->FileType, "{:d} ", num, numComp);
       }
     }
     break;
 
     case VTK_UNSIGNED_INT:
     {
-      snprintf (str, sizeof(str), format, "unsigned_int"); *fp << str;
-      unsigned int *s=GetArrayRawPointer(
-        data, static_cast<vtkUnsignedIntArray *>(data)->GetPointer(0), isAOSArray);
-      vtkWriteDataArray(fp, s, this->FileType, "%u ", num, numComp);
-      if (!isAOSArray)
+      auto result = vtk::format_to_n(str, sizeof(str), format, "unsigned_int");
+      *result.out = '\0';
+      *fp << str;
+      if (!vtkArrayDispatch::DispatchByValueType<vtkTypeList::Create<unsigned int>>::Execute(
+            data, worker, fp, this->FileType, "{:d} ", num, numComp))
       {
-        delete [] s;
+        worker.template operator()<vtkDataArray, unsigned int>(
+          da, fp, this->FileType, "{:d} ", num, numComp);
       }
     }
     break;
 
     case VTK_LONG:
     {
-      snprintf (str, sizeof(str), format, "long"); *fp << str;
-      long *s=GetArrayRawPointer(
-        data, static_cast<vtkLongArray *>(data)->GetPointer(0), isAOSArray);
-      vtkWriteDataArray(fp, s, this->FileType, "%ld ", num, numComp);
-      if (!isAOSArray)
+      auto result = vtk::format_to_n(str, sizeof(str), format, "long");
+      *result.out = '\0';
+      *fp << str;
+      if (!vtkArrayDispatch::DispatchByValueType<vtkTypeList::Create<long>>::Execute(
+            data, worker, fp, this->FileType, "{:d} ", num, numComp))
       {
-        delete [] s;
+        worker.template operator()<vtkDataArray, long>(
+          da, fp, this->FileType, "{:d} ", num, numComp);
       }
     }
     break;
 
     case VTK_UNSIGNED_LONG:
     {
-      snprintf (str, sizeof(str), format, "unsigned_long"); *fp << str;
-      unsigned long *s=GetArrayRawPointer(
-        data, static_cast<vtkUnsignedLongArray *>(data)->GetPointer(0), isAOSArray);
-      vtkWriteDataArray(fp, s, this->FileType, "%lu ", num, numComp);
-      if (!isAOSArray)
+      auto result = vtk::format_to_n(str, sizeof(str), format, "unsigned_long");
+      *result.out = '\0';
+      *fp << str;
+      if (!vtkArrayDispatch::DispatchByValueType<vtkTypeList::Create<unsigned long>>::Execute(
+            data, worker, fp, this->FileType, "{:d} ", num, numComp))
       {
-        delete [] s;
+        worker.template operator()<vtkDataArray, unsigned long>(
+          da, fp, this->FileType, "{:d} ", num, numComp);
       }
     }
     break;
 
     case VTK_LONG_LONG:
     {
-      snprintf (str, sizeof(str), format, "vtktypeint64"); *fp << str;
-      long long *s=GetArrayRawPointer(
-        data, static_cast<vtkTypeInt64Array *>(data)->GetPointer(0), isAOSArray);
-      strcpy(outputFormat, vtkTypeTraits<long long>::ParseFormat());
-      strcat(outputFormat, " ");
-      vtkWriteDataArray(fp, s, this->FileType, outputFormat, num, numComp);
-      if (!isAOSArray)
+      auto result = vtk::format_to_n(str, sizeof(str), format, "vtktypeint64");
+      *result.out = '\0';
+      *fp << str;
+      if (!vtkArrayDispatch::DispatchByValueType<vtkTypeList::Create<long long>>::Execute(
+            data, worker, fp, this->FileType, "{:d} ", num, numComp))
       {
-        delete [] s;
+        worker.template operator()<vtkDataArray, long long>(
+          da, fp, this->FileType, "{:d} ", num, numComp);
       }
     }
     break;
 
     case VTK_UNSIGNED_LONG_LONG:
     {
-      snprintf (str, sizeof(str), format, "vtktypeuint64"); *fp << str;
-      unsigned long long *s=GetArrayRawPointer(
-        data, static_cast<vtkTypeUInt64Array *>(data)->GetPointer(0), isAOSArray);
-      strcpy(outputFormat, vtkTypeTraits<unsigned long long>::ParseFormat());
-      strcat(outputFormat, " ");
-      vtkWriteDataArray(fp, s, this->FileType, outputFormat, num, numComp);
-      if (!isAOSArray)
+      auto result = vtk::format_to_n(str, sizeof(str), format, "vtktypeuint64");
+      *result.out = '\0';
+      *fp << str;
+      if (!vtkArrayDispatch::DispatchByValueType<vtkTypeList::Create<unsigned long long>>::Execute(
+            data, worker, fp, this->FileType, "{:d} ", num, numComp))
       {
-        delete [] s;
+        worker.template operator()<vtkDataArray, unsigned long long>(
+          da, fp, this->FileType, "{:d} ", num, numComp);
       }
     }
     break;
 
     case VTK_FLOAT:
     {
-      snprintf (str, sizeof(str), format, "float"); *fp << str;
-      float *s=GetArrayRawPointer(
-        data, static_cast<vtkFloatArray *>(data)->GetPointer(0), isAOSArray);
-      vtkWriteDataArray(fp, s, this->FileType, "%g ", num, numComp);
-      if (!isAOSArray)
+      auto result = vtk::format_to_n(str, sizeof(str), format, "float");
+      *result.out = '\0';
+      *fp << str;
+      if (!vtkArrayDispatch::DispatchByValueType<vtkTypeList::Create<float>>::Execute(
+            data, worker, fp, this->FileType, "{:g} ", num, numComp))
       {
-        delete [] s;
+        worker.template operator()<vtkDataArray, float>(
+          da, fp, this->FileType, "{:g} ", num, numComp);
       }
     }
     break;
 
     case VTK_DOUBLE:
     {
-      snprintf (str, sizeof(str), format, "double"); *fp << str;
-      double *s=GetArrayRawPointer(
-        data, static_cast<vtkDoubleArray *>(data)->GetPointer(0), isAOSArray);
-      vtkWriteDataArray(fp, s, this->FileType, "%.11lg ", num, numComp);
-      if (!isAOSArray)
+      auto result = vtk::format_to_n(str, sizeof(str), format, "double");
+      *result.out = '\0';
+      *fp << str;
+      if (!vtkArrayDispatch::DispatchByValueType<vtkTypeList::Create<double>>::Execute(
+            data, worker, fp, this->FileType, this->PrecisionFormat.c_str(), num, numComp))
       {
-        delete [] s;
+        worker.template operator()<vtkDataArray, double>(
+          da, fp, this->FileType, this->PrecisionFormat.c_str(), num, numComp);
       }
     }
     break;
@@ -1262,135 +1287,60 @@ int vtkDataWriter::WriteArray(ostream *fp, int dataType, vtkAbstractArray *data,
     case VTK_ID_TYPE:
     {
       // currently writing vtkIdType as int.
-      vtkIdType size = data->GetNumberOfTuples();
-      std::vector<int> intArray(size*numComp);
-      snprintf (str, sizeof(str), format, "vtkIdType"); *fp << str;
-      if (isAOSArray)
-      {
-        vtkIdType *s=static_cast<vtkIdTypeArray *>(data)->GetPointer(0);
-        for (vtkIdType jj = 0; jj < size*numComp; jj++)
-        {
-          intArray[jj] = s[jj];
-        }
-      }
-      else
-      {
-        vtkSOADataArrayTemplate<vtkIdType>* data2=
-          static_cast<vtkSOADataArrayTemplate<vtkIdType> *>(data);
-        std::vector<vtkIdType> vals(numComp);
-        for (vtkIdType jj = 0; jj < size; jj++)
-        {
-          data2->GetTypedTuple(jj, &vals[0]);
-          for (i = 0; i < numComp; i++)
-          {
-            intArray[jj*numComp+i] = vals[i];
-          }
-        }
-      }
-      vtkWriteDataArray(fp, &intArray[0], this->FileType, "%d ", num, numComp);
+      auto result = vtk::format_to_n(str, sizeof(str), format, "vtkIdType");
+      *result.out = '\0';
+      *fp << str;
+      vtkNew<vtkIntArray> intArray;
+      intArray->ShallowCopy(da); // DeepCopy if needed internally
+      worker(intArray.Get(), fp, this->FileType, "{:d} ", num, numComp);
     }
     break;
 
     case VTK_STRING:
     {
-      snprintf (str, sizeof(str), format, "string"); *fp << str;
-      if ( this->FileType == VTK_ASCII )
+      auto result = vtk::format_to_n(str, sizeof(str), format, "string");
+      *result.out = '\0';
+      *fp << str;
+      if (this->FileType == VTK_ASCII)
       {
-        vtkStdString s;
-        for (j=0; j<num; j++)
+        std::string s;
+        for (j = 0; j < num; j++)
         {
-          for (i=0; i<numComp; i++)
+          for (i = 0; i < numComp; i++)
           {
-            idx = i + j*numComp;
-            s = static_cast<vtkStringArray *>(data)->GetValue(idx);
-            this->EncodeWriteString(fp, s.c_str(), false);
+            idx = i + j * numComp;
+            s = static_cast<vtkStringArray*>(data)->GetValue(idx);
+            this->EncodeWriteString(fp, s.c_str());
             *fp << "\n";
           }
         }
       }
       else
       {
-        vtkStdString s;
-        for (j=0; j<num; j++)
+        std::string s;
+        for (j = 0; j < num; j++)
         {
-          for (i=0; i<numComp; i++)
+          for (i = 0; i < numComp; i++)
           {
-            idx = i + j*numComp;
-            s = static_cast<vtkStringArray *>(data)->GetValue(idx);
+            idx = i + j * numComp;
+            s = static_cast<vtkStringArray*>(data)->GetValue(idx);
             vtkTypeUInt64 length = s.length();
             if (length < (static_cast<vtkTypeUInt64>(1) << 6))
             {
-              vtkTypeUInt8 len = (static_cast<vtkTypeUInt8>(3) << 6)
-                | static_cast<vtkTypeUInt8>(length);
+              vtkTypeUInt8 len =
+                (static_cast<vtkTypeUInt8>(3) << 6) | static_cast<vtkTypeUInt8>(length);
               fp->write(reinterpret_cast<char*>(&len), 1);
             }
             else if (length < (static_cast<vtkTypeUInt64>(1) << 14))
             {
-              vtkTypeUInt16 len = (static_cast<vtkTypeUInt16>(2) << 14)
-                | static_cast<vtkTypeUInt16>(length);
+              vtkTypeUInt16 len =
+                (static_cast<vtkTypeUInt16>(2) << 14) | static_cast<vtkTypeUInt16>(length);
               vtkByteSwap::SwapWrite2BERange(&len, 1, fp);
             }
             else if (length < (static_cast<vtkTypeUInt64>(1) << 30))
             {
-              vtkTypeUInt32 len = (static_cast<vtkTypeUInt32>(1) << 30)
-                | static_cast<vtkTypeUInt32>(length);
-              vtkByteSwap::SwapWrite4BERange(&len, 1, fp);
-            }
-            else
-            {
-              vtkByteSwap::SwapWrite8BERange(&length, 1, fp);
-            }
-            fp->write(s.c_str(), length);
-          }
-        }
-      }
-      *fp << "\n";
-    }
-    break;
-
-    case VTK_UNICODE_STRING:
-    {
-      snprintf (str, sizeof(str), format, "utf8_string"); *fp << str;
-      if ( this->FileType == VTK_ASCII )
-      {
-        vtkStdString s;
-        for (j=0; j<num; j++)
-        {
-          for (i=0; i<numComp; i++)
-          {
-            idx = i + j*numComp;
-            s = static_cast<vtkUnicodeStringArray *>(data)->GetValue(idx).utf8_str();
-            this->EncodeWriteString(fp, s.c_str(), false);
-            *fp << "\n";
-          }
-        }
-      }
-      else
-      {
-        vtkStdString s;
-        for (j=0; j<num; j++)
-        {
-          for (i=0; i<numComp; i++)
-          {
-            idx = i + j*numComp;
-            s = static_cast<vtkUnicodeStringArray *>(data)->GetValue(idx).utf8_str();
-            vtkTypeUInt64 length = s.length();
-            if (length < (static_cast<vtkTypeUInt64>(1) << 6))
-            {
-              vtkTypeUInt8 len = (static_cast<vtkTypeUInt8>(3) << 6)
-                | static_cast<vtkTypeUInt8>(length);
-              fp->write(reinterpret_cast<char*>(&len), 1);
-            }
-            else if (length < (static_cast<vtkTypeUInt64>(1) << 14))
-            {
-              vtkTypeUInt16 len = (static_cast<vtkTypeUInt16>(2) << 14)
-                | static_cast<vtkTypeUInt16>(length);
-              vtkByteSwap::SwapWrite2BERange(&len, 1, fp);
-            }
-            else if (length < (static_cast<vtkTypeUInt64>(1) << 30))
-            {
-              vtkTypeUInt32 len = (static_cast<vtkTypeUInt32>(1) << 30)
-                | static_cast<vtkTypeUInt32>(length);
+              vtkTypeUInt32 len =
+                (static_cast<vtkTypeUInt32>(1) << 30) | static_cast<vtkTypeUInt32>(length);
               vtkByteSwap::SwapWrite4BERange(&len, 1, fp);
             }
             else
@@ -1407,12 +1357,14 @@ int vtkDataWriter::WriteArray(ostream *fp, int dataType, vtkAbstractArray *data,
 
     case VTK_VARIANT:
     {
-      snprintf (str, sizeof(str), format, "variant"); *fp << str;
-      vtkVariant *v=static_cast<vtkVariantArray *>(data)->GetPointer(0);
-      for (j = 0; j < num*numComp; j++)
+      auto result = vtk::format_to_n(str, sizeof(str), format, "variant");
+      *result.out = '\0';
+      *fp << str;
+      vtkVariant* v = static_cast<vtkVariantArray*>(data)->GetPointer(0);
+      for (j = 0; j < num * numComp; j++)
       {
         *fp << v[j].GetType() << " ";
-        this->EncodeWriteString(fp, v[j].ToString().c_str(), false);
+        this->EncodeWriteString(fp, v[j].ToString().c_str());
         *fp << endl;
       }
     }
@@ -1420,7 +1372,7 @@ int vtkDataWriter::WriteArray(ostream *fp, int dataType, vtkAbstractArray *data,
 
     default:
     {
-      vtkErrorMacro(<<"Type currently not supported");
+      vtkErrorMacro(<< "Type currently not supported");
       *fp << "NULL_ARRAY" << endl;
       delete[] outputFormat;
       return 0;
@@ -1429,7 +1381,7 @@ int vtkDataWriter::WriteArray(ostream *fp, int dataType, vtkAbstractArray *data,
   delete[] outputFormat;
 
   // Write out metadata if it exists:
-  vtkInformation *info = data->GetInformation();
+  vtkInformation* info = data->GetInformation();
   bool hasComponentNames = data->HasAComponentName();
   bool hasInformation = info && info->GetNumberOfKeys() > 0;
   bool hasMetaData = hasComponentNames || hasInformation;
@@ -1442,8 +1394,8 @@ int vtkDataWriter::WriteArray(ostream *fp, int dataType, vtkAbstractArray *data,
       *fp << "COMPONENT_NAMES" << endl;
       for (i = 0; i < numComp; ++i)
       {
-        const char *compName = data->GetComponentName(i);
-        this->EncodeWriteString(fp, compName, false);
+        const char* compName = data->GetComponentName(i);
+        this->EncodeWriteString(fp, compName);
         *fp << endl;
       }
     }
@@ -1465,7 +1417,8 @@ int vtkDataWriter::WriteArray(ostream *fp, int dataType, vtkAbstractArray *data,
   return 1;
 }
 
-int vtkDataWriter::WritePoints(ostream *fp, vtkPoints *points)
+//------------------------------------------------------------------------------
+int vtkDataWriter::WritePoints(ostream* fp, vtkPoints* points)
 {
   vtkIdType numPts;
 
@@ -1475,22 +1428,22 @@ int vtkDataWriter::WritePoints(ostream *fp, vtkPoints *points)
     return 1;
   }
 
-  numPts=points->GetNumberOfPoints();
+  numPts = points->GetNumberOfPoints();
   *fp << "POINTS " << numPts << " ";
-  return this->WriteArray(fp, points->GetDataType(), points->GetData(), "%s\n", numPts, 3);
+  return this->WriteArray(fp, points->GetDataType(), points->GetData(), "{:s}\n", numPts, 3);
 }
 
+//------------------------------------------------------------------------------
 // Write out coordinates for rectilinear grids.
-int vtkDataWriter::WriteCoordinates(ostream *fp, vtkDataArray *coords,
-                                    int axes)
+int vtkDataWriter::WriteCoordinates(ostream* fp, vtkDataArray* coords, int axes)
 {
-  int ncoords=(coords?coords->GetNumberOfTuples():0);
+  int ncoords = (coords ? coords->GetNumberOfTuples() : 0);
 
-  if ( axes == 0 )
+  if (axes == 0)
   {
     *fp << "X_COORDINATES " << ncoords << " ";
   }
-  else if ( axes == 1)
+  else if (axes == 1)
   {
     *fp << "Y_COORDINATES " << ncoords << " ";
   }
@@ -1501,24 +1454,23 @@ int vtkDataWriter::WriteCoordinates(ostream *fp, vtkDataArray *coords,
 
   if (coords)
   {
-    return
-      this->WriteArray(fp, coords->GetDataType(), coords, "%s\n", ncoords, 1);
+    return this->WriteArray(fp, coords->GetDataType(), coords, "{:s}\n", ncoords, 1);
   }
   *fp << "float\n";
   return 1;
 }
 
+//------------------------------------------------------------------------------
 // Write out scalar data.
-int vtkDataWriter::WriteScalarData(ostream *fp, vtkDataArray *scalars, vtkIdType num)
+int vtkDataWriter::WriteScalarData(ostream* fp, vtkDataArray* scalars, vtkIdType num)
 {
-  vtkIdType i, j, size=0;
-  const char *name;
-  vtkLookupTable *lut;
+  vtkIdType i, j, size = 0;
+  const char* name;
+  vtkLookupTable* lut;
   int dataType = scalars->GetDataType();
   int numComp = scalars->GetNumberOfComponents();
 
-  if ( (lut=scalars->GetLookupTable()) == nullptr ||
-       (size = lut->GetNumberOfColors()) <= 0 )
+  if ((lut = scalars->GetLookupTable()) == nullptr || (size = lut->GetNumberOfColors()) <= 0)
   {
     name = "default";
   }
@@ -1535,59 +1487,60 @@ int vtkDataWriter::WriteScalarData(ostream *fp, vtkDataArray *scalars, vtkIdType
   {
     if (scalars->GetName() && strlen(scalars->GetName()))
     {
-      scalarsName = new char[ strlen(scalars->GetName()) * 4 + 1];
-      this->EncodeString(scalarsName, scalars->GetName(), true);
+      scalarsName = new char[strlen(scalars->GetName()) * 4 + 1];
+      this->EncodeString(scalarsName, scalars->GetName());
     }
     else
     {
-      scalarsName = new char[ strlen("scalars") + 1];
+      scalarsName = new char[strlen("scalars") + 1];
       strcpy(scalarsName, "scalars");
     }
   }
   else
   {
-    scalarsName = new char[ strlen(this->ScalarsName) * 4 + 1];
-    this->EncodeString(scalarsName, this->ScalarsName, true);
+    scalarsName = new char[strlen(this->ScalarsName) * 4 + 1];
+    this->EncodeString(scalarsName, this->ScalarsName);
   }
 
-  if ( dataType != VTK_UNSIGNED_CHAR )
+  if (dataType != VTK_UNSIGNED_CHAR)
   {
     char format[1024];
     *fp << "SCALARS ";
 
     if (numComp == 1)
     {
-      snprintf(format, sizeof(format), "%s %%s\nLOOKUP_TABLE %s\n", scalarsName, name);
+      auto result = vtk::format_to_n(
+        format, sizeof(format), "{:s} {{:s}} \nLOOKUP_TABLE {:s}\n", scalarsName, name);
+      *result.out = '\0';
     }
     else
     {
-      snprintf(format, sizeof(format), "%s %%s %d\nLOOKUP_TABLE %s\n",
-              scalarsName, numComp, name);
+      auto result = vtk::format_to_n(format, sizeof(format),
+        "{:s} {{:s}} {:d}\nLOOKUP_TABLE {:s}\n", scalarsName, numComp, name);
+      *result.out = '\0';
     }
     delete[] scalarsName;
-    if (this->WriteArray(fp, scalars->GetDataType(), scalars, format,
-                         num, numComp) == 0)
+    if (this->WriteArray(fp, scalars->GetDataType(), scalars, format, num, numComp) == 0)
     {
       return 0;
     }
   }
 
-  else //color scalars
+  else // color scalars
   {
     int nvs = scalars->GetNumberOfComponents();
-    unsigned char *data=
-      static_cast<vtkUnsignedCharArray *>(scalars)->GetPointer(0);
+    unsigned char* data = static_cast<vtkUnsignedCharArray*>(scalars)->GetPointer(0);
     *fp << "COLOR_SCALARS " << scalarsName << " " << nvs << "\n";
 
-    if ( this->FileType == VTK_ASCII )
+    if (this->FileType == VTK_ASCII)
     {
-      for (i=0; i<num; i++)
+      for (i = 0; i < num; i++)
       {
-        for (j=0; j<nvs; j++)
+        for (j = 0; j < nvs; j++)
         {
-          *fp << (static_cast<float>(data[nvs*i+j])/255.0) << " ";
+          *fp << (static_cast<float>(data[nvs * i + j]) / 255.0) << " ";
         }
-        if ( i != 0 && !(i%2) )
+        if (i != 0 && !(i % 2))
         {
           *fp << "\n";
         }
@@ -1595,23 +1548,21 @@ int vtkDataWriter::WriteScalarData(ostream *fp, vtkDataArray *scalars, vtkIdType
     }
     else // binary type
     {
-      fp->write(reinterpret_cast<char *>(data),
-                (sizeof(unsigned char))*(nvs*num));
+      fp->write(reinterpret_cast<char*>(data), (sizeof(unsigned char)) * (nvs * num));
     }
 
     *fp << "\n";
     delete[] scalarsName;
-
   }
 
-  //if lookup table, write it out
-  if ( lut && size > 0 )
+  // if lookup table, write it out
+  if (lut && size > 0)
   {
     *fp << "LOOKUP_TABLE " << this->LookupTableName << " " << size << "\n";
-    if ( this->FileType == VTK_ASCII )
+    if (this->FileType == VTK_ASCII)
     {
       double c[4];
-      for (i=0; i<size; i++)
+      for (i = 0; i < size; i++)
       {
         lut->GetTableValue(i, c);
         *fp << c[0] << " " << c[1] << " " << c[2] << " " << c[3] << "\n";
@@ -1619,9 +1570,8 @@ int vtkDataWriter::WriteScalarData(ostream *fp, vtkDataArray *scalars, vtkIdType
     }
     else
     {
-      unsigned char *colors=lut->GetPointer(0);
-      fp->write(reinterpret_cast<char *>(colors),
-                (sizeof(unsigned char)*4*size));
+      unsigned char* colors = lut->GetPointer(0);
+      fp->write(reinterpret_cast<char*>(colors), (sizeof(unsigned char) * 4 * size));
     }
     *fp << "\n";
   }
@@ -1636,7 +1586,8 @@ int vtkDataWriter::WriteScalarData(ostream *fp, vtkDataArray *scalars, vtkIdType
   return 1;
 }
 
-int vtkDataWriter::WriteVectorData(ostream *fp, vtkDataArray *vectors, vtkIdType num)
+//------------------------------------------------------------------------------
+int vtkDataWriter::WriteVectorData(ostream* fp, vtkDataArray* vectors, vtkIdType num)
 {
   *fp << "VECTORS ";
 
@@ -1648,29 +1599,30 @@ int vtkDataWriter::WriteVectorData(ostream *fp, vtkDataArray *vectors, vtkIdType
   {
     if (vectors->GetName() && strlen(vectors->GetName()))
     {
-      vectorsName = new char[ strlen(vectors->GetName()) * 4 + 1];
-      this->EncodeString(vectorsName, vectors->GetName(), true);
+      vectorsName = new char[strlen(vectors->GetName()) * 4 + 1];
+      this->EncodeString(vectorsName, vectors->GetName());
     }
     else
     {
-      vectorsName = new char[ strlen("vectors") + 1];
+      vectorsName = new char[strlen("vectors") + 1];
       strcpy(vectorsName, "vectors");
     }
   }
   else
   {
-    vectorsName = new char[ strlen(this->VectorsName) * 4 + 1];
-    this->EncodeString(vectorsName, this->VectorsName, true);
+    vectorsName = new char[strlen(this->VectorsName) * 4 + 1];
+    this->EncodeString(vectorsName, this->VectorsName);
   }
 
   char format[1024];
-  snprintf(format, sizeof(format), "%s %s\n", vectorsName, "%s");
+  auto result = vtk::format_to_n(format, sizeof(format), "{:s} {:s}\n", vectorsName, "{:s}");
+  *result.out = '\0';
   delete[] vectorsName;
 
   return this->WriteArray(fp, vectors->GetDataType(), vectors, format, num, 3);
 }
 
-int vtkDataWriter::WriteNormalData(ostream *fp, vtkDataArray *normals, vtkIdType num)
+int vtkDataWriter::WriteNormalData(ostream* fp, vtkDataArray* normals, vtkIdType num)
 {
   char* normalsName;
   // Buffer size is size of array name times four because
@@ -1678,34 +1630,36 @@ int vtkDataWriter::WriteNormalData(ostream *fp, vtkDataArray *normals, vtkIdType
   // weird symbols.
   if (!this->NormalsName)
   {
-    if (normals->GetName() && strlen(normals->GetName()) )
+    if (normals->GetName() && strlen(normals->GetName()))
     {
-      normalsName = new char[ strlen(normals->GetName()) * 4 + 1];
-      this->EncodeString(normalsName, normals->GetName(), true);
+      normalsName = new char[strlen(normals->GetName()) * 4 + 1];
+      this->EncodeString(normalsName, normals->GetName());
     }
     else
     {
-      normalsName = new char[ strlen("normals") + 1];
+      normalsName = new char[strlen("normals") + 1];
       strcpy(normalsName, "normals");
     }
   }
   else
   {
-    normalsName = new char[ strlen(this->NormalsName) * 4 + 1];
-    this->EncodeString(normalsName, this->NormalsName, true);
+    normalsName = new char[strlen(this->NormalsName) * 4 + 1];
+    this->EncodeString(normalsName, this->NormalsName);
   }
 
   *fp << "NORMALS ";
   char format[1024];
-  snprintf(format, sizeof(format), "%s %s\n", normalsName, "%s");
+  auto result = vtk::format_to_n(format, sizeof(format), "{:s} {:s}\n", normalsName, "{:s}");
+  *result.out = '\0';
   delete[] normalsName;
 
   return this->WriteArray(fp, normals->GetDataType(), normals, format, num, 3);
 }
 
-int vtkDataWriter::WriteTCoordData(ostream *fp, vtkDataArray *tcoords, vtkIdType num)
+//------------------------------------------------------------------------------
+int vtkDataWriter::WriteTCoordData(ostream* fp, vtkDataArray* tcoords, vtkIdType num)
 {
-  int dim=tcoords->GetNumberOfComponents();
+  int dim = tcoords->GetNumberOfComponents();
 
   char* tcoordsName;
   // Buffer size is size of array name times four because
@@ -1715,31 +1669,33 @@ int vtkDataWriter::WriteTCoordData(ostream *fp, vtkDataArray *tcoords, vtkIdType
   {
     if (tcoords->GetName() && strlen(tcoords->GetName()))
     {
-      tcoordsName = new char[ strlen(tcoords->GetName()) * 4 + 1];
-      this->EncodeString(tcoordsName, tcoords->GetName(), true);
+      tcoordsName = new char[strlen(tcoords->GetName()) * 4 + 1];
+      this->EncodeString(tcoordsName, tcoords->GetName());
     }
     else
     {
-      tcoordsName = new char[ strlen("tcoords") + 1];
+      tcoordsName = new char[strlen("tcoords") + 1];
       strcpy(tcoordsName, "tcoords");
     }
   }
   else
   {
-    tcoordsName = new char[ strlen(this->TCoordsName) * 4 + 1];
-    this->EncodeString(tcoordsName, this->TCoordsName, true);
+    tcoordsName = new char[strlen(this->TCoordsName) * 4 + 1];
+    this->EncodeString(tcoordsName, this->TCoordsName);
   }
 
   *fp << "TEXTURE_COORDINATES ";
   char format[1024];
-  snprintf(format, sizeof(format), "%s %d %s\n", tcoordsName, dim, "%s");
+  auto result =
+    vtk::format_to_n(format, sizeof(format), "{:s} {:d} {:s}\n", tcoordsName, dim, "{:s}");
+  *result.out = '\0';
   delete[] tcoordsName;
 
-  return this->WriteArray(fp, tcoords->GetDataType(), tcoords, format, num,
-                          dim);
+  return this->WriteArray(fp, tcoords->GetDataType(), tcoords, format, num, dim);
 }
 
-int vtkDataWriter::WriteTensorData(ostream *fp, vtkDataArray *tensors, vtkIdType num)
+//------------------------------------------------------------------------------
+int vtkDataWriter::WriteTensorData(ostream* fp, vtkDataArray* tensors, vtkIdType num)
 {
   char* tensorsName;
   // Buffer size is size of array name times four because
@@ -1749,37 +1705,39 @@ int vtkDataWriter::WriteTensorData(ostream *fp, vtkDataArray *tensors, vtkIdType
   {
     if (tensors->GetName() && strlen(tensors->GetName()))
     {
-      tensorsName = new char[ strlen(tensors->GetName()) * 4 + 1];
-      this->EncodeString(tensorsName, tensors->GetName(), true);
+      tensorsName = new char[strlen(tensors->GetName()) * 4 + 1];
+      this->EncodeString(tensorsName, tensors->GetName());
     }
     else
     {
-      tensorsName = new char[ strlen("tensors") + 1];
+      tensorsName = new char[strlen("tensors") + 1];
       strcpy(tensorsName, "tensors");
     }
   }
   else
   {
-    tensorsName = new char[ strlen(this->TensorsName) * 4 + 1];
-    this->EncodeString(tensorsName, this->TensorsName, true);
+    tensorsName = new char[strlen(this->TensorsName) * 4 + 1];
+    this->EncodeString(tensorsName, this->TensorsName);
   }
 
   *fp << "TENSORS";
   int numComp = 9;
   if (tensors->GetNumberOfComponents() == 6)
-    {
+  {
     *fp << "6";
     numComp = 6;
-    }
+  }
   *fp << " ";
   char format[1024];
-  snprintf(format, sizeof(format), "%s %s\n", tensorsName, "%s");
+  auto result = vtk::format_to_n(format, sizeof(format), "{:s} {:s}\n", tensorsName, "{:s}");
+  *result.out = '\0';
   delete[] tensorsName;
 
   return this->WriteArray(fp, tensors->GetDataType(), tensors, format, num, numComp);
 }
 
-int vtkDataWriter::WriteGlobalIdData(ostream *fp, vtkDataArray *globalIds, vtkIdType num)
+//------------------------------------------------------------------------------
+int vtkDataWriter::WriteGlobalIdData(ostream* fp, vtkDataArray* globalIds, vtkIdType num)
 {
   *fp << "GLOBAL_IDS ";
 
@@ -1791,29 +1749,31 @@ int vtkDataWriter::WriteGlobalIdData(ostream *fp, vtkDataArray *globalIds, vtkId
   {
     if (globalIds->GetName() && strlen(globalIds->GetName()))
     {
-      globalIdsName = new char[ strlen(globalIds->GetName()) * 4 + 1];
-      this->EncodeString(globalIdsName, globalIds->GetName(), true);
+      globalIdsName = new char[strlen(globalIds->GetName()) * 4 + 1];
+      this->EncodeString(globalIdsName, globalIds->GetName());
     }
     else
     {
-      globalIdsName = new char[ strlen("global_ids") + 1];
+      globalIdsName = new char[strlen("global_ids") + 1];
       strcpy(globalIdsName, "global_ids");
     }
   }
   else
   {
-    globalIdsName = new char[ strlen(this->GlobalIdsName) * 4 + 1];
-    this->EncodeString(globalIdsName, this->GlobalIdsName, true);
+    globalIdsName = new char[strlen(this->GlobalIdsName) * 4 + 1];
+    this->EncodeString(globalIdsName, this->GlobalIdsName);
   }
 
   char format[1024];
-  snprintf(format, sizeof(format), "%s %s\n", globalIdsName, "%s");
+  auto result = vtk::format_to_n(format, sizeof(format), "{:s} {:s}\n", globalIdsName, "{:s}");
+  *result.out = '\0';
   delete[] globalIdsName;
 
   return this->WriteArray(fp, globalIds->GetDataType(), globalIds, format, num, 1);
 }
 
-int vtkDataWriter::WritePedigreeIdData(ostream *fp, vtkAbstractArray *pedigreeIds, vtkIdType num)
+//------------------------------------------------------------------------------
+int vtkDataWriter::WritePedigreeIdData(ostream* fp, vtkAbstractArray* pedigreeIds, vtkIdType num)
 {
   *fp << "PEDIGREE_IDS ";
 
@@ -1825,29 +1785,31 @@ int vtkDataWriter::WritePedigreeIdData(ostream *fp, vtkAbstractArray *pedigreeId
   {
     if (pedigreeIds->GetName() && strlen(pedigreeIds->GetName()))
     {
-      pedigreeIdsName = new char[ strlen(pedigreeIds->GetName()) * 4 + 1];
-      this->EncodeString(pedigreeIdsName, pedigreeIds->GetName(), true);
+      pedigreeIdsName = new char[strlen(pedigreeIds->GetName()) * 4 + 1];
+      this->EncodeString(pedigreeIdsName, pedigreeIds->GetName());
     }
     else
     {
-      pedigreeIdsName = new char[ strlen("pedigree_ids") + 1];
+      pedigreeIdsName = new char[strlen("pedigree_ids") + 1];
       strcpy(pedigreeIdsName, "pedigree_ids");
     }
   }
   else
   {
-    pedigreeIdsName = new char[ strlen(this->PedigreeIdsName) * 4 + 1];
-    this->EncodeString(pedigreeIdsName, this->PedigreeIdsName, true);
+    pedigreeIdsName = new char[strlen(this->PedigreeIdsName) * 4 + 1];
+    this->EncodeString(pedigreeIdsName, this->PedigreeIdsName);
   }
 
   char format[1024];
-  snprintf(format, sizeof(format), "%s %s\n", pedigreeIdsName, "%s");
+  auto result = vtk::format_to_n(format, sizeof(format), "{:s} {:s}\n", pedigreeIdsName, "{:s}");
+  *result.out = '\0';
   delete[] pedigreeIdsName;
 
   return this->WriteArray(fp, pedigreeIds->GetDataType(), pedigreeIds, format, num, 1);
 }
 
-int vtkDataWriter::WriteEdgeFlagsData(ostream *fp, vtkDataArray *edgeFlags, vtkIdType num)
+//------------------------------------------------------------------------------
+int vtkDataWriter::WriteEdgeFlagsData(ostream* fp, vtkDataArray* edgeFlags, vtkIdType num)
 {
   *fp << "EDGE_FLAGS ";
 
@@ -1859,41 +1821,42 @@ int vtkDataWriter::WriteEdgeFlagsData(ostream *fp, vtkDataArray *edgeFlags, vtkI
   {
     if (edgeFlags->GetName() && strlen(edgeFlags->GetName()))
     {
-      edgeFlagsName = new char[ strlen(edgeFlags->GetName()) * 4 + 1];
-      this->EncodeString(edgeFlagsName, edgeFlags->GetName(), true);
+      edgeFlagsName = new char[strlen(edgeFlags->GetName()) * 4 + 1];
+      this->EncodeString(edgeFlagsName, edgeFlags->GetName());
     }
     else
     {
-      edgeFlagsName = new char[ strlen("edge_flags") + 1];
+      edgeFlagsName = new char[strlen("edge_flags") + 1];
       strcpy(edgeFlagsName, "edge_flags");
     }
   }
   else
   {
-    edgeFlagsName = new char[ strlen(this->EdgeFlagsName) * 4 + 1];
-    this->EncodeString(edgeFlagsName, this->EdgeFlagsName, true);
+    edgeFlagsName = new char[strlen(this->EdgeFlagsName) * 4 + 1];
+    this->EncodeString(edgeFlagsName, this->EdgeFlagsName);
   }
 
   char format[1024];
-  snprintf(format, sizeof(format), "%s %s\n", edgeFlagsName, "%s");
+  auto result = vtk::format_to_n(format, sizeof(format), "{:s} {:s}\n", edgeFlagsName, "{:s}");
+  *result.out = '\0';
   delete[] edgeFlagsName;
 
   return this->WriteArray(fp, edgeFlags->GetDataType(), edgeFlags, format, num, 1);
 }
 
-bool vtkDataWriter::CanWriteInformationKey(vtkInformation *info,
-                                           vtkInformationKey *key)
+//------------------------------------------------------------------------------
+bool vtkDataWriter::CanWriteInformationKey(vtkInformation* info, vtkInformationKey* key)
 {
-  vtkInformationDoubleKey *dKey = nullptr;
-  vtkInformationDoubleVectorKey *dvKey = nullptr;
+  vtkInformationDoubleKey* dKey = nullptr;
+  vtkInformationDoubleVectorKey* dvKey = nullptr;
   if ((dKey = vtkInformationDoubleKey::SafeDownCast(key)))
   {
     // Skip keys with NaNs/infs
     double value = info->Get(dKey);
     if (!vtkMath::IsFinite(value))
     {
-      vtkWarningMacro("Skipping key '" << key->GetLocation() << "::"
-                      << key->GetName() << "': bad value: " << value);
+      vtkWarningMacro("Skipping key '" << key->GetLocation() << "::" << key->GetName()
+                                       << "': bad value: " << value);
       return false;
     }
     return true;
@@ -1908,8 +1871,8 @@ bool vtkDataWriter::CanWriteInformationKey(vtkInformation *info,
       double value = info->Get(dvKey, i);
       if (!vtkMath::IsFinite(value))
       {
-        vtkWarningMacro("Skipping key '" << key->GetLocation() << "::"
-                        << key->GetName() << "': bad value: " << value);
+        vtkWarningMacro("Skipping key '" << key->GetLocation() << "::" << key->GetName()
+                                         << "': bad value: " << value);
         valid = false;
         break;
       }
@@ -1917,37 +1880,40 @@ bool vtkDataWriter::CanWriteInformationKey(vtkInformation *info,
     return valid;
   }
   else if (vtkInformationIdTypeKey::SafeDownCast(key) ||
-           vtkInformationIntegerKey::SafeDownCast(key) ||
-           vtkInformationIntegerVectorKey::SafeDownCast(key) ||
-           vtkInformationStringKey::SafeDownCast(key) ||
-           vtkInformationStringVectorKey::SafeDownCast(key) ||
-           vtkInformationUnsignedLongKey::SafeDownCast(key))
+    vtkInformationIntegerKey::SafeDownCast(key) ||
+    vtkInformationIntegerVectorKey::SafeDownCast(key) ||
+    vtkInformationStringKey::SafeDownCast(key) ||
+    vtkInformationStringVectorKey::SafeDownCast(key) ||
+    vtkInformationUnsignedLongKey::SafeDownCast(key))
   {
     return true;
   }
-  vtkDebugMacro("Could not serialize information with key "
-                << key->GetLocation() << "::" << key->GetName() << ": "
-                "Unsupported data type '" << key->GetClassName() << "'.");
+  vtkDebugMacro("Could not serialize information with key " << key->GetLocation()
+                                                            << "::" << key->GetName()
+                                                            << ": "
+                                                               "Unsupported data type '"
+                                                            << key->GetClassName() << "'.");
   return false;
 }
 
-namespace {
-void writeInfoHeader(std::ostream *fp, vtkInformationKey *key)
+//------------------------------------------------------------------------------
+namespace
+{
+void writeInfoHeader(std::ostream* fp, vtkInformationKey* key)
 {
   *fp << "NAME " << key->GetName() << " LOCATION " << key->GetLocation() << "\n"
       << "DATA ";
 }
 } // end anon namespace
 
-int vtkDataWriter::WriteInformation(std::ostream *fp, vtkInformation *info)
+int vtkDataWriter::WriteInformation(std::ostream* fp, vtkInformation* info)
 {
   // This will contain the serializable keys:
   vtkNew<vtkInformation> keys;
-  vtkInformationKey *key = nullptr;
+  vtkInformationKey* key = nullptr;
   vtkNew<vtkInformationIterator> iter;
   iter->SetInformationWeak(info);
-  for (iter->InitTraversal(); (key = iter->GetCurrentKey());
-       iter->GoToNextItem())
+  for (iter->InitTraversal(); (key = iter->GetCurrentKey()); iter->GoToNextItem())
   {
     if (this->CanWriteInformationKey(info, key))
     {
@@ -1959,23 +1925,23 @@ int vtkDataWriter::WriteInformation(std::ostream *fp, vtkInformation *info)
 
   iter->SetInformationWeak(keys);
   char buffer[1024];
-  for (iter->InitTraversal(); (key = iter->GetCurrentKey());
-       iter->GoToNextItem())
+  for (iter->InitTraversal(); (key = iter->GetCurrentKey()); iter->GoToNextItem())
   {
-    vtkInformationDoubleKey *dKey = nullptr;
-    vtkInformationDoubleVectorKey *dvKey = nullptr;
-    vtkInformationIdTypeKey *idKey = nullptr;
-    vtkInformationIntegerKey *iKey = nullptr;
-    vtkInformationIntegerVectorKey *ivKey = nullptr;
-    vtkInformationStringKey *sKey = nullptr;
-    vtkInformationStringVectorKey *svKey = nullptr;
-    vtkInformationUnsignedLongKey *ulKey = nullptr;
+    vtkInformationDoubleKey* dKey = nullptr;
+    vtkInformationDoubleVectorKey* dvKey = nullptr;
+    vtkInformationIdTypeKey* idKey = nullptr;
+    vtkInformationIntegerKey* iKey = nullptr;
+    vtkInformationIntegerVectorKey* ivKey = nullptr;
+    vtkInformationStringKey* sKey = nullptr;
+    vtkInformationStringVectorKey* svKey = nullptr;
+    vtkInformationUnsignedLongKey* ulKey = nullptr;
     if ((dKey = vtkInformationDoubleKey::SafeDownCast(key)))
     {
       writeInfoHeader(fp, key);
-      // "%lg" is used to write double array data in ascii, using the same
+      // "{:g}" is used to write double array data in ascii, using the same
       // precision here.
-      snprintf(buffer, sizeof(buffer), "%lg", dKey->Get(info));
+      auto result = vtk::format_to_n(buffer, sizeof(buffer), "{:g}", dKey->Get(info));
+      *result.out = '\0';
       *fp << buffer << "\n";
     }
     else if ((dvKey = vtkInformationDoubleVectorKey::SafeDownCast(key)))
@@ -1984,15 +1950,17 @@ int vtkDataWriter::WriteInformation(std::ostream *fp, vtkInformation *info)
 
       // Size first:
       int length = dvKey->Length(info);
-      snprintf(buffer, sizeof(buffer), "%d", length);
+      auto result = vtk::format_to_n(buffer, sizeof(buffer), "{:d}", length);
+      *result.out = '\0';
       *fp << buffer << " ";
 
-      double *data = dvKey->Get(info);
+      double* data = dvKey->Get(info);
       for (int i = 0; i < length; ++i)
       {
-        // "%lg" is used to write double array data in ascii, using the same
+        // "{:g}" is used to write double array data in ascii, using the same
         // precision here.
-        snprintf(buffer, sizeof(buffer), "%lg", data[i]);
+        result = vtk::format_to_n(buffer, sizeof(buffer), "{:g}", data[i]);
+        *result.out = '\0';
         *fp << buffer << " ";
       }
       *fp << "\n";
@@ -2000,15 +1968,15 @@ int vtkDataWriter::WriteInformation(std::ostream *fp, vtkInformation *info)
     else if ((idKey = vtkInformationIdTypeKey::SafeDownCast(key)))
     {
       writeInfoHeader(fp, key);
-      snprintf(buffer, sizeof(buffer), vtkTypeTraits<vtkIdType>::ParseFormat(),
-               idKey->Get(info));
+      auto result = vtk::format_to_n(buffer, sizeof(buffer), "{:d}", idKey->Get(info));
+      *result.out = '\0';
       *fp << buffer << "\n";
     }
     else if ((iKey = vtkInformationIntegerKey::SafeDownCast(key)))
     {
       writeInfoHeader(fp, key);
-      snprintf(buffer, sizeof(buffer), vtkTypeTraits<int>::ParseFormat(),
-               iKey->Get(info));
+      auto result = vtk::format_to_n(buffer, sizeof(buffer), "{:d}", iKey->Get(info));
+      *result.out = '\0';
       *fp << buffer << "\n";
     }
     else if ((ivKey = vtkInformationIntegerVectorKey::SafeDownCast(key)))
@@ -2017,13 +1985,15 @@ int vtkDataWriter::WriteInformation(std::ostream *fp, vtkInformation *info)
 
       // Size first:
       int length = ivKey->Length(info);
-      snprintf(buffer, sizeof(buffer), "%d", length);
+      auto result = vtk::format_to_n(buffer, sizeof(buffer), "{:d}", length);
+      *result.out = '\0';
       *fp << buffer << " ";
 
-      int *data = ivKey->Get(info);
+      int* data = ivKey->Get(info);
       for (int i = 0; i < length; ++i)
       {
-        snprintf(buffer, sizeof(buffer), vtkTypeTraits<int>::ParseFormat(), data[i]);
+        result = vtk::format_to_n(buffer, sizeof(buffer), "{:d}", data[i]);
+        *result.out = '\0';
         *fp << buffer << " ";
       }
       *fp << "\n";
@@ -2031,7 +2001,7 @@ int vtkDataWriter::WriteInformation(std::ostream *fp, vtkInformation *info)
     else if ((sKey = vtkInformationStringKey::SafeDownCast(key)))
     {
       writeInfoHeader(fp, key);
-      this->EncodeWriteString(fp, sKey->Get(info), false);
+      this->EncodeWriteString(fp, sKey->Get(info));
       *fp << "\n";
     }
     else if ((svKey = vtkInformationStringVectorKey::SafeDownCast(key)))
@@ -2040,35 +2010,39 @@ int vtkDataWriter::WriteInformation(std::ostream *fp, vtkInformation *info)
 
       // Size first:
       int length = svKey->Length(info);
-      snprintf(buffer, sizeof(buffer), "%d", length);
+      auto result = vtk::format_to_n(buffer, sizeof(buffer), "{:d}", length);
+      *result.out = '\0';
       *fp << buffer << "\n";
 
       for (int i = 0; i < length; ++i)
       {
-        this->EncodeWriteString(fp, svKey->Get(info, i), false);
+        this->EncodeWriteString(fp, svKey->Get(info, i));
         *fp << "\n";
       }
     }
     else if ((ulKey = vtkInformationUnsignedLongKey::SafeDownCast(key)))
     {
       writeInfoHeader(fp, key);
-      snprintf(buffer, sizeof(buffer), vtkTypeTraits<unsigned long>::ParseFormat(),
-               ulKey->Get(info));
+      auto result = vtk::format_to_n(buffer, sizeof(buffer), "{:d}", ulKey->Get(info));
+      *result.out = '\0';
       *fp << buffer << "\n";
     }
     else
     {
-      vtkDebugMacro("Could not serialize information with key "
-                    << key->GetLocation() << "::" << key->GetName() << ": "
-                    "Unsupported data type '" << key->GetClassName() << "'.");
+      vtkDebugMacro("Could not serialize information with key " << key->GetLocation()
+                                                                << "::" << key->GetName()
+                                                                << ": "
+                                                                   "Unsupported data type '"
+                                                                << key->GetClassName() << "'.");
     }
   }
   return 1;
 }
 
+//------------------------------------------------------------------------------
 static int vtkIsInTheList(int index, int* list, vtkIdType numElem)
 {
-  for(vtkIdType i=0; i<numElem; i++)
+  for (vtkIdType i = 0; i < numElem; i++)
   {
     if (index == list[i])
     {
@@ -2078,45 +2052,44 @@ static int vtkIsInTheList(int index, int* list, vtkIdType numElem)
   return 0;
 }
 
-int vtkDataWriter::WriteFieldData(ostream *fp, vtkFieldData *f)
+//------------------------------------------------------------------------------
+int vtkDataWriter::WriteFieldData(ostream* fp, vtkFieldData* f)
 {
   char format[1024];
-  int i, numArrays=f->GetNumberOfArrays(), actNumArrays=0;
+  int i, numArrays = f->GetNumberOfArrays(), actNumArrays = 0;
   vtkIdType numComp, numTuples;
   int attributeIndices[vtkDataSetAttributes::NUM_ATTRIBUTES];
-  vtkAbstractArray *array;
+  vtkAbstractArray* array;
 
-  for(i=0; i<vtkDataSetAttributes::NUM_ATTRIBUTES; i++)
+  for (i = 0; i < vtkDataSetAttributes::NUM_ATTRIBUTES; i++)
   {
     attributeIndices[i] = -1;
   }
   vtkDataSetAttributes* dsa;
-  if ((dsa=vtkDataSetAttributes::SafeDownCast(f)))
+  if ((dsa = vtkDataSetAttributes::SafeDownCast(f)))
   {
     dsa->GetAttributeIndices(attributeIndices);
   }
 
-  for (i=0; i < numArrays; i++)
+  for (i = 0; i < numArrays; i++)
   {
-    if (!vtkIsInTheList(i, attributeIndices,
-                        vtkDataSetAttributes::NUM_ATTRIBUTES))
+    if (!vtkIsInTheList(i, attributeIndices, vtkDataSetAttributes::NUM_ATTRIBUTES))
     {
       actNumArrays++;
     }
   }
-  if ( actNumArrays < 1 )
+  if (actNumArrays < 1)
   {
     return 1;
   }
   *fp << "FIELD " << this->FieldDataName << " " << actNumArrays << "\n";
 
-  for (i=0; i < numArrays; i++)
+  for (i = 0; i < numArrays; i++)
   {
-    if (!vtkIsInTheList(i, attributeIndices,
-                        vtkDataSetAttributes::NUM_ATTRIBUTES))
+    if (!vtkIsInTheList(i, attributeIndices, vtkDataSetAttributes::NUM_ATTRIBUTES))
     {
       array = f->GetAbstractArray(i);
-      if ( array != nullptr )
+      if (array != nullptr)
       {
         numComp = array->GetNumberOfComponents();
         numTuples = array->GetNumberOfTuples();
@@ -2125,20 +2098,20 @@ int vtkDataWriter::WriteFieldData(ostream *fp, vtkFieldData *f)
         // in theory there could be array name consisting of only
         // weird symbols.
         char* buffer;
-        if( !array->GetName() || strlen(array->GetName()) == 0)
+        if (!array->GetName() || strlen(array->GetName()) == 0)
         {
-          buffer = strcpy(new char[strlen("unknown")+1], "unknown");
+          buffer = strcpy(new char[strlen("unknown") + 1], "unknown");
         }
         else
         {
-          buffer = new char[ strlen(array->GetName()) * 4 + 1];
-          this->EncodeString(buffer, array->GetName(), true);
+          buffer = new char[strlen(array->GetName()) * 4 + 1];
+          this->EncodeString(buffer, array->GetName());
         }
-        snprintf(format, sizeof(format), "%s %" VTK_ID_TYPE_PRId " %" VTK_ID_TYPE_PRId " %s\n", buffer, numComp, numTuples,
-                "%s");
-        this->WriteArray(fp, array->GetDataType(), array, format, numTuples,
-                         numComp);
-        delete [] buffer;
+        auto result = vtk::format_to_n(
+          format, sizeof(format), "{:s} {:d} {:d} {:s}\n", buffer, numComp, numTuples, "{:s}");
+        *result.out = '\0';
+        this->WriteArray(fp, array->GetDataType(), array, format, numTuples, numComp);
+        delete[] buffer;
       }
       else
       {
@@ -2155,57 +2128,65 @@ int vtkDataWriter::WriteFieldData(ostream *fp, vtkFieldData *f)
   return 1;
 }
 
-int vtkDataWriter::WriteCells(ostream *fp, vtkCellArray *cells, const char *label)
+//------------------------------------------------------------------------------
+int vtkDataWriter::WriteCellsLegacy(ostream* fp, vtkCellArray* cells, const char* label)
 {
-  if ( ! cells )
+  if (!cells || cells->GetNumberOfCells() < 1)
   {
     return 1;
   }
 
-  vtkIdType ncells=cells->GetNumberOfCells();
-  vtkIdType size=cells->GetNumberOfConnectivityEntries();
+  int ncells = cells->GetNumberOfCells();
+  int size = cells->GetNumberOfConnectivityIds() + cells->GetNumberOfCells();
 
-  if ( ncells < 1 )
+  if (ncells < 1)
   {
     return 1;
   }
 
   *fp << label << " " << ncells << " " << size << "\n";
 
-  if ( this->FileType == VTK_ASCII )
+  // Use cell array iterator to convert new VTK cell data array
+  // into form that can be readily output in legacy format.
+  auto iter = vtk::TakeSmartPointer(cells->NewIterator());
+  const vtkIdType* pts = nullptr;
+  vtkIdType npts = 0;
+
+  if (this->FileType == VTK_ASCII)
   {
-    vtkIdType j;
-    vtkIdType *pts = nullptr;
-    vtkIdType npts = 0;
-    for (cells->InitTraversal(); cells->GetNextCell(npts,pts); )
+    for (iter->GoToFirstCell(); !iter->IsDoneWithTraversal(); iter->GoToNextCell())
     {
-      // currently writing vtkIdType as int
+      iter->GetCurrentCell(npts, pts);
       *fp << static_cast<int>(npts) << " ";
-      for (j=0; j<npts; j++)
+      for (auto i = 0; i < npts; i++)
       {
         // currently writing vtkIdType as int
-        *fp << static_cast<int>(pts[j]) << " ";
+        *fp << static_cast<int>(pts[i]) << " ";
       }
       *fp << "\n";
     }
-  }
+  } // ASCII Type
   else
   {
     // swap the bytes if necessary
     // currently writing vtkIdType as int
-    vtkIdType *tempArray = cells->GetPointer();
-    int arraySize = cells->GetNumberOfConnectivityEntries();
-    int *intArray = new int[arraySize];
-    int i;
+    int arraySize = cells->GetNumberOfConnectivityIds() + cells->GetNumberOfCells();
+    int* intArray = new int[arraySize];
 
-    for (i = 0; i < arraySize; i++)
+    int* intArrayPtr = intArray;
+    for (iter->GoToFirstCell(); !iter->IsDoneWithTraversal(); iter->GoToNextCell())
     {
-      intArray[i] = tempArray[i];
+      iter->GetCurrentCell(npts, pts);
+      *intArrayPtr++ = npts;
+      for (auto i = 0; i < npts; ++i)
+      {
+        *intArrayPtr++ = pts[i];
+      }
     }
 
-    vtkByteSwap::SwapWrite4BERange(intArray,size,fp);
-    delete [] intArray;
-  }
+    vtkByteSwap::SwapWrite4BERange(intArray, size, fp);
+    delete[] intArray;
+  } // BINARY Type
 
   *fp << "\n";
 
@@ -2219,23 +2200,59 @@ int vtkDataWriter::WriteCells(ostream *fp, vtkCellArray *cells, const char *labe
   return 1;
 }
 
-void vtkDataWriter::WriteData()
+//------------------------------------------------------------------------------
+int vtkDataWriter::WriteCells(ostream* fp, vtkCellArray* cells, const char* label)
 {
-  vtkErrorMacro(<<"WriteData() should be implemented in concrete subclass");
+  // Shunt to legacy if needed
+  if (this->FileVersion == VTK_LEGACY_READER_VERSION_4_2)
+  {
+    return this->WriteCellsLegacy(fp, cells, label);
+  }
+
+  // Okay, the latest and greatest format
+  if (!cells || cells->GetNumberOfCells() < 1)
+  {
+    return 1;
+  }
+
+  vtkIdType offsetsSize = cells->GetNumberOfOffsets();
+  int offsetType = cells->GetOffsetsArray()->GetDataType();
+  vtkIdType connSize = cells->GetNumberOfConnectivityIds();
+  int connType = cells->GetConnectivityArray()->GetDataType();
+  *fp << label << " " << offsetsSize << " " << connSize << "\n";
+
+  this->WriteArray(fp, offsetType, cells->GetOffsetsArray(), "OFFSETS {:s}\n", offsetsSize, 1);
+  this->WriteArray(fp, connType, cells->GetConnectivityArray(), "CONNECTIVITY {:s}\n", connSize, 1);
+
+  fp->flush();
+  if (fp->fail())
+  {
+    this->SetErrorCode(vtkErrorCode::OutOfDiskSpaceError);
+    return 0;
+  }
+
+  return 1;
 }
 
-// Close a vtk file.
-void vtkDataWriter::CloseVTKFile(ostream *fp)
+//------------------------------------------------------------------------------
+bool vtkDataWriter::WriteDataAndReturn()
 {
-  vtkDebugMacro(<<"Closing vtk file\n");
+  vtkErrorMacro(<< "WriteData() should be implemented in concrete subclass");
+  return false;
+}
 
-  if ( fp != nullptr )
+//------------------------------------------------------------------------------
+// Close a vtk file.
+void vtkDataWriter::CloseVTKFile(ostream* fp)
+{
+  vtkDebugMacro(<< "Closing vtk file\n");
+
+  if (fp != nullptr)
   {
     if (this->WriteToOutputString)
     {
-      std::ostringstream *ostr =
-        static_cast<std::ostringstream*>(fp);
-      delete [] this->OutputString;
+      std::ostringstream* ostr = static_cast<std::ostringstream*>(fp);
+      delete[] this->OutputString;
       const size_t strlength = ostr->str().size();
       if (strlength > static_cast<size_t>(vtkTypeTraits<vtkIdType>::Max()))
       {
@@ -2244,7 +2261,8 @@ void vtkDataWriter::CloseVTKFile(ostream *fp)
         vtkErrorMacro("OutputStringLength overflow: the length of data in the "
                       "writer is greater than what would fit in a variable of type "
                       "`vtkIdType`. You may have to recompile with VTK_USE_64BIT_IDS."
-                      "Presently, vtkIdType is " << sizeof(vtkIdType) * 8 << " bits.");
+                      "Presently, vtkIdType is "
+          << sizeof(vtkIdType) * 8 << " bits.");
       }
       else
       {
@@ -2253,13 +2271,33 @@ void vtkDataWriter::CloseVTKFile(ostream *fp)
       }
       memcpy(this->OutputString, ostr->str().c_str(), this->OutputStringLength + 1);
     }
+    // Restore the previous locale settings
+    // The stream is deleted below, so this is done just to be tidy.
+    fp->imbue(this->OriginalStreamLocale);
     delete fp;
   }
 }
 
-char *vtkDataWriter::RegisterAndGetOutputString()
+//------------------------------------------------------------------------------
+void vtkDataWriter::SetPrecision(int precision)
 {
-  char *tmp = this->OutputString;
+  vtkDebugMacro(<< " setting Precision to " << precision);
+  if (this->Precision == precision || precision < 0 || precision > 17)
+  {
+    return;
+  }
+
+  this->Precision = precision;
+  std::ostringstream numberFmt;
+  numberFmt << "{:." << this->Precision << "g} ";
+  this->PrecisionFormat = numberFmt.str();
+  this->Modified();
+}
+
+//------------------------------------------------------------------------------
+char* vtkDataWriter::RegisterAndGetOutputString()
+{
+  char* tmp = this->OutputString;
 
   this->OutputString = nullptr;
   this->OutputStringLength = 0;
@@ -2267,19 +2305,22 @@ char *vtkDataWriter::RegisterAndGetOutputString()
   return tmp;
 }
 
+//------------------------------------------------------------------------------
 vtkStdString vtkDataWriter::GetOutputStdString()
 {
   return vtkStdString(this->OutputString, this->OutputStringLength);
 }
 
+//------------------------------------------------------------------------------
 void vtkDataWriter::PrintSelf(ostream& os, vtkIndent indent)
 {
-  this->Superclass::PrintSelf(os,indent);
+  this->Superclass::PrintSelf(os, indent);
 
-  os << indent << "File Name: "
-     << (this->FileName ? this->FileName : "(none)") << "\n";
+  os << indent << "File Name: " << (this->FileName ? this->FileName : "(none)") << "\n";
 
-  if ( this->FileType == VTK_BINARY )
+  os << indent << "File Version: " << this->FileVersion << "\n";
+
+  if (this->FileType == VTK_BINARY)
   {
     os << indent << "File Type: BINARY\n";
   }
@@ -2288,7 +2329,7 @@ void vtkDataWriter::PrintSelf(ostream& os, vtkIndent indent)
     os << indent << "File Type: ASCII\n";
   }
 
-  if ( this->Header )
+  if (this->Header)
   {
     os << indent << "Header: " << this->Header << "\n";
   }
@@ -2298,10 +2339,10 @@ void vtkDataWriter::PrintSelf(ostream& os, vtkIndent indent)
   }
 
   os << indent << "Output String Length: " << this->OutputStringLength << "\n";
-  os << indent << "Output String (addr): " << static_cast<void *>(this->OutputString) << "\n";
+  os << indent << "Output String (addr): " << static_cast<void*>(this->OutputString) << "\n";
   os << indent << "WriteToOutputString: " << (this->WriteToOutputString ? "On\n" : "Off\n");
 
-  if ( this->ScalarsName )
+  if (this->ScalarsName)
   {
     os << indent << "Scalars Name: " << this->ScalarsName << "\n";
   }
@@ -2310,7 +2351,7 @@ void vtkDataWriter::PrintSelf(ostream& os, vtkIndent indent)
     os << indent << "Scalars Name: (None)\n";
   }
 
-  if ( this->VectorsName )
+  if (this->VectorsName)
   {
     os << indent << "Vectors Name: " << this->VectorsName << "\n";
   }
@@ -2319,7 +2360,7 @@ void vtkDataWriter::PrintSelf(ostream& os, vtkIndent indent)
     os << indent << "Vectors Name: (None)\n";
   }
 
-  if ( this->NormalsName )
+  if (this->NormalsName)
   {
     os << indent << "Normals Name: " << this->NormalsName << "\n";
   }
@@ -2328,7 +2369,7 @@ void vtkDataWriter::PrintSelf(ostream& os, vtkIndent indent)
     os << indent << "Normals Name: (None)\n";
   }
 
-  if ( this->TensorsName )
+  if (this->TensorsName)
   {
     os << indent << "Tensors Name: " << this->TensorsName << "\n";
   }
@@ -2337,7 +2378,7 @@ void vtkDataWriter::PrintSelf(ostream& os, vtkIndent indent)
     os << indent << "Tensors Name: (None)\n";
   }
 
-  if ( this->TCoordsName )
+  if (this->TCoordsName)
   {
     os << indent << "Texture Coords Name: " << this->TCoordsName << "\n";
   }
@@ -2346,7 +2387,7 @@ void vtkDataWriter::PrintSelf(ostream& os, vtkIndent indent)
     os << indent << "Texture Coordinates Name: (None)\n";
   }
 
-  if ( this->GlobalIdsName )
+  if (this->GlobalIdsName)
   {
     os << indent << "Global Ids Name: " << this->GlobalIdsName << "\n";
   }
@@ -2355,7 +2396,7 @@ void vtkDataWriter::PrintSelf(ostream& os, vtkIndent indent)
     os << indent << "Global Ids Name: (None)\n";
   }
 
-  if ( this->PedigreeIdsName )
+  if (this->PedigreeIdsName)
   {
     os << indent << "Pedigree Ids Name: " << this->PedigreeIdsName << "\n";
   }
@@ -2364,7 +2405,7 @@ void vtkDataWriter::PrintSelf(ostream& os, vtkIndent indent)
     os << indent << "Pedigree Ids Name: (None)\n";
   }
 
-  if ( this->EdgeFlagsName )
+  if (this->EdgeFlagsName)
   {
     os << indent << "Edge Flags Name: " << this->EdgeFlagsName << "\n";
   }
@@ -2373,7 +2414,7 @@ void vtkDataWriter::PrintSelf(ostream& os, vtkIndent indent)
     os << indent << "Edge Flags Name: (None)\n";
   }
 
-  if ( this->LookupTableName )
+  if (this->LookupTableName)
   {
     os << indent << "Lookup Table Name: " << this->LookupTableName << "\n";
   }
@@ -2382,7 +2423,7 @@ void vtkDataWriter::PrintSelf(ostream& os, vtkIndent indent)
     os << indent << "Lookup Table Name: (None)\n";
   }
 
-  if ( this->FieldDataName )
+  if (this->FieldDataName)
   {
     os << indent << "Field Data Name: " << this->FieldDataName << "\n";
   }
@@ -2390,18 +2431,19 @@ void vtkDataWriter::PrintSelf(ostream& os, vtkIndent indent)
   {
     os << indent << "Field Data Name: (None)\n";
   }
-
 }
 
-int vtkDataWriter::WriteDataSetData(ostream *fp, vtkDataSet *ds)
+//------------------------------------------------------------------------------
+int vtkDataWriter::WriteDataSetData(ostream* fp, vtkDataSet* ds)
 {
   vtkFieldData* field = ds->GetFieldData();
   if (field && field->GetNumberOfTuples() > 0)
   {
-    if ( !this->WriteFieldData(fp, field) )
+    if (!this->WriteFieldData(fp, field))
     {
       return 0; // we tried to write field data, but we couldn't
     }
   }
   return 1;
 }
+VTK_ABI_NAMESPACE_END

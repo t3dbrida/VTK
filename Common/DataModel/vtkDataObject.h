@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkDataObject.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkDataObject
  * @brief   general representation of visualization data
@@ -29,14 +17,16 @@
  * @sa
  * vtkDataSet vtkFieldData vtkDataObjectToDataSetFilter
  * vtkFieldDataToAttributeDataFilter
-*/
+ */
 
 #ifndef vtkDataObject_h
 #define vtkDataObject_h
 
 #include "vtkCommonDataModelModule.h" // For export macro
 #include "vtkObject.h"
+#include "vtkWrappingHints.h" // For VTK_MARSHALAUTO
 
+VTK_ABI_NAMESPACE_BEGIN
 class vtkAbstractArray;
 class vtkDataSetAttributes;
 class vtkFieldData;
@@ -50,26 +40,27 @@ class vtkInformationIntegerVectorKey;
 class vtkInformationStringKey;
 class vtkInformationVector;
 class vtkInformationInformationVectorKey;
+class vtkUnsignedCharArray;
 
-#define VTK_PIECES_EXTENT   0
-#define VTK_3D_EXTENT       1
-#define VTK_TIME_EXTENT     2
+#define VTK_PIECES_EXTENT 0
+#define VTK_3D_EXTENT 1
+#define VTK_TIME_EXTENT 2
 
-class VTKCOMMONDATAMODEL_EXPORT vtkDataObject : public vtkObject
+class VTKCOMMONDATAMODEL_EXPORT VTK_MARSHALAUTO vtkDataObject : public vtkObject
 {
 public:
-  static vtkDataObject *New();
+  static vtkDataObject* New();
 
-  vtkTypeMacro(vtkDataObject,vtkObject);
+  vtkTypeMacro(vtkDataObject, vtkObject);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
-  //@{
+  ///@{
   /**
    * Set/Get the information object associated with this data object.
    */
   vtkGetObjectMacro(Information, vtkInformation);
   virtual void SetInformation(vtkInformation*);
-  //@}
+  ///@}
 
   /**
    * Data objects are composite objects and need to check each part for MTime.
@@ -89,32 +80,31 @@ public:
    */
   void ReleaseData();
 
-  //@{
+  ///@{
   /**
    * Get the flag indicating the data has been released.
    */
-  vtkGetMacro(DataReleased,int);
-  //@}
+  vtkGetMacro(DataReleased, vtkTypeBool);
+  ///@}
 
-
-  //@{
+  ///@{
   /**
    * Turn on/off flag to control whether every object releases its data
    * after being used by a filter.
    */
-  static void SetGlobalReleaseDataFlag(int val);
-  void GlobalReleaseDataFlagOn() {this->SetGlobalReleaseDataFlag(1);};
-  void GlobalReleaseDataFlagOff() {this->SetGlobalReleaseDataFlag(0);};
-  static int GetGlobalReleaseDataFlag();
-  //@}
+  static void SetGlobalReleaseDataFlag(vtkTypeBool val);
+  void GlobalReleaseDataFlagOn() { vtkDataObject::SetGlobalReleaseDataFlag(1); }
+  void GlobalReleaseDataFlagOff() { vtkDataObject::SetGlobalReleaseDataFlag(0); }
+  static vtkTypeBool GetGlobalReleaseDataFlag();
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Assign or retrieve a general field data to this data object.
    */
   virtual void SetFieldData(vtkFieldData*);
-  vtkGetObjectMacro(FieldData,vtkFieldData);
-  //@}
+  vtkGetObjectMacro(FieldData, vtkFieldData);
+  ///@}
 
   /**
    * Return class name of data type. This is one of VTK_STRUCTURED_GRID,
@@ -122,7 +112,7 @@ public:
    * VTK_RECTILINEAR_GRID (see vtkSetGet.h for definitions).
    * THIS METHOD IS THREAD SAFE
    */
-  virtual int GetDataObjectType() {return VTK_DATA_OBJECT;}
+  virtual int GetDataObjectType() VTK_FUTURE_CONST { return VTK_DATA_OBJECT; }
 
   /**
    * Used by Threaded ports to determine if they should initiate an
@@ -143,8 +133,7 @@ public:
    * Copy from the pipeline information to the data object's own information.
    * Called right before the main execution pass.
    */
-  virtual void CopyInformationFromPipeline(vtkInformation* vtkNotUsed(info))
-  {}
+  virtual void CopyInformationFromPipeline(vtkInformation* vtkNotUsed(info)) {}
 
   /**
    * Copy information from this data object to the pipeline information.
@@ -159,23 +148,22 @@ public:
    * (FIELD_ASSOCIATION_POINTS or FIELD_ASSOCIATION_CELLS) and attribute
    * (SCALARS, VECTORS, NORMALS, TCOORDS, or TENSORS)
    */
-  static vtkInformation *GetActiveFieldInformation(vtkInformation *info,
-    int fieldAssociation, int attributeType);
+  static vtkInformation* GetActiveFieldInformation(
+    vtkInformation* info, int fieldAssociation, int attributeType);
 
   /**
    * Return the information object within the input information object's
    * field data corresponding to the specified association
    * (FIELD_ASSOCIATION_POINTS or FIELD_ASSOCIATION_CELLS) and name.
    */
-  static vtkInformation *GetNamedFieldInformation(vtkInformation *info,
-    int fieldAssociation, const char *name);
+  static vtkInformation* GetNamedFieldInformation(
+    vtkInformation* info, int fieldAssociation, const char* name);
 
   /**
    * Remove the info associated with an array
    */
-  static void RemoveNamedFieldInformation(vtkInformation *info,
-                                          int fieldAssociation,
-                                          const char *name);
+  static void RemoveNamedFieldInformation(
+    vtkInformation* info, int fieldAssociation, const char* name);
 
   /**
    * Set the named array to be the active field for the specified type
@@ -183,8 +171,8 @@ public:
    * (FIELD_ASSOCIATION_POINTS or FIELD_ASSOCIATION_CELLS).  Returns the
    * active field information object and creates on entry if one not found.
    */
-  static vtkInformation *SetActiveAttribute(vtkInformation *info,
-    int fieldAssociation, const char *attributeName, int attributeType);
+  static vtkInformation* SetActiveAttribute(
+    vtkInformation* info, int fieldAssociation, const char* attributeName, int attributeType);
 
   /**
    * Set the name, array type, number of components, and number of tuples
@@ -195,16 +183,14 @@ public:
    * arrayType, numComponents, or numTuples equal to -1, or name=nullptr the
    * value is not changed.
    */
-  static void SetActiveAttributeInfo(vtkInformation *info,
-    int fieldAssociation, int attributeType, const char *name, int arrayType,
-    int numComponents, int numTuples);
+  static void SetActiveAttributeInfo(vtkInformation* info, int fieldAssociation, int attributeType,
+    const char* name, int arrayType, int numComponents, int numTuples);
 
   /**
    * Convenience version of previous method for use (primarily) by the Imaging
    * filters. If arrayType or numComponents == -1, the value is not changed.
    */
-  static void SetPointDataActiveScalarInfo(vtkInformation *info,
-    int arrayType, int numComponents);
+  static void SetPointDataActiveScalarInfo(vtkInformation* info, int arrayType, int numComponents);
 
   /**
    * This method is called by the source when it executes to generate data.
@@ -218,16 +204,25 @@ public:
    * objects we just call Initialize. But for vtkImageData we leave the old
    * data in case the memory can be reused.
    */
-  virtual void PrepareForNewData() {this->Initialize();};
+  virtual void PrepareForNewData() { this->Initialize(); }
 
-  //@{
   /**
-   * Shallow and Deep copy.  These copy the data, but not any of the
-   * pipeline connections.
+   * The goal of the method is to copy the data up to the array pointers only.
+   * The implementation is delegated to the differenent subclasses.
+   * If you want to copy the actual data, @see DeepCopy.
+   *
+   * This method shallow copy the field data and copy the internal structure.
    */
-  virtual void ShallowCopy(vtkDataObject *src);
-  virtual void DeepCopy(vtkDataObject *src);
-  //@}
+  virtual void ShallowCopy(vtkDataObject* src);
+
+  /**
+   * The goal of the method is to copy the complete data from src into this object.
+   * The implementation is delegated to the differenent subclasses.
+   * If you want to copy the data up to the array pointers only, @see ShallowCopy.
+   *
+   * This method deep copy the field data and copy the internal structure.
+   */
+  virtual void DeepCopy(vtkDataObject* src);
 
   /**
    * The ExtentType will be left as VTK_PIECES_EXTENT for data objects
@@ -237,7 +232,7 @@ public:
    * and vtkStructuredGrid. The default is the have an extent in pieces,
    * with only one piece (no streaming possible).
    */
-  virtual int GetExtentType() { return VTK_PIECES_EXTENT; };
+  virtual int GetExtentType() VTK_FUTURE_CONST { return VTK_PIECES_EXTENT; }
 
   /**
    * This method crops the data object (if necessary) so that the extent
@@ -290,8 +285,39 @@ public:
    * field data is stored as a vtkFieldData instance, not a
    * vtkDataSetAttributes instance. To retrieve field data, use
    * GetAttributesAsFieldData.
+   *
+   * @warning This method NEEDS to be
+   * overridden in subclasses to work as documented.
+   * If not, it returns nullptr for any type but FIELD.
    */
   virtual vtkDataSetAttributes* GetAttributes(int type);
+
+  /**
+   * Returns the ghost arrays of the data object of the specified
+   * attribute type. The type may be:
+   * <ul>
+   * <li>POINT    - Defined in vtkDataSet subclasses
+   * <li>CELL   - Defined in vtkDataSet subclasses.
+   * </ul>
+   * The other attribute types, will return nullptr since
+   * ghosts arrays are not defined for now outside of
+   * point or cell.
+   */
+  virtual vtkUnsignedCharArray* GetGhostArray(int type);
+
+  /**
+   * Returns if this type of data object support ghost array for specified type.
+   * The type may be:
+   * <ul>
+   * <li>POINT    - Defined in vtkDataSet subclasses
+   * <li>CELL   - Defined in vtkDataSet subclasses.
+   * </ul>
+   * The other attribute types, will return false since
+   * ghosts arrays are not defined for now outside of point or cell.
+   * for vtkDataObject, this always return false but subclasses may override
+   * this method and implement their own logic.
+   */
+  virtual bool SupportsGhostArray(int type);
 
   /**
    * Returns the attributes of the data object as a vtkFieldData.
@@ -326,91 +352,125 @@ public:
 
   /**
    * Given an integer association type, this static method returns a string type
-   * for the attribute (i.e. type = 0: returns "Points").
+   * for the attribute (i.e. associationType = 0: returns "Points").
    */
   static const char* GetAssociationTypeAsString(int associationType);
 
   /**
-   * Given an integer association type, this static method returns a string type
-   * for the attribute (i.e. type = 0: returns "Points").
+   * Given a string association name, this static method returns an integer association type
+   * for the attribute (i.e. associationName = "Points": returns 0).
    */
-  static int GetAssociationTypeFromString(const char* associationType);
+  static int GetAssociationTypeFromString(const char* associationName);
 
-  // \ingroup InformationKeys
+  /**
+   * Information keys to describe the content of this vtkDataObject.
+   * @ingroup InformationKeys
+   */
+  ///@{
+  /**
+   * Data type as string. Usually used in algorithm context to specify valid inputs and output.
+   */
   static vtkInformationStringKey* DATA_TYPE_NAME();
-  // \ingroup InformationKeys
+  /**
+   * Store a vtkDataObject pointer. Used in vtkAlgorithm to retrieve inputs and output.
+   */
   static vtkInformationDataObjectKey* DATA_OBJECT();
-  // \ingroup InformationKeys
-  static vtkInformationIntegerKey* DATA_EXTENT_TYPE();
-  // \ingroup InformationKeys
-  static vtkInformationIntegerPointerKey* DATA_EXTENT();
-  // \ingroup InformationKeys
-  static vtkInformationIntegerVectorKey* ALL_PIECES_EXTENT();
-  // \ingroup InformationKeys
-  static vtkInformationIntegerKey* DATA_PIECE_NUMBER();
-  // \ingroup InformationKeys
-  static vtkInformationIntegerKey* DATA_NUMBER_OF_PIECES();
-  // \ingroup InformationKeys
-  static vtkInformationIntegerKey* DATA_NUMBER_OF_GHOST_LEVELS();
-  // \ingroup InformationKeys
-  static vtkInformationDoubleKey* DATA_TIME_STEP();
-  // \ingroup InformationKeys
-  static vtkInformationInformationVectorKey* POINT_DATA_VECTOR();
-  // \ingroup InformationKeys
-  static vtkInformationInformationVectorKey* CELL_DATA_VECTOR();
-  // \ingroup InformationKeys
-  static vtkInformationInformationVectorKey* VERTEX_DATA_VECTOR();
-  // \ingroup InformationKeys
-  static vtkInformationInformationVectorKey* EDGE_DATA_VECTOR();
-  // \ingroup InformationKeys
-  static vtkInformationIntegerKey* FIELD_ARRAY_TYPE();
-  // \ingroup InformationKeys
-  static vtkInformationIntegerKey* FIELD_ASSOCIATION();
-  // \ingroup InformationKeys
-  static vtkInformationIntegerKey* FIELD_ATTRIBUTE_TYPE();
-  // \ingroup InformationKeys
-  static vtkInformationIntegerKey* FIELD_ACTIVE_ATTRIBUTE();
-  // \ingroup InformationKeys
-  static vtkInformationIntegerKey* FIELD_NUMBER_OF_COMPONENTS();
-  // \ingroup InformationKeys
-  static vtkInformationIntegerKey* FIELD_NUMBER_OF_TUPLES();
-  // \ingroup InformationKeys
-  static vtkInformationIntegerKey* FIELD_OPERATION();
-  // \ingroup InformationKeys
-  static vtkInformationDoubleVectorKey* FIELD_RANGE();
-  // \ingroup InformationKeys
-  static vtkInformationIntegerVectorKey* PIECE_EXTENT();
-  // \ingroup InformationKeys
-  static vtkInformationStringKey* FIELD_NAME();
-  // \ingroup InformationKeys
-  static vtkInformationDoubleVectorKey* ORIGIN();
-  // \ingroup InformationKeys
-  static vtkInformationDoubleVectorKey* SPACING();
-  // \ingroup InformationKeys
-  static vtkInformationDoubleVectorKey* BOUNDING_BOX();
 
-  // Key used to put SIL information in the output information by readers.
-  // \ingroup InformationKeys
+  /**
+   * Represent what extent means for this data. VTK defines the following:
+   * - vtkDataObject::VTK_PIECES_EXTENT=0
+   * - vtkDataObject::VTK_3D_EXTENT=1
+   * - vtkDataObject::VTK_TIME_EXTENT=2
+   */
+  static vtkInformationIntegerKey* DATA_EXTENT_TYPE();
+
+  static vtkInformationIntegerPointerKey* DATA_EXTENT();
+  static vtkInformationIntegerVectorKey* ALL_PIECES_EXTENT();
+  static vtkInformationIntegerVectorKey* PIECE_EXTENT();
+  static vtkInformationIntegerKey* DATA_PIECE_NUMBER();
+  static vtkInformationIntegerKey* DATA_NUMBER_OF_PIECES();
+  static vtkInformationIntegerKey* DATA_NUMBER_OF_GHOST_LEVELS();
+  /**
+   * Contains the time value for which the data was generated.
+   */
+  static vtkInformationDoubleKey* DATA_TIME_STEP();
+  /**
+   * 3D Coordinates of the origin of this data.
+   * Mostly used for structured data with implicit geometry
+   */
+  static vtkInformationDoubleVectorKey* ORIGIN();
+  /**
+   * Spacing between two neighbors points in each direction. Useful for structured data.
+   */
+  static vtkInformationDoubleVectorKey* SPACING();
+  /**
+   * 3x3 matrix to describe the data orientation.
+   */
+  static vtkInformationDoubleVectorKey* DIRECTION();
+  /**
+   * 6 values to describe the min/max coordinates of the data for each axis.
+   */
+  static vtkInformationDoubleVectorKey* BOUNDING_BOX();
+  ///@}
+
+  /**
+   * Information keys to manipulate associated attributes arrays.
+   * @ingroup InformationKeys
+   */
+  ///@{
+  static vtkInformationInformationVectorKey* POINT_DATA_VECTOR();
+  static vtkInformationInformationVectorKey* CELL_DATA_VECTOR();
+  static vtkInformationInformationVectorKey* VERTEX_DATA_VECTOR();
+  static vtkInformationInformationVectorKey* EDGE_DATA_VECTOR();
+  static vtkInformationIntegerKey* FIELD_ARRAY_TYPE();
+  static vtkInformationIntegerKey* FIELD_ASSOCIATION();
+  /**
+   * If present, this key specifies an actual or virtual component
+   * of the array. Virtual components are functions of tuples that
+   * evaluate to a single number – such as L₁ or L₂ norms.
+   *
+   * This takes on values from the vtkArrayComponents enumeration as
+   * well as non-negative integers.
+   */
+  static vtkInformationIntegerKey* FIELD_ATTRIBUTE_COMPONENT();
+  static vtkInformationIntegerKey* FIELD_ATTRIBUTE_TYPE();
+  static vtkInformationIntegerKey* FIELD_ACTIVE_ATTRIBUTE();
+  static vtkInformationIntegerKey* FIELD_NUMBER_OF_COMPONENTS();
+  static vtkInformationIntegerKey* FIELD_NUMBER_OF_TUPLES();
+  /**
+   * Unused in VTK
+   */
+  static vtkInformationIntegerKey* FIELD_OPERATION();
+  /**
+   * Unused in VTK
+   */
+  static vtkInformationDoubleVectorKey* FIELD_RANGE();
+  static vtkInformationStringKey* FIELD_NAME();
+  ///@}
+
+  /**
+   * @ingroup InformationKeys
+   * Key used to put SIL information in the output information by readers.
+   */
   static vtkInformationDataObjectKey* SIL();
 
-  //@{
+  ///@{
   /**
    * Retrieve an instance of this class from an information object.
    */
   static vtkDataObject* GetData(vtkInformation* info);
-  static vtkDataObject* GetData(vtkInformationVector* v, int i=0);
-  //@}
+  static vtkDataObject* GetData(vtkInformationVector* v, int i = 0);
+  ///@}
 
 protected:
-
   vtkDataObject();
   ~vtkDataObject() override;
 
   // General field data associated with data object
-  vtkFieldData  *FieldData;
+  vtkFieldData* FieldData;
 
   // Keep track of data release during network execution
-  int DataReleased;
+  vtkTypeBool DataReleased;
 
   // When was this data last generated?
   vtkTimeStamp UpdateTime;
@@ -420,12 +480,11 @@ protected:
 
 private:
   // Helper method for the ShallowCopy and DeepCopy methods.
-  void InternalDataObjectCopy(vtkDataObject *src);
+  void InternalDataObjectCopy(vtkDataObject* src);
 
-private:
   vtkDataObject(const vtkDataObject&) = delete;
   void operator=(const vtkDataObject&) = delete;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif
-

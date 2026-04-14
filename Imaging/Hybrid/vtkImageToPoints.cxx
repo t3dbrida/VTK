@@ -1,35 +1,27 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkImageToPoints.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkImageToPoints.h"
 
-#include <vtkObjectFactory.h>
-#include <vtkMath.h>
-#include <vtkPoints.h>
+#include <vtkArrayDispatch.h>
+#include <vtkArrayDispatchDataSetArrayList.h>
+#include <vtkDataArrayRange.h>
 #include <vtkImageData.h>
-#include <vtkPolyData.h>
-#include <vtkPointData.h>
-#include <vtkImageStencilData.h>
 #include <vtkImagePointIterator.h>
+#include <vtkImageStencilData.h>
 #include <vtkInformation.h>
 #include <vtkInformationVector.h>
-#include <vtkStreamingDemandDrivenPipeline.h>
+#include <vtkMath.h>
+#include <vtkObjectFactory.h>
+#include <vtkPointData.h>
+#include <vtkPoints.h>
+#include <vtkPolyData.h>
 #include <vtkSmartPointer.h>
+#include <vtkStreamingDemandDrivenPipeline.h>
 
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkImageToPoints);
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // Constructor sets default values
 vtkImageToPoints::vtkImageToPoints()
 {
@@ -39,40 +31,37 @@ vtkImageToPoints::vtkImageToPoints()
   this->SetNumberOfOutputPorts(1);
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkImageToPoints::~vtkImageToPoints() = default;
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkImageToPoints::PrintSelf(ostream& os, vtkIndent indent)
 {
-  this->Superclass::PrintSelf(os,indent);
+  this->Superclass::PrintSelf(os, indent);
 
-  os << indent << "OutputPointsPrecision: "
-     << this->OutputPointsPrecision << "\n";
+  os << indent << "OutputPointsPrecision: " << this->OutputPointsPrecision << "\n";
 }
 
-//----------------------------------------------------------------------------
-void vtkImageToPoints::SetStencilConnection(
-  vtkAlgorithmOutput *stencil)
+//------------------------------------------------------------------------------
+void vtkImageToPoints::SetStencilConnection(vtkAlgorithmOutput* stencil)
 {
   this->SetInputConnection(1, stencil);
 }
 
-//----------------------------------------------------------------------------
-vtkAlgorithmOutput *vtkImageToPoints::GetStencilConnection()
+//------------------------------------------------------------------------------
+vtkAlgorithmOutput* vtkImageToPoints::GetStencilConnection()
 {
   return this->GetInputConnection(1, 0);
 }
 
-//----------------------------------------------------------------------------
-void vtkImageToPoints::SetStencilData(vtkImageStencilData *stencil)
+//------------------------------------------------------------------------------
+void vtkImageToPoints::SetStencilData(vtkImageStencilData* stencil)
 {
   this->SetInputData(1, stencil);
 }
 
-//----------------------------------------------------------------------------
-int vtkImageToPoints::FillInputPortInformation(
-  int port, vtkInformation *info)
+//------------------------------------------------------------------------------
+int vtkImageToPoints::FillInputPortInformation(int port, vtkInformation* info)
 {
   if (port == 0)
   {
@@ -87,9 +76,8 @@ int vtkImageToPoints::FillInputPortInformation(
   return 1;
 }
 
-//----------------------------------------------------------------------------
-int vtkImageToPoints::FillOutputPortInformation(
-  int port, vtkInformation* info)
+//------------------------------------------------------------------------------
+int vtkImageToPoints::FillOutputPortInformation(int port, vtkInformation* info)
 {
   if (port == 0)
   {
@@ -99,23 +87,19 @@ int vtkImageToPoints::FillOutputPortInformation(
   return 1;
 }
 
-//----------------------------------------------------------------------------
-int vtkImageToPoints::RequestInformation(
-  vtkInformation *vtkNotUsed(request),
-  vtkInformationVector **vtkNotUsed(inputVector),
-  vtkInformationVector *vtkNotUsed(outputVector))
+//------------------------------------------------------------------------------
+int vtkImageToPoints::RequestInformation(vtkInformation* vtkNotUsed(request),
+  vtkInformationVector** vtkNotUsed(inputVector), vtkInformationVector* vtkNotUsed(outputVector))
 {
   return 1;
 }
 
-//----------------------------------------------------------------------------
-int vtkImageToPoints::RequestUpdateExtent(
-  vtkInformation *vtkNotUsed(request),
-  vtkInformationVector **inputVector,
-  vtkInformationVector *vtkNotUsed(outputVector))
+//------------------------------------------------------------------------------
+int vtkImageToPoints::RequestUpdateExtent(vtkInformation* vtkNotUsed(request),
+  vtkInformationVector** inputVector, vtkInformationVector* vtkNotUsed(outputVector))
 {
   int inExt[6];
-  vtkInformation *inInfo = inputVector[0]->GetInformationObject(0);
+  vtkInformation* inInfo = inputVector[0]->GetInformationObject(0);
 
   inInfo->Get(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT(), inExt);
   inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_EXTENT(), inExt, 6);
@@ -123,19 +107,19 @@ int vtkImageToPoints::RequestUpdateExtent(
   // need to set the stencil update extent to the input extent
   if (this->GetNumberOfInputConnections(1) > 0)
   {
-    vtkInformation *stencilInfo = inputVector[1]->GetInformationObject(0);
-    stencilInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_EXTENT(),
-                     inExt, 6);
+    vtkInformation* stencilInfo = inputVector[1]->GetInformationObject(0);
+    stencilInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_EXTENT(), inExt, 6);
   }
 
   return 1;
 }
 
-namespace {
+namespace
+{
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkIdType vtkImageToPointsCount(
-  vtkImageData *inData, vtkImageStencilData *stencil, const int extent[6])
+  vtkImageData* inData, vtkImageStencilData* stencil, const int extent[6])
 {
   // count the number of points so that we can pre-allocate the space
   vtkIdType count = 0;
@@ -153,61 +137,61 @@ vtkIdType vtkImageToPointsCount(
   return count;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // The execute method is templated over the point type (float or double)
-template<class T>
-void vtkImageToPointsExecute(
-  vtkImageToPoints *self, vtkImageData *inData, const int extent[6],
-  vtkImageStencilData *stencil, T *outPoints, vtkPointData *outPD)
+struct vtkImageToPointsWorker
 {
-  vtkPointData *inPD = inData->GetPointData();
-  vtkImagePointIterator inIter(inData, extent, stencil, self, 0);
-  vtkIdType outId = 0;
-
-  // iterate over all spans for the stencil
-  while (!inIter.IsAtEnd())
+  template <class TArray, typename T = vtk::GetAPIType<TArray>>
+  void operator()(TArray* outPoints, vtkImageToPoints* self, vtkImageData* inData,
+    const int extent[6], vtkImageStencilData* stencil, vtkPointData* outPD)
   {
-    if (inIter.IsInStencil())
+    vtkPointData* inPD = inData->GetPointData();
+    vtkImagePointIterator inIter(inData, extent, stencil, self, 0);
+    vtkIdType outId = 0;
+    T p[3];
+
+    auto out = vtk::DataArrayTupleRange<3>(outPoints).begin();
+    // iterate over all spans for the stencil
+    while (!inIter.IsAtEnd())
     {
-      // if span is inside stencil, generate points
-      vtkIdType n = inIter.SpanEndId() - inIter.GetId();
-      outPD->CopyData(inPD, outId, n, inIter.GetId());
-      outId += n;
-      for (vtkIdType i = 0; i < n; i++)
+      if (inIter.IsInStencil())
       {
-        inIter.GetPosition(outPoints);
-        outPoints += 3;
-        inIter.Next();
+        // if span is inside stencil, generate points
+        vtkIdType n = inIter.SpanEndId() - inIter.GetId();
+        outPD->CopyData(inPD, outId, n, inIter.GetId());
+        outId += n;
+        for (vtkIdType i = 0; i < n; i++)
+        {
+          inIter.GetPosition(p);
+          out->SetTuple(p);
+          ++out;
+          inIter.Next();
+        }
+      }
+      else
+      {
+        // if span is outside stencil, skip to next span
+        inIter.NextSpan();
       }
     }
-    else
-    {
-      // if span is outside stencil, skip to next span
-      inIter.NextSpan();
-    }
   }
+};
 }
 
-}
-
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkImageToPoints::RequestData(
-  vtkInformation*,
-  vtkInformationVector** inputVector,
-  vtkInformationVector* outputVector)
+  vtkInformation*, vtkInformationVector** inputVector, vtkInformationVector* outputVector)
 {
   // get the input
   vtkInformation* info = inputVector[0]->GetInformationObject(0);
-  vtkInformation *stencilInfo = inputVector[1]->GetInformationObject(0);
-  vtkImageData *inData = vtkImageData::SafeDownCast(
-    info->Get(vtkDataObject::DATA_OBJECT()));
+  vtkInformation* stencilInfo = inputVector[1]->GetInformationObject(0);
+  vtkImageData* inData = vtkImageData::SafeDownCast(info->Get(vtkDataObject::DATA_OBJECT()));
 
   // use a stencil, if a stencil is connected
   vtkImageStencilData* stencil = nullptr;
   if (stencilInfo)
   {
-    stencil = static_cast<vtkImageStencilData *>(
-      stencilInfo->Get(vtkDataObject::DATA_OBJECT()));
+    stencil = static_cast<vtkImageStencilData*>(stencilInfo->Get(vtkDataObject::DATA_OBJECT()));
   }
 
   // get the requested precision
@@ -218,36 +202,31 @@ int vtkImageToPoints::RequestData(
   }
 
   // get the output data object
-  vtkInformation *outInfo = outputVector->GetInformationObject(0);
-  vtkPolyData *outData = vtkPolyData::SafeDownCast(
-    outInfo->Get(vtkDataObject::DATA_OBJECT()));
+  vtkInformation* outInfo = outputVector->GetInformationObject(0);
+  vtkPolyData* outData = vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
 
   // count the total number of output points
-  const int *extent = inData->GetExtent();
+  const int* extent = inData->GetExtent();
   vtkIdType numPoints = vtkImageToPointsCount(inData, stencil, extent);
 
   // create the points
-  vtkSmartPointer<vtkPoints> points = vtkSmartPointer<vtkPoints>::New();
+  vtkNew<vtkPoints> points;
   points->SetDataType(pointsType);
   points->SetNumberOfPoints(numPoints);
   outData->SetPoints(points);
 
   // pre-allocate output arrays
-  vtkPointData *outPD = outData->GetPointData();
+  vtkPointData* outPD = outData->GetPointData();
   outPD->CopyAllocate(inData->GetPointData(), numPoints);
 
   // iterate over the input and create the point data
-  void *ptr = points->GetVoidPointer(0);
-  if (pointsType == VTK_FLOAT)
+  vtkImageToPointsWorker worker;
+  if (!vtkArrayDispatch::DispatchByArray<vtkArrayDispatch::AOSPointArrays>::Execute(
+        points->GetData(), worker, this, inData, extent, stencil, outPD))
   {
-    vtkImageToPointsExecute(
-      this, inData, extent, stencil, static_cast<float *>(ptr), outPD);
-  }
-  else
-  {
-    vtkImageToPointsExecute(
-      this, inData, extent, stencil, static_cast<double *>(ptr), outPD);
+    worker(points->GetData(), this, inData, extent, stencil, outPD);
   }
 
   return 1;
 }
+VTK_ABI_NAMESPACE_END

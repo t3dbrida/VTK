@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestGPURayCastUserShader.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even
-  the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-  PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 // Description
 // Test the volume mapper's ability to perform shader substitutions based on
@@ -31,17 +19,19 @@
 #include "vtkRenderWindow.h"
 #include "vtkRenderWindowInteractor.h"
 #include "vtkRenderer.h"
+#include "vtkShaderProperty.h"
 #include "vtkTestUtilities.h"
 #include "vtkVolume.h"
 #include "vtkVolumeProperty.h"
 
+#include <iostream>
+
 int TestGPURayCastUserShader(int argc, char* argv[])
 {
-  cout << "CTEST_FULL_OUTPUT (Avoid ctest truncation of output)" << endl;
+  std::cout << "CTEST_FULL_OUTPUT (Avoid ctest truncation of output)" << std::endl;
 
   // Load data
-  char* fname =
-    vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/tooth.nhdr");
+  char* fname = vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/tooth.nhdr");
   vtkNew<vtkNrrdReader> reader;
   reader->SetFileName(fname);
   reader->Update();
@@ -76,28 +66,22 @@ int TestGPURayCastUserShader(int argc, char* argv[])
   mapper->SetInputConnection(reader->GetOutputPort());
   mapper->SetUseJittering(1);
 
+  vtkNew<vtkShaderProperty> shaderProperty;
+
   // Modify the shader to color based on the depth of the translucent voxel
-  mapper->AddShaderReplacement(
-    vtkShader::Fragment,    // Replace in the fragment shader
-    "//VTK::Base::Dec",     // Source string to replace
-    true,                   // before the standard replacements
-    "//VTK::Base::Dec"      // We still want the default
+  shaderProperty->AddFragmentShaderReplacement("//VTK::Base::Dec", // Source string to replace
+    true,              // before the standard replacements
+    "//VTK::Base::Dec" // We still want the default
     "\n bool l_updateDepth;"
     "\n vec3 l_opaqueFragPos;",
-    false                   // only do it once i.e. only replace the first match
+    false // only do it once i.e. only replace the first match
   );
-  mapper->AddShaderReplacement(
-    vtkShader::Fragment,
-    "//VTK::Base::Init",
-    true,
+  shaderProperty->AddFragmentShaderReplacement("//VTK::Base::Init", true,
     "//VTK::Base::Init\n"
     "\n l_updateDepth = true;"
     "\n l_opaqueFragPos = vec3(0.0);",
     false);
-  mapper->AddShaderReplacement(
-    vtkShader::Fragment,
-    "//VTK::Base::Impl",
-    true,
+  shaderProperty->AddFragmentShaderReplacement("//VTK::Base::Impl", true,
     "//VTK::Base::Impl"
     "\n    if(!g_skip && g_srcColor.a > 0.0 && l_updateDepth)"
     "\n      {"
@@ -105,10 +89,7 @@ int TestGPURayCastUserShader(int argc, char* argv[])
     "\n      l_updateDepth = false;"
     "\n      }",
     false);
-  mapper->AddShaderReplacement(
-    vtkShader::Fragment,
-    "//VTK::RenderToImage::Exit",
-    true,
+  shaderProperty->AddFragmentShaderReplacement("//VTK::RenderToImage::Exit", true,
     "//VTK::RenderToImage::Exit"
     "\n  if (l_opaqueFragPos == vec3(0.0))"
     "\n    {"
@@ -125,20 +106,15 @@ int TestGPURayCastUserShader(int argc, char* argv[])
     "\n                      (gl_DepthRange.far + gl_DepthRange.near)), 1.0);"
     "\n    }",
     false);
-  mapper->AddShaderReplacement(
-    vtkShader::Fragment,  // dummy replacement to test clear method
-    "//VTK::ComputeGradient::Dec",
-    true,
-    "VTK::ComputeGradient::Dec",
-    false);
-  mapper->ClearShaderReplacement(
-    vtkShader::Fragment, // clear the dummy replacement
-    "//VTK::ComputeGradient::Dec",
-    true);
+  shaderProperty->AddFragmentShaderReplacement( // add dummy replacement
+    "//VTK::ComputeGradient::Dec", true, "VTK::ComputeGradient::Dec", false);
+  shaderProperty->ClearFragmentShaderReplacement( // clear dummy replacement
+    "//VTK::ComputeGradient::Dec", true);
 
   vtkNew<vtkVolume> volume;
   volume->SetMapper(mapper.GetPointer());
   volume->SetProperty(volumeProperty.GetPointer());
+  volume->SetShaderProperty(shaderProperty.GetPointer());
 
   vtkNew<vtkRenderWindow> renWin;
   renWin->SetMultiSamples(0);

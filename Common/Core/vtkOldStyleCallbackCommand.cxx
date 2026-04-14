@@ -1,26 +1,19 @@
-/*=========================================================================
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
-  Program:   Visualization Toolkit
-  Module:    vtkOldStyleCallbackCommand.cxx
+// VTK_DEPRECATED_IN_9_6_0
+#define VTK_DEPRECATION_LEVEL 0
 
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
 #include "vtkOldStyleCallbackCommand.h"
 
-#include "vtkSetGet.h"
 #include "vtkObject.h"
+#include "vtkSetGet.h"
 
-#include <cstring>
 #include <cctype>
+#include <cstring>
 
 //----------------------------------------------------------------
+VTK_ABI_NAMESPACE_BEGIN
 vtkOldStyleCallbackCommand::vtkOldStyleCallbackCommand()
 {
   this->ClientData = nullptr;
@@ -36,10 +29,11 @@ vtkOldStyleCallbackCommand::~vtkOldStyleCallbackCommand()
   }
 }
 
-void vtkOldStyleCallbackCommand::Execute(vtkObject *,unsigned long, void *)
+void vtkOldStyleCallbackCommand::Execute(vtkObject*, unsigned long, void*)
 {
   if (this->Callback)
   {
     this->Callback(this->ClientData);
   }
 }
+VTK_ABI_NAMESPACE_END

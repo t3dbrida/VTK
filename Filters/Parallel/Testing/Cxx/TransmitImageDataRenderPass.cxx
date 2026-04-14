@@ -1,17 +1,5 @@
- /*=========================================================================
-
-   Program:   Visualization Toolkit
-   Module:    TransmitImageDataRenderPass.cxx
-
-   Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-   All rights reserved.
-   See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-      This software is distributed WITHOUT ANY WARRANTY; without even
-      the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-      PURPOSE.  See the above copyright notice for more information.
-
- =========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 // Tests vtkTransmitImageData.
 
@@ -48,7 +36,9 @@
 #include "vtkTransmitImageDataPiece.h"
 #include "vtkVolumetricPass.h"
 
-#include <mpi.h>
+#include <vtk_mpi.h>
+
+#include <iostream>
 
 namespace
 {
@@ -56,40 +46,38 @@ namespace
 class MyProcess : public vtkProcess
 {
 public:
-  static MyProcess *New();
+  static MyProcess* New();
 
-  virtual void Execute();
+  void Execute() override;
 
-  void SetArgs(int anArgc,
-               char *anArgv[]);
+  void SetArgs(int anArgc, char* anArgv[]);
 
 protected:
   MyProcess();
 
   int Argc;
-  char **Argv;
+  char** Argv;
 };
 
 vtkStandardNewMacro(MyProcess);
 
 MyProcess::MyProcess()
 {
-  this->Argc=0;
-  this->Argv=nullptr;
+  this->Argc = 0;
+  this->Argv = nullptr;
 }
 
-void MyProcess::SetArgs(int anArgc,
-                        char *anArgv[])
+void MyProcess::SetArgs(int anArgc, char* anArgv[])
 {
-  this->Argc=anArgc;
-  this->Argv=anArgv;
+  this->Argc = anArgc;
+  this->Argv = anArgv;
 }
 
 void MyProcess::Execute()
 {
-  this->ReturnValue=1;
-  int numProcs=this->Controller->GetNumberOfProcesses();
-  int me=this->Controller->GetLocalProcessId();
+  this->ReturnValue = 1;
+  int numProcs = this->Controller->GetNumberOfProcesses();
+  int me = this->Controller->GetLocalProcessId();
 
   int i, go;
 
@@ -100,22 +88,20 @@ void MyProcess::Execute()
   vtkSmartPointer<vtkStructuredPoints> sp;
   if (me == 0)
   {
-    vtkSmartPointer<vtkStructuredPointsReader> spr=
+    vtkSmartPointer<vtkStructuredPointsReader> spr =
       vtkSmartPointer<vtkStructuredPointsReader>::New();
-    char* fname =
-      vtkTestUtilities::ExpandDataFileName
-      (this->Argc, this->Argv, "Data/ironProt.vtk");
+    char* fname = vtkTestUtilities::ExpandDataFileName(this->Argc, this->Argv, "Data/ironProt.vtk");
     spr->SetFileName(fname);
     sp = spr->GetOutput();
     spr->Update();
-    delete [] fname;
+    delete[] fname;
 
     go = 1;
     if ((sp == nullptr) || (sp->GetNumberOfCells() == 0))
     {
       if (sp)
       {
-        cout << "Failure: input file has no cells" << endl;
+        std::cout << "Failure: input file has no cells" << std::endl;
       }
       go = 0;
     }
@@ -125,8 +111,7 @@ void MyProcess::Execute()
     sp = vtkSmartPointer<vtkStructuredPoints>::New();
   }
 
-  vtkMPICommunicator *comm =
-    vtkMPICommunicator::SafeDownCast(this->Controller->GetCommunicator());
+  vtkMPICommunicator* comm = vtkMPICommunicator::SafeDownCast(this->Controller->GetCommunicator());
   comm->Broadcast(&go, 1, 0);
   if (!go)
   {
@@ -140,22 +125,19 @@ void MyProcess::Execute()
   pass->SetInputData(sp);
 
   // FILTERING
-  vtkSmartPointer<vtkContourFilter> cf =
-    vtkSmartPointer<vtkContourFilter>::New();
+  vtkSmartPointer<vtkContourFilter> cf = vtkSmartPointer<vtkContourFilter>::New();
   cf->SetInputConnection(pass->GetOutputPort());
   cf->SetNumberOfContours(1);
-  cf->SetValue(0,10.0);
+  cf->SetValue(0, 10.0);
   // I am not sure that this is needed.
   //(cf->GetInput())->RequestExactExtentOn();
   cf->ComputeNormalsOff();
-  vtkSmartPointer<vtkElevationFilter> elev =
-    vtkSmartPointer<vtkElevationFilter>::New();
+  vtkSmartPointer<vtkElevationFilter> elev = vtkSmartPointer<vtkElevationFilter>::New();
   elev->SetInputConnection(cf->GetOutputPort());
   elev->SetScalarRange(me, me + .001);
 
   // COMPOSITE RENDER
-  vtkSmartPointer<vtkPolyDataMapper> mapper =
-    vtkSmartPointer<vtkPolyDataMapper>::New();
+  vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
   mapper->SetInputConnection(elev->GetOutputPort());
   mapper->SetScalarRange(0, numProcs);
   mapper->SetPiece(me);
@@ -163,27 +145,22 @@ void MyProcess::Execute()
   // mapper->SetNumberOfPieces(2);
   vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
   actor->SetMapper(mapper);
-  vtkRenderer *renderer = prm->MakeRenderer();
-  vtkOpenGLRenderer *glrenderer = vtkOpenGLRenderer::SafeDownCast(renderer);
+  vtkRenderer* renderer = prm->MakeRenderer();
+  vtkOpenGLRenderer* glrenderer = vtkOpenGLRenderer::SafeDownCast(renderer);
 
   // the rendering passes
-  vtkSmartPointer<vtkCameraPass> cameraP=vtkSmartPointer<vtkCameraPass>::New();
-  vtkSmartPointer<vtkSequencePass> seq=vtkSmartPointer<vtkSequencePass>::New();
-  vtkSmartPointer<vtkOpaquePass> opaque=vtkSmartPointer<vtkOpaquePass>::New();
-  vtkSmartPointer<vtkDepthPeelingPass> peeling=
-    vtkSmartPointer<vtkDepthPeelingPass>::New();
+  vtkSmartPointer<vtkCameraPass> cameraP = vtkSmartPointer<vtkCameraPass>::New();
+  vtkSmartPointer<vtkSequencePass> seq = vtkSmartPointer<vtkSequencePass>::New();
+  vtkSmartPointer<vtkOpaquePass> opaque = vtkSmartPointer<vtkOpaquePass>::New();
+  vtkSmartPointer<vtkDepthPeelingPass> peeling = vtkSmartPointer<vtkDepthPeelingPass>::New();
   peeling->SetMaximumNumberOfPeels(200);
   peeling->SetOcclusionRatio(0.1);
-  vtkSmartPointer<vtkTranslucentPass> translucent=
-    vtkSmartPointer<vtkTranslucentPass>::New();
+  vtkSmartPointer<vtkTranslucentPass> translucent = vtkSmartPointer<vtkTranslucentPass>::New();
   peeling->SetTranslucentPass(translucent);
-  vtkSmartPointer<vtkVolumetricPass> volume=
-    vtkSmartPointer<vtkVolumetricPass>::New();
-  vtkSmartPointer<vtkOverlayPass> overlay=
-    vtkSmartPointer<vtkOverlayPass>::New();
-  vtkSmartPointer<vtkLightsPass> lights=vtkSmartPointer<vtkLightsPass>::New();
-  vtkSmartPointer<vtkRenderPassCollection> passes=
-    vtkSmartPointer<vtkRenderPassCollection>::New();
+  vtkSmartPointer<vtkVolumetricPass> volume = vtkSmartPointer<vtkVolumetricPass>::New();
+  vtkSmartPointer<vtkOverlayPass> overlay = vtkSmartPointer<vtkOverlayPass>::New();
+  vtkSmartPointer<vtkLightsPass> lights = vtkSmartPointer<vtkLightsPass>::New();
+  vtkSmartPointer<vtkRenderPassCollection> passes = vtkSmartPointer<vtkRenderPassCollection>::New();
   passes->AddItem(lights);
   passes->AddItem(opaque);
   passes->AddItem(peeling);
@@ -194,14 +171,14 @@ void MyProcess::Execute()
   glrenderer->SetPass(cameraP);
 
   renderer->AddActor(actor);
-  vtkRenderWindow *renWin = prm->MakeRenderWindow();
+  vtkRenderWindow* renWin = prm->MakeRenderWindow();
   renWin->AddRenderer(renderer);
-  renderer->SetBackground(0,0,0);
-  renWin->SetSize(300,300);
-  renWin->SetPosition(0, 360*me);
+  renderer->SetBackground(0, 0, 0);
+  renWin->SetSize(300, 300);
+  renWin->SetPosition(0, 360 * me);
   prm->SetRenderWindow(renWin);
   prm->SetController(this->Controller);
-  prm->InitializeOffScreen();   // Mesa GL only
+  prm->InitializeOffScreen(); // Mesa GL only
   if (me == 0)
   {
   }
@@ -216,12 +193,12 @@ void MyProcess::Execute()
   mapper->SetNumberOfPieces(numProcs);
   mapper->Update();
 
-  const int MY_RETURN_VALUE_MESSAGE=0x11;
+  const int MY_RETURN_VALUE_MESSAGE = 0x11;
 
   if (me == 0)
   {
-    vtkCamera *camera = renderer->GetActiveCamera();
-    //camera->UpdateViewport(renderer);
+    vtkCamera* camera = renderer->GetActiveCamera();
+    // camera->UpdateViewport(renderer);
     camera->SetParallelScale(16);
 
     prm->ResetAllCameras();
@@ -229,19 +206,18 @@ void MyProcess::Execute()
     renWin->Render();
     renWin->Render();
 
-    this->ReturnValue=vtkRegressionTester::Test(this->Argc,this->Argv,renWin,
-                                                10);
+    this->ReturnValue = vtkRegressionTester::Test(this->Argc, this->Argv, renWin, 10);
 
     prm->StopServices();
-    for (i=1; i < numProcs; i++)
+    for (i = 1; i < numProcs; i++)
     {
-      this->Controller->Send(&this->ReturnValue,1,i,MY_RETURN_VALUE_MESSAGE);
+      this->Controller->Send(&this->ReturnValue, 1, i, MY_RETURN_VALUE_MESSAGE);
     }
   }
   else
   {
     prm->StartServices();
-    this->Controller->Receive(&this->ReturnValue,1,0,MY_RETURN_VALUE_MESSAGE);
+    this->Controller->Receive(&this->ReturnValue, 1, 0, MY_RETURN_VALUE_MESSAGE);
   }
   renWin->Delete();
   renderer->Delete();
@@ -249,7 +225,7 @@ void MyProcess::Execute()
 
 }
 
-int TransmitImageDataRenderPass(int argc, char *argv[])
+int TransmitImageDataRenderPass(int argc, char* argv[])
 {
   // This is here to avoid false leak messages from vtkDebugLeaks when
   // using mpich. It appears that the root process which spawns all the
@@ -260,8 +236,7 @@ int TransmitImageDataRenderPass(int argc, char *argv[])
 
   // Note that this will create a vtkMPIController if MPI
   // is configured, vtkThreadedController otherwise.
-  vtkSmartPointer<vtkMPIController> contr =
-    vtkSmartPointer<vtkMPIController>::New();
+  vtkSmartPointer<vtkMPIController> contr = vtkSmartPointer<vtkMPIController>::New();
   contr->Initialize(&argc, &argv, 1);
 
   int retVal = 1;
@@ -275,7 +250,7 @@ int TransmitImageDataRenderPass(int argc, char *argv[])
   {
     if (me == 0)
     {
-      cout << "DistributedData test requires 2 processes" << endl;
+      std::cout << "DistributedData test requires 2 processes" << std::endl;
     }
     return retVal;
   }
@@ -284,18 +259,18 @@ int TransmitImageDataRenderPass(int argc, char *argv[])
   {
     if (me == 0)
     {
-      cout << "DistributedData test requires MPI" << endl;
+      std::cout << "DistributedData test requires MPI" << std::endl;
     }
     contr->Delete();
-    return retVal;   // is this the right error val?   TODO
+    return retVal; // is this the right error val?   TODO
   }
 
-  MyProcess *p=MyProcess::New();
-  p->SetArgs(argc,argv);
+  MyProcess* p = MyProcess::New();
+  p->SetArgs(argc, argv);
   contr->SetSingleProcessObject(p);
   contr->SingleMethodExecute();
 
-  retVal=p->GetReturnValue();
+  retVal = p->GetReturnValue();
   p->Delete();
 
   contr->Finalize();

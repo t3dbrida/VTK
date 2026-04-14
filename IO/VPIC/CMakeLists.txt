@@ -1,11 +1,6 @@
-if(VTK_VPIC_USE_MPI)
-  find_package(MPI REQUIRED)
-  include_directories(SYSTEM ${MPI_INCLUDE_PATH})
-  add_definitionS("-DMPICH_IGNORE_CXX_SEEK")
-endif()
+set(classes
+  vtkVPICReader)
 
-set(Module_SRCS
-  vtkVPICReader.cxx
-  )
-
-vtk_module_library(vtkIOVPIC ${Module_SRCS})
+vtk_module_add_module(VTK::IOVPIC
+  CLASSES ${classes})
+vtk_add_test_mangling(VTK::IOVPIC)

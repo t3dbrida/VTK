@@ -1,61 +1,49 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestMySQLTableReadWrite.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 // .NAME Test of vtkTableToMySQLWriter and vtkMySQLToTableReader
 // .SECTION Description
 //
 
-#include "vtksys/SystemTools.hxx"
-#include "vtkSmartPointer.h"
 #include "vtkMySQLDatabase.h"
 #include "vtkSQLQuery.h"
+#include "vtkSmartPointer.h"
 #include "vtkTable.h"
 #include "vtkTableReader.h"
 #include "vtkTableWriter.h"
-#include "vtkToolkits.h"
+#include "vtksys/SystemTools.hxx"
 
-#include "vtkTableToMySQLWriter.h"
-#include "vtkMySQLToTableReader.h"
 #include "vtkIOMySQLTestingCxxConfigure.h"
+#include "vtkMySQLToTableReader.h"
+#include "vtkTableToMySQLWriter.h"
 
-int TestMySQLTableReadWrite(int argc, char *argv[])
+#include <iostream>
+
+int TestMySQLTableReadWrite(int argc, char* argv[])
 {
-  if ( argc <= 1 )
+  if (argc <= 1)
   {
-    cerr << "Usage: " << argv[0] << " <.vtk table file>" << endl;
+    std::cerr << "Usage: " << argv[0] << " <.vtk table file>" << std::endl;
     return 1;
   }
-  cerr << "reading a vtkTable from file" << endl;
-  vtkSmartPointer<vtkTableReader> tableFileReader =
-    vtkSmartPointer<vtkTableReader>::New();
+  std::cerr << "reading a vtkTable from file" << std::endl;
+  vtkSmartPointer<vtkTableReader> tableFileReader = vtkSmartPointer<vtkTableReader>::New();
   tableFileReader->SetFileName(argv[1]);
-  vtkTable *table = tableFileReader->GetOutput();
+  vtkTable* table = tableFileReader->GetOutput();
   tableFileReader->Update();
 
-  cerr << "opening a MySQL database connection" << endl;
+  std::cerr << "opening a MySQL database connection" << std::endl;
 
-  vtkMySQLDatabase* db = vtkMySQLDatabase::SafeDownCast(
-    vtkSQLDatabase::CreateFromURL( VTK_MYSQL_TEST_URL ) );
+  vtkMySQLDatabase* db =
+    vtkMySQLDatabase::SafeDownCast(vtkSQLDatabase::CreateFromURL(VTK_MYSQL_TEST_URL));
   bool status = db->Open();
 
-  if ( ! status )
+  if (!status)
   {
-    cerr << "Couldn't open database.\n";
+    std::cerr << "Couldn't open database.\n";
     return 1;
   }
 
-  cerr << "creating a MySQL table from a vtkTable" << endl;
+  std::cerr << "creating a MySQL table from a vtkTable" << std::endl;
   vtkSmartPointer<vtkTableToMySQLWriter> writerToTest =
     vtkSmartPointer<vtkTableToMySQLWriter>::New();
 
@@ -64,7 +52,7 @@ int TestMySQLTableReadWrite(int argc, char *argv[])
   writerToTest->SetTableName("tableTest");
   writerToTest->Update();
 
-  cerr << "converting it back to a vtkTable" << endl;
+  std::cerr << "converting it back to a vtkTable" << std::endl;
   vtkSmartPointer<vtkMySQLToTableReader> readerToTest =
     vtkSmartPointer<vtkMySQLToTableReader>::New();
 
@@ -72,31 +60,30 @@ int TestMySQLTableReadWrite(int argc, char *argv[])
   readerToTest->SetTableName("tableTest");
   readerToTest->Update();
 
-  cerr << "writing the table out to disk" << endl;
-  vtkSmartPointer<vtkTableWriter> tableFileWriter =
-    vtkSmartPointer<vtkTableWriter>::New();
+  std::cerr << "writing the table out to disk" << std::endl;
+  vtkSmartPointer<vtkTableWriter> tableFileWriter = vtkSmartPointer<vtkTableWriter>::New();
   tableFileWriter->SetFileName("TestMySQLTableReadWrite.vtk");
   tableFileWriter->SetInputConnection(readerToTest->GetOutputPort());
   tableFileWriter->Update();
 
-  cerr << "verifying that it's the same as what we started with...";
+  std::cerr << "verifying that it's the same as what we started with...";
   int result = 0;
-  if(vtksys::SystemTools::FilesDiffer(argv[1], "TestMySQLTableReadWrite.vtk"))
+  if (vtksys::SystemTools::FilesDiffer(argv[1], "TestMySQLTableReadWrite.vtk"))
   {
-    cerr << "it's not." << endl;
+    std::cerr << "it's not." << std::endl;
     result = 1;
   }
   else
   {
-    cerr << "it is!" << endl;
+    std::cerr << "it is!" << std::endl;
   }
 
-  //drop the table we created
+  // drop the table we created
   vtkSQLQuery* query = db->GetQueryInstance();
   query->SetQuery("DROP TABLE tableTest");
   query->Execute();
 
-  //clean up memory
+  // clean up memory
   db->Delete();
   query->Delete();
 

@@ -1,30 +1,22 @@
-/*=========================================================================
-
-Program:   Visualization Toolkit
-Module:    vtkHierarchicalDataExtractDataSets.cxx
-
-Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-All rights reserved.
-See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-This software is distributed WITHOUT ANY WARRANTY; without even
-the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
+// VTK_DEPRECATED_IN_9_7_0()
+#define VTK_DEPRECATION_LEVEL 0
 #include "vtkHierarchicalDataExtractDataSets.h"
 
 #include "vtkObjectFactory.h"
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkHierarchicalDataExtractDataSets);
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkHierarchicalDataExtractDataSets::vtkHierarchicalDataExtractDataSets() = default;
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkHierarchicalDataExtractDataSets::~vtkHierarchicalDataExtractDataSets() = default;
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkHierarchicalDataExtractDataSets::PrintSelf(ostream& os, vtkIndent indent)
 {
-  this->Superclass::PrintSelf(os,indent);
+  this->Superclass::PrintSelf(os, indent);
 }
+VTK_ABI_NAMESPACE_END

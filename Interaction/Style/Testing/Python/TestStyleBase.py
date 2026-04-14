@@ -2,7 +2,11 @@
 
 from __future__ import print_function
 
-import vtk
+from vtkmodules.vtkCommonCore import vtkMath
+from vtkmodules.vtkRenderingCore import vtkPropPicker
+import vtkmodules.vtkInteractionStyle
+import vtkmodules.vtkRenderingFreeType
+import vtkmodules.vtkRenderingOpenGL2
 
 class TestStyleBase(object):
 
@@ -10,7 +14,7 @@ class TestStyleBase(object):
         self.ren1 = ren
 
         # Get random numbers
-        self.math = vtk.vtkMath()
+        self.math = vtkMath()
         self.math.RandomSeed(1)
 
 
@@ -49,7 +53,9 @@ class TestStyleBase(object):
         win_center_x = win_size[0] / (2.0)
         win_center_y = win_size[1] / (2.0)
 
-        pick = vtk.vtkPropPicker()
+        # The following line can be problematic, it may use a different picker
+        # than what the interactions style uses causing inconsistencies.
+        pick = vtkPropPicker()
 
         radius = 5 * (1 + use_timers)
 
@@ -79,7 +85,7 @@ class TestStyleBase(object):
 
                     # Start by pressing the button
 
-                    iren.SetEventInformationFlipY(start_x, start_y, ctrl, shift, '', 0, '')
+                    iren.SetEventInformationFlipY(start_x, start_y, ctrl, shift, '\0', 0, '')
                     eval('iren.InvokeEvent("' + button + 'ButtonPressEvent")')
                     pos = iren.GetEventPosition()
                     #print " - Starting: " + str(pos)
@@ -92,7 +98,7 @@ class TestStyleBase(object):
                         sign *= -1
                         x = self.randint(win_center_x + radius * 2 * sign, win_center_y + radius * sign)
                         y = self.randint(win_center_y + radius * 2 * sign, win_center_y + radius * sign)
-                        iren.SetEventInformationFlipY(x, y, ctrl, shift, '', 0, '')
+                        iren.SetEventInformationFlipY(x, y, ctrl, shift, '\0', 0, '')
                         #pos = iren.GetEventPosition()
                         #lastPos = iren.GetLastEventPosition()
                         #print " - Moving:   " + str(pos) + " " + str(ctrl) + " " + str(shift) + " (was " + str(lastPos) + ")"
@@ -109,7 +115,7 @@ class TestStyleBase(object):
 
                     # End by releasing the button
 
-                    iren.SetEventInformationFlipY(x, y, ctrl, shift, '', 0, '')
+                    iren.SetEventInformationFlipY(x, y, ctrl, shift, '\0', 0, '')
                     eval('iren.InvokeEvent("' + button + 'ButtonReleaseEvent")')
 
                 print(".")

@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkOpenGLGlyph3DMapper.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkOpenGLGlyph3DMapper
  * @brief   vtkOpenGLGlyph3D on the GPU.
@@ -23,23 +11,33 @@
  *
  * @sa
  * vtkOpenGLGlyph3D
-*/
+ */
 
 #ifndef vtkOpenGLGlyph3DMapper_h
 #define vtkOpenGLGlyph3DMapper_h
 
-#include "vtkRenderingOpenGL2Module.h" // For export macro
 #include "vtkGlyph3DMapper.h"
-#include "vtkNew.h" // For vtkNew
 
+#include "vtkColor.h"                  // for ivar
+#include "vtkDataObjectTree.h"         // for arg
+#include "vtkNew.h"                    // For vtkNew
+#include "vtkRenderingOpenGL2Module.h" // For export macro
+#include "vtkVector.h"                 // for ivar
+#include "vtkWrappingHints.h"          // For VTK_MARSHALAUTO
+
+#include <stack> // for ivar
+
+VTK_ABI_NAMESPACE_BEGIN
 class vtkOpenGLGlyph3DHelper;
 class vtkBitArray;
+class vtkOverrideAttribute;
 
-class VTKRENDERINGOPENGL2_EXPORT vtkOpenGLGlyph3DMapper
-    : public vtkGlyph3DMapper
+class VTKRENDERINGOPENGL2_EXPORT VTK_MARSHALAUTO vtkOpenGLGlyph3DMapper : public vtkGlyph3DMapper
 {
 public:
   static vtkOpenGLGlyph3DMapper* New();
+  VTK_NEWINSTANCE
+  static vtkOverrideAttribute* CreateOverrideAttributes();
   vtkTypeMacro(vtkOpenGLGlyph3DMapper, vtkGlyph3DMapper);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
@@ -47,26 +45,27 @@ public:
    * Method initiates the mapping process. Generally sent by the actor
    * as each frame is rendered.
    */
-  void Render(vtkRenderer *ren, vtkActor *a) override;
+  void Render(vtkRenderer* ren, vtkActor* a) override;
 
   /**
    * Release any graphics resources that are being consumed by this mapper.
    * The parameter window could be used to determine which graphic
    * resources to release.
    */
-  void ReleaseGraphicsResources(vtkWindow *window) override;
+  void ReleaseGraphicsResources(vtkWindow* window) override;
 
-  //@{
+  ///@{
   /**
    * Get the maximum number of LOD. OpenGL context must be bound.
    * The maximum number of LOD depends on GPU capabilities.
    */
-  virtual vtkIdType GetMaxNumberOfLOD() override;
+  vtkIdType GetMaxNumberOfLOD() override;
 
   /**
    * Set the number of LOD.
    */
-  virtual void SetNumberOfLOD(vtkIdType nb) override;
+  void SetNumberOfLOD(vtkIdType nb) override;
+  vtkIdType GetNumberOfLOD() { return this->LODs.size(); }
 
   /**
    * Configure LODs. Culling must be enabled.
@@ -76,8 +75,17 @@ public:
    *
    * @sa vtkDecimatePro::SetTargetReduction
    */
-  virtual void SetLODDistanceAndTargetReduction(vtkIdType index, float distance, float targetReduction) override;
-  //@}
+  void SetLODDistanceAndTargetReduction(
+    vtkIdType index, float distance, float targetReduction) override;
+
+  // Set, Get, and GetNumberOf are needed to auto generate (de)serialization code.
+  void SetLODDistance(vtkIdType index, float distance);
+  void SetLODTargetReduction(vtkIdType index, float targetReduction);
+  float GetLODDistance(vtkIdType index);
+  float GetLODTargetReduction(vtkIdType index);
+  int GetNumberOfLODDistances() { return static_cast<int>(this->LODs.size()); }
+  int GetNumberOfLODTargetReductions() { return static_cast<int>(this->LODs.size()); }
+  ///@}
 
 protected:
   vtkOpenGLGlyph3DMapper();
@@ -96,25 +104,52 @@ protected:
 
   void SetupColorMapper();
 
-  vtkMapper *ColorMapper;
+  /**
+   * Renders children of the given dobjTree recursively.
+   * Display attributes which are specified on parents are applied to children
+   * unless a child overrides the value.
+   */
+  void RenderChildren(
+    vtkRenderer* renderer, vtkActor* actor, vtkDataObject* dobjTree, unsigned int& flatIndex);
+
+  vtkMapper* ColorMapper;
 
   class vtkOpenGLGlyph3DMapperEntry;
   class vtkOpenGLGlyph3DMapperSubArray;
   class vtkOpenGLGlyph3DMapperArray;
-  vtkOpenGLGlyph3DMapperArray *GlyphValues; // array of value for datasets
+  vtkOpenGLGlyph3DMapperArray* GlyphValues; // array of value for datasets
 
   /**
    * Build data structures associated with
    */
-  virtual void RebuildStructures(vtkOpenGLGlyph3DMapperSubArray *entry,
-    vtkIdType numPts, vtkActor* actor, vtkDataSet* dataset,
-    vtkBitArray *maskArray);
+  virtual void RebuildStructures(vtkOpenGLGlyph3DMapperSubArray* subarray, vtkIdType numPts,
+    vtkActor* actor, vtkDataSet* dataset, vtkBitArray* maskArray);
 
   vtkMTimeType BlockMTime; // Last time BlockAttributes was modified.
 
 private:
   vtkOpenGLGlyph3DMapper(const vtkOpenGLGlyph3DMapper&) = delete;
   void operator=(const vtkOpenGLGlyph3DMapper&) = delete;
+
+  struct RenderBlockState
+  {
+    std::stack<double> Opacity;
+    std::stack<bool> Visibility;
+    std::stack<bool> Pickability;
+    std::stack<vtkColor3d> Color;
+  };
+  RenderBlockState BlockState;
+
+  /**
+   * Clear cached entries for datasets that are not present in data object passed in.
+   *
+   * This is done on each render to ensure that we don't keep around entries for datasets
+   * that are no longer present in the input (e.g. due to changes in the input data object).
+   */
+  void ClearUnusedCachedEntries(vtkDataObject* inputDO);
 };
 
+#define vtkOpenGLGlyph3DMapper_OVERRIDE_ATTRIBUTES                                                 \
+  vtkOpenGLGlyph3DMapper::CreateOverrideAttributes()
+VTK_ABI_NAMESPACE_END
 #endif

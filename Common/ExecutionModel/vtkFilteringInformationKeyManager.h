@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkFilteringInformationKeyManager.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkFilteringInformationKeyManager
  * @brief   Manages key types in vtkFiltering.
@@ -20,7 +8,7 @@
  * subclass of vtkInformationKey defined in the vtkFiltering library.
  * It makes sure that the table of keys is created before and
  * destroyed after it is used.
-*/
+ */
 
 #ifndef vtkFilteringInformationKeyManager_h
 #define vtkFilteringInformationKeyManager_h
@@ -30,6 +18,12 @@
 
 #include "vtkDebugLeaksManager.h" // DebugLeaks exists longer than info keys.
 
+#include <token/Singletons.h> // to increment its Schwarz counter
+
+#include <functional> // for finalizers
+#include <vector>     // for finalizers
+
+VTK_ABI_NAMESPACE_BEGIN
 class vtkInformationKey;
 
 class VTKCOMMONEXECUTIONMODEL_EXPORT vtkFilteringInformationKeyManager
@@ -46,14 +40,23 @@ public:
    */
   static void Register(vtkInformationKey* key);
 
+  /// Ensure that \a finalizer is invoked before ClassFinalizer() runs.
+  ///
+  /// If your application holds VTK objects (i.e., instances of classes that inherit
+  /// vtkObjectBase) for its duration, then adding \a finalizer function that frees
+  /// them will prevent this class's static ClassFinalizer() method from freeing
+  /// keys that may be in use.
+  static void AddFinalizer(std::function<void()> finalizer);
+
 private:
   // Unimplemented
-  vtkFilteringInformationKeyManager(const vtkFilteringInformationKeyManager&);
-  vtkFilteringInformationKeyManager& operator=(
-    const vtkFilteringInformationKeyManager&);
+  vtkFilteringInformationKeyManager(const vtkFilteringInformationKeyManager&) = delete;
+  vtkFilteringInformationKeyManager& operator=(const vtkFilteringInformationKeyManager&) = delete;
 
   static void ClassInitialize();
   static void ClassFinalize();
+
+  static std::vector<std::function<void()>>* Finalizers;
 };
 
 // This instance will show up in any translation unit that uses key
@@ -62,5 +65,6 @@ private:
 // initialized before and destroyed after it is used.
 static vtkFilteringInformationKeyManager vtkFilteringInformationKeyManagerInstance;
 
+VTK_ABI_NAMESPACE_END
 #endif
 // VTK-HeaderTest-Exclude: vtkFilteringInformationKeyManager.h

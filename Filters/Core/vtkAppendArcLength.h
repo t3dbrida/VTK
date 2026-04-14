@@ -1,17 +1,6 @@
-/*=========================================================================
-
-  Program:   ParaView
-  Module:    vtkAppendArcLength.h
-
-  Copyright (c) Kitware, Inc.
-  All rights reserved.
-  See Copyright.txt or http://www.paraview.org/HTML/Copyright.html for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-FileCopyrightText: Copyright (c) Kitware, Inc.
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkAppendArcLength
  * @brief   appends Arc length for input poly lines.
@@ -24,15 +13,17 @@
  * to 0.
  * @warning
  * This filter assumes that cells don't share points.
-*/
+ */
 
 #ifndef vtkAppendArcLength_h
 #define vtkAppendArcLength_h
 
 #include "vtkFiltersCoreModule.h" // For export macro
 #include "vtkPolyDataAlgorithm.h"
+#include "vtkWrappingHints.h" // For VTK_MARSHALAUTO
 
-class VTKFILTERSCORE_EXPORT vtkAppendArcLength : public vtkPolyDataAlgorithm
+VTK_ABI_NAMESPACE_BEGIN
+class VTKFILTERSCORE_EXPORT VTK_MARSHALAUTO vtkAppendArcLength : public vtkPolyDataAlgorithm
 {
 public:
   static vtkAppendArcLength* New();
@@ -43,7 +34,7 @@ protected:
   vtkAppendArcLength();
   ~vtkAppendArcLength() override;
 
-  //@{
+  ///@{
   /**
    * This is called by the superclass.
    * This is the method you should override.
@@ -54,7 +45,8 @@ protected:
 private:
   vtkAppendArcLength(const vtkAppendArcLength&) = delete;
   void operator=(const vtkAppendArcLength&) = delete;
-  //@}
+  ///@}
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

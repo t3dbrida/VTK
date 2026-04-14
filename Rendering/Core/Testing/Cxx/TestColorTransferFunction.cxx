@@ -1,21 +1,11 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestColorTransferFunctionStringArray.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include <vtkColorTransferFunction.h>
 #include <vtkMath.h>
 #include <vtkNew.h>
 #include <vtkSmartPointer.h>
+
+#include <iostream>
 
 bool TestColorSpace()
 {
@@ -25,7 +15,7 @@ bool TestColorSpace()
   const unsigned char* rgba = ctf->MapValue(0.5);
   if (rgba[0] != 128 || rgba[1] != 0 || rgba[2] != 128)
   {
-    cerr << "ERROR: ColorSpace == VTK_CTF_RGB failed!" << endl;
+    std::cerr << "ERROR: ColorSpace == VTK_CTF_RGB failed!" << std::endl;
     return false;
   }
 
@@ -33,7 +23,7 @@ bool TestColorSpace()
   rgba = ctf->MapValue(0.5);
   if (rgba[0] != 196 || rgba[1] != 16 || rgba[2] != 123)
   {
-    cerr << "ERROR: ColorSpace == VTK_CTF_LAB_CIEDE2000 failed!" << endl;
+    std::cerr << "ERROR: ColorSpace == VTK_CTF_LAB_CIEDE2000 failed!" << std::endl;
     return false;
   }
 
@@ -41,9 +31,18 @@ bool TestColorSpace()
   rgba = ctf->MapValue(0.5);
   if (rgba[0] != 0 || rgba[1] != 0 || rgba[2] != 255)
   {
-    cerr << "ERROR: ColorSpace == VTK_CTF_STEP failed!" << endl;
+    std::cerr << "ERROR: ColorSpace == VTK_CTF_STEP failed!" << std::endl;
     return false;
   }
+
+  ctf->SetColorSpaceToProlab();
+  rgba = ctf->MapValue(0.5);
+  if (rgba[0] != 199 || rgba[1] != 0 || rgba[2] != 175)
+  {
+    std::cerr << "ERROR: ColorSpace == VTK_CTF_LAB_Prolab failed!" << std::endl;
+    return false;
+  }
+
   return true;
 }
 

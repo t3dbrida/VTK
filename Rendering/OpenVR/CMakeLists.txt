@@ -1,44 +1,50 @@
-if(NOT VTK_SOURCE_DIR)
-  cmake_minimum_required(VERSION 3.3...3.12 FATAL_ERROR)
-  project(vtkRenderingOpenVR)
-  find_package(VTK REQUIRED)
-endif()
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${VTK_CMAKE_DIR}")
-if(NOT VTK_SOURCE_DIR)
-  include(vtkExternalModuleMacros)
-endif()
+vtk_module_find_package(PACKAGE OpenVR)
 
-find_package(OpenVR REQUIRED)
+set(classes
+  vtkOpenVRCamera
+  vtkOpenVRControlsHelper
+  vtkOpenVRDefaultOverlay
+  vtkOpenVRInteractorStyle
+  vtkOpenVRModel
+  vtkOpenVROverlay
+  vtkOpenVRRenderer
+  vtkOpenVRRenderWindow
+  vtkOpenVRRenderWindowInteractor)
 
-set(Module_SRCS
-  vtkOpenVRCamera.cxx
-  vtkOpenVRControlsHelper.cxx
-  vtkOpenVRDefaultOverlay.cxx
-  vtkOpenVRFollower.cxx
-  vtkOpenVRHardwarePicker.cxx
-  vtkOpenVRInteractorStyle.cxx
-  vtkOpenVRMenuRepresentation.cxx
-  vtkOpenVRMenuWidget.cxx
-  vtkOpenVRModel.cxx
-  vtkOpenVROverlay.cxx
-  vtkOpenVRPanelRepresentation.cxx
-  vtkOpenVRPanelWidget.cxx
-  vtkOpenVRPropPicker.cxx
-  vtkOpenVRRenderer.cxx
-  vtkOpenVRRenderWindow.cxx
-  vtkOpenVRRenderWindowInteractor.cxx
-  )
+vtk_encode_string(
+  INPUT         "OpenVRDashboard.jpg"
+  EXPORT_HEADER "vtkRenderingOpenVRModule.h"
+  EXPORT_SYMBOL "VTKRENDERINGOPENVR_NO_EXPORT"
+  HEADER_OUTPUT dashboard_header
+  SOURCE_OUTPUT dashboard_source
+  BINARY)
 
-list(APPEND ${vtk-module}_SYSTEM_INCLUDE_DIRS ${OPENVR_INCLUDE_DIRS})
+vtk_module_add_module(VTK::RenderingOpenVR
+  CLASSES ${classes}
+  SOURCES "${dashboard_source}" ${vtk_object_factory_source} ${geometry_sources}
+  PRIVATE_HEADERS "${dashboard_header}" ${vtk_object_factory_header} ${geometry_headers})
+vtk_module_link(VTK::RenderingOpenVR
+  PUBLIC
+    OpenVR::OpenVR)
 
-vtk_module_library(${vtk-module} ${Module_SRCS})
-vtk_module_link_libraries(${vtk-module} LINK_PRIVATE ${OPENVR_LIBRARY})
+set(openvr_input_files
+  vtk_openvr_actions.json
+  vtk_openvr_binding_hpmotioncontroller.json
+  vtk_openvr_binding_knuckles.json
+  vtk_openvr_binding_oculus_touch.json
+  vtk_openvr_binding_vive_controller.json
+)
 
-include(vtkOpenGL)
-vtk_opengl_link(${vtk-module})
+foreach(inputfile IN LISTS openvr_input_files)
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/${inputfile}"
+    "${CMAKE_CURRENT_BINARY_DIR}/${input_file}"
+    COPYONLY)
+endforeach()
 
-configure_file(
-  "${CMAKE_CURRENT_SOURCE_DIR}/OpenVRDashboard.jpg"
-  "${CMAKE_BINARY_DIR}/OpenVRDashboard.jpg"
-  COPYONLY
-  )
+install(
+  FILES ${openvr_input_files}
+  DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/vr_actions/"
+  COMPONENT   runtime
+)
+vtk_add_test_mangling(VTK::RenderingOpenVR)

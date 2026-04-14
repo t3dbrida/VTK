@@ -1,28 +1,20 @@
-/*=========================================================================
-  Program:   Visualization Toolkit
-  Module:    vtkOBJImporterInternals.h
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-=========================================================================*/
-
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #ifndef vtkOBJImporterInternals_h
 #define vtkOBJImporterInternals_h
-#ifndef __VTK_WRAP__
 
-#include <string>
-#include "vtkOBJImporter.h"
+#include "vtkIOImportModule.h" // For export macro
 #include "vtkPolyDataAlgorithm.h"
-#include <memory>
-#include <vector>
-#include <map>
-#include "vtkActor.h"
+#include <map>    // for std::map
+#include <string> // for std::string
+#include <vector> // for std::vector
 
-struct vtkOBJImportedMaterial
+VTK_ABI_NAMESPACE_BEGIN
+class vtkActor;
+class vtkActorCollection;
+class vtkResourceStream;
+
+struct VTKIOIMPORT_EXPORT vtkOBJImportedMaterial
 {
   std::string name;
   std::string texture_filename;
@@ -38,117 +30,135 @@ struct vtkOBJImportedMaterial
   double specularPower;
   double glossy;
   double refract_index;
-  const char *GetClassName() {return "vtkOBJImportedMaterial";}
+  const char* GetClassName() { return "vtkOBJImportedMaterial"; }
   vtkOBJImportedMaterial();
 };
 
-
+VTKIOIMPORT_EXPORT
 void obj_set_material_defaults(vtkOBJImportedMaterial* mtl);
 
 struct vtkOBJImportedPolyDataWithMaterial;
 
-class vtkOBJPolyDataProcessor : public vtkPolyDataAlgorithm
+class VTKIOIMPORT_EXPORT vtkOBJPolyDataProcessor : public vtkPolyDataAlgorithm
 {
 public:
-  static vtkOBJPolyDataProcessor *New();
-  vtkTypeMacro(vtkOBJPolyDataProcessor,vtkPolyDataAlgorithm)
+  static vtkOBJPolyDataProcessor* New();
+  vtkTypeMacro(vtkOBJPolyDataProcessor, vtkPolyDataAlgorithm);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
   // Description:
-  // Specify file name of Wavefront .obj file.
+  // Specify filenames / streams to read  of Wavefront .obj file.
+  void SetStream(vtkResourceStream* stream) { this->Stream = stream; }
   void SetFileName(const char* arg)
   {
     if (arg == nullptr)
     {
       return;
     }
-    if (!strcmp(this->FileName.c_str(), arg))
+    if (this->FileName == arg)
     {
       return;
     }
-    FileName    = std::string(arg);
+    this->FileName = std::string(arg);
   }
-  void SetMTLfileName( const char* arg )
+  void SetMTLStream(vtkResourceStream* mtlStream) { this->MTLStream = mtlStream; }
+  void SetMTLfileName(const char* arg)
   {
     if (arg == nullptr)
     {
       return;
     }
-    if (!strcmp(this->MTLFileName.c_str(), arg))
+    if (this->MTLFileName == arg)
     {
       return;
     }
-    MTLFileName = std::string(arg);
+    this->MTLFileName = std::string(arg);
     this->DefaultMTLFileName = false;
   }
-  void SetTexturePath( const char* arg )
+  void SetTextureStreams(std::map<std::string, vtkResourceStream*> streamMap)
   {
-    TexturePath = std::string(arg);
-    if(TexturePath.empty())
+    this->TextureStreams = streamMap;
+  }
+  void SetTexturePath(const char* arg)
+  {
+    this->TexturePath = std::string(arg);
+    if (this->TexturePath.empty())
+    {
       return;
+    }
 #if defined(_WIN32)
     const char sep = '\\';
 #else
     const char sep = '/';
 #endif
-    if(TexturePath.at(TexturePath.size()-1) != sep )
-      TexturePath += sep;
+    if (this->TexturePath.at(this->TexturePath.size() - 1) != sep)
+    {
+      this->TexturePath += sep;
+    }
+    this->DefaultTexturePath = false;
   }
-  const std::string& GetTexturePath(  ) const
+  const std::string& GetTexturePath() const { return this->TexturePath; }
+  const std::map<std::string, vtkResourceStream*>& GetTextureStreams() const
   {
-    return TexturePath;
+    return this->TextureStreams;
   }
 
-  const std::string& GetFileName(  ) const
-  {
-    return FileName;
-  }
+  const std::string& GetFileName() const { return this->FileName; }
 
-  const std::string& GetMTLFileName(  ) const
-  {
-    return MTLFileName;
-  }
+  const std::string& GetMTLFileName() const { return this->MTLFileName; }
 
-  vtkSetMacro(VertexScale,double)
-  vtkGetMacro(VertexScale,double)
-  vtkGetMacro(SuccessParsingFiles,int)
+  vtkSetMacro(VertexScale, double);
+  vtkGetMacro(VertexScale, double);
+  vtkGetMacro(SuccessParsingFiles, int);
 
   virtual vtkPolyData* GetOutput(int idx);
 
-  vtkOBJImportedMaterial*  GetMaterial(int k);
+  int GetNumberOfOutputs();
 
-  std::string GetTextureFilename( int idx ); // return string by index
+  vtkOBJImportedMaterial* GetMaterial(int k);
+
+  std::string GetTextureFilename(int idx); // return string by index
 
   double VertexScale; // scale vertices by this during import
 
-  std::vector<vtkOBJImportedMaterial*>  parsedMTLs;
-  std::map<std::string,vtkOBJImportedMaterial*>  mtlName_to_mtlData;
+  std::vector<vtkOBJImportedMaterial*> parsedMTLs;
+  std::map<std::string, vtkOBJImportedMaterial*> mtlName_to_mtlData;
 
   // our internal parsing/storage
   std::vector<vtkOBJImportedPolyDataWithMaterial*> poly_list;
 
   // what gets returned to client code via GetOutput()
-  std::vector<vtkSmartPointer<vtkPolyData> >  outVector_of_vtkPolyData;
+  std::vector<vtkSmartPointer<vtkPolyData>> outVector_of_vtkPolyData;
 
-  std::vector<vtkSmartPointer<vtkActor> >  actor_list;
+  std::vector<vtkSmartPointer<vtkActor>> actor_list;
   /////////////////////
 
-  std::vector<vtkOBJImportedMaterial*> ParseOBJandMTL(std::string filename,int& result_code);
+  std::vector<vtkOBJImportedMaterial*> ParseOBJandMTL(
+    vtkResourceStream* mtlStream, int& result_code);
 
-  void ReadVertices(bool gotFirstUseMaterialTag, char *pLine, float xyz, int lineNr, const double v_scale, bool everything_ok, vtkPoints* points, const bool use_scale);
+  void ReadVertices(bool gotFirstUseMaterialTag, char* pLine, float xyz, int lineNr, double v_scale,
+    bool everything_ok, vtkPoints* points, bool use_scale);
+
 protected:
   vtkOBJPolyDataProcessor();
   ~vtkOBJPolyDataProcessor() override;
-  int RequestData(vtkInformation *,
-                  vtkInformationVector **, vtkInformationVector *) override /*override*/;
+  int RequestData(vtkInformation*, vtkInformationVector**, vtkInformationVector*) override
+    /*override*/;
 
-  vtkSetMacro(SuccessParsingFiles,int)
+  vtkSetMacro(SuccessParsingFiles, int);
 
-  std::string FileName;     // filename (.obj) being read
-  std::string MTLFileName;  // associated .mtl to *.obj, typically it is *.obj.mtl
-  bool DefaultMTLFileName;  // tells whether default of *.obj.mtl to be used
-  std::string TexturePath;
-  int         SuccessParsingFiles;
+  vtkResourceStream* Stream = nullptr; // Stream of obj being read
+  std::string FileName;                // filename (.obj) being read
+
+  bool DefaultMTLFileName;                // tells whether default MTL should be used
+  std::string MTLFileName;                // associated .mtl to *.obj, typically it is *.obj.mtl
+  vtkResourceStream* MTLStream = nullptr; // Stream of associated MTL file
+
+  bool DefaultTexturePath; // tells whether default texture path should be used
+  std::string TexturePath; // Texture path to read
+  std::map<std::string, vtkResourceStream*> TextureStreams;
+
+  int SuccessParsingFiles;
 
 private:
   vtkOBJPolyDataProcessor(const vtkOBJPolyDataProcessor&) = delete;
@@ -157,10 +167,9 @@ private:
 
 class vtkRenderWindow;
 class vtkRenderer;
-void  bindTexturedPolydataToRenderWindow( vtkRenderWindow* renderWindow,
-                                          vtkRenderer* renderer,
-                                          vtkOBJPolyDataProcessor* reader );
+VTKIOIMPORT_EXPORT
+bool bindTexturedPolydataToRenderWindow(vtkRenderWindow* renderWindow, vtkRenderer* renderer,
+  vtkOBJPolyDataProcessor* reader, vtkActorCollection* actorCollection);
 
+VTK_ABI_NAMESPACE_END
 #endif
-#endif
-// VTK-HeaderTest-Exclude: vtkOBJImporterInternals.h

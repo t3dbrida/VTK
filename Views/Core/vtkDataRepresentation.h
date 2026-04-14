@@ -1,22 +1,6 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkDataRepresentation.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-/*-------------------------------------------------------------------------
-  Copyright 2008 Sandia Corporation.
-  Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-  the U.S. Government retains certain rights in this software.
--------------------------------------------------------------------------*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-FileCopyrightText: Copyright 2008 Sandia Corporation
+// SPDX-License-Identifier: LicenseRef-BSD-3-Clause-Sandia-USGov
 /**
  * @class   vtkDataRepresentation
  * @brief   The superclass for all representations
@@ -45,14 +29,16 @@
  * from the selection link when the view is updated.  The application is
  * responsible for linking representations as appropriate by setting the
  * same vtkAnnotationLink on each linked representation.
-*/
+ */
 
 #ifndef vtkDataRepresentation_h
 #define vtkDataRepresentation_h
 
-#include "vtkViewsCoreModule.h" // For export macro
 #include "vtkPassInputTypeAlgorithm.h"
+#include "vtkViewsCoreModule.h" // For export macro
+#include "vtkWrappingHints.h"   // For VTK_MARSHALAUTO
 
+VTK_ABI_NAMESPACE_BEGIN
 class vtkAlgorithmOutput;
 class vtkAnnotationLayers;
 class vtkAnnotationLink;
@@ -63,10 +49,10 @@ class vtkTrivialProducer;
 class vtkView;
 class vtkViewTheme;
 
-class VTKVIEWSCORE_EXPORT vtkDataRepresentation : public vtkPassInputTypeAlgorithm
+class VTKVIEWSCORE_EXPORT VTK_MARSHALAUTO vtkDataRepresentation : public vtkPassInputTypeAlgorithm
 {
 public:
-  static vtkDataRepresentation *New();
+  static vtkDataRepresentation* New();
   vtkTypeMacro(vtkDataRepresentation, vtkPassInputTypeAlgorithm);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
@@ -75,22 +61,23 @@ public:
    * without specifying the port or index.
    */
   vtkAlgorithmOutput* GetInputConnection(int port = 0, int index = 0)
-    { return this->Superclass::GetInputConnection(port, index); }
+  {
+    return this->Superclass::GetInputConnection(port, index);
+  }
 
   /**
    * The annotation link for this representation.
    * To link annotations, set the same vtkAnnotationLink object in
    * multiple representations.
    */
-  vtkAnnotationLink* GetAnnotationLink()
-    { return this->AnnotationLinkInternal; }
+  vtkAnnotationLink* GetAnnotationLink() { return this->AnnotationLinkInternal; }
   void SetAnnotationLink(vtkAnnotationLink* link);
 
   /**
    * Apply a theme to this representation.
    * Subclasses should override this method.
    */
-  virtual void ApplyViewTheme(vtkViewTheme* vtkNotUsed(theme)) { }
+  virtual void ApplyViewTheme(vtkViewTheme* vtkNotUsed(theme)) {}
 
   /**
    * The view calls this method when a selection occurs.
@@ -102,8 +89,7 @@ public:
    * The optional third argument specifies whether the selection should be
    * added to the previous selection on this representation.
    */
-  void Select(vtkView* view, vtkSelection* selection)
-    { this->Select(view, selection, false); }
+  void Select(vtkView* view, vtkSelection* selection) { this->Select(view, selection, false); }
   void Select(vtkView* view, vtkSelection* selection, bool extend);
 
   /**
@@ -118,10 +104,12 @@ public:
    * added to the previous selection on this representation.
    */
   void Annotate(vtkView* view, vtkAnnotationLayers* annotations)
-    { this->Annotate(view, annotations, false); }
+  {
+    this->Annotate(view, annotations, false);
+  }
   void Annotate(vtkView* view, vtkAnnotationLayers* annotations, bool extend);
 
-  //@{
+  ///@{
   /**
    * Whether this representation is able to handle a selection.
    * Default is true.
@@ -129,7 +117,7 @@ public:
   vtkSetMacro(Selectable, bool);
   vtkGetMacro(Selectable, bool);
   vtkBooleanMacro(Selectable, bool);
-  //@}
+  ///@}
 
   /**
    * Updates the selection in the selection link and fires a selection
@@ -138,8 +126,7 @@ public:
    * The optional second argument specifies whether the selection should be
    * added to the previous selection on this representation.
    */
-  void UpdateSelection(vtkSelection* selection)
-    { this->UpdateSelection(selection, false); }
+  void UpdateSelection(vtkSelection* selection) { this->UpdateSelection(selection, false); }
   void UpdateSelection(vtkSelection* selection, bool extend);
 
   /**
@@ -150,7 +137,9 @@ public:
    * added to the previous selection on this representation.
    */
   void UpdateAnnotations(vtkAnnotationLayers* annotations)
-    { this->UpdateAnnotations(annotations, false); }
+  {
+    this->UpdateAnnotations(annotations, false);
+  }
   void UpdateAnnotations(vtkAnnotationLayers* annotations, bool extend);
 
   /**
@@ -159,9 +148,13 @@ public:
    * This should be used when connecting the internal pipelines.
    */
   virtual vtkAlgorithmOutput* GetInternalAnnotationOutputPort()
-    { return this->GetInternalAnnotationOutputPort(0); }
+  {
+    return this->GetInternalAnnotationOutputPort(0);
+  }
   virtual vtkAlgorithmOutput* GetInternalAnnotationOutputPort(int port)
-    { return this->GetInternalAnnotationOutputPort(port, 0); }
+  {
+    return this->GetInternalAnnotationOutputPort(port, 0);
+  }
   virtual vtkAlgorithmOutput* GetInternalAnnotationOutputPort(int port, int conn);
 
   /**
@@ -170,9 +163,13 @@ public:
    * This should be used when connecting the internal pipelines.
    */
   virtual vtkAlgorithmOutput* GetInternalSelectionOutputPort()
-    { return this->GetInternalSelectionOutputPort(0); }
+  {
+    return this->GetInternalSelectionOutputPort(0);
+  }
   virtual vtkAlgorithmOutput* GetInternalSelectionOutputPort(int port)
-    { return this->GetInternalSelectionOutputPort(port, 0); }
+  {
+    return this->GetInternalSelectionOutputPort(port, 0);
+  }
   virtual vtkAlgorithmOutput* GetInternalSelectionOutputPort(int port, int conn);
 
   /**
@@ -180,13 +177,14 @@ public:
    * and connection index. This may be connected to the representation's
    * internal pipeline.
    */
-  virtual vtkAlgorithmOutput* GetInternalOutputPort()
-    { return this->GetInternalOutputPort(0); }
+  virtual vtkAlgorithmOutput* GetInternalOutputPort() { return this->GetInternalOutputPort(0); }
   virtual vtkAlgorithmOutput* GetInternalOutputPort(int port)
-    { return this->GetInternalOutputPort(port, 0); }
+  {
+    return this->GetInternalOutputPort(port, 0);
+  }
   virtual vtkAlgorithmOutput* GetInternalOutputPort(int port, int conn);
 
-  //@{
+  ///@{
   /**
    * Set the selection type produced by this view.
    * This should be one of the content type constants defined in
@@ -197,30 +195,30 @@ public:
    */
   vtkSetMacro(SelectionType, int);
   vtkGetMacro(SelectionType, int);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * If a VALUES selection, the arrays used to produce a selection.
    */
   virtual void SetSelectionArrayNames(vtkStringArray* names);
   vtkGetObjectMacro(SelectionArrayNames, vtkStringArray);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * If a VALUES selection, the array used to produce a selection.
    */
   virtual void SetSelectionArrayName(const char* name);
   virtual const char* GetSelectionArrayName();
-  //@}
+  ///@}
 
   /**
    * Convert the selection to a type appropriate for sharing with other
    * representations through vtkAnnotationLink, possibly using the view.
    * For the superclass, we just return the same selection.
    * Subclasses may do something more fancy, like convert the selection
-   * from a frustrum to a list of pedigree ids.  If the selection cannot
+   * from a frustum to a list of pedigree ids.  If the selection cannot
    * be applied to this representation, return nullptr.
    */
   virtual vtkSelection* ConvertSelection(vtkView* view, vtkSelection* selection);
@@ -239,24 +237,23 @@ protected:
    * GetInternalSelectionOutputPort should be used to obtain a selection or
    * annotation port whose selections are localized for a particular input data object.
    */
-  int RequestData(
-    vtkInformation*,
-    vtkInformationVector**,
-    vtkInformationVector*) override
-    { return 1; }
+  int RequestData(vtkInformation*, vtkInformationVector**, vtkInformationVector*) override
+  {
+    return 1;
+  }
 
   /**
    * Clear the input shallow copy caches if the algorithm is in "release data" mode.
    */
-  virtual void ProcessEvents(vtkObject *caller, unsigned long eventId, void *callData);
+  virtual void ProcessEvents(vtkObject* caller, unsigned long eventId, void* callData);
 
-  //@{
+  ///@{
   /**
    * The annotation link for this representation.
    */
   virtual void SetAnnotationLinkInternal(vtkAnnotationLink* link);
   vtkAnnotationLink* AnnotationLinkInternal;
-  //@}
+  ///@}
 
   // Whether its representation can handle a selection.
   bool Selectable;
@@ -311,7 +308,7 @@ private:
 
   class Internals;
   Internals* Implementation;
-
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

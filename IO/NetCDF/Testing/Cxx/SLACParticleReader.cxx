@@ -1,23 +1,6 @@
-// -*- c++ -*-
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    SLACParticleReader.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-/*-------------------------------------------------------------------------
-  Copyright 2009 Sandia Corporation.
-  Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-  the U.S. Government retains certain rights in this software.
--------------------------------------------------------------------------*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-FileCopyrightText: Copyright 2009 Sandia Corporation
+// SPDX-License-Identifier: LicenseRef-BSD-3-Clause-Sandia-LANL-California-USGov
 
 #include "vtkActor.h"
 #include "vtkCamera.h"
@@ -27,43 +10,39 @@
 #include "vtkPolyDataMapper.h"
 #include "vtkProperty.h"
 #include "vtkRegressionTestImage.h"
-#include "vtkRenderer.h"
 #include "vtkRenderWindow.h"
 #include "vtkRenderWindowInteractor.h"
+#include "vtkRenderer.h"
 #include "vtkSLACParticleReader.h"
 #include "vtkSLACReader.h"
 #include "vtkStreamingDemandDrivenPipeline.h"
+#include "vtkStringFormatter.h"
 #include "vtkTestUtilities.h"
 
 #include "vtkSmartPointer.h"
-#define VTK_CREATE(type, name) \
-  vtkSmartPointer<type> name = vtkSmartPointer<type>::New()
+#define VTK_CREATE(type, name) vtkSmartPointer<type> name = vtkSmartPointer<type>::New()
 
 #include <sstream>
 
-int SLACParticleReader(int argc, char *argv[])
+#include <iostream>
+
+int SLACParticleReader(int argc, char* argv[])
 {
-  char *meshFileName = vtkTestUtilities::ExpandDataFileName(argc, argv,
-                                             "Data/SLAC/pic-example/mesh.ncdf");
-  char *modeFileNamePattern = vtkTestUtilities::ExpandDataFileName(argc, argv,
-                                         "Data/SLAC/pic-example/fields_%d.mod");
-  char *particleFileName = vtkTestUtilities::ExpandDataFileName(argc, argv,
-                                      "Data/SLAC/pic-example/particles_5.ncdf");
+  char* directoryName = vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/SLAC/pic-example/");
+  const std::string directory = directoryName;
+  delete[] directoryName;
+  const std::string meshFileName = directory + "mesh.ncdf";
+  const std::string particleFileName = directory + "particles_5.ncdf";
 
   // Set up mesh reader.
   VTK_CREATE(vtkSLACReader, meshReader);
-  meshReader->SetMeshFileName(meshFileName);
-  delete[] meshFileName;
+  meshReader->SetMeshFileName(meshFileName.c_str());
 
-  size_t modeFileNameLength = strlen(modeFileNamePattern) + 10;
-  char *modeFileName = new char[modeFileNameLength];
   for (int i = 0; i < 9; i++)
   {
-    snprintf(modeFileName, modeFileNameLength, modeFileNamePattern, i);
-    meshReader->AddModeFileName(modeFileName);
+    auto modeFileName = vtk::format("{:s}fields_{:d}.mod", directory, i);
+    meshReader->AddModeFileName(modeFileName.c_str());
   }
-  delete[] modeFileName;
-  delete[] modeFileNamePattern;
 
   meshReader->ReadInternalVolumeOn();
   meshReader->ReadExternalSurfaceOff();
@@ -71,13 +50,11 @@ int SLACParticleReader(int argc, char *argv[])
 
   // Extract geometry that we can render.
   VTK_CREATE(vtkCompositeDataGeometryFilter, geometry);
-  geometry->SetInputConnection(
-                       meshReader->GetOutputPort(vtkSLACReader::VOLUME_OUTPUT));
+  geometry->SetInputConnection(meshReader->GetOutputPort(vtkSLACReader::VOLUME_OUTPUT));
 
   // Set up particle reader.
   VTK_CREATE(vtkSLACParticleReader, particleReader);
-  particleReader->SetFileName(particleFileName);
-  delete[] particleFileName;
+  particleReader->SetFileName(particleFileName.c_str());
 
   // Set up rendering stuff.
   VTK_CREATE(vtkPolyDataMapper, meshMapper);
@@ -106,7 +83,7 @@ int SLACParticleReader(int argc, char *argv[])
   VTK_CREATE(vtkRenderer, renderer);
   renderer->AddActor(meshActor);
   renderer->AddActor(particleActor);
-  vtkCamera *camera = renderer->GetActiveCamera();
+  vtkCamera* camera = renderer->GetActiveCamera();
   camera->SetPosition(-0.2, 0.05, 0.0);
   camera->SetFocalPoint(0.0, 0.05, 0.0);
   camera->SetViewUp(0.0, 1.0, 0.0);
@@ -118,16 +95,14 @@ int SLACParticleReader(int argc, char *argv[])
   iren->SetRenderWindow(renwin);
   renwin->Render();
 
-  double time
-    = particleReader->GetOutput()->GetInformation()->Get(vtkDataObject::DATA_TIME_STEP());
-  cout << "Time in particle reader: " << time << endl;
+  double time = particleReader->GetOutput()->GetInformation()->Get(vtkDataObject::DATA_TIME_STEP());
+  std::cout << "Time in particle reader: " << time << std::endl;
 
   // Change the time to test the time step field load and to have the field
   // match the particles in time.
   geometry->UpdateInformation();
   geometry->GetOutputInformation(0)->Set(
-    vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP(),
-    time);
+    vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP(), time);
   renwin->Render();
 
   // Do the test comparison.

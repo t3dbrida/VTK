@@ -1,7 +1,8 @@
-set(Module_SRCS
-  vtkProgrammableAttributeDataFilter.cxx
-  vtkProgrammableFilter.cxx
-  vtkProgrammableGlyphFilter.cxx
-  )
+set(classes
+  vtkProgrammableAttributeDataFilter
+  vtkProgrammableFilter
+  vtkProgrammableGlyphFilter)
 
-vtk_module_library(vtkFiltersProgrammable ${Module_SRCS})
+vtk_module_add_module(VTK::FiltersProgrammable
+  CLASSES ${classes})
+vtk_add_test_mangling(VTK::FiltersProgrammable)

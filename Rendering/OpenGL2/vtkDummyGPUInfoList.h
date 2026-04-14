@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkDummyGPUInfoList.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 /**
  * @class   vtkDummyGPUInfoList
@@ -21,18 +9,22 @@
  * GPUs to be zero. Useful when an OS specific implementation is not available.
  * @sa
  * vtkGPUInfo vtkGPUInfoList
-*/
+ */
 
 #ifndef vtkDummyGPUInfoList_h
 #define vtkDummyGPUInfoList_h
 
-#include "vtkRenderingOpenGL2Module.h" // For export macro
 #include "vtkGPUInfoList.h"
+#include "vtkRenderingOpenGL2Module.h" // For export macro
 
+VTK_ABI_NAMESPACE_BEGIN
+class vtkOverrideAttribute;
 class VTKRENDERINGOPENGL2_EXPORT vtkDummyGPUInfoList : public vtkGPUInfoList
 {
 public:
   static vtkDummyGPUInfoList* New();
+  VTK_NEWINSTANCE
+  static vtkOverrideAttribute* CreateOverrideAttributes();
   vtkTypeMacro(vtkDummyGPUInfoList, vtkGPUInfoList);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
@@ -43,17 +35,20 @@ public:
   void Probe() override;
 
 protected:
-  //@{
+  ///@{
   /**
    * Default constructor.
    */
   vtkDummyGPUInfoList();
   ~vtkDummyGPUInfoList() override;
-  //@}
+  ///@}
 
 private:
   vtkDummyGPUInfoList(const vtkDummyGPUInfoList&) = delete;
   void operator=(const vtkDummyGPUInfoList&) = delete;
 };
 
+#define vtkDummyGPUInfoList_OVERRIDE_ATTRIBUTES vtkDummyGPUInfoList::CreateOverrideAttributes()
+
+VTK_ABI_NAMESPACE_END
 #endif

@@ -1,6 +1,6 @@
 /*============================================================================
   Kitware Information Macro Library
-  Copyright 2010-2017 Kitware, Inc.
+  Copyright 2010-2018 Kitware, Inc.
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -136,6 +136,8 @@ suppression macro KWIML_ABI_NO_VERIFY was defined.
 #  define KWIML_ABI_SIZEOF_DATA_PTR 8
 # elif defined(__i386) || defined(__i386__)
 #  define KWIML_ABI_SIZEOF_DATA_PTR 4
+# elif defined(_M_ARM64)
+#  define KWIML_ABI_SIZEOF_DATA_PTR 8
 # endif
 #endif
 #if !defined(KWIML_ABI_SIZEOF_DATA_PTR)
@@ -407,6 +409,10 @@ suppression macro KWIML_ABI_NO_VERIFY was defined.
 #elif defined(__hppa) || defined(__hppa__)
 # define KWIML_ABI_ENDIAN_ID KWIML_ABI_ENDIAN_ID_BIG
 
+/* LoongArch64 */
+#elif defined(__loongarch64)
+# define KWIML_ABI_ENDIAN_ID KWIML_ABI_ENDIAN_ID_LITTLE
+
 /* Motorola 68k */
 #elif defined(__m68k__) || defined(M68000)
 # define KWIML_ABI_ENDIAN_ID KWIML_ABI_ENDIAN_ID_BIG
@@ -461,6 +467,10 @@ suppression macro KWIML_ABI_NO_VERIFY was defined.
 #  define KWIML_ABI_ENDIAN_ID KWIML_ABI_ENDIAN_ID_BIG
 # endif
 
+/* Aarch64 (Windows) */
+#elif defined(_M_ARM64)
+# define KWIML_ABI_ENDIAN_ID KWIML_ABI_ENDIAN_ID_LITTLE
+
 /* Xtensa */
 #elif defined(__XTENSA_EB__)
 # define KWIML_ABI_ENDIAN_ID KWIML_ABI_ENDIAN_ID_BIG
@@ -468,7 +478,7 @@ suppression macro KWIML_ABI_NO_VERIFY was defined.
 # define KWIML_ABI_ENDIAN_ID KWIML_ABI_ENDIAN_ID_LITTLE
 
 /* RISC-V */
-#elif defined(__riscv__)
+#elif defined(__riscv) || defined(__riscv__)
 # define KWIML_ABI_ENDIAN_ID KWIML_ABI_ENDIAN_ID_LITTLE
 
 /* Unknown CPU */
@@ -488,7 +498,7 @@ suppression macro KWIML_ABI_NO_VERIFY was defined.
 # pragma warning (disable:4310) /* cast truncates constant value */
 #endif
 
-#ifdef __cplusplus
+#if defined(__cplusplus) && !defined(__BORLANDC__)
 #define KWIML_ABI_private_STATIC_CAST(t,v) static_cast<t>(v)
 #else
 #define KWIML_ABI_private_STATIC_CAST(t,v) (t)(v)

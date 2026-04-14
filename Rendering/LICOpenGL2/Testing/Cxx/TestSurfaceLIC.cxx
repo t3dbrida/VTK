@@ -1,34 +1,20 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestSurfaceLIC.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-#include "vtkObjectFactory.h"
-#include "vtkCellData.h"
-#include "vtkDataSetSurfaceFilter.h"
-#include "vtkPointData.h"
-#include "vtkPolyData.h"
-#include "vtkSmartPointer.h"
-#include "vtkXMLPolyDataReader.h"
-#include "vtkXMLMultiBlockDataReader.h"
-#include "vtkGenericDataObjectReader.h"
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkCompositeDataPipeline.h"
-#include "vtkCompositeDataSet.h"
+#include "vtkDataSetSurfaceFilter.h"
+#include "vtkGenericDataObjectReader.h"
+#include "vtkObjectFactory.h"
+#include "vtkSmartPointer.h"
 #include "vtkSurfaceLICTestDriver.h"
+#include "vtkTestUtilities.h"
+#include "vtkXMLMultiBlockDataReader.h"
+#include "vtkXMLPolyDataReader.h"
 
+#include <iostream>
+#include <string>
+#include <vector>
 #include <vtksys/CommandLineArguments.hxx>
 #include <vtksys/SystemTools.hxx>
-#include <vector>
-#include <string>
 
 // Description:
 // Serial regression test, parse command line, build the
@@ -68,24 +54,27 @@ int TestSurfaceLIC(int argc, char* argv[])
   int mask_on_surface = 0;
   double mask_threshold = 0.0;
   double mask_intensity = 0.0;
+  int interpolate_scalars_before_mapping = 0;
+  int num_discrete_colors = 256;
   std::vector<double> mask_color_rgb;
   std::string vectors;
 
   vtksys::CommandLineArguments arg;
-  arg.StoreUnusedArguments(1);
+  arg.StoreUnusedArguments(true);
   arg.Initialize(argc, argv);
 
   // Fill up accepted arguments.
   typedef vtksys::CommandLineArguments argT;
 
   arg.AddArgument("--data", argT::EQUAL_ARGUMENT, &filename,
-    "(required) Enter dataset to load (currently only *.[vtk|vtp] files are supported");
+    "(required) Enter dataset to load. The full path will be computed relative to VTK_DATA_ROOT "
+    "using vtkTestUtilities::ExpandDataFileName. (currently only *.[vtk|vtp] files are supported");
   arg.AddArgument("--num-steps", argT::EQUAL_ARGUMENT, &num_steps,
     "(optional: default 40) Number of steps in each direction");
-  arg.AddArgument("--step-size", argT::EQUAL_ARGUMENT, &step_size,
-    "(optional: default 0.4) Step size in pixels");
+  arg.AddArgument(
+    "--step-size", argT::EQUAL_ARGUMENT, &step_size, "(optional: default 0.4) Step size in pixels");
   arg.AddArgument("--enhanced-lic", argT::EQUAL_ARGUMENT, &enhanced_lic,
-    "(optional: default 1) Enable enhanced algoruthm");
+    "(optional: default 1) Enable enhanced algorithm");
   arg.AddArgument("--color-by-mag", argT::EQUAL_ARGUMENT, &color_by_mag,
     "(optional: default 0) when set compute the magnitude of the vector and color the lic by this");
   arg.AddArgument("--vectors", argT::EQUAL_ARGUMENT, &vectors,
@@ -93,9 +82,11 @@ int TestSurfaceLIC(int argc, char* argv[])
   arg.AddArgument("--normalize-vectors", argT::EQUAL_ARGUMENT, &normalize_vectors,
     "(optional: default 1) Normalize vectors during integration");
   arg.AddArgument("--generate-noise-texture", argT::EQUAL_ARGUMENT, &generate_noise_texture,
-    "(optional: default 0) Generate noise texture (if not generate use pickeled 200x200 noise texture.");
+    "(optional: default 0) Generate noise texture (if not generate use pickeled 200x200 noise "
+    "texture.");
   arg.AddArgument("--noise-type", argT::EQUAL_ARGUMENT, &noise_type,
-    "(optional: default 1) statistical distribution for noise generator, 0=Uniform, 1=Gaussian. 2=perlin");
+    "(optional: default 1) statistical distribution for noise generator, 0=Uniform, 1=Gaussian. "
+    "2=perlin");
   arg.AddArgument("--noise-texture-size", argT::EQUAL_ARGUMENT, &noise_texture_size,
     "(optional: default 200) side of the square texture in pixels");
   arg.AddArgument("--noise-grain-size", argT::EQUAL_ARGUMENT, &noise_grain_size,
@@ -113,14 +104,18 @@ int TestSurfaceLIC(int argc, char* argv[])
   arg.AddArgument("--noise-gen-seed", argT::EQUAL_ARGUMENT, &noise_gen_seed,
     "(optional: default 1) set the seed to the random number generator");
   arg.AddArgument("--enhance-contrast", argT::EQUAL_ARGUMENT, &enhance_contrast,
-    "(optional: default 0) Nomralize colors after each pass");
-  arg.AddArgument("--low-lic-contrast-enhancement-factor", argT::EQUAL_ARGUMENT, &low_lic_contrast_enhancement_factor,
+    "(optional: default 0) Normalize colors after each pass");
+  arg.AddArgument("--low-lic-contrast-enhancement-factor", argT::EQUAL_ARGUMENT,
+    &low_lic_contrast_enhancement_factor,
     "(optional: default 0) lower normalization factor 0 is the min");
-  arg.AddArgument("--high-lic-contrast-enhancement-factor", argT::EQUAL_ARGUMENT, &high_lic_contrast_enhancement_factor,
+  arg.AddArgument("--high-lic-contrast-enhancement-factor", argT::EQUAL_ARGUMENT,
+    &high_lic_contrast_enhancement_factor,
     "(optional: default 1) upper normalization factor, 0 is the max");
-  arg.AddArgument("--low-color-contrast-enhancement-factor", argT::EQUAL_ARGUMENT, &low_color_contrast_enhancement_factor,
+  arg.AddArgument("--low-color-contrast-enhancement-factor", argT::EQUAL_ARGUMENT,
+    &low_color_contrast_enhancement_factor,
     "(optional: default 0) lower normalization factor 0 is the min");
-  arg.AddArgument("--high-color-contrast-enhancement-factor", argT::EQUAL_ARGUMENT, &high_color_contrast_enhancement_factor,
+  arg.AddArgument("--high-color-contrast-enhancement-factor", argT::EQUAL_ARGUMENT,
+    &high_color_contrast_enhancement_factor,
     "(optional: default 1) upper normalization factor, 0 is the max");
   arg.AddArgument("--anti-alias", argT::EQUAL_ARGUMENT, &anti_alias,
     "(optional: default 0) apply anti-aliasing pass after lic to remove jagged artifacts");
@@ -140,15 +135,24 @@ int TestSurfaceLIC(int argc, char* argv[])
     "(optional: default pink=1.0 0.0 0.84705) mask color");
   arg.AddArgument("--camera-config", argT::EQUAL_ARGUMENT, &camera_config,
     "(optional: default 1) use a preset camera configuration");
-
-  if (!arg.Parse() || filename == "")
+  arg.AddArgument("--interpolate-scalars-before-mapping", argT::EQUAL_ARGUMENT,
+    &interpolate_scalars_before_mapping,
+    "(optional: default 0) interpolate scalars before mapping to colors");
+  arg.AddArgument("--num-discrete-colors", argT::EQUAL_ARGUMENT, &num_discrete_colors,
+    "(optional: default 256) number of discrete colors to use when mapping scalars to colors");
+  if (!arg.Parse() || filename.empty())
   {
-    cerr << "Usage: " << endl;
-    cerr << arg.GetHelp() << endl;
+    std::cerr << "Usage: " << std::endl;
+    std::cerr << arg.GetHelp() << std::endl;
     return 1;
   }
 
-  if (mask_color_rgb.size() == 0)
+  // Expand the filename to a full path.
+  char* fname = vtkTestUtilities::ExpandDataFileName(argc, argv, filename.c_str());
+  filename = fname;
+  delete[] fname;
+
+  if (mask_color_rgb.empty())
   {
     // something bright for the default.
     mask_color_rgb.resize(3);
@@ -197,52 +201,26 @@ int TestSurfaceLIC(int argc, char* argv[])
   }
   else
   {
-    cerr << "Error: Unknown extension: '" << ext << "'"<< endl;
+    std::cerr << "Error: Unknown extension: '" << ext << "'" << std::endl;
     vtkAlgorithm::SetDefaultExecutivePrototype(nullptr);
     return 1;
   }
 
   if (!dataObj) // || dataObj->GetNumberOfElements(vtkDataObject::POINT) == 0)
   {
-    cerr << "Error reading file: '" << filename.c_str() << "'" << endl;
+    std::cerr << "Error reading file: '" << filename << "'" << std::endl;
     vtkAlgorithm::SetDefaultExecutivePrototype(nullptr);
     return 1;
   }
 
-  int status = vtkSurfaceLICTestDriver(
-        argc,
-        argv,
-        dataObj,
-        num_steps,
-        step_size,
-        enhanced_lic,
-        normalize_vectors,
-        camera_config,
-        generate_noise_texture,
-        noise_type,
-        noise_texture_size,
-        noise_grain_size,
-        min_noise_value,
-        max_noise_value,
-        number_of_noise_levels,
-        impulse_noise_prob,
-        impulse_noise_bg_value,
-        noise_gen_seed,
-        enhance_contrast,
-        low_lic_contrast_enhancement_factor,
-        high_lic_contrast_enhancement_factor,
-        low_color_contrast_enhancement_factor,
-        high_color_contrast_enhancement_factor,
-        anti_alias,
-        color_mode,
-        lic_intensity,
-        map_mode_bias,
-        color_by_mag,
-        mask_on_surface,
-        mask_threshold,
-        mask_intensity,
-        mask_color_rgb,
-        vectors);
+  int status = vtkSurfaceLICTestDriver(argc, argv, dataObj, num_steps, step_size, enhanced_lic,
+    normalize_vectors, camera_config, generate_noise_texture, noise_type, noise_texture_size,
+    noise_grain_size, min_noise_value, max_noise_value, number_of_noise_levels, impulse_noise_prob,
+    impulse_noise_bg_value, noise_gen_seed, enhance_contrast, low_lic_contrast_enhancement_factor,
+    high_lic_contrast_enhancement_factor, low_color_contrast_enhancement_factor,
+    high_color_contrast_enhancement_factor, anti_alias, color_mode, lic_intensity, map_mode_bias,
+    color_by_mag, mask_on_surface, mask_threshold, mask_intensity,
+    interpolate_scalars_before_mapping, num_discrete_colors, mask_color_rgb, vectors);
 
   vtkAlgorithm::SetDefaultExecutivePrototype(nullptr);
 

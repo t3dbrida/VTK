@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkDualDepthPeelingPass.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 /**
  * @class   vtkDualDepthPeelingPass
@@ -46,16 +34,18 @@
  *    near and far accumulation textures.
  * 5. Blend all accumulation buffers over the opaque color buffer to produce the
  *    final image.
-*/
+ */
 
 #ifndef vtkDualDepthPeelingPass_h
 #define vtkDualDepthPeelingPass_h
 
-#include "vtkRenderingOpenGL2Module.h" // For export macro
 #include "vtkDepthPeelingPass.h"
+#include "vtkRenderingOpenGL2Module.h" // For export macro
+#include "vtkWrappingHints.h"          // For VTK_MARSHALAUTO
 
 #include <array> // For std::array!
 
+VTK_ABI_NAMESPACE_BEGIN
 class vtkOpenGLFramebufferObject;
 class vtkOpenGLQuadHelper;
 class vtkOpenGLVertexArrayObject;
@@ -63,75 +53,57 @@ class vtkRenderTimerLog;
 class vtkShaderProgram;
 class vtkTextureObject;
 
-class VTKRENDERINGOPENGL2_EXPORT vtkDualDepthPeelingPass:
-    public vtkDepthPeelingPass
+class VTKRENDERINGOPENGL2_EXPORT VTK_MARSHALAUTO vtkDualDepthPeelingPass
+  : public vtkDepthPeelingPass
 {
 public:
   static vtkDualDepthPeelingPass* New();
-  vtkTypeMacro(vtkDualDepthPeelingPass, vtkDepthPeelingPass)
-  void PrintSelf(ostream &os, vtkIndent indent) override;
+  vtkTypeMacro(vtkDualDepthPeelingPass, vtkDepthPeelingPass);
+  void PrintSelf(ostream& os, vtkIndent indent) override;
 
-  void Render(const vtkRenderState *s) override;
-  void ReleaseGraphicsResources(vtkWindow *w) override;
+  void Render(const vtkRenderState* s) override;
+  void ReleaseGraphicsResources(vtkWindow* w) override;
 
-  //@{
+  ///@{
   /**
    * Delegate for rendering the volumetric geometry, if needed.
    * It is usually set to a vtkVolumetricPass.
    * Initial value is a NULL pointer.
    */
   vtkGetObjectMacro(VolumetricPass, vtkRenderPass)
-  virtual void SetVolumetricPass(vtkRenderPass *volumetricPass);
-  //@}
+  virtual void SetVolumetricPass(vtkRenderPass* volumetricPass);
+  ///@}
 
   // vtkOpenGLRenderPass virtuals:
-  bool PreReplaceShaderValues(std::string &vertexShader,
-                              std::string &geometryShader,
-                              std::string &fragmentShader,
-                              vtkAbstractMapper *mapper,
-                              vtkProp *prop) override;
-  bool PostReplaceShaderValues(std::string &vertexShader,
-                               std::string &geometryShader,
-                               std::string &fragmentShader,
-                               vtkAbstractMapper *mapper,
-                               vtkProp *prop) override;
-  bool SetShaderParameters(vtkShaderProgram *program,
-                           vtkAbstractMapper *mapper,
-                           vtkProp *prop,
-                           vtkOpenGLVertexArrayObject *VAO = nullptr) override;
+  bool PreReplaceShaderValues(std::string& vertexShader, std::string& geometryShader,
+    std::string& fragmentShader, vtkAbstractMapper* mapper, vtkProp* prop) override;
+  bool PostReplaceShaderValues(std::string& vertexShader, std::string& geometryShader,
+    std::string& fragmentShader, vtkAbstractMapper* mapper, vtkProp* prop) override;
+  bool SetShaderParameters(vtkShaderProgram* program, vtkAbstractMapper* mapper, vtkProp* prop,
+    vtkOpenGLVertexArrayObject* VAO = nullptr) override;
   vtkMTimeType GetShaderStageMTime() override;
 
 protected:
-
-  bool PostReplaceTranslucentShaderValues(std::string &vertexShader,
-                                          std::string &geometryShader,
-                                          std::string &fragmentShader,
-                                          vtkAbstractMapper *mapper,
-                                          vtkProp *prop);
-  bool PreReplaceVolumetricShaderValues(std::string &vertexShader,
-                                        std::string &geometryShader,
-                                        std::string &fragmentShader,
-                                        vtkAbstractMapper *mapper,
-                                        vtkProp *prop);
-  bool SetTranslucentShaderParameters(vtkShaderProgram *program,
-                                      vtkAbstractMapper *mapper, vtkProp *prop,
-                                      vtkOpenGLVertexArrayObject *VAO);
-  bool SetVolumetricShaderParameters(vtkShaderProgram *program,
-                                     vtkAbstractMapper *mapper, vtkProp *prop,
-                                     vtkOpenGLVertexArrayObject *VAO);
-
+  bool PostReplaceTranslucentShaderValues(std::string& vertexShader, std::string& geometryShader,
+    std::string& fragmentShader, vtkAbstractMapper* mapper, vtkProp* prop);
+  bool PreReplaceVolumetricShaderValues(std::string& vertexShader, std::string& geometryShader,
+    std::string& fragmentShader, vtkAbstractMapper* mapper, vtkProp* prop);
+  bool SetTranslucentShaderParameters(vtkShaderProgram* program, vtkAbstractMapper* mapper,
+    vtkProp* prop, vtkOpenGLVertexArrayObject* VAO);
+  bool SetVolumetricShaderParameters(vtkShaderProgram* program, vtkAbstractMapper* mapper,
+    vtkProp* prop, vtkOpenGLVertexArrayObject* VAO);
 
   // Name the textures used by this render pass. These are indexes into
   // this->Textures
   enum TextureName
   {
     BackTemp = 0, // RGBA8 back-to-front peeling buffer
-    Back, // RGBA8 back-to-front accumulation buffer
-    FrontA, // RGBA8 front-to-back accumulation buffer
-    FrontB, // RGBA8 front-to-back accumulation buffer
-    DepthA, // RG32F min-max depth buffer
-    DepthB, // RG32F min-max depth buffer
-    OpaqueDepth, // Stores the depth map from the opaque passes
+    Back,         // RGBA8 back-to-front accumulation buffer
+    FrontA,       // RGBA8 front-to-back accumulation buffer
+    FrontB,       // RGBA8 front-to-back accumulation buffer
+    DepthA,       // RG32F min-max depth buffer
+    DepthB,       // RG32F min-max depth buffer
+    OpaqueDepth,  // Stores the depth map from the opaque passes
 
     NumberOfTextures
   };
@@ -139,11 +111,11 @@ protected:
   // The stages of this multipass render pass:
   enum ShaderStage
   {
-    InitializingDepth,
-    Peeling,
-    AlphaBlending,
+    InitializingDepth = 0,
+    Peeling = 1,
+    AlphaBlending = 2,
 
-    NumberOfPasses,
+    NumberOfPasses = 3,
     Inactive = -1,
   };
 
@@ -157,7 +129,7 @@ protected:
   ~vtkDualDepthPeelingPass() override;
 
   void SetCurrentStage(ShaderStage stage);
-  vtkSetMacro(CurrentPeelType, PeelType)
+  vtkSetMacro(CurrentPeelType, PeelType);
 
   /**
    * Release all FBOs and textures.
@@ -179,28 +151,29 @@ protected:
   /**
    * Allocate and configure FBOs and textures.
    */
-  void Initialize(const vtkRenderState *state);
+  void Initialize(const vtkRenderState* state);
 
-  //@{
+  ///@{
   /**
    * Initialize helpers.
    */
-  void InitColorTexture(vtkTextureObject *tex, const vtkRenderState *s);
-  void InitDepthTexture(vtkTextureObject *tex, const vtkRenderState *s);
-  void InitOpaqueDepthTexture(vtkTextureObject *tex, const vtkRenderState *s);
-  void InitFramebuffer(const vtkRenderState *s);
-  //@}
+  void InitColorTexture(vtkTextureObject* tex, const vtkRenderState* s);
+  void InitDepthTexture(vtkTextureObject* tex, const vtkRenderState* s);
+  void InitOpaqueDepthTexture(vtkTextureObject* tex, const vtkRenderState* s);
+  void InitFramebuffer(const vtkRenderState* s);
+  ///@}
 
   /**
    * Bind and activate draw buffers.
    * @{
    */
-  void ActivateDrawBuffer(TextureName id)
-    { this->ActivateDrawBuffers(&id, 1); }
+  void ActivateDrawBuffer(TextureName id) { this->ActivateDrawBuffers(&id, 1); }
   template <size_t NumTextures>
-  void ActivateDrawBuffers(const std::array<TextureName, NumTextures> &a)
-    { this->ActivateDrawBuffers(a.data(), a.size()); }
-  void ActivateDrawBuffers(const TextureName *ids, size_t numTextures);
+  void ActivateDrawBuffers(const std::array<TextureName, NumTextures>& a)
+  {
+    this->ActivateDrawBuffers(a.data(), a.size());
+  }
+  void ActivateDrawBuffers(const TextureName* ids, size_t numTextures);
   /**@}*/
 
   /**
@@ -255,20 +228,20 @@ protected:
   void BlendFinalImage();
   void DeleteOcclusionQueryIds();
 
-  vtkRenderTimerLog *Timer;
-  vtkRenderPass *VolumetricPass;
-  const vtkRenderState *RenderState;
+  vtkRenderTimerLog* Timer;
+  vtkRenderPass* VolumetricPass;
+  const vtkRenderState* RenderState;
 
-  vtkOpenGLQuadHelper *CopyColorHelper;
-  vtkOpenGLQuadHelper *CopyDepthHelper;
-  vtkOpenGLQuadHelper *BackBlendHelper;
-  vtkOpenGLQuadHelper *BlendHelper;
+  vtkOpenGLQuadHelper* CopyColorHelper;
+  vtkOpenGLQuadHelper* CopyDepthHelper;
+  vtkOpenGLQuadHelper* BackBlendHelper;
+  vtkOpenGLQuadHelper* BlendHelper;
 
-  vtkTextureObject *Textures[NumberOfTextures];
+  vtkTextureObject* Textures[NumberOfTextures];
 
-  TextureName FrontSource; // The current front source buffer
+  TextureName FrontSource;      // The current front source buffer
   TextureName FrontDestination; // The current front destination buffer
-  TextureName DepthSource; // The current depth source buffer
+  TextureName DepthSource;      // The current depth source buffer
   TextureName DepthDestination; // The current depth destination buffer
 
   ShaderStage CurrentStage;
@@ -284,7 +257,7 @@ protected:
   unsigned int OcclusionThreshold;
 
   int TranslucentRenderCount; // Debug info, counts number of geometry passes.
-  int VolumetricRenderCount; // Debug info, counts number of volumetric passes.
+  int VolumetricRenderCount;  // Debug info, counts number of volumetric passes.
 
   // Cached state:
   bool SaveScissorTestState;
@@ -297,4 +270,5 @@ private:
   void operator=(const vtkDualDepthPeelingPass&) = delete;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif // vtkDualDepthPeelingPass_h

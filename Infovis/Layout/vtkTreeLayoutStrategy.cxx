@@ -1,28 +1,12 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkTreeLayoutStrategy.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-/*-------------------------------------------------------------------------
-  Copyright 2008 Sandia Corporation.
-  Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-  the U.S. Government retains certain rights in this software.
--------------------------------------------------------------------------*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-FileCopyrightText: Copyright 2008 Sandia Corporation
+// SPDX-License-Identifier: LicenseRef-BSD-3-Clause-Sandia-USGov
 
 #include "vtkTreeLayoutStrategy.h"
 
 #include "vtkAbstractArray.h"
 #include "vtkAdjacentVertexIterator.h"
-#ifdef VTK_USE_BOOST
+#if VTK_MODULE_ENABLE_VTK_InfovisBoostGraphAlgorithms
 #include "vtkBoostBreadthFirstSearchTree.h"
 #endif
 #include "vtkDataArray.h"
@@ -37,6 +21,7 @@
 #include "vtkTree.h"
 #include "vtkTreeDFSIterator.h"
 
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkTreeLayoutStrategy);
 
 vtkTreeLayoutStrategy::vtkTreeLayoutStrategy()
@@ -67,7 +52,7 @@ void vtkTreeLayoutStrategy::Layout()
   vtkTree* tree = vtkTree::SafeDownCast(this->Graph);
   if (tree == nullptr)
   {
-#ifdef VTK_USE_BOOST
+#if VTK_MODULE_ENABLE_VTK_InfovisBoostGraphAlgorithms
     // Use the BFS search tree to perform the layout
     vtkBoostBreadthFirstSearchTree* bfs = vtkBoostBreadthFirstSearchTree::New();
     bfs->CreateGraphVertexIdArrayOn();
@@ -84,21 +69,21 @@ void vtkTreeLayoutStrategy::Layout()
       return;
     }
 #else
-    vtkErrorMacro("Layout only works on vtkTree unless VTK_USE_BOOST is on.");
+    vtkErrorMacro("Layout only works on vtkTree if VTK::InfovisBoostGraphAlgorithms is available.");
     return;
 #endif
   }
 
-  vtkPoints *newPoints = vtkPoints::New();
+  vtkPoints* newPoints = vtkPoints::New();
   newPoints->SetNumberOfPoints(tree->GetNumberOfVertices());
 
-  vtkDoubleArray *anglesArray = vtkDoubleArray::New();
-  if( this->Radial )
+  vtkDoubleArray* anglesArray = vtkDoubleArray::New();
+  if (this->Radial)
   {
-    anglesArray->SetName( "subtended_angles" );
+    anglesArray->SetName("subtended_angles");
     anglesArray->SetNumberOfComponents(2);
     anglesArray->SetNumberOfTuples(tree->GetNumberOfVertices());
-    vtkDataSetAttributes *data = tree->GetVertexData();
+    vtkDataSetAttributes* data = tree->GetVertexData();
     data->AddArray(anglesArray);
   }
 
@@ -106,8 +91,7 @@ void vtkTreeLayoutStrategy::Layout()
   vtkDataArray* distanceArr = nullptr;
   if (this->DistanceArrayName != nullptr)
   {
-    vtkAbstractArray* aa = tree->GetVertexData()->
-      GetAbstractArray(this->DistanceArrayName);
+    vtkAbstractArray* aa = tree->GetVertexData()->GetAbstractArray(this->DistanceArrayName);
     if (!aa)
     {
       vtkErrorMacro("Distance array not found.");
@@ -141,10 +125,7 @@ void vtkTreeLayoutStrategy::Layout()
       leafCount++;
       lastLeafLevel = tree->GetLevel(vertex);
     }
-    if (tree->GetLevel(vertex) > maxLevel)
-    {
-      maxLevel = tree->GetLevel(vertex);
-    }
+    maxLevel = std::max(tree->GetLevel(vertex), maxLevel);
   }
 
   // Divide the "extra spacing" between tree branches among all internal nodes.
@@ -157,11 +138,9 @@ void vtkTreeLayoutStrategy::Layout()
   // To do this, we interpolate between these values.
   vtkIdType internalCount = tree->GetNumberOfVertices() - leafCount;
   double alpha = (this->Angle - 270) / 90;
-  if (alpha < 0.0)
-  {
-    alpha = 0.0;
-  }
-  double internalCountInterp = alpha*(internalCount - 1) + (1.0 - alpha)*(internalCount - lastLeafLevel);
+  alpha = std::max(alpha, 0.0);
+  double internalCountInterp =
+    alpha * (internalCount - 1) + (1.0 - alpha) * (internalCount - lastLeafLevel);
   double internalSpacing = 0.0;
   if (internalCountInterp != 0.0)
   {
@@ -173,7 +152,7 @@ void vtkTreeLayoutStrategy::Layout()
   // When the angle is close to 360, we want space between the first and last leaf nodes.
   // When the angle is lower (less than 270), we fill the full sweep angle so divide
   // by leafCount - 1 to take out this extra space.
-  double leafCountInterp = alpha*leafCount + (1.0 - alpha)*(leafCount - 1);
+  double leafCountInterp = alpha * leafCount + (1.0 - alpha) * (leafCount - 1);
   double leafSpacing = this->LeafSpacing / leafCountInterp;
 
   double spacing = this->LogSpacingValue;
@@ -194,11 +173,10 @@ void vtkTreeLayoutStrategy::Layout()
   double diff = spacing - 1.0 > 0 ? spacing - 1.0 : 1.0 - spacing;
   if (diff > eps)
   {
-    maxHeight = (pow(spacing, maxLevel+1.0) - 1.0)/(spacing - 1.0) - 1.0;
+    maxHeight = (pow(spacing, maxLevel + 1.0) - 1.0) / (spacing - 1.0) - 1.0;
   }
 
-  vtkSmartPointer<vtkAdjacentVertexIterator> it =
-    vtkSmartPointer<vtkAdjacentVertexIterator>::New();
+  vtkSmartPointer<vtkAdjacentVertexIterator> it = vtkSmartPointer<vtkAdjacentVertexIterator>::New();
   double curPlace = 0;
   iter->SetMode(vtkTreeDFSIterator::FINISH);
   while (iter->HasNext())
@@ -214,11 +192,12 @@ void vtkTreeLayoutStrategy::Layout()
     {
       if (diff <= eps)
       {
-        height = tree->GetLevel(vertex)/maxHeight;
+        height = tree->GetLevel(vertex) / maxHeight;
       }
       else
       {
-        height = ((pow(spacing, tree->GetLevel(vertex)+1.0) - 1.0)/(spacing - 1.0) - 1.0)/maxHeight;
+        height =
+          ((pow(spacing, tree->GetLevel(vertex) + 1.0) - 1.0) / (spacing - 1.0) - 1.0) / maxHeight;
       }
     }
 
@@ -235,27 +214,27 @@ void vtkTreeLayoutStrategy::Layout()
         // 3) Convert to radians
         double angleInDegrees = curPlace * this->Angle;
 
-        angleInDegrees -= (90+this->Angle/2);
+        angleInDegrees -= (90 + this->Angle / 2);
 
         // Convert to radians
         ang = angleInDegrees * vtkMath::Pi() / 180.0;
 
         curPlace += leafSpacing;
 
-          //add the subtended angles to an array for possible use later...
+        // add the subtended angles to an array for possible use later...
         double subtended_angle[2];
-        double total_arc = (curPlace*this->Angle) - (90.+this->Angle/2.) - angleInDegrees;
-        double angle1 = angleInDegrees - (total_arc/2.) + 360.;
-        double angle2 = angleInDegrees + (total_arc/2.) + 360.;
+        double total_arc = (curPlace * this->Angle) - (90. + this->Angle / 2.) - angleInDegrees;
+        double angle1 = angleInDegrees - (total_arc / 2.) + 360.;
+        double angle2 = angleInDegrees + (total_arc / 2.) + 360.;
         subtended_angle[0] = angle1;
         subtended_angle[1] = angle2;
-        anglesArray->SetTuple( vertex, subtended_angle );
+        anglesArray->SetTuple(vertex, subtended_angle);
       }
       else
       {
         curPlace += internalSpacing;
         tree->GetChildren(vertex, it);
-        double minAng = 2*vtkMath::Pi();
+        double minAng = 2 * vtkMath::Pi();
         double maxAng = 0.0;
         double angSinSum = 0.0;
         double angCosSum = 0.0;
@@ -268,7 +247,7 @@ void vtkTreeLayoutStrategy::Layout()
           double leafAngle = atan2(pt[1], pt[0]);
           if (leafAngle < 0)
           {
-            leafAngle += 2*vtkMath::Pi();
+            leafAngle += 2 * vtkMath::Pi();
           }
           if (first)
           {
@@ -288,26 +267,26 @@ void vtkTreeLayoutStrategy::Layout()
         // Make sure the angle is on the same "side" as the average angle.
         // If not, add pi to the angle. This handles some border cases.
         double avgAng = atan2(angSinSum, angCosSum);
-        if (sin(ang)*sin(avgAng) + cos(ang)*cos(avgAng) < 0)
+        if (sin(ang) * sin(avgAng) + cos(ang) * cos(avgAng) < 0)
         {
           ang += vtkMath::Pi();
         }
 
-          //add the subtended angles to an array for possible use later...
+        // add the subtended angles to an array for possible use later...
         double subtended_angle[2];
-        double angle1 = vtkMath::DegreesFromRadians( minAng );
-        double angle2 = vtkMath::DegreesFromRadians( maxAng );
+        double angle1 = vtkMath::DegreesFromRadians(minAng);
+        double angle2 = vtkMath::DegreesFromRadians(maxAng);
 
         subtended_angle[0] = angle1;
         subtended_angle[1] = angle2;
-        anglesArray->SetTuple( vertex, subtended_angle );
+        anglesArray->SetTuple(vertex, subtended_angle);
       }
       x = height * cos(ang);
       y = height * sin(ang);
     }
     else
     {
-      double width = 2.0 * tan(vtkMath::Pi()*this->Angle / 180.0 / 2.0);
+      double width = 2.0 * tan(vtkMath::Pi() * this->Angle / 180.0 / 2.0);
       y = -height;
       if (tree->IsLeaf(vertex))
       {
@@ -325,14 +304,8 @@ void vtkTreeLayoutStrategy::Layout()
           vtkIdType child = it->Next();
           double pt[3];
           newPoints->GetPoint(child, pt);
-          if (pt[0] < minX)
-          {
-            minX = pt[0];
-          }
-          if (pt[0] > maxX)
-          {
-            maxX = pt[0];
-          }
+          minX = std::min(pt[0], minX);
+          maxX = std::max(pt[0], maxX);
         }
         x = (minX + maxX) / 2.0;
       }
@@ -360,7 +333,7 @@ void vtkTreeLayoutStrategy::Layout()
   {
     this->Graph->SetPoints(newPoints);
   }
-#ifdef VTK_USE_BOOST
+#if VTK_MODULE_ENABLE_VTK_InfovisBoostGraphAlgorithms
   else
   {
     // Reorder the points based on the mapping back to graph vertex ids
@@ -370,8 +343,8 @@ void vtkTreeLayoutStrategy::Layout()
     {
       reordered->SetPoint(i, 0, 0, 0);
     }
-    vtkIdTypeArray* graphVertexIdArr = vtkArrayDownCast<vtkIdTypeArray>(
-      tree->GetVertexData()->GetAbstractArray("GraphVertexId"));
+    vtkIdTypeArray* graphVertexIdArr =
+      vtkArrayDownCast<vtkIdTypeArray>(tree->GetVertexData()->GetAbstractArray("GraphVertexId"));
     for (vtkIdType i = 0; i < graphVertexIdArr->GetNumberOfTuples(); i++)
     {
       reordered->SetPoint(graphVertexIdArr->GetValue(i), newPoints->GetPoint(i));
@@ -390,15 +363,15 @@ void vtkTreeLayoutStrategy::Layout()
 
 void vtkTreeLayoutStrategy::PrintSelf(ostream& os, vtkIndent indent)
 {
-  this->Superclass::PrintSelf(os,indent);
+  this->Superclass::PrintSelf(os, indent);
   os << indent << "Angle: " << this->Angle << endl;
   os << indent << "Radial: " << (this->Radial ? "true" : "false") << endl;
   os << indent << "LogSpacingValue: " << this->LogSpacingValue << endl;
   os << indent << "LeafSpacing: " << this->LeafSpacing << endl;
   os << indent << "Rotation: " << this->Rotation << endl;
-  os << indent << "DistanceArrayName: "
-     << (this->DistanceArrayName ? this->DistanceArrayName : "(null)") << endl;
+  os << indent
+     << "DistanceArrayName: " << (this->DistanceArrayName ? this->DistanceArrayName : "(null)")
+     << endl;
   os << indent << "ReverseEdges: " << this->ReverseEdges << endl;
 }
-
-
+VTK_ABI_NAMESPACE_END

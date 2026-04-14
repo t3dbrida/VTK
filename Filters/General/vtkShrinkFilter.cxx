@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkShrinkFilter.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkShrinkFilter.h"
 
 #include "vtkCell.h"
@@ -24,37 +12,37 @@
 #include "vtkSmartPointer.h"
 #include "vtkUnstructuredGrid.h"
 
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkShrinkFilter);
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkShrinkFilter::vtkShrinkFilter()
 {
   this->ShrinkFactor = 0.5;
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 vtkShrinkFilter::~vtkShrinkFilter() = default;
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkShrinkFilter::PrintSelf(ostream& os, vtkIndent indent)
 {
-  this->Superclass::PrintSelf(os,indent);
+  this->Superclass::PrintSelf(os, indent);
   os << indent << "Shrink Factor: " << this->ShrinkFactor << "\n";
 }
 
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int vtkShrinkFilter::FillInputPortInformation(int, vtkInformation* info)
 {
   // This filter uses the vtkDataSet cell traversal methods so it
-  // suppors any data set type as input.
+  // supports any data set type as input.
   info->Set(vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkDataSet");
   return 1;
 }
 
-//----------------------------------------------------------------------------
-int vtkShrinkFilter::RequestData(vtkInformation*,
-                                 vtkInformationVector** inputVector,
-                                 vtkInformationVector* outputVector)
+//------------------------------------------------------------------------------
+int vtkShrinkFilter::RequestData(
+  vtkInformation*, vtkInformationVector** inputVector, vtkInformationVector* outputVector)
 {
   // Get input and output data.
   vtkDataSet* input = vtkDataSet::GetData(inputVector[0]);
@@ -66,7 +54,7 @@ int vtkShrinkFilter::RequestData(vtkInformation*,
   // Skip execution if there is no input geometry.
   vtkIdType numCells = input->GetNumberOfCells();
   vtkIdType numPts = input->GetNumberOfPoints();
-  if(numCells < 1 || numPts < 1)
+  if (numCells < 1 || numPts < 1)
   {
     vtkDebugMacro("No data to shrink!");
     return 1;
@@ -75,63 +63,63 @@ int vtkShrinkFilter::RequestData(vtkInformation*,
   // Allocate working space for new and old cell point lists.
   vtkSmartPointer<vtkIdList> ptIds = vtkSmartPointer<vtkIdList>::New();
   vtkSmartPointer<vtkIdList> newPtIds = vtkSmartPointer<vtkIdList>::New();
-  ptIds->Allocate(VTK_CELL_SIZE);
-  newPtIds->Allocate(VTK_CELL_SIZE);
+  ptIds->Reserve(VTK_CELL_SIZE);
+  newPtIds->Reserve(VTK_CELL_SIZE);
 
   // Allocate approximately the space needed for the output cells.
   output->Allocate(numCells);
 
   // Allocate space for a new set of points.
   vtkSmartPointer<vtkPoints> newPts = vtkSmartPointer<vtkPoints>::New();
-  newPts->Allocate(numPts*8, numPts);
+  newPts->Reserve(numPts * 8);
 
   // Allocate space for data associated with the new set of points.
   vtkPointData* inPD = input->GetPointData();
   vtkPointData* outPD = output->GetPointData();
-  outPD->CopyAllocate(inPD, numPts*8, numPts);
+  outPD->CopyAllocate(inPD, numPts * 8, numPts);
 
   // Support progress and abort.
-  vtkIdType tenth = (numCells >= 10? numCells/10 : 1);
-  double numCellsInv = 1.0/numCells;
-  int abort = 0;
+  vtkIdType tenth = (numCells >= 10 ? numCells / 10 : 1);
+  double numCellsInv = 1.0 / numCells;
+  bool abort = false;
 
   // Point Id map.
   vtkIdType* pointMap = new vtkIdType[input->GetNumberOfPoints()];
 
   // Traverse all cells, obtaining node coordinates.  Compute "center"
   // of cell, then create new vertices shrunk towards center.
-  for(vtkIdType cellId = 0; cellId < numCells && !abort; ++cellId)
+  for (vtkIdType cellId = 0; cellId < numCells && !abort; ++cellId)
   {
     // Get the list of points for this cell.
     input->GetCellPoints(cellId, ptIds);
     vtkIdType numIds = ptIds->GetNumberOfIds();
 
     // Periodically update progress and check for an abort request.
-    if(cellId % tenth == 0)
+    if (cellId % tenth == 0)
     {
-      this->UpdateProgress((cellId+1)*numCellsInv);
-      abort = this->GetAbortExecute();
+      this->UpdateProgress((cellId + 1) * numCellsInv);
+      abort = this->CheckAbort();
     }
 
     // Compute the center of mass of the cell points.
-    double center[3] = {0,0,0};
-    for(vtkIdType i=0; i < numIds; ++i)
+    double center[3] = { 0, 0, 0 };
+    for (vtkIdType i = 0; i < numIds; ++i)
     {
       double p[3];
       input->GetPoint(ptIds->GetId(i), p);
-      for(int j=0; j < 3; ++j)
+      for (int j = 0; j < 3; ++j)
       {
         center[j] += p[j];
       }
     }
-    for(int j=0; j < 3; ++j)
+    for (int j = 0; j < 3; ++j)
     {
       center[j] /= numIds;
     }
 
     // Create new points for this cell.
     newPtIds->Reset();
-    for(vtkIdType i=0; i < numIds; ++i)
+    for (vtkIdType i = 0; i < numIds; ++i)
     {
       // Get the old point location.
       double p[3];
@@ -139,9 +127,9 @@ int vtkShrinkFilter::RequestData(vtkInformation*,
 
       // Compute the new point location.
       double newPt[3];
-      for(int j=0; j < 3; ++j)
+      for (int j = 0; j < 3; ++j)
       {
-        newPt[j] = center[j] + this->ShrinkFactor*(p[j] - center[j]);
+        newPt[j] = center[j] + this->ShrinkFactor * (p[j] - center[j]);
       }
 
       // Create the new point for this cell.
@@ -155,15 +143,14 @@ int vtkShrinkFilter::RequestData(vtkInformation*,
     }
 
     // special handling for polyhedron cells
-    if (vtkUnstructuredGrid::SafeDownCast(input) &&
-        input->GetCellType(cellId) == VTK_POLYHEDRON)
+    if (vtkUnstructuredGrid::SafeDownCast(input) && input->GetCellType(cellId) == VTK_POLYHEDRON)
     {
       vtkUnstructuredGrid::SafeDownCast(input)->GetFaceStream(cellId, newPtIds);
       vtkUnstructuredGrid::ConvertFaceStreamPointIds(newPtIds, pointMap);
     }
     else
     {
-      for(vtkIdType i=0; i < numIds; ++i)
+      for (vtkIdType i = 0; i < numIds; ++i)
       {
         newPtIds->InsertId(i, pointMap[ptIds->GetId(i)]);
       }
@@ -183,7 +170,8 @@ int vtkShrinkFilter::RequestData(vtkInformation*,
   // Avoid keeping extra memory around.
   output->Squeeze();
 
-  delete [] pointMap;
+  delete[] pointMap;
 
   return 1;
 }
+VTK_ABI_NAMESPACE_END

@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestGPURayCastUserShader2.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-  This software is distributed WITHOUT ANY WARRANTY; without even
-  the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-  PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 // Description
 // Test the volume mapper's ability to perform shader substitutions based on
@@ -31,26 +19,28 @@
 #include "vtkRenderWindow.h"
 #include "vtkRenderWindowInteractor.h"
 #include "vtkRenderer.h"
+#include "vtkShaderProperty.h"
 #include "vtkTestUtilities.h"
 #include "vtkVolume.h"
 #include "vtkVolumeProperty.h"
+
+#include <iostream>
 
 #include <TestGPURayCastUserShader2_FS.h>
 
 int TestGPURayCastUserShader2(int argc, char* argv[])
 {
-  cout << "CTEST_FULL_OUTPUT (Avoid ctest truncation of output)" << endl;
+  std::cout << "CTEST_FULL_OUTPUT (Avoid ctest truncation of output)" << std::endl;
 
   // Load data
-  char* fname =
-    vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/tooth.nhdr");
+  char* fname = vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/tooth.nhdr");
   vtkNew<vtkNrrdReader> reader;
   reader->SetFileName(fname);
   reader->Update();
   delete[] fname;
 
   vtkImageData* im = reader->GetOutput();
-  double * bounds = im->GetBounds();
+  double* bounds = im->GetBounds();
   double depthRange[2];
   depthRange[0] = vtkMath::Min(bounds[0], bounds[2]);
   depthRange[0] = vtkMath::Min(depthRange[0], bounds[4]);
@@ -68,8 +58,8 @@ int TestGPURayCastUserShader2(int argc, char* argv[])
   // Prepare 1D Transfer Functions
   vtkNew<vtkColorTransferFunction> ctf;
   ctf->AddRGBPoint(depthRange[0], 1.0, 0.0, 0.0);
-  ctf->AddRGBPoint(0.5*(depthRange[0]+depthRange[1]), 0.5, 0.5, 0.5);
-  ctf->AddRGBPoint(0.8*(depthRange[0]+depthRange[1]), 0.5, 0.4, 0.6);
+  ctf->AddRGBPoint(0.5 * (depthRange[0] + depthRange[1]), 0.5, 0.5, 0.5);
+  ctf->AddRGBPoint(0.8 * (depthRange[0] + depthRange[1]), 0.5, 0.4, 0.6);
   ctf->AddRGBPoint(depthRange[1], 0.0, 1.0, 1.0);
 
   vtkNew<vtkPiecewiseFunction> pf;
@@ -84,24 +74,27 @@ int TestGPURayCastUserShader2(int argc, char* argv[])
   vtkNew<vtkOpenGLGPUVolumeRayCastMapper> mapper;
   mapper->SetInputConnection(reader->GetOutputPort());
   mapper->SetUseJittering(0);
-  // Clear all custom shader tag replacements
-  // The following code is mainly for regression testing as we do not have any
-  // custom shader replacements.
-  mapper->ClearAllShaderReplacements(vtkShader::Vertex);
-  mapper->ClearAllShaderReplacements(vtkShader::Fragment);
-  mapper->ClearAllShaderReplacements(vtkShader::Geometry);
-  mapper->ClearAllShaderReplacements();
 
   // Tell the mapper to use the min and max of the color function nodes as the
   // lookup table range instead of the volume scalar range.
   mapper->SetColorRangeType(vtkGPUVolumeRayCastMapper::NATIVE);
 
+  vtkNew<vtkShaderProperty> shaderProperty;
+  // Clear all custom shader tag replacements
+  // The following code is mainly for regression testing as we do not have any
+  // custom shader replacements.
+  shaderProperty->ClearAllVertexShaderReplacements();
+  shaderProperty->ClearAllFragmentShaderReplacements();
+  shaderProperty->ClearAllGeometryShaderReplacements();
+  shaderProperty->ClearAllShaderReplacements();
+
   // Modify the shader to color based on the depth of the translucent voxel
-  mapper->SetFragmentShaderCode(TestGPURayCastUserShader2_FS);
+  shaderProperty->SetFragmentShaderCode(TestGPURayCastUserShader2_FS);
 
   vtkNew<vtkVolume> volume;
   volume->SetMapper(mapper.GetPointer());
   volume->SetProperty(volumeProperty.GetPointer());
+  volume->SetShaderProperty(shaderProperty);
 
   vtkNew<vtkRenderWindow> renWin;
   renWin->SetMultiSamples(0);

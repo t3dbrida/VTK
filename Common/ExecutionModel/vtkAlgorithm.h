@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkAlgorithm.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkAlgorithm
  * @brief   Superclass for all sources, filters, and sinks in VTK.
@@ -27,14 +15,17 @@
  * controlled by instances of vtkExecutive.  Every vtkAlgorithm
  * instance has an associated vtkExecutive when it is used in a
  * pipeline.  The executive is responsible for data flow.
-*/
+ */
 
 #ifndef vtkAlgorithm_h
 #define vtkAlgorithm_h
 
+#include "vtkArrayComponents.h"            // For enum
 #include "vtkCommonExecutionModelModule.h" // For export macro
 #include "vtkObject.h"
+#include "vtkWrappingHints.h" // For VTK_MARSHALMANUAL
 
+VTK_ABI_NAMESPACE_BEGIN
 class vtkAbstractArray;
 class vtkAlgorithmInternals;
 class vtkAlgorithmOutput;
@@ -50,23 +41,29 @@ class vtkInformationStringVectorKey;
 class vtkInformationVector;
 class vtkProgressObserver;
 
-class VTKCOMMONEXECUTIONMODEL_EXPORT vtkAlgorithm : public vtkObject
+class VTKCOMMONEXECUTIONMODEL_EXPORT VTK_MARSHALMANUAL vtkAlgorithm : public vtkObject
 {
 public:
-  static vtkAlgorithm *New();
-  vtkTypeMacro(vtkAlgorithm,vtkObject);
+  static vtkAlgorithm* New();
+  vtkTypeMacro(vtkAlgorithm, vtkObject);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
   /**
    * Values used for setting the desired output precision for various
    * algorithms. Currently, the following algorithms support changing their
-   * output precision: vtkAppendFilter, vtkAppendPoints, vtkContourFilter,
-   * vtkContourGrid, vtkCutter, vtkGlyph3D, vtkGeometryFilter,
-   * vtkGridSynchronizedTemplates3D,
-   * vtkPolyDataNormals, vtkSynchronizedTemplatesCutter3D,
-   * vtkTableBasedClipDataSet, vtkThreshold, vtkTransformFilter, and
-   * vtkTransformPolyData.
-
+   * output precision: vtkAppendPolyData, vtkCleanPolyData, vtkClipPolyData,
+   * vtkConnectivityFilter, vtkDecimatePolylineFilter, vtkDecimatePro, vtkDelaunay3D,
+   * vtkFeatureEdges, vtkGlyph3D, vtkHedgeHog, vtkMaskPoints, vtkPolyDataConnectivityFilter,
+   * vtkSmoothPolyDataFilter, vtkStaticCleanPolyData, vtkThresholdPoints, vtkTubeFilter,
+   * vtkAppendPoints, vtkTransformFilter, vtkTransformPolyDataFilter,
+   * vtkLinearToQuadraticCellsFilter, vtkProcrustesAlignmentFilter,
+   * vtkAdaptiveSubdivisionFilter, vtkBoundedPointSource, vtkArcSource, vtkConeSource,
+   * vtkCubeSource, vtkCylinderSource, vtkDiskSource, vtkEllipseArcSource,
+   * vtkEllipticalButtonSource, vtkFrustumSource, vtkGlyphSource2D, vtkLineSource,
+   * vtkOutlineSource, vtkParametricFunctionSource, vtkPlaneSource, vtkPlatonicSolidSource,
+   * vtkPointSource, vtkRectangularButtonSource, vtkRegularPolygonSource, vtkSphereSource,
+   * vtkSuperquadricSource, vtkTessellatedBoxSource, vtkTextSource, vtkTexturedSphereSource,
+   * vtkImageToPoints, vtkDepthImageToPointCloud.
    * SINGLE_PRECISION - Output single-precision floating-point (i.e. float)
    * DOUBLE_PRECISION - Output double-precision floating-point (i.e. double)
    * DEFAULT_PRECISION - Output precision should match the input precision.
@@ -82,7 +79,7 @@ public:
    * Check whether this algorithm has an assigned executive.  This
    * will NOT create a default executive.
    */
-  int HasExecutive();
+  vtkTypeBool HasExecutive();
 
   /**
    * Get this algorithm's executive.  If it has none, a default
@@ -120,29 +117,23 @@ public:
    * It returns the boolean status of the pipeline (false
    * means failure).
    */
-  virtual int ProcessRequest(vtkInformation* request,
-                             vtkInformationVector** inInfo,
-                             vtkInformationVector* outInfo);
+  virtual vtkTypeBool ProcessRequest(
+    vtkInformation* request, vtkInformationVector** inInfo, vtkInformationVector* outInfo);
 
   /**
    * Version of ProcessRequest() that is wrapped. This converts the
    * collection to an array and calls the other version.
    */
-  int ProcessRequest(vtkInformation* request,
-                     vtkCollection* inInfo,
-                     vtkInformationVector* outInfo);
+  vtkTypeBool ProcessRequest(
+    vtkInformation* request, vtkCollection* inInfo, vtkInformationVector* outInfo);
 
   /**
    * A special version of ProcessRequest meant specifically for the
    * pipeline modified time request.  See
    * vtkExecutive::ComputePipelineMTime() for details.
    */
-  virtual int
-  ComputePipelineMTime(vtkInformation* request,
-                       vtkInformationVector** inInfoVec,
-                       vtkInformationVector* outInfoVec,
-                       int requestFromOutputPort,
-                       vtkMTimeType* mtime);
+  virtual int ComputePipelineMTime(vtkInformation* request, vtkInformationVector** inInfoVec,
+    vtkInformationVector* outInfoVec, int requestFromOutputPort, vtkMTimeType* mtime);
 
   /**
    * This method gives the algorithm a chance to modify the contents of a
@@ -169,13 +160,13 @@ public:
    */
   vtkInformation* GetOutputPortInformation(int port);
 
-  //@{
+  ///@{
   /**
    * Set/Get the information object associated with this algorithm.
    */
   vtkGetObjectMacro(Information, vtkInformation);
   virtual void SetInformation(vtkInformation*);
-  //@}
+  ///@}
 
   /**
    * Get the number of input ports used by the algorithm.
@@ -187,31 +178,34 @@ public:
    */
   int GetNumberOfOutputPorts();
 
-  //@{
+  ///@{
   /**
    * Participate in garbage collection.
    */
-  void Register(vtkObjectBase* o) override;
-  void UnRegister(vtkObjectBase* o) override;
-  //@}
+  bool UsesGarbageCollector() const override { return true; }
+  ///@}
 
-  //@{
+  /**
+   *  Set AbortExecute Flag and update LastAbortTime.
+   */
+  void SetAbortExecuteAndUpdateTime();
+
+  ///@{
   /**
    * Set/Get the AbortExecute flag for the process object. Process objects
    * may handle premature termination of execution in different ways.
    */
-  vtkSetMacro(AbortExecute,vtkTypeBool);
-  vtkGetMacro(AbortExecute,vtkTypeBool);
-  vtkBooleanMacro(AbortExecute,vtkTypeBool);
-  //@}
+  vtkSetMacro(AbortExecute, vtkTypeBool);
+  vtkGetMacro(AbortExecute, vtkTypeBool);
+  vtkBooleanMacro(AbortExecute, vtkTypeBool);
+  ///@}
 
-  //@{
+  ///@{
   /**
-   * Set/Get the execution progress of a process object.
+   * Get the execution progress of a process object.
    */
-  vtkSetClampMacro(Progress,double,0.0,1.0);
-  vtkGetMacro(Progress,double);
-  //@}
+  vtkGetMacro(Progress, double);
+  ///@}
 
   /**
    * Update the progress of the process object. If a ProgressMethod exists,
@@ -220,7 +214,56 @@ public:
    */
   void UpdateProgress(double amount);
 
-  //@{
+  /**
+   * Checks to see if this filter should abort.
+   */
+  bool CheckAbort();
+
+  ///@{
+  /**
+   * Set/get a Container algorithm for this algorithm. Allows this algorithm
+   * to check to abort status of its Container algorithm as well as have access
+   * to its Container's information.
+   */
+  void SetContainerAlgorithm(vtkAlgorithm* containerAlg)
+  {
+    this->ContainerAlgorithm = containerAlg;
+  }
+  vtkAlgorithm* GetContainerAlgorithm() { return this->ContainerAlgorithm; }
+  ///@}
+
+  ///@{
+  /**
+   * Set/Get an internal variable used to communicate between the algorithm and
+   * executive. If the executive sees this value is set, it will initialize
+   * the output data and pass the ABORTED flag downstream.
+   *
+   * CheckAbort sets this value to true if the function returns true.
+   */
+  vtkSetMacro(AbortOutput, bool);
+  vtkGetMacro(AbortOutput, bool);
+  vtkBooleanMacro(AbortOutput, bool);
+  ///@}
+
+  ///@{
+  /**
+   * Specify the shift and scale values to use to apply to the progress amount
+   * when `UpdateProgress` is called. By default shift is set to 0, and scale is
+   * set to 1.0. This is useful when the vtkAlgorithm instance is used as an
+   * internal algorithm to solve only a part of a whole problem.
+   *
+   * If calling on a internal vtkAlgorithm, make sure you take into
+   * consideration that values set of the outer vtkAlgorithm as well since the
+   * outer vtkAlgorithm itself may be nested in another algorithm.
+   *
+   * @note SetProgressShiftScale does not modify the MTime of the algorithm.
+   */
+  void SetProgressShiftScale(double shift, double scale);
+  vtkGetMacro(ProgressShift, double);
+  vtkGetMacro(ProgressScale, double);
+  ///@}
+
+  ///@{
   /**
    * Set the current text message associated with the progress state.
    * This may be used by a calling process/GUI.
@@ -230,18 +273,18 @@ public:
    */
   void SetProgressText(const char* ptext);
   vtkGetStringMacro(ProgressText);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * The error code contains a possible error that occurred while
    * reading or writing the file.
    */
-  vtkGetMacro( ErrorCode, unsigned long );
-  //@}
+  vtkGetMacro(ErrorCode, unsigned long);
+  ///@}
 
   // left public for performance since it is used in inner loops
-  vtkTypeBool AbortExecute;
+  std::atomic<vtkTypeBool> AbortExecute;
 
   /**
    * Keys used to specify input port requirements.
@@ -297,60 +340,178 @@ public:
    */
   static vtkInformationIntegerKey* CAN_HANDLE_PIECE_REQUEST();
 
-
-  //@{
   /**
-   * Set the input data arrays that this algorithm will
-   * process. Specifically the idx array that this algorithm will process
-   * (starting from 0) is the array on port, connection with the specified
-   * association and name or attribute type (such as SCALARS). The
-   * fieldAssociation refers to which field in the data object the array is
-   * stored. See vtkDataObject::FieldAssociations for detail.
+   *
+   * \ingroup InformationKeys
    */
-  virtual void SetInputArrayToProcess(int idx, int port, int connection,
-                              int fieldAssociation,
-                              const char *name);
-  virtual void SetInputArrayToProcess(int idx, int port, int connection,
-                              int fieldAssociation,
-                              int fieldAttributeType);
-  virtual void SetInputArrayToProcess(int idx, vtkInformation *info);
-  //@}
+  static vtkInformationIntegerKey* ABORTED();
+
+  ///@{
+  /**
+   * Set the input data arrays that this algorithm will process.
+   * Default to SetInputArrayToProcess(0, 0, 0, fieldAssociation, name)
+   * @param name the name of the array to process
+   * @param fieldAssociation the field in the data object where the array is stored.
+   * See vtkDataObject::FieldAssociations for detail.
+   * @param component If provided, this must be a non-negative integer or a value from
+   * the vtkArrayComponents enumeration.
+   *
+   * The value of \a component determines how tuple values from the array
+   * should be processed. You may choose whether a single component of the array
+   * should be considered in isolation, a norm of each tuple value be computed, or
+   * the entire tuple value should be used.
+   * The default is for the entire tuple to be used.
+   *
+   * @see void SetInputArrayToProcess(int, int, int, int, const char*)
+   */
+  void SetInputArrayToProcess(
+    const char* name, int fieldAssociation, int component = vtkArrayComponents::AllComponents);
+  ///@}
+  ///@{
+  /**
+   * Set the input data arrays that this algorithm will process.
+   *
+   * The array is expected to be in the input data object specified by
+   * (\a port, \a connection), and is stored under the given
+   * \a fieldAssociation with given \a name.
+   * You may request the algorithm use a single \a component or norm of
+   * the array, however algorithms may ignore this (especially algorithms
+   * written before this feature was implemented).
+   * Internally, this algorithm references it at the \a idx-th position.
+   *
+   * Full signature with array name.
+   *
+   * @param idx the intern index of the array, in vtkAlgorithm scope.
+   * Useful for algorithm expecting different arrays to work.
+   * @param port the algorithm input port of the data object where to look for the requested array.
+   * @param connection the algorithm input connection of the data object where to look for the
+   * requested array.
+   * @param fieldAssociation the field in the data object where the array is stored.
+   * See vtkDataObject::FieldAssociations for detail.
+   * @param name the name of the array to process
+   */
+  virtual void SetInputArrayToProcess(
+    int idx, int port, int connection, int fieldAssociation, const char* name);
+  /**
+   * This method variant also accepts a \a component to consider rather than the entire tuple.
+   *
+   * @param idx the intern index of the array, in vtkAlgorithm scope.
+   * Useful for algorithm expecting different arrays to work.
+   * @param port the algorithm input port of the data object where to look for the requested array.
+   * @param connection the algorithm input connection of the data object where to look for the
+   * requested array.
+   * @param fieldAssociation the field in the data object where the array is stored.
+   * See vtkDataObject::FieldAssociations for detail.
+   * @param name the name of the array to process
+   * @param component the component of the array to process.
+   * See vtkArrayComponents.h for special values to indicate norms, etc.
+   */
+  virtual void SetInputArrayToProcess(
+    int idx, int port, int connection, int fieldAssociation, const char* name, int component);
+  ///@}
+
+  ///@{
+  /**
+   * Set the input data arrays that this algorithm will process.
+   * Full signature with attribute type.
+   *
+   * @param idx the intern index of the array, in vtkAlgorithm scope.
+   * Useful for algorithm expecting different arrays to work.
+   * @param port the algorithm input port of the data object where to look for the requested array.
+   * @param connection the algorithm input connection of the data object where to look for the
+   * requested array.
+   * @param fieldAssociation the field in the data object where the array is stored.
+   * See vtkDataObject::FieldAssociations for detail.
+   * @param fieldAttributeType the attribute type related to the array to use.
+   * See vtkDataSetAttributes::AttributeTypes for possible values.
+   */
+  virtual void SetInputArrayToProcess(
+    int idx, int port, int connection, int fieldAssociation, int fieldAttributeType);
+  /**
+   * This method variant also accepts a \a component to consider rather than the entire tuple.
+   *
+   * @param idx the intern index of the array, in vtkAlgorithm scope.
+   * Useful for algorithm expecting different arrays to work.
+   * @param port the algorithm input port of the data object where to look for the requested array.
+   * @param connection the algorithm input connection of the data object where to look for the
+   * requested array.
+   * @param fieldAssociation the field in the data object where the array is stored.
+   * See vtkDataObject::FieldAssociations for detail.
+   * @param fieldAttributeType the attribute type related to the array to use.
+   * See vtkDataSetAttributes::AttributeTypes for possible values.
+   * @param component the component of the array to process.
+   * See vtkArrayComponents.h for special values to indicate norms, etc.
+   */
+  virtual void SetInputArrayToProcess(
+    int idx, int port, int connection, int fieldAssociation, int fieldAttributeType, int component);
+  ///@}
 
   /**
-   * String based versions of SetInputArrayToProcess(). Because
+   * Set the input data arrays that this algorithm will process.
+   * Alternative variant that copy information into relevant InputArrayInformation.
+   */
+  virtual void SetInputArrayToProcess(int idx, vtkInformation* info);
+
+  ///@{
+  /**
+   * Set the input data arrays that this algorithm will process.
+   * String based version of SetInputArrayToProcess(). Because
    * fieldAssociation and fieldAttributeType are enums, they cannot be
    * easily accessed from scripting language. These methods provides an
    * easy and safe way of passing association and attribute type
-   * information. Field association is one of the following:
-   * @verbatim
-   * vtkDataObject::FIELD_ASSOCIATION_POINTS
-   * vtkDataObject::FIELD_ASSOCIATION_CELLS
-   * vtkDataObject::FIELD_ASSOCIATION_NONE
-   * vtkDataObject::FIELD_ASSOCIATION_POINTS_THEN_CELLS
-   * @endverbatim
+   * information.
+   *
+   * Field association is one of the following:
+   * - vtkDataObject::FIELD_ASSOCIATION_POINTS
+   * - vtkDataObject::FIELD_ASSOCIATION_CELLS
+   * - vtkDataObject::FIELD_ASSOCIATION_NONE
+   * - vtkDataObject::FIELD_ASSOCIATION_POINTS_THEN_CELLS
+   *
    * Attribute type is one of the following:
-   * @verbatim
-   * vtkDataSetAttributes::SCALARS
-   * vtkDataSetAttributes::VECTORS
-   * vtkDataSetAttributes::NORMALS
-   * vtkDataSetAttributes::TCOORDS
-   * vtkDataSetAttributes::TENSORS
-   * @endverbatim
-   * If the last argument is not an attribute type, it is assumed to
-   * be an array name.
+   * - vtkDataSetAttributes::SCALARS
+   * - vtkDataSetAttributes::VECTORS
+   * - vtkDataSetAttributes::NORMALS
+   * - vtkDataSetAttributes::TCOORDS
+   * - vtkDataSetAttributes::TENSORS
+   *
+   * If the \a attributeTypeOrName argument is not an attribute type above,
+   * it is assumed to be an array name.
+   *
+   * If the \a component argument is not "All", "L1Norm", or "L2Norm" (see
+   * the enum in `vtkArrayComponents.h`), then its string should be convertible
+   * to a non-negative integer component index.
+   *
+   * @see void SetInputArrayToProcess(int, int, int, int, int, int)
    */
   virtual void SetInputArrayToProcess(int idx, int port, int connection,
-                              const char* fieldAssociation,
-                              const char* attributeTypeorName);
+    const char* fieldAssociation, const char* attributeTypeorName);
+  virtual void SetInputArrayToProcess(int idx, int port, int connection,
+    const char* fieldAssociation, const char* attributeTypeorName, const char* component);
+  ///@}
+
+  /**
+   * Get the number of input array indices that have already been set.
+   */
+  int GetNumberOfInputArraySpecifications();
+
+  /**
+   * Clear all existing input array specifications (as if SetInputArrayToProcess had
+   * never been called).
+   *
+   * This allows users to easily reconfigure a filter that accepts a variable number
+   * of arrays to process.
+   * The return value is true if any specifications existed before the call (and
+   * thus this->Modified() was called) and false otherwise (indicating the algorithm was
+   * not modified).
+   */
+  bool ResetInputArraySpecifications();
 
   /**
    * Get the info object for the specified input array to this algorithm
    */
-  vtkInformation *GetInputArrayInformation(int idx);
+  vtkInformation* GetInputArrayInformation(int idx);
 
   // from here down are convenience methods that really are executive methods
-
-
 
   /**
    * Remove all the input data.
@@ -367,10 +528,9 @@ public:
    * Get the data object that will contain the algorithm input for the given
    * port and given connection.
    */
-  vtkDataObject *GetInputDataObject(int port,
-                                    int connection);
+  vtkDataObject* GetInputDataObject(int port, int connection);
 
-  //@{
+  ///@{
   /**
    * Set the connection for the given input port index.  Each input
    * port of a filter has a specific purpose.  A port may have zero or
@@ -386,9 +546,9 @@ public:
    */
   virtual void SetInputConnection(int port, vtkAlgorithmOutput* input);
   virtual void SetInputConnection(vtkAlgorithmOutput* input);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Add a connection to the given input port index.  See
    * SetInputConnection() for details on input connections.  This
@@ -400,7 +560,7 @@ public:
    */
   virtual void AddInputConnection(int port, vtkAlgorithmOutput* input);
   virtual void AddInputConnection(vtkAlgorithmOutput* input);
-  //@}
+  ///@}
 
   /**
    * Remove a connection from the given input port index.  See
@@ -432,8 +592,7 @@ public:
    * change unless the data object changed.
    */
   virtual void SetInputDataObject(int port, vtkDataObject* data);
-  virtual void SetInputDataObject(vtkDataObject* data)
-    { this->SetInputDataObject(0, data); }
+  virtual void SetInputDataObject(vtkDataObject* data) { this->SetInputDataObject(0, data); }
 
   /**
    * Add the data-object as an input to this given port. This will add a new
@@ -441,8 +600,7 @@ public:
    * connections on the same input port.
    */
   virtual void AddInputDataObject(int port, vtkDataObject* data);
-  virtual void AddInputDataObject(vtkDataObject* data)
-    { this->AddInputDataObject(0, data); }
+  virtual void AddInputDataObject(vtkDataObject* data) { this->AddInputDataObject(0, data); }
 
   /**
    * Get a proxy object corresponding to the given output port of this
@@ -451,8 +609,7 @@ public:
    * RemoveInputConnection() methods to modify pipeline connectivity.
    */
   vtkAlgorithmOutput* GetOutputPort(int index);
-  vtkAlgorithmOutput* GetOutputPort() {
-    return this->GetOutputPort(0); }
+  vtkAlgorithmOutput* GetOutputPort() { return this->GetOutputPort(0); }
 
   /**
    * Get the number of inputs currently connected to a port.
@@ -483,10 +640,7 @@ public:
   /**
    * Equivalent to GetInputAlgorithm(0, 0).
    */
-  vtkAlgorithm* GetInputAlgorithm()
-  {
-    return this->GetInputAlgorithm(0, 0);
-  }
+  vtkAlgorithm* GetInputAlgorithm() { return this->GetInputAlgorithm(0, 0); }
 
   /**
    * Returns the executive associated with a particular input
@@ -497,10 +651,7 @@ public:
   /**
    * Equivalent to GetInputExecutive(0, 0)
    */
-  vtkExecutive* GetInputExecutive()
-  {
-    return this->GetInputExecutive(0, 0);
-  }
+  vtkExecutive* GetInputExecutive() { return this->GetInputExecutive(0, 0); }
 
   /**
    * Return the information object that is associated with
@@ -515,10 +666,7 @@ public:
   /**
    * Equivalent to GetInputInformation(0, 0)
    */
-  vtkInformation* GetInputInformation()
-  {
-    return this->GetInputInformation(0, 0);
-  }
+  vtkInformation* GetInputInformation() { return this->GetInputInformation(0, 0); }
 
   /**
    * Return the information object that is associated with
@@ -529,13 +677,15 @@ public:
    */
   vtkInformation* GetOutputInformation(int port);
 
-  //@{
+  ///@{
   /**
    * Bring this algorithm's outputs up-to-date.
    */
-  virtual void Update(int port);
-  virtual void Update();
-  //@}
+  VTK_UNBLOCKTHREADS
+  virtual bool Update(int port);
+  VTK_UNBLOCKTHREADS
+  virtual bool Update();
+  ///@}
 
   /**
    * This method enables the passing of data requests to the algorithm
@@ -559,14 +709,14 @@ public:
    * Available requests include UPDATE_PIECE_NUMBER(), UPDATE_NUMBER_OF_PIECES()
    * UPDATE_EXTENT() etc etc.
    */
-  virtual int Update(int port, vtkInformationVector* requests);
+  virtual vtkTypeBool Update(int port, vtkInformationVector* requests);
 
   /**
    * Convenience method to update an algorithm after passing requests
    * to its first output port. See documentation for
    * Update(int port, vtkInformationVector* requests) for details.
    */
-  virtual int Update(vtkInformation* requests);
+  virtual vtkTypeBool Update(vtkInformation* requests);
 
   /**
    * Convenience method to update an algorithm after passing requests
@@ -575,13 +725,14 @@ public:
    * Supports piece and extent (optional) requests.
    */
   virtual int UpdatePiece(
-    int piece, int numPieces, int ghostLevels, const int extents[6]=nullptr);
+    int piece, int numPieces, int ghostLevels, const int extents[6] = nullptr);
 
   /**
    * Convenience method to update an algorithm after passing requests
    * to its first output port.
    * Supports extent request.
    */
+  VTK_UNBLOCKTHREADS
   virtual int UpdateExtent(const int extents[6]);
 
   /**
@@ -590,18 +741,20 @@ public:
    * Update(int port, vtkInformationVector* requests) for details.
    * Supports time, piece (optional) and extent (optional) requests.
    */
-  virtual int UpdateTimeStep(double time,
-    int piece=-1, int numPieces=1, int ghostLevels=0, const int extents[6]=nullptr);
+  VTK_UNBLOCKTHREADS
+  virtual int UpdateTimeStep(double time, int piece = -1, int numPieces = 1, int ghostLevels = 0,
+    const int extents[6] = nullptr);
 
   /**
    * Bring the algorithm's information up-to-date.
    */
-  virtual void UpdateInformation();
+  VTK_UNBLOCKTHREADS
+  virtual bool UpdateInformation();
 
   /**
    * Create output object(s).
    */
-  virtual void UpdateDataObject();
+  virtual bool UpdateDataObject();
 
   /**
    * Propagate meta-data upstream.
@@ -611,7 +764,8 @@ public:
   /**
    * Bring this algorithm's outputs up-to-date.
    */
-  virtual void UpdateWholeExtent();
+  VTK_UNBLOCKTHREADS
+  virtual bool UpdateWholeExtent();
 
   /**
    * Convenience routine to convert from a linear ordering of input
@@ -620,33 +774,33 @@ public:
   void ConvertTotalInputToPortConnection(int ind, int& port, int& conn);
 
   //======================================================================
-  //The following block of code is to support old style VTK applications. If
-  //you are using these calls there are better ways to do it in the new
-  //pipeline
+  // The following block of code is to support old style VTK applications. If
+  // you are using these calls there are better ways to do it in the new
+  // pipeline
   //======================================================================
 
-  //@{
+  ///@{
   /**
    * Turn release data flag on or off for all output ports.
    */
-  virtual void SetReleaseDataFlag(int);
-  virtual int GetReleaseDataFlag();
+  virtual void SetReleaseDataFlag(vtkTypeBool);
+  virtual vtkTypeBool GetReleaseDataFlag();
   void ReleaseDataFlagOn();
   void ReleaseDataFlagOff();
-  //@}
+  ///@}
 
   //========================================================================
 
-  //@{
+  ///@{
   /**
    * This detects when the UpdateExtent will generate no data
    * This condition is satisfied when the UpdateExtent has
    * zero volume (0,-1,...) or the UpdateNumberOfPieces is 0.
    * The source uses this call to determine whether to call Execute.
    */
-  int UpdateExtentIsEmpty(vtkInformation *pinfo, vtkDataObject *output);
-  int UpdateExtentIsEmpty(vtkInformation *pinfo, int extentType);
-  //@}
+  int UpdateExtentIsEmpty(vtkInformation* pinfo, vtkDataObject* output);
+  int UpdateExtentIsEmpty(vtkInformation* pinfo, int extentType);
+  ///@}
 
   /**
    * If the DefaultExecutivePrototype is set, a copy of it is created
@@ -654,56 +808,38 @@ public:
    */
   static void SetDefaultExecutivePrototype(vtkExecutive* proto);
 
-  //@{
+  ///@{
   /**
    * These functions return the update extent for output ports that
    * use 3D extents. Where port is not specified, it is assumed to
    * be 0.
    */
-  int* GetUpdateExtent() VTK_SIZEHINT(6)
-  {
-    return this->GetUpdateExtent(0);
-  }
+  int* GetUpdateExtent() VTK_SIZEHINT(6) { return this->GetUpdateExtent(0); }
   int* GetUpdateExtent(int port) VTK_SIZEHINT(6);
-  void GetUpdateExtent(int& x0, int& x1, int& y0, int& y1,
-                       int& z0, int& z1)
+  void GetUpdateExtent(int& x0, int& x1, int& y0, int& y1, int& z0, int& z1)
   {
     this->GetUpdateExtent(0, x0, x1, y0, y1, z0, z1);
   }
-  void GetUpdateExtent(int port,
-                       int& x0, int& x1, int& y0, int& y1,
-                       int& z0, int& z1);
-  void GetUpdateExtent(int extent[6])
-  {
-    this->GetUpdateExtent(0, extent);
-  }
+  void GetUpdateExtent(int port, int& x0, int& x1, int& y0, int& y1, int& z0, int& z1);
+  void GetUpdateExtent(int extent[6]) { this->GetUpdateExtent(0, extent); }
   void GetUpdateExtent(int port, int extent[6]);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * These functions return the update extent for output ports that
    * use piece extents. Where port is not specified, it is assumed to
    * be 0.
    */
-  int GetUpdatePiece()
-  {
-    return this->GetUpdatePiece(0);
-  }
+  int GetUpdatePiece() { return this->GetUpdatePiece(0); }
   int GetUpdatePiece(int port);
-  int GetUpdateNumberOfPieces()
-  {
-    return this->GetUpdateNumberOfPieces(0);
-  }
+  int GetUpdateNumberOfPieces() { return this->GetUpdateNumberOfPieces(0); }
   int GetUpdateNumberOfPieces(int port);
-  int GetUpdateGhostLevel()
-  {
-    return this->GetUpdateGhostLevel(0);
-  }
+  int GetUpdateGhostLevel() { return this->GetUpdateGhostLevel(0); }
   int GetUpdateGhostLevel(int port);
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * If an ProgressObserver is set, the algorithm will report
    * progress through it rather than directly. This means that
@@ -715,11 +851,39 @@ public:
    */
   void SetProgressObserver(vtkProgressObserver*);
   vtkGetObjectMacro(ProgressObserver, vtkProgressObserver);
-  //@}
+  ///@}
+
+  ///@{
+  /**
+   * Set to all output ports of this algorithm the information key
+   * `vtkStreamingDemandDrivenPipeline::NO_PRIOR_TEMPORAL_ACCESS()`. This should
+   * be set on sources of pipelines for which all timesteps are not necessarily
+   * all available at once. This is typically the case for visualization in situ.
+   *
+   * @note Default value in `vtkStreamingDemandDrivenPipeline::NO_PRIOR_TEMPORAL_ACCESS_RESET`.
+   * `vtkStreamingDemandDrivenPipeline` will set it to `NO_PRIOR_TEMPORAL_ACCESS_CONTINUE' after
+   * execution of the first time step.
+   */
+  void SetNoPriorTemporalAccessInformationKey(int key);
+  void SetNoPriorTemporalAccessInformationKey();
+  ///@}
+
+  /**
+   * Removes any information key `vtkStreamingDemandDrivenPipeline::NO_PRIOR_TEMPORAL_ACCESS()`
+   * to all output ports of this `vtkAlgorithm`.
+   */
+  void RemoveNoPriorTemporalAccessInformationKey();
 
 protected:
   vtkAlgorithm();
   ~vtkAlgorithm() override;
+
+  // Time stamp to store the last time any filter was aborted.
+  static vtkTimeStamp LastAbortTime;
+
+  // Time stamp to store the last time this filter checked for an
+  // abort.
+  vtkTimeStamp LastAbortCheckTime;
 
   // Keys used to indicate that input/output port information has been
   // filled.
@@ -727,6 +891,12 @@ protected:
 
   // Arbitrary extra information associated with this algorithm
   vtkInformation* Information;
+
+  /**
+   * Checks to see if an upstream filter has been aborted. If an abort
+   * has occurred, return true.
+   */
+  bool CheckUpstreamAbort();
 
   /**
    * Fill the input port information objects for this algorithm.  This
@@ -757,12 +927,12 @@ protected:
   int OutputPortIndexInRange(int index, const char* action);
 
   /**
-   * Get the assocition of the actual data array for the input array specified
+   * Get the association of the actual data array for the input array specified
    * by idx, this is only reasonable during the REQUEST_DATA pass.
    */
-  int GetInputArrayAssociation(int idx, vtkInformationVector **inputVector);
+  int GetInputArrayAssociation(int idx, vtkInformationVector** inputVector);
 
-  //@{
+  ///@{
   /**
    * Filters that have multiple connections on one port can use
    * this signature. This will override the connection id that the
@@ -771,24 +941,42 @@ protected:
    * that information is used to obtain arrays for all the connection
    * on the port with the appropriate connection id substituted.
    */
-  int GetInputArrayAssociation(int idx, int connection,
-                               vtkInformationVector **inputVector);
+  int GetInputArrayAssociation(int idx, int connection, vtkInformationVector** inputVector);
   int GetInputArrayAssociation(int idx, vtkDataObject* input);
-  //@}
+  ///@}
 
+  /**
+   * Get the component to process of the actual data array for the input
+   * array specified by \a idx, this is only reasonable during the REQUEST_DATA pass.
+   *
+   * This value may either be a component index (when non-negative) or a
+   * special value from the vtkArrayComponents enumeration.
+   *
+   * This currently presumes that all input data on the same \a idx must have
+   * matching array components. For example, consider an algorithm that wishes
+   * to process one component of a 6-value symmetric strain tensor. All the blocks
+   * of a composite dataset at \a idx must have the strain tensor components
+   * ordered the same way so that "σ₃₃" can be extracted.
+   * If one dataset ordered strain (σ₁₁, σ₂₂, σ₃₃, σ₁₂, σ₁₃, σ₂₃) while
+   * the other used (σ₁₁, σ₁₂, σ₁₃, σ₂₂, σ₂₃, σ₃₃) different physical strains would
+   * be present at index 2 (σ₃₃ for the first dataset and σ₁₃ for the second).
+   *
+   * At some point in the future, it may be possible to request named components
+   * rather than fixed component indices.
+   */
+  int GetInputArrayComponent(int idx);
 
-  //@{
+  ///@{
   /**
    * Get the actual data array for the input array specified by idx, this is
    * only reasonable during the REQUEST_DATA pass
    */
-  vtkDataArray *GetInputArrayToProcess(int idx,vtkInformationVector **inputVector);
-  vtkDataArray *GetInputArrayToProcess(int idx,
-                                       vtkInformationVector **inputVector,
-                                       int& association);
-  //@}
+  vtkDataArray* GetInputArrayToProcess(int idx, vtkInformationVector** inputVector);
+  vtkDataArray* GetInputArrayToProcess(
+    int idx, vtkInformationVector** inputVector, int& association);
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Filters that have multiple connections on one port can use
    * this signature. This will override the connection id that the
@@ -797,32 +985,24 @@ protected:
    * that information is used to obtain arrays for all the connection
    * on the port with the appropriate connection id substituted.
    */
-  vtkDataArray *GetInputArrayToProcess(int idx,
-                                       int connection,
-                                       vtkInformationVector **inputVector);
-  vtkDataArray *GetInputArrayToProcess(int idx,
-                                       int connection,
-                                       vtkInformationVector **inputVector,
-                                       int& association);
-  vtkDataArray *GetInputArrayToProcess(int idx,
-                                       vtkDataObject* input);
-  vtkDataArray *GetInputArrayToProcess(int idx,
-                                       vtkDataObject* input,
-                                       int& association);
-  //@}
+  vtkDataArray* GetInputArrayToProcess(int idx, int connection, vtkInformationVector** inputVector);
+  vtkDataArray* GetInputArrayToProcess(
+    int idx, int connection, vtkInformationVector** inputVector, int& association);
+  vtkDataArray* GetInputArrayToProcess(int idx, vtkDataObject* input);
+  vtkDataArray* GetInputArrayToProcess(int idx, vtkDataObject* input, int& association);
+  ///@}
 
-
-  //@{
+  ///@{
   /**
    * Get the actual data array for the input array specified by idx, this is
    * only reasonable during the REQUEST_DATA pass
    */
-  vtkAbstractArray *GetInputAbstractArrayToProcess(int idx,vtkInformationVector **inputVector);
-  vtkAbstractArray *GetInputAbstractArrayToProcess
-    (int idx, vtkInformationVector **inputVector, int& association);
-  //@}
+  vtkAbstractArray* GetInputAbstractArrayToProcess(int idx, vtkInformationVector** inputVector);
+  vtkAbstractArray* GetInputAbstractArrayToProcess(
+    int idx, vtkInformationVector** inputVector, int& association);
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Filters that have multiple connections on one port can use
    * this signature. This will override the connection id that the
@@ -831,32 +1011,67 @@ protected:
    * that information is used to obtain arrays for all the connection
    * on the port with the appropriate connection id substituted.
    */
-  vtkAbstractArray *GetInputAbstractArrayToProcess(int idx,
-                                       int connection,
-                                       vtkInformationVector **inputVector);
-  vtkAbstractArray *GetInputAbstractArrayToProcess(int idx,
-                                       int connection,
-                                       vtkInformationVector **inputVector,
-                                       int& association);
-  vtkAbstractArray *GetInputAbstractArrayToProcess(int idx,
-                                       vtkDataObject* input);
-  vtkAbstractArray *GetInputAbstractArrayToProcess(int idx,
-                                       vtkDataObject* input,
-                                       int& association);
-  //@}
+  vtkAbstractArray* GetInputAbstractArrayToProcess(
+    int idx, int connection, vtkInformationVector** inputVector);
+  vtkAbstractArray* GetInputAbstractArrayToProcess(
+    int idx, int connection, vtkInformationVector** inputVector, int& association);
+  vtkAbstractArray* GetInputAbstractArrayToProcess(int idx, vtkDataObject* input);
+  vtkAbstractArray* GetInputAbstractArrayToProcess(int idx, vtkDataObject* input, int& association);
+  ///@}
 
-
+  ///@{
+  /**
+   * Get an array from the input at index \a idx.
+   * This is only reasonable during the REQUEST_DATA pass.
+   *
+   * This function may return
+   * + an empty smart-pointer (for invalid arguments);
+   * + the actual input array from an input data argument (when the \a component
+   *   requested is vtkArrayComponents::AllComponents or actual input array has a single
+   *   component and that component is requested); or
+   * + a vtkImplicitArray that extracts a requested \a component from the
+   *   specified array (either the one requested by SetInputArrayToProcess
+   *   or an override provided by \a component here).
+   *
+   * Upon success, the \a association argument is set to an enumerant
+   * from vtkDataObject::FieldAssociations.
+   *
+   * The purpose of \a requestedComponent is so you can force your algorithm to run
+   * on a single component or norm even when a user configures an array with multiple
+   * components. It is only used if (1) SetInputArrayToProcess() was called with no
+   * component specified or with vtkArrayComponents::AllComponents and (2) you provide
+   * a \a requestedComponent that is either a valid non-negative component index or
+   * one of the norm enumerants in vtkArrayComponents (L1Norm, L2Norm, or LInfNorm).
+   * Specifically, if SetInputArrayToProcess() was called with a specific norm or
+   * component, that will always take precedence over \a requestedComponent.
+   *
+   * The templated `GetInputArrayAs<>()` method allows you to safely downcast an
+   * array to a specific type. Typically, you will use this when you need a data
+   * array (rather than an abstract array).
+   */
+  vtkSmartPointer<vtkAbstractArray> GetInputArray(int idx, int connection,
+    vtkInformationVector** inputVector, int& association,
+    int requestedComponent = vtkArrayComponents::Requested);
+  vtkSmartPointer<vtkAbstractArray> GetInputArray(int idx, vtkDataObject* input, int& association,
+    int requestedComponent = vtkArrayComponents::Requested);
+  template <typename ArrayType, typename... Params>
+  vtkSmartPointer<ArrayType> GetInputArrayAs(Params&&... params)
+  {
+    auto abstractArray = this->GetInputArray(std::forward<Params>(params)...);
+    auto* castArray = ArrayType::SafeDownCast(abstractArray.GetPointer());
+    auto result = vtkSmartPointer<ArrayType>(castArray);
+    return result;
+  }
+  ///@}
 
   /**
    * This method takes in an index (as specified in SetInputArrayToProcess)
    * and a pipeline information vector. It then finds the information about
    * input array idx and then uses that information to find the field
-   * information from the relevant field in the pifo vector (as done by
-   * vtkDataObject::GetActiveFieldInformation)
+   * information from the relevant field in the pipeline information
+   * vector (as done by vtkDataObject::GetActiveFieldInformation).
    */
-  vtkInformation *GetInputArrayFieldInformation(int idx,
-                                                vtkInformationVector **inputVector);
-
+  vtkInformation* GetInputArrayFieldInformation(int idx, vtkInformationVector** inputVector);
 
   /**
    * Create a default executive.
@@ -866,18 +1081,18 @@ protected:
    */
   virtual vtkExecutive* CreateDefaultExecutive();
 
-  //@{
+  ///@{
   /**
    * The error code contains a possible error that occurred while
    * reading or writing the file.
    */
-  vtkSetMacro( ErrorCode, unsigned long );
+  vtkSetMacro(ErrorCode, unsigned long);
   unsigned long ErrorCode;
-  //@}
+  ///@}
 
   // Progress/Update handling
   double Progress;
-  char  *ProgressText;
+  char* ProgressText;
 
   // Garbage collection support.
   void ReportReferences(vtkGarbageCollector*) override;
@@ -890,8 +1105,7 @@ protected:
    * input then the subclass must be able to handle nullptr inputs in its
    * ProcessRequest method.
    */
-  virtual void SetNthInputConnection(int port, int index,
-                                     vtkAlgorithmOutput* input);
+  virtual void SetNthInputConnection(int port, int index, vtkAlgorithmOutput* input);
 
   /**
    * Set the number of input connections on the given input port.  For
@@ -909,10 +1123,14 @@ protected:
    * a vtkTrivialProducer that has the data object as output and
    * connect it to the algorithm.
    */
-  void SetInputDataInternal(int port, vtkDataObject *input)
-    { this->SetInputDataObject(port, input); }
-  void AddInputDataInternal(int port, vtkDataObject *input)
-    { this->AddInputDataObject(port, input); }
+  void SetInputDataInternal(int port, vtkDataObject* input)
+  {
+    this->SetInputDataObject(port, input);
+  }
+  void AddInputDataInternal(int port, vtkDataObject* input)
+  {
+    this->AddInputDataObject(port, input);
+  }
 
   vtkProgressObserver* ProgressObserver;
 
@@ -921,16 +1139,21 @@ private:
   vtkInformationVector* InputPortInformation;
   vtkInformationVector* OutputPortInformation;
   vtkAlgorithmInternals* AlgorithmInternal;
-  static void ConnectionAdd(vtkAlgorithm* producer, int producerPort,
-                            vtkAlgorithm* consumer, int consumerPort);
-  static void ConnectionRemove(vtkAlgorithm* producer, int producerPort,
-                               vtkAlgorithm* consumer, int consumerPort);
+  static void ConnectionAdd(
+    vtkAlgorithm* producer, int producerPort, vtkAlgorithm* consumer, int consumerPort);
+  static void ConnectionRemove(
+    vtkAlgorithm* producer, int producerPort, vtkAlgorithm* consumer, int consumerPort);
   static void ConnectionRemoveAllInput(vtkAlgorithm* consumer, int port);
   static void ConnectionRemoveAllOutput(vtkAlgorithm* producer, int port);
 
-private:
   vtkAlgorithm(const vtkAlgorithm&) = delete;
   void operator=(const vtkAlgorithm&) = delete;
+
+  double ProgressShift;
+  double ProgressScale;
+  vtkAlgorithm* ContainerAlgorithm;
+  bool AbortOutput;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif

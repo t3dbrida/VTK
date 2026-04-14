@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TreeLayout.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 //
 // This example shows how to create a simple tree view from an XML file.
 // You may specify the label array and color array from the command line.
@@ -28,23 +16,25 @@
 #include "vtkPointData.h"
 #include "vtkPolyDataMapper.h"
 #include "vtkProperty.h"
-#include "vtkRenderer.h"
 #include "vtkRenderWindow.h"
 #include "vtkRenderWindowInteractor.h"
+#include "vtkRenderer.h"
 #include "vtkStringToNumeric.h"
 #include "vtkTextProperty.h"
 #include "vtkTreeLayoutStrategy.h"
 #include "vtkXMLTreeReader.h"
 
+#include <iostream>
+
 void usage()
 {
-  cerr << endl;
-  cerr << "usage: TreeLayout filename [label_attribute] [color_attribute]" << endl;
-  cerr << "  filename is an xml file" << endl;
-  cerr << "  label_attribute is the attribute to use as labels." << endl;
-  cerr << "    Default is .tagname which labels using the element tag." << endl;
-  cerr << "  color_attribute is the attribute to color by (numeric)." << endl;
-  cerr << "    Default is no color." << endl;
+  std::cerr << endl;
+  std::cerr << "usage: TreeLayout filename [label_attribute] [color_attribute]" << endl;
+  std::cerr << "  filename is an xml file" << endl;
+  std::cerr << "  label_attribute is the attribute to use as labels." << endl;
+  std::cerr << "    Default is .tagname which labels using the element tag." << endl;
+  std::cerr << "  color_attribute is the attribute to color by (numeric)." << endl;
+  std::cerr << "    Default is no color." << endl;
 }
 
 int main(int argc, char* argv[])
@@ -86,25 +76,27 @@ int main(int argc, char* argv[])
   vtkTree* tree = vtkTree::SafeDownCast(stringToNumeric->GetOutput());
   if (tree->GetVertexData()->GetAbstractArray(labelArray) == nullptr)
   {
-    cerr << "ERROR: The label attribute " << labelArray << " is not defined in the file." << endl;
+    std::cerr << "ERROR: The label attribute " << labelArray << " is not defined in the file."
+              << endl;
+    reader->Delete();
+    stringToNumeric->Delete();
+    usage();
+    return 0;
+  }
+  if (colorArray && tree->GetVertexData()->GetAbstractArray(colorArray) == nullptr)
+  {
+    std::cerr << "ERROR: The color attribute " << colorArray << " is not defined in the file."
+              << endl;
     reader->Delete();
     stringToNumeric->Delete();
     usage();
     return 0;
   }
   if (colorArray &&
-      tree->GetVertexData()->GetAbstractArray(colorArray) == nullptr)
+    vtkArrayDownCast<vtkDataArray>(tree->GetVertexData()->GetAbstractArray(colorArray)) == nullptr)
   {
-    cerr << "ERROR: The color attribute " << colorArray << " is not defined in the file." << endl;
-    reader->Delete();
-    stringToNumeric->Delete();
-    usage();
-    return 0;
-  }
-  if (colorArray &&
-      vtkArrayDownCast<vtkDataArray>(tree->GetVertexData()->GetAbstractArray(colorArray)) == nullptr)
-  {
-    cerr << "ERROR: The color attribute " << colorArray << " does not have numeric values." << endl;
+    std::cerr << "ERROR: The color attribute " << colorArray << " does not have numeric values."
+              << endl;
     reader->Delete();
     stringToNumeric->Delete();
     usage();
@@ -112,12 +104,10 @@ int main(int argc, char* argv[])
   }
 
   // If coloring the vertices, get the range of the color array.
-  double colorRange[2] = {0, 1};
+  double colorRange[2] = { 0, 1 };
   if (colorArray)
   {
-    vtkDataArray* color = vtkArrayDownCast<vtkDataArray>(
-      tree->GetVertexData()->GetAbstractArray(colorArray));
-    color->GetRange(colorRange);
+    tree->GetVertexData()->GetRange(colorArray, colorRange);
   }
 
   // Layout the tree using vtkGraphLayout.
@@ -126,8 +116,8 @@ int main(int argc, char* argv[])
 
   // Specify that we want to use the tree layout strategy.
   vtkTreeLayoutStrategy* strategy = vtkTreeLayoutStrategy::New();
-  strategy->RadialOn();              // Radial layout (as opposed to standard top-down layout)
-  strategy->SetAngle(360.0);         // The tree fills a full circular arc.
+  strategy->RadialOn();      // Radial layout (as opposed to standard top-down layout)
+  strategy->SetAngle(360.0); // The tree fills a full circular arc.
   layout->SetLayoutStrategy(strategy);
 
   // vtkGraphToPolyData converts a graph or tree to polydata.

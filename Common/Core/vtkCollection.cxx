@@ -1,38 +1,24 @@
-/*=========================================================================
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
-  Program:   Visualization Toolkit
-  Module:    vtkCollection.cxx
+// Hide VTK_DEPRECATED_IN_X_Y_Z() warnings for this class.
+#define VTK_DEPRECATION_LEVEL 0
 
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
 #include "vtkCollection.h"
 
 #include "vtkCollectionIterator.h"
 #include "vtkGarbageCollector.h"
 #include "vtkObjectFactory.h"
 
+#include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <cstdlib>
-#include <cmath>
 
+VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkCollection);
 
-// Construct with empty list.
-vtkCollection::vtkCollection()
-{
-  this->NumberOfItems = 0;
-  this->Top = nullptr;
-  this->Bottom = nullptr;
-  this->Current = nullptr;
-}
-
+//------------------------------------------------------------------------------
 // Destructor for the vtkCollection class. This removes all
 // objects from the collection.
 vtkCollection::~vtkCollection()
@@ -40,298 +26,187 @@ vtkCollection::~vtkCollection()
   this->RemoveAllItems();
 }
 
-// protected function to delete an element. Internal use only.
-void vtkCollection::DeleteElement(vtkCollectionElement *e)
+//------------------------------------------------------------------------------
+void vtkCollection::AddItem(vtkObject* a)
 {
-  if (e->Item != nullptr)
-  {
-    e->Item->UnRegister(this);
-  }
-  delete e;
-}
-
-// protected function to remove an element. Internal use only.
-void vtkCollection::
-RemoveElement(vtkCollectionElement *elem, vtkCollectionElement *prev)
-{
-  assert(elem);
-  if (prev)
-  {
-    prev->Next = elem->Next;
-  }
-  else
-  {
-    this->Top = elem->Next;
-  }
-
-  if (!elem->Next)
-  {
-    this->Bottom = prev;
-  }
-
-  if ( this->Current == elem )
-  {
-    this->Current = elem->Next;
-  }
-
-  this->NumberOfItems--;
-  this->DeleteElement(elem);
-}
-
-// Add an object to the bottom of the list. Does not prevent duplicate entries.
-void vtkCollection::AddItem(vtkObject *a)
-{
-  vtkCollectionElement *elem;
-
-  elem = new vtkCollectionElement;
-
-  if (!this->Top)
-  {
-    this->Top = elem;
-  }
-  else
-  {
-    this->Bottom->Next = elem;
-  }
-  this->Bottom = elem;
-
+  this->Objects.push_back(a);
   a->Register(this);
-  elem->Item = a;
-  elem->Next = nullptr;
-
   this->Modified();
-
-  this->NumberOfItems++;
 }
 
-// Insert an object into the list. There must be at least one
-// entry pre-existing.
-void vtkCollection::InsertItem(int i, vtkObject *a)
+//------------------------------------------------------------------------------
+void vtkCollection::InsertItem(int i, vtkObject* a)
 {
-  if( i >= this->NumberOfItems || !this->Top )
+  if (this->Objects.empty())
   {
     return;
   }
 
-  vtkCollectionElement *elem;
-
-  elem = new vtkCollectionElement;
-  vtkCollectionElement *curr = this->Top;
-
-  if( i < 0 )
+  if (i < 0)
   {
-    this->Top = elem;
-    elem->Next = curr;
+    // If negative, insert at the beginning of the collection.
+    this->Objects.insert(this->Objects.begin(), a);
+  }
+  else if (static_cast<size_t>(i) >= this->Objects.size())
+  {
+    return;
   }
   else
   {
-    vtkCollectionElement *next = curr->Next;
-
-    int j = 0;
-    while( j != i )
-    {
-      curr = next;
-      next = curr->Next;
-      j++;
-    }
-
-    curr->Next = elem;
-    if( curr == this->Bottom )
-    {
-      this->Bottom = elem;
-    }
-    else
-    {
-      elem->Next = next;
-    }
+    i++; // insert after the i'th item instead of before
+    this->Objects.insert(this->Objects.begin() + i, a);
   }
 
   a->Register(this);
-  elem->Item = a;
-
   this->Modified();
-
-  this->NumberOfItems++;
 }
 
-// Remove an object from the list. Removes the first object found, not
-// all occurrences. If no object found, list is unaffected.  See warning
-// in description of RemoveItem(int).
-void vtkCollection::RemoveItem(vtkObject *a)
+//------------------------------------------------------------------------------
+void vtkCollection::RemoveItem(vtkObject* a)
 {
-  if (!this->Top)
+  if (this->Objects.empty() || !a)
   {
     return;
   }
 
-  vtkCollectionElement *prev = nullptr;
-  vtkCollectionElement *elem = this->Top;
-  for (int i = 0; i < this->NumberOfItems; i++)
+  auto it = std::find(this->Objects.begin(), this->Objects.end(), a);
+  if (it != this->Objects.end())
   {
-    if (elem->Item == a)
+    size_t foundOffset = static_cast<size_t>(it - this->Objects.begin());
+    if (foundOffset < this->Current)
     {
-      this->RemoveElement(elem, prev);
-      this->Modified();
-      return;
+      this->Current--;
     }
-    else
-    {
-      prev = elem;
-      elem = elem->Next;
-    }
+
+    (*it)->UnRegister(this);
+    this->Objects.erase(it);
+    this->Modified();
   }
 }
 
-// Remove all objects from the list.
+//------------------------------------------------------------------------------
 void vtkCollection::RemoveAllItems()
 {
   // Don't modify if collection is empty
-  if(this->NumberOfItems == 0)
+  if (this->Objects.empty())
   {
     return;
   }
 
-  while (this->NumberOfItems)
+  for (auto obj : this->Objects)
   {
-    this->RemoveElement(this->Top, nullptr);
+    if (obj)
+    {
+      obj->UnRegister(this);
+    }
   }
-
+  this->Objects.clear();
+  this->Current = 0;
   this->Modified();
 }
 
-// Search for an object and return location in list. If location == 0,
-// object was not found.
-int vtkCollection::IsItemPresent(vtkObject *a)
+//------------------------------------------------------------------------------
+int vtkCollection::IndexOfFirstOccurence(vtkObject* a) VTK_FUTURE_CONST
 {
-  int i;
-  vtkCollectionElement *elem;
-
-  if (!this->Top)
-  {
-    return 0;
-  }
-
-  elem = this->Top;
-  for (i = 0; i < this->NumberOfItems; i++)
-  {
-    if (elem->Item == a)
-    {
-      return i + 1;
-    }
-    else
-    {
-      elem = elem->Next;
-    }
-  }
-
-  return 0;
+  return this->IndexOfFirstOccurrence(a);
 }
 
+//------------------------------------------------------------------------------
+int vtkCollection::IndexOfFirstOccurrence(vtkObject* a) const
+{
+  if (this->Objects.empty() || !a)
+  {
+    return -1;
+  }
 
+  auto it = std::find(this->Objects.begin(), this->Objects.end(), a);
+  if (it == this->Objects.end())
+  {
+    return -1;
+  }
+  return static_cast<int>(it - this->Objects.begin());
+}
+
+//------------------------------------------------------------------------------
+int vtkCollection::IsItemPresent(vtkObject* a) VTK_FUTURE_CONST
+{
+  return this->IndexOfFirstOccurrence(a) + 1;
+}
+
+//------------------------------------------------------------------------------
 void vtkCollection::PrintSelf(ostream& os, vtkIndent indent)
 {
-  this->Superclass::PrintSelf(os,indent);
+  this->Superclass::PrintSelf(os, indent);
 
-  os << indent << "Number Of Items: " << this->NumberOfItems << "\n";
+  os << indent << "Number Of Items: " << this->Objects.size() << "\n";
 }
 
-
-// Get the i'th item in the collection. nullptr is returned if i is out
-// of range
-vtkObject *vtkCollection::GetItemAsObject(int i)
+//------------------------------------------------------------------------------
+vtkObject* vtkCollection::GetItemAsObject(int i) VTK_FUTURE_CONST
 {
-  vtkCollectionElement *elem=this->Top;
-
   if (i < 0)
   {
     return nullptr;
   }
 
-  if (i == this->NumberOfItems - 1)
-  {
-    // optimize for the special case where we're looking for the last elem
-    elem = this->Bottom;
-  }
-  else
-  {
-    while (elem != nullptr && i > 0)
-    {
-      elem = elem->Next;
-      i--;
-    }
-  }
-  if ( elem != nullptr )
-  {
-    return elem->Item;
-  }
-  else
+  size_t idx = static_cast<size_t>(i);
+  if (idx >= this->Objects.size())
   {
     return nullptr;
   }
+
+  return this->Objects[idx];
 }
 
-
-// Replace the i'th item in the collection with a
-void vtkCollection::ReplaceItem(int i, vtkObject *a)
+//------------------------------------------------------------------------------
+void vtkCollection::ReplaceItem(int i, vtkObject* a)
 {
-  vtkCollectionElement *elem;
-
-  if( i < 0 || i >= this->NumberOfItems )
+  if (i < 0)
   {
     return;
   }
 
-  elem = this->Top;
-  if (i == this->NumberOfItems - 1)
+  size_t idx = static_cast<size_t>(i);
+  if (idx >= this->Objects.size())
   {
-    elem = this->Bottom;
-  }
-  else
-  {
-    for (int j = 0; j < i; j++, elem = elem->Next )
-      {}
+    return;
   }
 
   // Take care of reference counting
-  if (elem->Item != nullptr)
-  {
-    elem->Item->UnRegister(this);
-  }
+  this->Objects[idx]->UnRegister(this);
   a->Register(this);
 
-  // j == i
-  elem->Item = a;
+  // Replace item
+  this->Objects[idx] = a;
 
   this->Modified();
 }
 
-
-// Remove the i'th item in the list.
-// Be careful if using this function during traversal of the list using
-// GetNextItemAsObject (or GetNextItem in derived class).  The list WILL
-// be shortened if a valid index is given!  If this->Current is equal to the
-// element being removed, have it point to then next element in the list.
+//------------------------------------------------------------------------------
 void vtkCollection::RemoveItem(int i)
 {
-  vtkCollectionElement *elem,*prev;
-
-  if( i < 0 || i >= this->NumberOfItems )
+  if (i < 0)
   {
     return;
   }
 
-  elem = this->Top;
-  prev = nullptr;
-  for (int j = 0; j < i; j++)
+  size_t idx = static_cast<size_t>(i);
+  if (idx >= this->Objects.size())
   {
-    prev = elem;
-    elem = elem->Next;
+    return;
   }
 
-  this->RemoveElement(elem, prev);
+  if (idx < this->Current)
+  {
+    this->Current--;
+  }
+
+  this->Objects[idx]->UnRegister(this);
+  this->Objects.erase(this->Objects.begin() + i);
   this->Modified();
 }
 
+//------------------------------------------------------------------------------
 vtkCollectionIterator* vtkCollection::NewIterator()
 {
   vtkCollectionIterator* it = vtkCollectionIterator::New();
@@ -339,24 +214,13 @@ vtkCollectionIterator* vtkCollection::NewIterator()
   return it;
 }
 
-//----------------------------------------------------------------------------
-void vtkCollection::Register(vtkObjectBase* o)
-{
-  this->RegisterInternal(o, 1);
-}
-
-//----------------------------------------------------------------------------
-void vtkCollection::UnRegister(vtkObjectBase* o)
-{
-  this->UnRegisterInternal(o, 1);
-}
-
-//----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void vtkCollection::ReportReferences(vtkGarbageCollector* collector)
 {
   this->Superclass::ReportReferences(collector);
-  for(vtkCollectionElement* elem = this->Top; elem; elem = elem->Next)
+  for (auto objIter = this->Objects.begin(); objIter < this->Objects.end(); objIter++)
   {
-    vtkGarbageCollectorReport(collector, elem->Item, "Element");
+    vtkGarbageCollectorReport(collector, *objIter, "Element");
   }
 }
+VTK_ABI_NAMESPACE_END

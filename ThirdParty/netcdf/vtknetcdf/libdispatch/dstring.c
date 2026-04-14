@@ -1,19 +1,18 @@
 /*
- *	Copyright 1996, University Corporation for Atmospheric Research
+ *	Copyright 2018, University Corporation for Atmospheric Research
  *      See netcdf/COPYRIGHT file for copying and redistribution conditions.
  */
 /* $Id: string.c,v 1.76 2010/05/26 21:43:33 dmh Exp $ */
 
 #include "config.h"
-#include <stdio.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <ctype.h>
 #include <assert.h>
-#include "nc.h"
+#include "ncdispatch.h"
 #include "rnd.h"
 #include "ncutf8.h"
-
 
 /* There are 3 levels of UTF8 checking: 1=> (exact)validating 2=>relaxed
    and 3=>very relaxed
@@ -282,23 +281,3 @@ int
 
 	return NC_NOERR;
 }
-
-/**************************************************/
-/* Provide local alternatives for unix functions
-   not available on all machines. Place here so that
-   all subsequence code modules can use it.
-*/
-
-#ifndef HAVE_STRDUP
-char*
-strdup(const char* s)
-{
-    char* dup;
-    if(s == NULL) return NULL;
-    dup = malloc(strlen(s)+1);
-    strcpy(dup,s);
-    return dup;
-}
-#endif
-
-/**************************************************/

@@ -1,3 +1,5 @@
+set(CMAKE_C_STANDARD 99)
+
 set(EXODUSII_BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS}")
 
 set(sources
@@ -117,6 +119,11 @@ set(sources
   src/deprecated/ex_put_var_param.c
   src/deprecated/ex_put_var_tab.c
 
+  src/ex__get_glob_vars_multi_time.c
+  src/ex__get_nodal_var_multi_time.c
+  src/ex__put_homogenous_block_params.c
+  src/ex__put_nodal_var_multi_time.c
+
   src/ex_add_attr.c
   src/ex_close.c
   src/ex_conv.c
@@ -126,11 +133,18 @@ set(sources
   src/ex_create_par.c
   src/ex_cvt_nodes_to_sides.c
   src/ex_err.c
+  src/ex_field_utils.c
   src/ex_get_all_times.c
+  src/ex_get_assemblies.c
+  src/ex_get_assembly.c
   src/ex_get_attr.c
   src/ex_get_attr_names.c
   src/ex_get_attr_param.c
+  src/ex_get_attribute.c
+  src/ex_get_blob.c
+  src/ex_get_blobs.c
   src/ex_get_block.c
+  src/ex_get_block_id_map.c
   src/ex_get_block_param.c
   src/ex_get_block_params.c
   src/ex_get_cmap_params.c
@@ -144,6 +158,7 @@ set(sources
   src/ex_get_elem_cmap.c
   src/ex_get_elem_type.c
   src/ex_get_entity_count_per_polyhedra.c
+  src/ex_get_field_metadata.c
   src/ex_get_glob_var_time_int.c
   src/ex_get_glob_vars_int.c
   src/ex_get_group_id.c
@@ -160,7 +175,6 @@ set(sources
   src/ex_get_map_param.c
   src/ex_get_name.c
   src/ex_get_names.c
-  src/ex_get_nodal_var_int.c
   src/ex_get_nodal_var_time_int.c
   src/ex_get_node_cmap.c
   src/ex_get_ns_param_global.c
@@ -184,6 +198,9 @@ set(sources
   src/ex_get_prop_array.c
   src/ex_get_prop_names.c
   src/ex_get_qa.c
+  src/ex_get_reduction_variable_names.c
+  src/ex_get_reduction_variable_param.c
+  src/ex_get_reduction_vars.c
   src/ex_get_set.c
   src/ex_get_set_dist_fact.c
   src/ex_get_set_param.c
@@ -195,6 +212,7 @@ set(sources
   src/ex_get_time.c
   src/ex_get_truth_table.c
   src/ex_get_var.c
+  src/ex_get_var_multi_time.c
   src/ex_get_var_time.c
   src/ex_get_variable_name.c
   src/ex_get_variable_names.c
@@ -207,9 +225,12 @@ set(sources
   src/ex_opts.c
   src/ex_put_all_var_param.c
   src/ex_put_all_var_param_ext.c
+  src/ex_put_assemblies.c
   src/ex_put_attr.c
   src/ex_put_attr_names.c
   src/ex_put_attr_param.c
+  src/ex_put_attribute.c
+  src/ex_put_blobs.c
   src/ex_put_block.c
   src/ex_put_block_param.c
   src/ex_put_block_params.c
@@ -225,6 +246,7 @@ set(sources
   src/ex_put_eb_info_global.c
   src/ex_put_elem_cmap.c
   src/ex_put_entity_count_per_polyhedra.c
+  src/ex_put_field_metadata.c
   src/ex_put_id_map.c
   src/ex_put_info.c
   src/ex_put_init.c
@@ -238,7 +260,6 @@ set(sources
   src/ex_put_name.c
   src/ex_put_names.c
   src/ex_put_nodal_var.c
-  src/ex_put_nodal_var_int.c
   src/ex_put_node_cmap.c
   src/ex_put_ns_param_global.c
   src/ex_put_num_map.c
@@ -260,6 +281,9 @@ set(sources
   src/ex_put_prop_array.c
   src/ex_put_prop_names.c
   src/ex_put_qa.c
+  src/ex_put_reduction_variable_names.c
+  src/ex_put_reduction_variable_param.c
+  src/ex_put_reduction_vars.c
   src/ex_put_set.c
   src/ex_put_set_dist_fact.c
   src/ex_put_set_param.c
@@ -268,6 +292,7 @@ set(sources
   src/ex_put_time.c
   src/ex_put_truth_table.c
   src/ex_put_var.c
+  src/ex_put_var_multi_time.c
   src/ex_put_variable_name.c
   src/ex_put_variable_names.c
   src/ex_put_variable_param.c
@@ -297,19 +322,20 @@ set(headers
   "${CMAKE_CURRENT_BINARY_DIR}/include/exodusII_cfg.h"
   "${CMAKE_CURRENT_BINARY_DIR}/include/exodus_config.h")
 
-vtk_add_library(vtkexodusII ${sources} ${headers})
-target_link_libraries(vtkexodusII PUBLIC ${vtknetcdf_LIBRARIES})
-if (NOT VTK_INSTALL_NO_DEVELOPMENT)
-  install(FILES
-    ${headers}
-    DESTINATION "${VTK_INSTALL_INCLUDE_DIR}/vtkexodusII/include"
-    COMPONENT Development)
-endif()
+vtk_module_find_package(PACKAGE Threads)
 
-target_compile_definitions(vtkexodusII
+vtk_module_add_module(VTK::exodusII
+  HEADER_DIRECTORIES
+  SOURCES ${sources}
+  HEADERS ${headers}
+  HEADERS_SUBDIR "vtkexodusII")
+vtk_module_definitions(VTK::exodusII
   PRIVATE
     exoIIc_EXPORTS)
-target_include_directories(vtkexodusII
+vtk_module_include(VTK::exodusII
   PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>")
+vtk_module_link(VTK::exodusII
+  PRIVATE
+    Threads::Threads)

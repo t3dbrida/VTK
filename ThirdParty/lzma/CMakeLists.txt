@@ -1,20 +1,41 @@
-vtk_module_third_party(LZMA)
+vtk_third_party_extract(
+  FILE "${CMAKE_CURRENT_SOURCE_DIR}/update.sh"
+  TAGS
+    repo lzma_repo
+    tag  lzma_tag
+  VERSION_FROM_TAG
+    tag  lzma_version "^for/vtk-[0-9]*-([0-9\\.]+)$")
 
-include(CMakeDependentOption)
-cmake_dependent_option(VTK_MODULE_vtklzma_IS_SHARED "Whether the LZMA in use is shared or not" ON
-  VTK_USE_SYSTEM_LZMA "${BUILD_SHARED_LIBS}")
-mark_as_advanced(VTK_MODULE_vtklzma_IS_SHARED)
-if (VTK_MODULE_vtklzma_IS_SHARED)
-  set(LZMA_BUILT_AS_DYNAMIC_LIB 1)
-endif ()
+vtk_module_third_party(
+  INTERNAL
+    LICENSE_FILES
+      "vtklzma/COPYING"
+    SPDX_LICENSE_IDENTIFIER
+      "LicenseRef-PublicDomain-lzma"
+    SPDX_COPYRIGHT_TEXT
+      "NONE"
+    SPDX_DOWNLOAD_LOCATION
+      "git+${lzma_repo}@${lzma_tag}"
+    SPDX_CUSTOM_LICENSE_FILE
+      "vtklzma/COPYING"
+    SPDX_CUSTOM_LICENSE_NAME
+      "PublicDomain-lzma"
+    VERSION
+      "${lzma_version}"
+    STANDARD_INCLUDE_DIRS
+  EXTERNAL
+    PACKAGE LZMA
+    TARGETS LZMA::LZMA
+    STANDARD_INCLUDE_DIRS)
+
+include(vtkDetectLibraryType)
+vtk_detect_library_shared(vtklzma LZMA::LZMA)
+
+set(LZMA_BUILT_AS_DYNAMIC_LIB "${vtklzma_is_shared}")
 
 configure_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/vtk_lzma.h.in"
   "${CMAKE_CURRENT_BINARY_DIR}/vtk_lzma.h")
 
-if (NOT VTK_INSTALL_NO_DEVELOPMENT)
-  install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/vtk_lzma.h"
-    DESTINATION "${VTK_INSTALL_INCLUDE_DIR}"
-    COMPONENT Development)
-endif()
+vtk_module_install_headers(
+  FILES "${CMAKE_CURRENT_BINARY_DIR}/vtk_lzma.h")

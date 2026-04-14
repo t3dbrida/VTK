@@ -1,43 +1,27 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkTimePointUtility.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
-/*-------------------------------------------------------------------------
-  Copyright 2008 Sandia Corporation.
-  Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-  the U.S. Government retains certain rights in this software.
--------------------------------------------------------------------------*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-FileCopyrightText: Copyright 2008 Sandia Corporation
+// SPDX-License-Identifier: LicenseRef-BSD-3-Clause-Sandia-USGov
 
 #include "vtkTimePointUtility.h"
 
 #include "vtkObjectFactory.h"
-#include "vtkStdString.h"
+#include "vtkStringScanner.h"
 
-#include <sstream>
 #include <cctype> // for isdigit
 #include <locale> // C++ locale
+#include <sstream>
 
-
-const int vtkTimePointUtility::MILLIS_PER_SECOND  =     1000;
-const int vtkTimePointUtility::MILLIS_PER_MINUTE  =    60000;
-const int vtkTimePointUtility::MILLIS_PER_HOUR    =  3600000;
-const int vtkTimePointUtility::MILLIS_PER_DAY     = 86400000;
-const int vtkTimePointUtility::SECONDS_PER_MINUTE =       60;
-const int vtkTimePointUtility::SECONDS_PER_HOUR   =     3600;
-const int vtkTimePointUtility::SECONDS_PER_DAY    =    86400;
-const int vtkTimePointUtility::MINUTES_PER_HOUR   =       60;
-const int vtkTimePointUtility::MINUTES_PER_DAY    =     1440;
-const int vtkTimePointUtility::HOURS_PER_DAY      =       24;
+VTK_ABI_NAMESPACE_BEGIN
+const int vtkTimePointUtility::MILLIS_PER_SECOND = 1000;
+const int vtkTimePointUtility::MILLIS_PER_MINUTE = 60000;
+const int vtkTimePointUtility::MILLIS_PER_HOUR = 3600000;
+const int vtkTimePointUtility::MILLIS_PER_DAY = 86400000;
+const int vtkTimePointUtility::SECONDS_PER_MINUTE = 60;
+const int vtkTimePointUtility::SECONDS_PER_HOUR = 3600;
+const int vtkTimePointUtility::SECONDS_PER_DAY = 86400;
+const int vtkTimePointUtility::MINUTES_PER_HOUR = 60;
+const int vtkTimePointUtility::MINUTES_PER_DAY = 1440;
+const int vtkTimePointUtility::HOURS_PER_DAY = 24;
 
 vtkStandardNewMacro(vtkTimePointUtility);
 
@@ -46,8 +30,7 @@ void vtkTimePointUtility::PrintSelf(ostream& os, vtkIndent indent)
   this->Superclass::PrintSelf(os, indent);
 }
 
-vtkTypeUInt64 vtkTimePointUtility::DateToTimePoint(
-  int year, int month, int day)
+vtkTypeUInt64 vtkTimePointUtility::DateToTimePoint(int year, int month, int day)
 {
   if (year < 0)
   {
@@ -59,19 +42,17 @@ vtkTypeUInt64 vtkTimePointUtility::DateToTimePoint(
   {
     // Gregorian calendar starting from October 15, 1582
     // Algorithm from Henry F. Fliegel and Thomas C. Van Flandern
-    julianDay = (1461 * (year + 4800 + (month - 14) / 12)) / 4
-       + (367 * (month - 2 - 12 * ((month - 14) / 12))) / 12
-       - (3 * ((year + 4900 + (month - 14) / 12) / 100)) / 4
-       + day - 32075;
+    julianDay = (1461 * (year + 4800 + (month - 14) / 12)) / 4 +
+      (367 * (month - 2 - 12 * ((month - 14) / 12))) / 12 -
+      (3 * ((year + 4900 + (month - 14) / 12) / 100)) / 4 + day - 32075;
   }
   else if (year < 1582 || (year == 1582 && (month < 10 || (month == 10 && day <= 4))))
   {
     // Julian calendar until October 4, 1582
     // Algorithm from Frequently Asked Questions about Calendars by Claus Toendering
     int a = (14 - month) / 12;
-    julianDay = (153 * (month + (12 * a) - 3) + 2) / 5
-       + (1461 * (year + 4800 - a)) / 4
-       + day - 32083;
+    julianDay =
+      (153 * (month + (12 * a) - 3) + 2) / 5 + (1461 * (year + 4800 - a)) / 4 + day - 32083;
   }
   else
   {
@@ -81,24 +62,18 @@ vtkTypeUInt64 vtkTimePointUtility::DateToTimePoint(
   return julianDay * MILLIS_PER_DAY;
 }
 
-vtkTypeUInt64 vtkTimePointUtility::TimeToTimePoint(
-  int hour, int minute, int second, int millis)
+vtkTypeUInt64 vtkTimePointUtility::TimeToTimePoint(int hour, int minute, int second, int millis)
 {
-  return MILLIS_PER_HOUR*hour +
-    MILLIS_PER_MINUTE*minute +
-    MILLIS_PER_SECOND*second + millis;
+  return MILLIS_PER_HOUR * hour + MILLIS_PER_MINUTE * minute + MILLIS_PER_SECOND * second + millis;
 }
 
 vtkTypeUInt64 vtkTimePointUtility::DateTimeToTimePoint(
-  int year, int month, int day,
-  int hour, int minute, int second, int millis)
+  int year, int month, int day, int hour, int minute, int second, int millis)
 {
-  return DateToTimePoint(year, month, day) +
-    TimeToTimePoint(hour, minute, second, millis);
+  return DateToTimePoint(year, month, day) + TimeToTimePoint(hour, minute, second, millis);
 }
 
-void vtkTimePointUtility::GetDate(vtkTypeUInt64 time,
-  int& year, int& month, int& day)
+void vtkTimePointUtility::GetDate(vtkTypeUInt64 time, int& year, int& month, int& day)
 {
   int y, m, d;
   int julianDay = static_cast<int>(time / MILLIS_PER_DAY);
@@ -141,8 +116,8 @@ void vtkTimePointUtility::GetDate(vtkTypeUInt64 time,
   day = d;
 }
 
-void vtkTimePointUtility::GetTime(vtkTypeUInt64 time,
-  int& hour, int& minute, int& second, int& millis)
+void vtkTimePointUtility::GetTime(
+  vtkTypeUInt64 time, int& hour, int& minute, int& second, int& millis)
 {
   hour = static_cast<int>(time % MILLIS_PER_DAY) / MILLIS_PER_HOUR;
   minute = static_cast<int>(time % MILLIS_PER_HOUR) / MILLIS_PER_MINUTE;
@@ -150,8 +125,7 @@ void vtkTimePointUtility::GetTime(vtkTypeUInt64 time,
   millis = static_cast<int>(time % MILLIS_PER_SECOND);
 }
 
-void vtkTimePointUtility::GetDateTime(vtkTypeUInt64 time,
-  int& year, int& month, int& day,
+void vtkTimePointUtility::GetDateTime(vtkTypeUInt64 time, int& year, int& month, int& day,
   int& hour, int& minute, int& second, int& millis)
 {
   GetDate(time, year, month, day);
@@ -204,7 +178,7 @@ vtkTypeUInt64 vtkTimePointUtility::ISO8601ToTimePoint(const char* cstr, bool* ok
   bool formatValid = true;
   vtkTypeUInt64 value = 0;
 
-  vtkStdString str(cstr);
+  std::string str = cstr ? cstr : "";
 
   if (str.length() == 19 || str.length() == 23)
   {
@@ -213,7 +187,7 @@ vtkTypeUInt64 vtkTimePointUtility::ISO8601ToTimePoint(const char* cstr, bool* ok
     // -OR-
     // Format is [YYYY]-[MM]-[DD]T[hh]:[mm]:[ss].[SSS]
     // Index:     0123 4 56 7 89 0 12 3 45 6 78 9 012
-    for (vtkStdString::size_type c = 0; c < str.length(); c++)
+    for (std::string::size_type c = 0; c < str.length(); c++)
     {
       if (c == 4 || c == 7)
       {
@@ -255,16 +229,17 @@ vtkTypeUInt64 vtkTimePointUtility::ISO8601ToTimePoint(const char* cstr, bool* ok
     }
     if (formatValid)
     {
-      int year = atoi(str.substr(0, 4).c_str());
-      int month = atoi(str.substr(5, 2).c_str());
-      int day = atoi(str.substr(8, 2).c_str());
-      int hour = atoi(str.substr(11, 2).c_str());
-      int minute = atoi(str.substr(14, 2).c_str());
-      int second = atoi(str.substr(17, 2).c_str());
+      int year, month, day, hour, minute, second;
+      VTK_FROM_CHARS_IF_ERROR_BREAK(str.substr(0, 4), year);
+      VTK_FROM_CHARS_IF_ERROR_BREAK(str.substr(5, 2), month);
+      VTK_FROM_CHARS_IF_ERROR_BREAK(str.substr(8, 2), day);
+      VTK_FROM_CHARS_IF_ERROR_BREAK(str.substr(11, 2), hour);
+      VTK_FROM_CHARS_IF_ERROR_BREAK(str.substr(14, 2), minute);
+      VTK_FROM_CHARS_IF_ERROR_BREAK(str.substr(17, 2), second);
       int msec = 0;
       if (str.length() == 23)
       {
-        msec = atoi(str.substr(20, 3).c_str());
+        VTK_FROM_CHARS_IF_ERROR_BREAK(str.substr(20, 3), msec);
       }
       value = DateTimeToTimePoint(year, month, day, hour, minute, second, msec);
     }
@@ -273,7 +248,7 @@ vtkTypeUInt64 vtkTimePointUtility::ISO8601ToTimePoint(const char* cstr, bool* ok
   {
     // Format is [YYYY]-[MM]-[DD]
     // Index:     0123 4 56 7 89
-    for (vtkStdString::size_type c = 0; c < str.length(); c++)
+    for (std::string::size_type c = 0; c < str.length(); c++)
     {
       if (c == 4 || c == 7)
       {
@@ -291,9 +266,10 @@ vtkTypeUInt64 vtkTimePointUtility::ISO8601ToTimePoint(const char* cstr, bool* ok
     }
     if (formatValid)
     {
-      int year = atoi(str.substr(0, 4).c_str());
-      int month = atoi(str.substr(5, 2).c_str());
-      int day = atoi(str.substr(8, 2).c_str());
+      int year, month, day;
+      VTK_FROM_CHARS_IF_ERROR_BREAK(str.substr(0, 4), year);
+      VTK_FROM_CHARS_IF_ERROR_BREAK(str.substr(5, 2), month);
+      VTK_FROM_CHARS_IF_ERROR_BREAK(str.substr(8, 2), day);
       value = DateToTimePoint(year, month, day);
     }
   }
@@ -304,7 +280,7 @@ vtkTypeUInt64 vtkTimePointUtility::ISO8601ToTimePoint(const char* cstr, bool* ok
     // -OR-
     // Format is [hh]:[mm]:[ss].[SSS]
     // Index:     01 2 34 5 67 8 901
-    for (vtkStdString::size_type c = 0; c < str.length(); c++)
+    for (std::string::size_type c = 0; c < str.length(); c++)
     {
       if (c == 2 || c == 5)
       {
@@ -330,13 +306,14 @@ vtkTypeUInt64 vtkTimePointUtility::ISO8601ToTimePoint(const char* cstr, bool* ok
     }
     if (formatValid)
     {
-      int hour = atoi(str.substr(0, 2).c_str());
-      int minute = atoi(str.substr(3, 2).c_str());
-      int second = atoi(str.substr(6, 2).c_str());
+      int hour, minute, second;
+      VTK_FROM_CHARS_IF_ERROR_BREAK(str.substr(0, 2), hour);
+      VTK_FROM_CHARS_IF_ERROR_BREAK(str.substr(3, 2), minute);
+      VTK_FROM_CHARS_IF_ERROR_BREAK(str.substr(6, 2), second);
       int msec = 0;
       if (str.length() == 12)
       {
-        msec = atoi(str.substr(9, 3).c_str());
+        VTK_FROM_CHARS_IF_ERROR_BREAK(str.substr(9, 3), msec);
       }
       value = TimeToTimePoint(hour, minute, second, msec);
     }
@@ -431,3 +408,4 @@ const char* vtkTimePointUtility::TimePointToISO8601(vtkTypeUInt64 time, int form
   strcpy(copy, oss.str().c_str());
   return copy;
 }
+VTK_ABI_NAMESPACE_END

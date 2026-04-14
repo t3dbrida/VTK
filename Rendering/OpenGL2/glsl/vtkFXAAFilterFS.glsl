@@ -1,19 +1,7 @@
 //VTK::System::Dec
 
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkFXAAFilterFS.glsl
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 // Fragment shader for vtkOpenGLFXAAFilter.
 //
 // Based on the following implementation and description:
@@ -207,8 +195,8 @@ int nvidiaEndpointSearch(vec2 posC, float lumC, float lumHC, float lengthSign,
 #endif // FXAA_DEBUG_EDGE_NUM_STEPS
 
     // Sample on the edge boundary in both directions:
-    if (!doneN) lumAveN = luminosity(texture(Input, posN).rgb);
-    if (!doneP) lumAveP = luminosity(texture(Input, posP).rgb);
+    if (!doneN) lumAveN = luminosity(texture2D(Input, posN).rgb);
+    if (!doneP) lumAveP = luminosity(texture2D(Input, posP).rgb);
 
     // Edge endpoint is where the contrast changes significantly:
     doneN = doneN || (abs(lumAveN - lumAveCHC) >= contrastThreshold);
@@ -430,13 +418,13 @@ int vtkEndpointSearch(vec2 posC, float lumC, float lumHC, float lengthSign,
     // Sample the luminosities along the edge:
     if (!doneN)
       {
-      lumHCN = luminosity(texture(Input, posHCN).rgb);
-      lumCN  = luminosity(texture(Input, posCN).rgb);
+      lumHCN = luminosity(texture2D(Input, posHCN).rgb);
+      lumCN  = luminosity(texture2D(Input, posCN).rgb);
       }
     if (!doneP)
       {
-      lumHCP = luminosity(texture(Input, posHCP).rgb);
-      lumCP  = luminosity(texture(Input, posCP).rgb);
+      lumHCP = luminosity(texture2D(Input, posHCP).rgb);
+      lumCP  = luminosity(texture2D(Input, posCP).rgb);
       }
 
     // Check contrast to detect endpoint:
@@ -548,7 +536,7 @@ void main()
   /****************************************************************************
    * Compute Local Contrast Range And Early Abort                             *
    *==========================================================================*
-   * Determine the contrast range for the current pixel and its neightbors    *
+   * Determine the contrast range for the current pixel and its neighbors     *
    * to the North, South, West, and East. If the range is less than both of:  *
    *                                                                          *
    * a) RelativeContrastThreshold * lumMax                                    *
@@ -568,11 +556,12 @@ void main()
   vec2 tcE = texCoord + vec2( tcPixel.x,  0.f);
 
   // Extract the rgb values of these pixels:
-  vec3 rgbC = texture(Input, tcC).rgb;
-  vec3 rgbN = texture(Input, tcN).rgb;
-  vec3 rgbS = texture(Input, tcS).rgb;
-  vec3 rgbW = texture(Input, tcW).rgb;
-  vec3 rgbE = texture(Input, tcE).rgb;
+  vec4 centerSample = texture2D(Input, tcC);
+  vec3 rgbC = centerSample.rgb;
+  vec3 rgbN = texture2D(Input, tcN).rgb;
+  vec3 rgbS = texture2D(Input, tcS).rgb;
+  vec3 rgbW = texture2D(Input, tcW).rgb;
+  vec3 rgbE = texture2D(Input, tcE).rgb;
 
   // Convert to luminosity:
   float lumC = luminosity(rgbC);
@@ -592,7 +581,7 @@ void main()
   // the current pixel:
   if (lumRange < lumThresh)
     {
-    gl_FragData[0] = vec4(rgbC, 1.f); // original color
+    gl_FragData[0] = vec4(rgbC, centerSample.a); // original color
     return;
     }
 
@@ -605,10 +594,10 @@ void main()
   vec2 tcSE = texCoord + vec2( tcPixel.x,  tcPixel.y);
   vec2 tcNW = texCoord + vec2(-tcPixel.x, -tcPixel.y);
   vec2 tcSW = texCoord + vec2(-tcPixel.x,  tcPixel.y);
-  vec3 rgbNE = texture(Input, tcNE).rgb;
-  vec3 rgbSE = texture(Input, tcSE).rgb;
-  vec3 rgbNW = texture(Input, tcNW).rgb;
-  vec3 rgbSW = texture(Input, tcSW).rgb;
+  vec3 rgbNE = texture2D(Input, tcNE).rgb;
+  vec3 rgbSE = texture2D(Input, tcSE).rgb;
+  vec3 rgbNW = texture2D(Input, tcNW).rgb;
+  vec3 rgbSW = texture2D(Input, tcSW).rgb;
   float lumNE = luminosity(rgbNE);
   float lumSE = luminosity(rgbSE);
   float lumNW = luminosity(rgbNW);
@@ -768,7 +757,7 @@ void main()
       return;
 
     case FXAA_NEED_EDGE_AA: // Resample the texture at the requested position.
-      rgbEdgeAA = texture(Input, posEdgeAA).rgb;
+      rgbEdgeAA = texture2D(Input, posEdgeAA).rgb;
       break;
 
     case FXAA_NO_EDGE_AA: // Current pixel does not need edge anti-aliasing.
@@ -784,5 +773,5 @@ void main()
 #endif // FXAA_DEBUG_ONLY_EDGE_AA
 
   // Blend the edgeAA and subpixelAA results together:
-  gl_FragData[0] = vec4(mix(rgbEdgeAA, rgbSub, blendSub), 1.f);
+  gl_FragData[0] = vec4(mix(rgbEdgeAA, rgbSub, blendSub), centerSample.a);
 }

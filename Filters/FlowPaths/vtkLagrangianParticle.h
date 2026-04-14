@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkLagrangianParticle.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-    This software is distributed WITHOUT ANY WARRANTY; without even
-    the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-    PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkLagrangianParticle
  * @brief   Basis class for Lagrangian particles.
@@ -24,21 +12,29 @@
  * @sa
  * vtkLagrangianParticleTracker vtkLagrangianBasicIntegrationModel
  * vtkLagrangianMatidaIntegrationModel
-*/
+ */
 
 #ifndef vtkLagrangianParticle_h
 #define vtkLagrangianParticle_h
 
 #include "vtkFiltersFlowPathsModule.h" // For export macro
-#include "vtkSystemIncludes.h" // For PrintSelf signature and vtkType
+#include "vtkNew.h"                    // For vtkNew
+#include "vtkSystemIncludes.h"         // For PrintSelf signature and vtkType
 
+#include <vector>
+
+VTK_ABI_NAMESPACE_BEGIN
+class vtkAbstractCellLocator;
+class vtkBilinearQuadIntersection;
 class vtkDataSet;
+class vtkGenericCell;
+class vtkIdList;
 class vtkPointData;
+struct vtkLagrangianThreadedData;
 
 class VTKFILTERSFLOWPATHS_EXPORT vtkLagrangianParticle
 {
 public:
-
   /**
    * An enum to inform about a reason for termination
    * PARTICLE_TERMINATION_NOT_TERMINATED = 0, means the particle have not yet been terminated
@@ -54,6 +50,8 @@ public:
    *   maximum number of steps was reached
    * PARTICLE_TERMINATION_OUT_OF_TIME = 6, means the particle was terminated because
    *   maximum integration time was reached
+   * PARTICLE_TERMINATION_TRANSFERRED = 7, means the particle was terminated because
+   *   it was transferred to another process to continue the integration
    */
   typedef enum ParticleTermination
   {
@@ -63,16 +61,20 @@ public:
     PARTICLE_TERMINATION_SURF_BREAK,
     PARTICLE_TERMINATION_OUT_OF_DOMAIN,
     PARTICLE_TERMINATION_OUT_OF_STEPS,
-    PARTICLE_TERMINATION_OUT_OF_TIME
+    PARTICLE_TERMINATION_OUT_OF_TIME,
+    PARTICLE_TERMINATION_TRANSFERRED,
+    PARTICLE_TERMINATION_ABORTED
   } ParticleTermination;
 
   /**
    * An enum to inform about a surface interaction
    * SURFACE_INTERACTION_NO_INTERACTION = 0, no interaction have taken place
    * SURFACE_INTERACTION_TERMINATED = 1, a particle was terminated on interaction
-   * SURFACE_INTERACTION_BREAK = 2, a particle broke on interaction, hence terminating it and creating new particles from it
+   * SURFACE_INTERACTION_BREAK = 2, a particle broke on interaction, hence terminating it and
+   * creating new particles from it
    * SURFACE_INTERACTION_BOUNCE = 3, a particle bounced on interaction
-   * SURFACE_INTERACTION_PASS = 4, a particle passed through the surface, hence having no effect on the particle but actually recording it going through
+   * SURFACE_INTERACTION_PASS = 4, a particle passed through the surface, hence having
+   * no effect on the particle but actually recording it going through
    * SURFACE_INTERACTION_OTHER = 5, another type of undefined interaction happened.
    */
   typedef enum SurfaceInteraction
@@ -95,7 +97,8 @@ public:
    * particle data is a pointer to the pointData associated to all particles.
    */
   vtkLagrangianParticle(int numberOfVariables, vtkIdType seedId, vtkIdType particleId,
-    vtkIdType seedArrayTupleIndex, double integrationTime, vtkPointData* seedData);
+    vtkIdType seedArrayTupleIndex, double integrationTime, vtkPointData* seedData,
+    int numberOfTrackedUserData);
 
   /**
    * Constructor wrapper to create a partially integrated particle in the domain.
@@ -103,7 +106,8 @@ public:
    */
   static vtkLagrangianParticle* NewInstance(int numberOfVariables, vtkIdType seedId,
     vtkIdType particleId, vtkIdType seedArrayTupleIndex, double integrationTime,
-    vtkPointData* seedData, vtkIdType numberOfSteps, double previousIntegrationTime);
+    vtkPointData* seedData, int numberOfTrackedUserData, vtkIdType numberOfSteps = 0,
+    double previousIntegrationTime = 0);
 
   /**
    * method to create a particle from a parent particle.
@@ -123,18 +127,15 @@ public:
    */
   virtual ~vtkLagrangianParticle();
 
-  //@{
+  ///@{
   /**
    * Get a pointer to Particle variables at its previous position
    * See GetEquationVariables for content description
    */
-  inline double* GetPrevEquationVariables()
-  {
-    return this->PrevEquationVariables;
-  }
-  //@}
+  double* GetPrevEquationVariables() { return this->PrevEquationVariables.data(); }
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Get a pointer to the particle variables array.
    * To be used with vtkInitialValueProblemSolver::ComputeNextStep.
@@ -147,131 +148,143 @@ public:
    * the number of user variables can be recovered by GetNumberOfUserVariables,
    * but it is always NumberOfVariables - 7.
    */
-  inline double* GetEquationVariables()
-  {
-    return this->EquationVariables;
-  }
-  //@}
+  double* GetEquationVariables() { return this->EquationVariables.data(); }
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Get a pointer to the particle variables array at its next position.
    * To be used with vtkInitialValueProblemSolver::ComputeNextStep.
    * See GetEquationVariables for content description
    */
-  inline double* GetNextEquationVariables()
-  {
-    return this->NextEquationVariables;
-  }
-  //@}
+  double* GetNextEquationVariables() { return this->NextEquationVariables.data(); }
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Get a pointer to the previous particle position.
    * Convenience method, giving the same
    * results as GetPrevEquationVariables().
    */
-  inline double* GetPrevPosition()
-  {
-    return this->PrevEquationVariables;
-  }
-  //@}
+  double* GetPrevPosition() { return this->PrevEquationVariables.data(); }
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Get a pointer to the particle position.
    * Convenience method, giving the same
    * results as GetEquationVariables().
    */
-  inline double* GetPosition()
-  {
-    return this->EquationVariables;
-  }
-  //@}
+  double* GetPosition() { return this->EquationVariables.data(); }
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Get a pointer to the next particle position.
    * Convenience method, giving the same
    * results as GetNextEquationVariables();
    */
-  inline double* GetNextPosition()
-  {
-    return this->NextEquationVariables;
-  }
-  //@}
+  double* GetNextPosition() { return this->NextEquationVariables.data(); }
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Get a pointer to the previous particle velocity.
    * Convenience method, giving the result:
    * GetPrevEquationVariables() + 3;
    */
-  inline double* GetPrevVelocity()
-  {
-    return this->PrevVelocity;
-  }
-  //@}
+  double* GetPrevVelocity() { return this->PrevVelocity; }
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Get a pointer to the particle velocity.
    * Convenience method, giving the result:
    * GetEquationVariables() + 3;
    */
-  inline double* GetVelocity()
-  {
-    return this->Velocity;
-  }
-  //@}
+  double* GetVelocity() { return this->Velocity; }
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Get a pointer to the next particle velocity.
    * Convenience method, giving the result:
    * GetNextEquationVariables() + 3;
    */
-  inline double* GetNextVelocity()
-  {
-    return this->NextVelocity;
-  }
-  //@}
+  double* GetNextVelocity() { return this->NextVelocity; }
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Get a pointer to the previous user variables.
    * Convenience method, giving the result:
    * GetPrevEquationVariables() + 6;
    */
-  inline double* GetPrevUserVariables()
-  {
-    return this->PrevUserVariables;
-  }
-  //@}
+  double* GetPrevUserVariables() { return this->PrevUserVariables; }
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Get a pointer to the user variables.
    * Convenience method, giving the result:
    * GetEquationVariables() + 6;
    */
-  inline double* GetUserVariables()
-  {
-    return this->UserVariables;
-  }
-  //@}
+  double* GetUserVariables() { return this->UserVariables; }
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Get a pointer to the next user variables.
    * Convenience method, giving the result:
    * GetNextEquationVariables() + 6;
    */
-  inline double* GetNextUserVariables()
+  double* GetNextUserVariables() { return this->NextUserVariables; }
+  ///@}
+
+  ///@{
+  /**
+   * Get a reference to PrevTrackedUserData
+   * See GetTrackedUserData for an explanation on how to use it.
+   */
+  std::vector<double>& GetPrevTrackedUserData() { return this->PrevTrackedUserData; }
+  ///@}
+
+  ///@{
+  /**
+   * Get a reference to TrackedUserData.
+   * The tracked user data is a vector of double associated with each position of the particle,
+   * but it is not integrated contrary to the UserVariables and EquationVariables.
+   * It is, however, automatically tracked from one position to the next, copied when creating
+   * new particles with NewInstance and CloneParticle and transferred from one node to the next
+   * when particles move from one domain to the another in parallel.
+   * If you are using these, you are supposed to compute and set the next tracked user data
+   * your implementation of FunctionValues in your model.
+   */
+  std::vector<double>& GetTrackedUserData() { return this->TrackedUserData; }
+  ///@}
+
+  ///@{
+  /**
+   * Get a reference to NextTrackedUserData
+   * See GetTrackedUserData for an explanation on how to use it.
+   */
+  std::vector<double>& GetNextTrackedUserData() { return this->NextTrackedUserData; }
+  ///@}
+
+  ///@{
+  /**
+   * Get/Set a pointer to a vtkLagrangianThreadedData that is considered to be local to the thread.
+   * This structure contains multiple objects to be used by the tracker and the model, it also
+   * contains a user data that can be used to store any kind of data, structure, class instance
+   * that you may need. This is set by the vtkLagrangianParticleTracker and can be
+   * initialized/finalized in the model
+   */
+  vtkLagrangianThreadedData* GetThreadedData() { return this->ThreadedData; }
+  void SetThreadedData(vtkLagrangianThreadedData* threadedData)
   {
-    return this->NextUserVariables;
+    this->ThreadedData = threadedData;
   }
-  //@}
+  ///@}
 
   /**
    * Move the particle to its next position by putting next equation
@@ -286,27 +299,20 @@ public:
    */
   virtual vtkIdType GetId();
 
-  //@{
+  ///@{
   /**
    * Set/Get parent particle id.
    * Allow to find the seed particle of any particle.
    */
   virtual void SetParentId(vtkIdType parentId);
   virtual vtkIdType GetParentId();
-  //@}
+  ///@}
 
   /**
    * Get the particle original seed index in the seed dataset.
    * Allows to track a specific seed along the tracks.
    */
   virtual vtkIdType GetSeedId();
-
-  /**
-   * Get the particle data tuple in a seed array.
-   * To be used on the output of
-   * vtkLagrangianBasicIntegrationModel::GetSeedArray
-   */
-  virtual vtkIdType GetSeedArrayTupleIndex();
 
   /**
    * Get the number of variables used to initialize EquationVariables.
@@ -319,19 +325,15 @@ public:
   virtual int GetNumberOfUserVariables();
 
   /**
-   * Get the particle data.
+   * Get the particle seed data, for reading only.
    */
   virtual vtkPointData* GetSeedData();
 
   /**
-   * Get the last traversed cell id
+   * Get the index of the tuple for this particle in the point data
+   * returned by GetSeedData method
    */
-  vtkIdType GetLastCellId();
-
-  /**
-   * Get the dataset containing the last traversed cell
-   */
-  vtkDataSet* GetLastDataSet();
+  virtual vtkIdType GetSeedArrayTupleIndex() const;
 
   /**
    * Get the last intersected surface cell id.
@@ -344,11 +346,6 @@ public:
   vtkDataSet* GetLastSurfaceDataSet();
 
   /**
-   * Set the last dataset and last cell id
-   */
-  void SetLastCell(vtkDataSet* dataset, vtkIdType cellId);
-
-  /**
    * Set the last surface dataset and last surface cell id
    */
   void SetLastSurfaceCell(vtkDataSet* dataset, vtkIdType cellId);
@@ -358,7 +355,7 @@ public:
    */
   virtual vtkIdType GetNumberOfSteps();
 
-  //@{
+  ///@{
   /**
    * Set/Get particle termination.
    * Values out of enum range are accepted
@@ -366,9 +363,9 @@ public:
    */
   virtual void SetTermination(int termination);
   virtual int GetTermination();
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Set/Get particle interaction.
    * Values out of enum range are accepted
@@ -376,17 +373,17 @@ public:
    */
   virtual void SetInteraction(int interaction);
   virtual int GetInteraction();
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Set/Get user flag.
    */
   virtual void SetUserFlag(int flag);
   virtual int GetUserFlag();
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Set/Get parallel specific flag, indication to insert or not
    * the previous position after streaming.
@@ -394,9 +391,9 @@ public:
    */
   virtual void SetPInsertPreviousPosition(bool val);
   virtual bool GetPInsertPreviousPosition();
-  //@}
+  ///@}
 
-  //@{
+  ///@{
   /**
    * Set/Get parallel specific flag, indication that the particle
    * may be manually shifted after streaming.
@@ -404,7 +401,7 @@ public:
    */
   virtual void SetPManualShift(bool val);
   virtual bool GetPManualShift();
-  //@}
+  ///@}
 
   /**
    * Get reference to step time of this particle
@@ -442,38 +439,35 @@ public:
   virtual void PrintSelf(ostream& os, vtkIndent indent);
 
 protected:
+  vtkLagrangianParticle(const vtkLagrangianParticle&) = delete;
+  vtkLagrangianParticle() = delete;
+  void operator=(const vtkLagrangianParticle&) = delete;
 
-  /**
-   * Constructor wrapper for internal convenience
-   */
-  vtkLagrangianParticle* NewInstance(int numberOfVariables,
-    vtkIdType seedId, vtkIdType particleId, vtkIdType seedArrayTupleIndex,
-    double integrationTime, vtkPointData* seedData);
-
-  vtkLagrangianParticle(const vtkLagrangianParticle&); // Not implemented
-  vtkLagrangianParticle(); // Not implemented
-  void operator=(const vtkLagrangianParticle&); // Not implemented
-
-  double* PrevEquationVariables;
+  std::vector<double> PrevEquationVariables;
   double* PrevVelocity;
   double* PrevUserVariables;
 
-  double* EquationVariables;
+  std::vector<double> EquationVariables;
   double* Velocity;
   double* UserVariables;
 
-  double* NextEquationVariables;
+  std::vector<double> NextEquationVariables;
   double* NextVelocity;
   double* NextUserVariables;
+
+  std::vector<double> PrevTrackedUserData;
+  std::vector<double> TrackedUserData;
+  std::vector<double> NextTrackedUserData;
+
+  vtkLagrangianThreadedData* ThreadedData = nullptr;
 
   vtkIdType Id;
   vtkIdType ParentId;
   vtkIdType SeedId;
-  vtkIdType SeedArrayTupleIndex;
   vtkIdType NumberOfSteps;
+  vtkIdType SeedArrayTupleIndex;
   vtkPointData* SeedData;
-  vtkDataSet* LastDataSet;
-  vtkIdType LastCellId;
+
   double StepTime;
   double IntegrationTime;
   double PrevIntegrationTime;
@@ -489,5 +483,6 @@ protected:
   bool PManualShift;
 };
 
+VTK_ABI_NAMESPACE_END
 #endif
 // VTK-HeaderTest-Exclude: vtkLagrangianParticle.h

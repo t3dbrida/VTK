@@ -1,17 +1,21 @@
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 #include "vtkCompositeDataIterator.h"
 #include "vtkCompositeDataSet.h"
 #include "vtkFieldData.h"
-#include "vtkHierarchicalBoxDataSet.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
 #include "vtkMultiBlockDataSet.h"
 #include "vtkNew.h"
+#include "vtkOverlappingAMR.h"
 #include "vtkPassInputTypeAlgorithm.h"
 #include "vtkPolyData.h"
 #include "vtkSphereSource.h"
 #include "vtkTestUtilities.h"
 #include "vtkUnsignedIntArray.h"
 #include "vtkXMLGenericDataObjectReader.h"
+
+#include <iostream>
 
 #define VTK_SUCCESS 0
 #define VTK_FAILURE 1
@@ -21,18 +25,14 @@ namespace
 class vtkTestAlgorithm : public vtkPassInputTypeAlgorithm
 {
 public:
-  static vtkTestAlgorithm* New() { return new vtkTestAlgorithm; }
+  static vtkTestAlgorithm* New();
   vtkTestAlgorithm(const vtkTestAlgorithm&) = delete;
   void operator=(const vtkTestAlgorithm&) = delete;
 
-  vtkTypeMacro(vtkTestAlgorithm, vtkPassInputTypeAlgorithm)
+  vtkTypeMacro(vtkTestAlgorithm, vtkPassInputTypeAlgorithm);
 
 protected:
-  vtkTestAlgorithm()
-    : Superclass()
-  {
-    this->SetNumberOfOutputPorts(2);
-  }
+  vtkTestAlgorithm() { this->SetNumberOfOutputPorts(2); }
 
   int FillInputPortInformation(int vtkNotUsed(port), vtkInformation* info) override
   {
@@ -88,6 +88,8 @@ protected:
   }
 };
 
+vtkStandardNewMacro(vtkTestAlgorithm);
+
 void AddPerBlockFieldData(vtkCompositeDataSet* data)
 {
   vtkSmartPointer<vtkCompositeDataIterator> iter;
@@ -110,7 +112,7 @@ void AddPerBlockFieldData(vtkCompositeDataSet* data)
       array->SetValue(0, iter->GetCurrentFlatIndex());
       array->SetName("compositeIndexBasedData");
       fd->AddArray(array);
-      std::cout << "Assinging field data " << iter->GetCurrentFlatIndex() << std::endl;
+      std::cout << "Assigning field data " << iter->GetCurrentFlatIndex() << std::endl;
     }
   }
 }
@@ -196,7 +198,7 @@ int TestComposite(std::string& inputDataFile, bool isAMR)
   }
   else
   {
-    if (!vtkHierarchicalBoxDataSet::SafeDownCast(data1))
+    if (!vtkOverlappingAMR::SafeDownCast(data1))
     {
       std::cout << "Error: output 1 is not an AMR dataset after composite data pipeline run"
                 << std::endl;
@@ -209,24 +211,25 @@ int TestComposite(std::string& inputDataFile, bool isAMR)
     std::cout << "Per block field data for the second output port changed" << std::endl;
     retVal = VTK_FAILURE;
   }
+
+  // Exercise NewInstance for coverage.
+  auto dummy = testAlg->NewInstance();
+  dummy->Delete();
+
   return retVal;
 }
 }
 
 int TestMultiOutputSimpleFilter(int argc, char* argv[])
 {
-  char* data_dir = vtkTestUtilities::GetDataRoot(argc, argv);
-  if (!data_dir)
-  {
-    cerr << "Could not determine data directory." << endl;
-    return VTK_FAILURE;
-  }
+  char const* tmp =
+    vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/AMR/HierarchicalBoxDataset.v1.1.vthb");
+  std::string inputAMR = tmp;
+  delete[] tmp;
 
-  std::string inputAMR = data_dir;
-  std::string inputMultiblock = data_dir;
-  inputAMR += "/Data/AMR/HierarchicalBoxDataset.v1.1.vthb";
-  inputMultiblock += "/Data/many_blocks/many_blocks.vtm";
-  delete[] data_dir;
+  tmp = vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/many_blocks/many_blocks.vtm");
+  std::string inputMultiblock = tmp;
+  delete[] tmp;
 
   int retVal = TestComposite(inputAMR, true);
 

@@ -1,17 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    TestResampleToImage2D.cxx
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 // This is just a simple test. vtkResampleToImage internally uses
 // vtkProbeFilter, which is tested thoroughly in other tests.
 
@@ -22,13 +10,14 @@
 #include "vtkTestUtilities.h"
 #include "vtkXMLUnstructuredGridReader.h"
 
+#include <iostream>
+
 int TestResampleToImage2D(int argc, char* argv[])
 {
   vtkNew<vtkXMLUnstructuredGridReader> reader;
-  char *fname =
-    vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/delaunay3d.vtu");
+  char* fname = vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/delaunay3d.vtu");
   reader->SetFileName(fname);
-  delete [] fname;
+  delete[] fname;
 
   vtkNew<vtkResampleToImage> resample;
   resample->UseInputBoundsOff();
@@ -43,7 +32,8 @@ int TestResampleToImage2D(int argc, char* argv[])
   range = resample->GetOutput()->GetPointData()->GetArray("BrownianVectors")->GetRange();
   if (range[1] - range[0] < 0.01)
   {
-    cerr << "Error resampling along X" << endl;
+    std::cerr << "Error resampling along X" << std::endl;
+    return EXIT_FAILURE;
   }
 
   // test on Y
@@ -53,7 +43,8 @@ int TestResampleToImage2D(int argc, char* argv[])
   range = resample->GetOutput()->GetPointData()->GetArray("BrownianVectors")->GetRange();
   if (range[1] - range[0] < 0.01)
   {
-    cerr << "Error resampling along Y" << endl;
+    std::cerr << "Error resampling along Y" << std::endl;
+    return EXIT_FAILURE;
   }
 
   // test on Z
@@ -63,7 +54,8 @@ int TestResampleToImage2D(int argc, char* argv[])
   range = resample->GetOutput()->GetPointData()->GetArray("BrownianVectors")->GetRange();
   if (range[1] - range[0] < 0.01)
   {
-    cerr << "Error resampling along Z" << endl;
+    std::cerr << "Error resampling along Z" << std::endl;
+    return EXIT_FAILURE;
   }
 
   return EXIT_SUCCESS;

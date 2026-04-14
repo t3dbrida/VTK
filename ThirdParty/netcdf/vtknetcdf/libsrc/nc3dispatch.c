@@ -1,5 +1,5 @@
 /*********************************************************************
-   Copyright 2010, UCAR/Unidata See netcdf/COPYRIGHT file for
+   Copyright 2018, UCAR/Unidata See netcdf/COPYRIGHT file for
    copying and redistribution conditions.
 
    $Id: nc3dispatch.c,v 2.8 2010/05/26 11:11:26 ed Exp $
@@ -35,11 +35,11 @@ static int NC3_inq_var_all(int ncid, int varid, char *name, nc_type *xtypep,
                int *shufflep, int *deflatep, int *deflate_levelp,
                int *fletcher32p, int *contiguousp, size_t *chunksizesp, 
                int *no_fill, void *fill_valuep, int *endiannessp, 
-	       int *options_maskp, int *pixels_per_blockp);
+	       unsigned int* idp, size_t* nparamsp, unsigned int* params
+               );
 
 static int NC3_var_par_access(int,int,int);
 
-#ifdef USE_NETCDF4
 static int NC3_show_metadata(int);
 static int NC3_inq_unlimdims(int,int*,int*);
 static int NC3_inq_ncid(int,const char*,int*);
@@ -72,16 +72,16 @@ static int NC3_def_opaque(int,size_t,const char*,nc_type*);
 static int NC3_def_var_deflate(int,int,int,int,int);
 static int NC3_def_var_fletcher32(int,int,int);
 static int NC3_def_var_chunking(int,int,int,const size_t*);
-static int NC3_def_var_fill(int,int,int,const void*);
 static int NC3_def_var_endian(int,int,int);
+static int NC3_def_var_filter(int, int, unsigned int, size_t, const unsigned int*);
+
 static int NC3_set_var_chunk_cache(int,int,size_t,size_t,float);
 static int NC3_get_var_chunk_cache(int,int,size_t*,size_t*,float*);
-#endif /*USE_NETCDF4*/
 
-static NC_Dispatch NC3_dispatcher = {
+static const NC_Dispatch NC3_dispatcher = {
 
 NC_FORMATX_NC3,
-
+NC_DISPATCH_VERSION,
 NC3_create,
 NC3_open,
 
@@ -91,8 +91,6 @@ NC3_sync,
 NC3_abort,
 NC3_close,
 NC3_set_fill,
-NC3_inq_base_pe,
-NC3_set_base_pe,
 NC3_inq_format,
 NC3_inq_format_extended,
 
@@ -126,8 +124,8 @@ NCDEFAULT_put_varm,
 NC3_inq_var_all,
 
 NC3_var_par_access,
+NC3_def_var_fill,
 
-#ifdef USE_NETCDF4
 NC3_show_metadata,
 NC3_inq_unlimdims,
 NC3_inq_ncid,
@@ -161,16 +159,21 @@ NC3_def_opaque,
 NC3_def_var_deflate,
 NC3_def_var_fletcher32,
 NC3_def_var_chunking,
-NC3_def_var_fill,
 NC3_def_var_endian,
+NC3_def_var_filter,
 NC3_set_var_chunk_cache,
 NC3_get_var_chunk_cache,
 
-#endif /*_NC4DISPATCH_H*/
+NC_NOOP_inq_var_filter_ids,
+NC_NOOP_inq_var_filter_info,
 
+NC_NOTNC4_def_var_quantize,
+NC_NOTNC4_inq_var_quantize,
+
+NC_NOOP_inq_filter_avail,
 };
 
-NC_Dispatch* NC3_dispatch_table = NULL; /*!< NC3 Dispatch table, moved here from ddispatch.c */
+const NC_Dispatch* NC3_dispatch_table = NULL; /*!< NC3 Dispatch table, moved here from ddispatch.c */
 
 int
 NC3_initialize(void)
@@ -191,17 +194,19 @@ NC3_inq_var_all(int ncid, int varid, char *name, nc_type *xtypep,
                int *shufflep, int *deflatep, int *deflate_levelp,
                int *fletcher32p, int *contiguousp, size_t *chunksizesp, 
                int *no_fill, void *fill_valuep, int *endiannessp, 
-	       int *options_maskp, int *pixels_per_blockp)
+	       unsigned int* idp, size_t* nparamsp, unsigned int* params
+	       )
 {
-    int stat = NC3_inq_var(ncid,varid,name,xtypep,ndimsp,dimidsp,nattsp);
+    int stat = NC3_inq_var(ncid,varid,name,xtypep,ndimsp,dimidsp,nattsp,no_fill,fill_valuep);
     if(stat) return stat;
     if(shufflep) *shufflep = 0;
     if(deflatep) *deflatep = 0;
     if(fletcher32p) *fletcher32p = 0;
     if(contiguousp) *contiguousp = NC_CONTIGUOUS;
-    if(no_fill) *no_fill = 1;
     if(endiannessp) return NC_ENOTNC4;
-    if(options_maskp) return NC_ENOTNC4;
+    if(idp) return NC_ENOTNC4;
+    if(nparamsp) return NC_ENOTNC4;
+    if(params) return NC_ENOTNC4;
     return NC_NOERR;
 }
 
@@ -210,8 +215,6 @@ NC3_var_par_access(int ncid, int varid, int par_access)
 {
     return NC_NOERR; /* no-op for netcdf classic */
 }
-    
-#ifdef USE_NETCDF4
 
 static int
 NC3_inq_unlimdims(int ncid, int *ndimsp, int *unlimdimidsp)
@@ -500,16 +503,14 @@ NC3_def_var_chunking(int ncid, int varid, int contiguous, const size_t *chunksiz
 }
 
 static int
-NC3_def_var_fill(int ncid, int varid, int no_fill, const void *fill_value)
-{
-    return NC_ENOTNC4;
-}
-
-static int
 NC3_def_var_endian(int ncid, int varid, int endianness)
 {
     return NC_ENOTNC4;
 }
 
-#endif /*USE_NETCDF4*/
+static int
+NC3_def_var_filter(int ncid, int varid, unsigned int id, size_t nparams, const unsigned int* parms)
+{
+    return NC_ENOTNC4;
+}
     

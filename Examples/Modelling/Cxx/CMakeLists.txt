@@ -1,56 +1,69 @@
-cmake_minimum_required(VERSION 3.3...3.12 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.8...3.12 FATAL_ERROR)
+project(Modelling)
 
+include(GNUInstallDirs)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_BINDIR}")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}")
 
-PROJECT (Modelling)
-find_package(VTK REQUIRED)
-vtk_module_config(VTK
-  vtkCommonCore
-  vtkCommonDataModel
-  vtkFiltersGeneral
-  vtkIOXML
-  vtkImagingHybrid
-  vtkInteractionStyle
-  vtkRenderingOpenGL2
-  vtkTestingRendering
-)
-include(${VTK_USE_FILE})
+find_package(VTK
+  COMPONENTS
+    CommonCore
+    FiltersGeneral
+    IOXML
+    ImagingHybrid
+    InteractionStyle
+    RenderingCore
+    RenderingOpenGL2
+    vtksys
+  OPTIONAL_COMPONENTS
+    TestingRendering)
+if (NOT VTK_FOUND)
+  message("Skipping example: ${VTK_NOT_FOUND_MESSAGE}")
+  return ()
+endif ()
 
 add_executable(finance MACOSX_BUNDLE finance.cxx)
-target_link_libraries(finance ${VTK_LIBRARIES})
+target_link_libraries(finance PRIVATE ${VTK_LIBRARIES})
 
 add_executable(Delaunay3D MACOSX_BUNDLE Delaunay3D.cxx)
-target_link_libraries(Delaunay3D ${VTK_LIBRARIES})
+target_link_libraries(Delaunay3D PRIVATE ${VTK_LIBRARIES})
 
 add_executable(Delaunay3DAlpha MACOSX_BUNDLE Delaunay3DAlpha.cxx)
-target_link_libraries(Delaunay3DAlpha ${VTK_LIBRARIES})
+target_link_libraries(Delaunay3DAlpha PRIVATE ${VTK_LIBRARIES})
 
-if(BUILD_TESTING)
-  if(vtkTestingRendering_LOADED)
+vtk_module_autoinit(
+  TARGETS finance
+          Delaunay3D
+          Delaunay3DAlpha
+  MODULES ${VTK_LIBRARIES})
+
+if (BUILD_TESTING)
+  include(CTest)
+  if (TARGET VTK::TestingRendering)
+
     ######## Regression Testing ########
-    set(vtk-example ModellingExamples)
-    set(TestFinance_ARGS "DATA{${VTK_TEST_INPUT_DIR}/financial.txt}")
-    set(TestDelaunay3D_ARGS
-      "DATA{${VTK_TEST_INPUT_DIR}/cow.vtp}"
-      ${VTK_TEST_OUTPUT_DIR}/Delaunay3D.vtu
-      )
-    set(TestDelaunay3DAlpha_ARGS
-      .5 "DATA{${VTK_TEST_INPUT_DIR}/cow.vtp}"
-      ${VTK_TEST_OUTPUT_DIR}/Delaunay3DAlpha.vtu
-      )
-    vtk_add_test_cxx(${vtk-example}CxxTests data_tests
-      TestFinance.cxx
-      )
-    vtk_add_test_cxx(${vtk-example}CxxTests tests
-      NO_DATA NO_VALID NO_OUTPUT
-      TestDelaunay3D.cxx
-      TestDelaunay3DAlpha.cxx
-      )
-    set(all_tests
-      ${data_tests}
-      ${tests}
-      )
-    vtk_test_cxx_executable(${vtk-example}CxxTests all_tests
-      RENDERING_FACTORY
-      )
-  endif()
-endif()
+    set(ExternalData_BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/ExternalData)
+
+    list(APPEND ExternalData_URL_TEMPLATES
+      # Data published by Girder
+      "https://data.kitware.com/api/v1/file/hashsum/%(algo)/%(hash)/download"
+
+      # Data published by developers using git-gitlab-push.
+      "https://www.vtk.org/files/ExternalData/%(algo)/%(hash)"
+    )
+    include(ExternalData)
+
+    ExternalData_add_test(ModellingData
+      NAME    "ModellingExampleCxx-finance"
+      COMMAND finance
+        DATA{${CMAKE_CURRENT_SOURCE_DIR}/Data/financial.txt}
+        -V DATA{${CMAKE_CURRENT_SOURCE_DIR}/Baseline/finance.png}
+      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+    set_property(TEST ModellingExampleCxx-finance
+      PROPERTY
+        ENVIRONMENT "VTK_TESTING=1;VTK_TESTING_IMAGE_COMPARE_METHOD=TIGHT_VALID")
+
+    ExternalData_Add_Target(ModellingData)
+  endif ()
+endif ()

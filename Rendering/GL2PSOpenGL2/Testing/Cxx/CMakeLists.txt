@@ -1,6 +1,4 @@
-include(vtkGhostscript)
-include(vtkTestingGL2PS)
-include(vtkOpenGL)
+include(../../../../CMake/vtkTestingGL2PS.cmake)
 
 set(GL2PSTests)
 if(VTK_GHOSTSCRIPT_EXECUTABLE)
@@ -16,7 +14,6 @@ vtk_add_gl2ps_test_cxx(${GL2PSTests})
 
 # Compile the PNGCompare test, which is used to validate PNG images (read from
 # disk, not generated in VTK).
-list(APPEND tests PNGCompare)
+list(APPEND tests PNGCompare.cxx)
 
 vtk_test_cxx_executable(vtkRenderingGL2PSOpenGL2CxxTests tests RENDERING_FACTORY)
-vtk_opengl_link(vtkRenderingGL2PSOpenGL2CxxTests)

@@ -1,29 +1,22 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-  Module:    vtkWin32OutputWindow.h
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 /**
  * @class   vtkWin32OutputWindow
  * @brief   Win32 Specific output window class
  *
- * This class is used for error and debug message output on the windows
+ * This class is used for error and debug message output on the Windows
  * platform.   It creates a read only EDIT control to display the
  * output.   This class should not be used directly.   It should
  * only be used through the interface of vtkOutputWindow.  This class
  * only handles one output window per process.  If the window is destroyed,
  * the vtkObject::GlobalWarningDisplayOff() function is called.  The
  * window is created the next time text is written to the window.
-*/
+ *
+ * In its constructor, vtkWin32OutputWindow changes the default
+ * `vtkOutputWindow::DisplayMode` to
+ * `vtkOutputWindow::NEVER` unless running on a dashboard machine,
+ * in which cause it's left as `vtkOutputWindow::DEFAULT`.
+ */
 
 #ifndef vtkWin32OutputWindow_h
 #define vtkWin32OutputWindow_h
@@ -31,12 +24,12 @@
 #include "vtkCommonCoreModule.h" // For export macro
 #include "vtkOutputWindow.h"
 
-
+VTK_ABI_NAMESPACE_BEGIN
 class VTKCOMMONCORE_EXPORT vtkWin32OutputWindow : public vtkOutputWindow
 {
 public:
-// Methods from vtkObject
-  vtkTypeMacro(vtkWin32OutputWindow,vtkOutputWindow);
+  // Methods from vtkObject
+  vtkTypeMacro(vtkWin32OutputWindow, vtkOutputWindow);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
   /**
@@ -49,30 +42,23 @@ public:
    */
   void DisplayText(const char*) override;
 
-  //@{
   /**
-   * Set or get whether the vtkWin32OutputWindow should also send its output
-   * to stderr / cerr.
+   * Returns the window title.
    */
-  vtkGetMacro(SendToStdErr, bool);
-  vtkSetMacro(SendToStdErr, bool);
-  vtkBooleanMacro(SendToStdErr, bool);
-  //@}
+  virtual const char* GetWindowTitle() { return "vtkOutputWindow"; }
 
 protected:
   vtkWin32OutputWindow();
-  virtual ~vtkWin32OutputWindow();
+  ~vtkWin32OutputWindow() override;
 
-  void PromptText(const char* text);
-  static void AddText(const char*);
-  static int Initialize();
+  virtual void PromptText(const char* text);
+  virtual void AddText(const char*);
+  virtual int Initialize();
 
 private:
-  bool SendToStdErr;
-
   vtkWin32OutputWindow(const vtkWin32OutputWindow&) = delete;
   void operator=(const vtkWin32OutputWindow&) = delete;
 };
 
-
+VTK_ABI_NAMESPACE_END
 #endif

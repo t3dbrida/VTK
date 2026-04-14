@@ -1,21 +1,33 @@
-set(vtkverdict_THIRD_PARTY 1)
-set(vtkverdict_LIBRARIES verdict)
-vtk_module_export_info()
+vtk_third_party_extract(
+  FILE "${CMAKE_CURRENT_SOURCE_DIR}/update.sh"
+  TAGS
+    repo verdict_repo
+    tag  verdict_tag
+  VERSION_FROM_TAG
+    tag  verdict_version "^for/vtk-[0-9]*-([0-9\\.]+)$")
 
-set(verdict_INSTALL_RUNTIME_DIR ${VTK_INSTALL_RUNTIME_DIR})
-set(verdict_INSTALL_LIBRARY_DIR ${VTK_INSTALL_LIBRARY_DIR})
-set(verdict_INSTALL_ARCHIVE_DIR ${VTK_INSTALL_ARCHIVE_DIR})
+vtk_module_third_party(
+  INTERNAL
+    LICENSE_FILES
+      "vtkverdict/LICENSE"
+    SPDX_LICENSE_IDENTIFIER
+      "BSD-3-Clause"
+    SPDX_COPYRIGHT_TEXT
+      "Copyright 2003,2006,2019 National Technology & Engineering Solutions of Sandia, LLC (NTESS)."
+    SPDX_DOWNLOAD_LOCATION
+      "git+${verdict_repo}@${verdict_tag}"
+    VERSION
+      "${verdict_version}"
+    STANDARD_INCLUDE_DIRS
+  EXTERNAL
+    PACKAGE Verdict
+    TARGETS Verdict::verdict
+    VERSION       "1.4.4"
+    STANDARD_INCLUDE_DIRS)
 
-set(verdict_INSTALL_DOC_DIR ${VTK_INSTALL_DOC_DIR})
-set(verdict_INSTALL_EXPORT_NAME ${VTK_INSTALL_EXPORT_NAME})
-set(verdict_INSTALL_INCLUDE_DIR ${VTK_INSTALL_INCLUDE_DIR}/vtkverdict)
-set(verdict_INSTALL_NO_DEVELOPMENT ${VTK_INSTALL_NO_DEVELOPMENT})
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/vtk_verdict.h.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/vtk_verdict.h")
 
-set(VERDICT_NO_LIBRARY_VERSION 1)
-set(VERDICT_BUILD_DOC OFF CACHE INTERNAL "Build the 2007 Verdict User Manual")
-set(VERDICT_MANGLE OFF CACHE INTERNAL "Mangle verdict names for inclusion in a larger library?")
-set(VERDICT_MANGLE_PREFIX "" CACHE INTERNAL "A string to prepend to all verdict function names and classes." )
-set(VERDICT_ENABLE_TESTING OFF CACHE INTERNAL  "Should tests of the VERDICT library be built?")
-
-add_subdirectory(vtkverdict)
-vtk_target(verdict NO_INSTALL)
+vtk_module_install_headers(
+  FILES "${CMAKE_CURRENT_BINARY_DIR}/vtk_verdict.h")

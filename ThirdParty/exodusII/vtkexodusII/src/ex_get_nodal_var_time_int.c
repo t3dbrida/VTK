@@ -1,44 +1,13 @@
 /*
- * Copyright (c) 2005-2017 National Technology & Engineering Solutions
+ * Copyright(C) 1999-2020 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met:
- *
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *
- *     * Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following
- *       disclaimer in the documentation and/or other materials provided
- *       with the distribution.
- *
- *     * Neither the name of NTESS nor the names of its
- *       contributors may be used to endorse or promote products derived
- *       from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
+ * See packages/seacas/LICENSE for details
  */
 
 #include "exodusII.h"     // for ex_err, etc
-#include "exodusII_int.h" // for EX_WARN, ex_comp_ws, etc
-#include "vtk_netcdf.h"       // for nc_inq_varid, NC_NOERR, etc
-#include <stddef.h>       // for size_t
-#include <stdio.h>
-#include <sys/types.h> // for int64_t
+#include "exodusII_int.h" // for EX_WARN, exi_comp_ws, etc
 
 /*!
 The function ex_get_nodal_var_time() reads the values of a nodal
@@ -88,7 +57,6 @@ beg_time_step +1) values
 nodal_var_index-th nodal
                              variable.
 
-
 For example, the following code segment will read the values of the
 first nodal variable for node number one for all time steps stored in
 the data file:
@@ -110,8 +78,8 @@ error = ex_get_var_time(exoid, EX_NODAL, var_index, node_num, beg_time,
 ~~~
 */
 
-int ex_get_nodal_var_time_int(int exoid, int nodal_var_index, int64_t node_number,
-                              int beg_time_step, int end_time_step, void *nodal_var_vals)
+int exi_get_nodal_var_time(int exoid, int nodal_var_index, int64_t node_number, int beg_time_step,
+                           int end_time_step, void *nodal_var_vals)
 {
   int    status;
   int    varid;
@@ -119,16 +87,25 @@ int ex_get_nodal_var_time_int(int exoid, int nodal_var_index, int64_t node_numbe
   char   errmsg[MAX_ERR_LENGTH];
 
   EX_FUNC_ENTER();
-  ex_check_valid_file_id(exoid, __func__);
+  if (exi_check_valid_file_id(exoid, __func__) == EX_FATAL) {
+    EX_FUNC_LEAVE(EX_FATAL);
+  }
   /* Check that times are in range */
   {
     int num_time_steps = ex_inquire_int(exoid, EX_INQ_TIME);
+
+    if (num_time_steps == 0) {
+      snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: there are no time_steps on the file id %d", exoid);
+      ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
+      EX_FUNC_LEAVE(EX_FATAL);
+    }
+
     if (beg_time_step <= 0 || beg_time_step > num_time_steps) {
       snprintf(errmsg, MAX_ERR_LENGTH,
                "ERROR: beginning time_step is out-of-range. Value = %d, "
                "valid range is 1 to %d in file id %d",
                beg_time_step, num_time_steps, exoid);
-      ex_err(__func__, errmsg, EX_BADPARAM);
+      ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
       EX_FUNC_LEAVE(EX_FATAL);
     }
 
@@ -144,7 +121,7 @@ int ex_get_nodal_var_time_int(int exoid, int nodal_var_index, int64_t node_numbe
                "ERROR: end time_step is out-of-range. Value = %d, valid "
                "range is %d to %d in file id %d",
                beg_time_step, end_time_step, num_time_steps, exoid);
-      ex_err(__func__, errmsg, EX_BADPARAM);
+      ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
       EX_FUNC_LEAVE(EX_FATAL);
     }
   }
@@ -161,7 +138,7 @@ int ex_get_nodal_var_time_int(int exoid, int nodal_var_index, int64_t node_numbe
     if ((status = nc_inq_varid(exoid, VAR_NOD_VAR, &varid)) != NC_NOERR) {
       snprintf(errmsg, MAX_ERR_LENGTH, "Warning: could not find nodal variable %d in file id %d",
                nodal_var_index, exoid);
-      ex_err(__func__, errmsg, status);
+      ex_err_fn(exoid, __func__, errmsg, status);
       EX_FUNC_LEAVE(EX_WARN);
     }
 
@@ -177,7 +154,7 @@ int ex_get_nodal_var_time_int(int exoid, int nodal_var_index, int64_t node_numbe
     if ((status = nc_inq_varid(exoid, VAR_NOD_VAR_NEW(nodal_var_index), &varid)) != NC_NOERR) {
       snprintf(errmsg, MAX_ERR_LENGTH, "Warning: could not find nodal variable %d in file id %d",
                nodal_var_index, exoid);
-      ex_err(__func__, errmsg, status);
+      ex_err_fn(exoid, __func__, errmsg, status);
       EX_FUNC_LEAVE(EX_WARN);
     }
 
@@ -193,7 +170,7 @@ int ex_get_nodal_var_time_int(int exoid, int nodal_var_index, int64_t node_numbe
     count[1] = 1;
   }
 
-  if (ex_comp_ws(exoid) == 4) {
+  if (exi_comp_ws(exoid) == 4) {
     status = nc_get_vara_float(exoid, varid, start, count, nodal_var_vals);
   }
   else {
@@ -202,7 +179,7 @@ int ex_get_nodal_var_time_int(int exoid, int nodal_var_index, int64_t node_numbe
 
   if (status != NC_NOERR) {
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to get nodal variables in file id %d", exoid);
-    ex_err(__func__, errmsg, status);
+    ex_err_fn(exoid, __func__, errmsg, status);
     EX_FUNC_LEAVE(EX_FATAL);
   }
   EX_FUNC_LEAVE(EX_NOERR);

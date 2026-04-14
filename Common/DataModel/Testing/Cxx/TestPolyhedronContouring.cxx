@@ -1,48 +1,32 @@
-/*=========================================================================
-
-Program:   Visualization Toolkit
-Module:    TestPolyhedron6.cxx
-
-Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-All rights reserved.
-See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-This software is distributed WITHOUT ANY WARRANTY; without even
-the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "vtkClipDataSet.h"
 #include "vtkContourFilter.h"
 #include "vtkDoubleArray.h"
 #include "vtkNew.h"
 #include "vtkPointData.h"
-#include "vtkXMLUnstructuredGridReader.h"
+#include "vtkTestUtilities.h"
 #include "vtkUnstructuredGrid.h"
+#include "vtkXMLUnstructuredGridReader.h"
 
+#include <iostream>
 
-using namespace std;
-
-int TestPolyhedronContouring(int argc, char *argv[])
+int TestPolyhedronContouring(int argc, char* argv[])
 {
   vtkObject::GlobalWarningDisplayOff();
   vtkNew<vtkXMLUnstructuredGridReader> r;
   vtkNew<vtkContourFilter> cf;
-
-  if (argc < 3)
-  {
-    cout << "Not enough arguments. Passing test nonetheless.";
-    return EXIT_SUCCESS;
-  }
+  cf->GenerateTrianglesOff();
 
   {
-    char* fname = argv[1];
+    char* fname = vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/cell_850113.vtu");
     r->SetFileName(fname);
     r->Update();
 
-    vtkUnstructuredGrid *grid = r->GetOutput();
-    cf->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, "AirVolumeFraction");
+    vtkUnstructuredGrid* grid = r->GetOutput();
+    cf->SetInputArrayToProcess(
+      0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, "AirVolumeFraction");
     cf->SetInputData(grid);
     cf->SetValue(0, 0.5);
     cf->Update();
@@ -50,13 +34,24 @@ int TestPolyhedronContouring(int argc, char *argv[])
     vtkPolyData* polys = cf->GetOutput();
     if (polys->GetNumberOfCells() != 2)
     {
-      cerr << "Number of polys not 2 (as expected), but " << polys->GetNumberOfCells() << endl;
+      std::cerr << "Number of polys not 2 (as expected), but " << polys->GetNumberOfCells()
+                << std::endl;
+      return EXIT_FAILURE;
+    }
+    cf->GenerateTrianglesOn();
+    cf->Update();
+    vtkPolyData* triangles = cf->GetOutput();
+    if (triangles->GetNumberOfCells() != 4)
+    {
+      std::cerr << "Number of triangles is not 4 (as expected), but "
+                << triangles->GetNumberOfCells() << std::endl;
       return EXIT_FAILURE;
     }
 
     vtkNew<vtkClipDataSet> cd;
     cd->SetInputData(grid);
-    cd->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, "AirVolumeFraction");
+    cd->SetInputArrayToProcess(
+      0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, "AirVolumeFraction");
     cd->SetValue(0.5);
     cd->SetInsideOut(0);
     cd->Update();
@@ -64,7 +59,8 @@ int TestPolyhedronContouring(int argc, char *argv[])
     vtkUnstructuredGrid* clip = cd->GetOutput();
     if (clip->GetNumberOfCells() != 2)
     {
-      cerr << "Number of 'less' clipped cells not 2 (as expected), but " << clip->GetNumberOfCells() << endl;
+      std::cerr << "Number of 'less' clipped cells not 2 (as expected), but "
+                << clip->GetNumberOfCells() << std::endl;
       return EXIT_FAILURE;
     }
 
@@ -72,7 +68,8 @@ int TestPolyhedronContouring(int argc, char *argv[])
     int nFaces0 = clipCell0->GetNumberOfFaces();
     if (nFaces0 != 4 && nFaces0 != 6)
     {
-      cerr << "Expected one clipped cell with 4 and one with 10 faces, got " << nFaces0 << " faces." << endl;
+      std::cerr << "Expected one clipped cell with 4 and one with 10 faces, got " << nFaces0
+                << " faces." << std::endl;
       return EXIT_FAILURE;
     }
 
@@ -80,7 +77,8 @@ int TestPolyhedronContouring(int argc, char *argv[])
     int nFaces1 = clipCell1->GetNumberOfFaces();
     if (nFaces1 != 4 && nFaces1 != 6)
     {
-      cerr << "Expected one clipped cell with 4 and one with 10 faces, got " << nFaces1 << " faces." << endl;
+      std::cerr << "Expected one clipped cell with 4 and one with 10 faces, got " << nFaces1
+                << " faces." << std::endl;
       return EXIT_FAILURE;
     }
 
@@ -90,19 +88,22 @@ int TestPolyhedronContouring(int argc, char *argv[])
     clip = cd->GetOutput();
     if (clip->GetNumberOfCells() != 1)
     {
-      cerr << "Number of 'greater' clipped cells not 1 (as expected), but " << clip->GetNumberOfCells() << endl;
+      std::cerr << "Number of 'greater' clipped cells not 1 (as expected), but "
+                << clip->GetNumberOfCells() << std::endl;
       return EXIT_FAILURE;
     }
 
     vtkCell* clipCell = clip->GetCell(0);
     if (clipCell->GetNumberOfFaces() != 10)
     {
-      cerr << "Expected one clipped cell with 10 faces, got " << clipCell->GetNumberOfFaces() << "faces." << endl;
+      std::cerr << "Expected one clipped cell with 10 faces, got " << clipCell->GetNumberOfFaces()
+                << "faces." << std::endl;
       return EXIT_FAILURE;
     }
   }
 
-  // yet another problematic case, which gives an incorrect non-watertight warning in the old contouring code
+  // yet another problematic case, which gives an incorrect non-watertight warning in the old
+  // contouring code
   {
     vtkNew<vtkPoints> pts;
     pts->InsertNextPoint(1, 0, 0);
@@ -128,68 +129,58 @@ int TestPolyhedronContouring(int argc, char *argv[])
     p->SetPoints(pts);
     p->Allocate(1);
 
-    vtkIdType faceStream[] =
-    {
-      6, 8 , 3 , 4  ,5, 9, 10,
-      4, 8 , 3 , 6  ,11,
-      6, 3 , 6 , 0  ,7, 5, 4,
-      4, 9 , 5 , 7  ,12,
-      4, 10, 9 , 12 ,13,
-      4, 13, 12, 1  ,2,
-      4, 12, 7 , 0  ,1,
-      5, 8 , 11, 2  ,13, 10,
-      5, 11, 6 , 0  ,1, 2
-    };
+    vtkIdType faceStream[] = { 6, 8, 3, 4, 5, 9, 10, 4, 8, 3, 6, 11, 6, 3, 6, 0, 7, 5, 4, 4, 9, 5,
+      7, 12, 4, 10, 9, 12, 13, 4, 13, 12, 1, 2, 4, 12, 7, 0, 1, 5, 8, 11, 2, 13, 10, 5, 11, 6, 0, 1,
+      2 };
 
     p->InsertNextCell(VTK_POLYHEDRON, 9, faceStream);
 
-    double values[] = {
-      0.48828   ,
-      0.920027  ,
-      0.959499  ,
-      0.51357   ,
-      0.497449  ,
-      0.523359  ,
-      0.470217  ,
-      0.498483  ,
-      0.956751  ,
-      0.928612  ,
-      0.971497  ,
-      0.942868  ,
-      0.93052   ,
-      0.961309
-    };
+    double values[] = { 0.48828, 0.920027, 0.959499, 0.51357, 0.497449, 0.523359, 0.470217,
+      0.498483, 0.956751, 0.928612, 0.971497, 0.942868, 0.93052, 0.961309 };
 
     vtkNew<vtkDoubleArray> arr;
     arr->SetArray(values, 14, 1);
     arr->SetName("AirVolumeFraction");
     p->GetPointData()->AddArray(arr);
 
-    cf->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, "AirVolumeFraction");
+    cf->SetInputArrayToProcess(
+      0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, "AirVolumeFraction");
     cf->SetInputData(p);
+    cf->GenerateTrianglesOff();
     cf->SetValue(0, 0.5);
     cf->Update();
 
     vtkPolyData* result = cf->GetOutput();
     if (result->GetNumberOfCells() != 1)
     {
-      cerr << "Expected 1 contour polyhedron, got " << result->GetNumberOfCells() << endl;
+      std::cerr << "Expected 1 contour polyhedron, got " << result->GetNumberOfCells() << std::endl;
       return EXIT_FAILURE;
     }
 
     vtkCell* contour = result->GetCell(0);
     if (contour->GetNumberOfPoints() != 7)
     {
-      cerr << "Expected 7 contour points, got " << contour->GetNumberOfPoints() << endl;
+      std::cerr << "Expected 7 contour points, got " << contour->GetNumberOfPoints() << std::endl;
       return EXIT_FAILURE;
     }
 
-    r->SetFileName(argv[2]);
+    cf->GenerateTrianglesOn();
+    cf->Update();
+    vtkPolyData* triangles = cf->GetOutput();
+    if (triangles->GetNumberOfCells() != 5)
+    {
+      std::cerr << "Expected 5 contour triangles, got " << triangles->GetNumberOfCells()
+                << std::endl;
+      return EXIT_FAILURE;
+    }
+
+    r->SetFileName(vtkTestUtilities::ExpandDataFileName(argc, argv, "Data/cell_12851_26.vtu"));
     r->Update();
 
     vtkUnstructuredGrid* cell_12851 = r->GetOutput();
     cf->SetInputData(cell_12851);
-    cf->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, "AirVolumeFraction");
+    cf->SetInputArrayToProcess(
+      0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, "AirVolumeFraction");
     cf->SetValue(0, 0.5);
     cf->Update();
 
@@ -197,14 +188,16 @@ int TestPolyhedronContouring(int argc, char *argv[])
 
     if (cell_12851_contour->GetNumberOfCells() != 1)
     {
-      cerr << "cell_12851: Expected 1 contour polyhedron, got " << cell_12851_contour->GetNumberOfCells() << endl;
+      std::cerr << "cell_12851: Expected 1 contour polyhedron, got "
+                << cell_12851_contour->GetNumberOfCells() << std::endl;
       return EXIT_FAILURE;
     }
 
     contour = cell_12851_contour->GetCell(0);
     if (contour->GetNumberOfPoints() != 3)
     {
-      cerr << "cell_12851: Expected 3 contour points, got " << contour->GetNumberOfPoints() << endl;
+      std::cerr << "cell_12851: Expected 3 contour points, got " << contour->GetNumberOfPoints()
+                << std::endl;
       return EXIT_FAILURE;
     }
   }
@@ -230,21 +223,8 @@ int TestPolyhedronContouring(int argc, char *argv[])
     vtkNew<vtkUnstructuredGrid> ba;
     ba->SetPoints(pnts);
 
-    double values[] =
-    {
-      0.544052,
-      0.479528,
-      0.485401,
-      0.491219,
-      0.522598,
-      0.460551,
-      0.508554,
-      0.454234,
-      0.517886,
-      0.528239,
-      0.494647,
-      0.499257
-    };
+    double values[] = { 0.544052, 0.479528, 0.485401, 0.491219, 0.522598, 0.460551, 0.508554,
+      0.454234, 0.517886, 0.528239, 0.494647, 0.499257 };
 
     vtkNew<vtkDoubleArray> data;
     data->SetArray(values, 12, 1);
@@ -252,37 +232,31 @@ int TestPolyhedronContouring(int argc, char *argv[])
 
     ba->GetPointData()->AddArray(data);
 
-    vtkIdType faceStream[] =
-    {
-      5, 4,  8, 1 , 3, 9,
-      4, 9,  3, 2 , 0,
-      5, 4,  8, 1 , 7, 10,
-      5, 1,  7, 5 , 2, 3,
+    vtkIdType faceStream[] = { 5, 4, 8, 1, 3, 9, 4, 9, 3, 2, 0, 5, 4, 8, 1, 7, 10, 5, 1, 7, 5, 2, 3,
 
-      4, 0,  2, 5 , 6,
-      4, 9,  0, 6 , 11,
-      4, 4,  9, 11, 10,
-      5, 10, 7, 5 , 6, 11
-    };
+      4, 0, 2, 5, 6, 4, 9, 0, 6, 11, 4, 4, 9, 11, 10, 5, 10, 7, 5, 6, 11 };
 
     ba->InsertNextCell(VTK_POLYHEDRON, 8, faceStream);
 
-    cf->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, "AirVolumeFraction");
+    cf->SetInputArrayToProcess(
+      0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, "AirVolumeFraction");
     cf->SetInputData(ba);
     cf->SetValue(0, 0.5);
+    cf->GenerateTrianglesOff();
     cf->Update();
 
     vtkPolyData* result = cf->GetOutput();
     if (!result || result->GetNumberOfCells() != 1)
     {
-      cerr << "Contouring failed for polyhedron cell" << endl;
+      std::cerr << "Contouring failed for polyhedron cell" << std::endl;
       return EXIT_FAILURE;
     }
     vtkCell* contourCell = result->GetCell(0);
 
     if (contourCell->GetNumberOfPoints() != 7)
     {
-      cerr << "Expected contour with 7 points, got " << contourCell->GetNumberOfPoints() << endl;
+      std::cerr << "Expected contour with 7 points, got " << contourCell->GetNumberOfPoints()
+                << std::endl;
       return EXIT_FAILURE;
     }
   }

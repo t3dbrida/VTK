@@ -1,18 +1,24 @@
-set(Module_SRCS
-  vtkXMLPDataSetWriter.cxx
-  vtkXMLPDataObjectWriter.cxx
-  vtkXMLPDataWriter.cxx
-  vtkXMLPImageDataWriter.cxx
-  vtkXMLPPolyDataWriter.cxx
-  vtkXMLPRectilinearGridWriter.cxx
-  vtkXMLPStructuredDataWriter.cxx
-  vtkXMLPStructuredGridWriter.cxx
-  vtkXMLPTableWriter.cxx
-  vtkXMLPUnstructuredDataWriter.cxx
-  vtkXMLPUnstructuredGridWriter.cxx
-  vtkXMLPHierarchicalBoxDataWriter.cxx
-  vtkXMLPMultiBlockDataWriter.cxx
-  vtkXMLPUniformGridAMRWriter.cxx
-  )
+set(classes
+  vtkXMLCompositeDataSetWriterHelper
+  vtkXMLDataWriterHelper
+  vtkXMLPartitionedDataSetCollectionWriter
+  vtkXMLPartitionedDataSetWriter
+  vtkXMLWriter2
+  vtkXMLPDataObjectWriter
+  vtkXMLPDataSetWriter
+  vtkXMLPDataWriter
+  vtkXMLPHyperTreeGridWriter
+  vtkXMLPImageDataWriter
+  vtkXMLPMultiBlockDataWriter
+  vtkXMLPPolyDataWriter
+  vtkXMLPRectilinearGridWriter
+  vtkXMLPStructuredDataWriter
+  vtkXMLPStructuredGridWriter
+  vtkXMLPTableWriter
+  vtkXMLPUniformGridAMRWriter
+  vtkXMLPUnstructuredDataWriter
+  vtkXMLPUnstructuredGridWriter)
 
-vtk_module_library(vtkIOParallelXML ${Module_SRCS})
+vtk_module_add_module(VTK::IOParallelXML
+  CLASSES ${classes})
+vtk_add_test_mangling(VTK::IOParallelXML)

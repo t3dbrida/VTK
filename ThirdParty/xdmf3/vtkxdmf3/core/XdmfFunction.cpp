@@ -92,7 +92,7 @@ const std::string XdmfFunction::mValidDigitChars = "1234567890.";
 // List the priorities for the operations, based on the order of operations
 // The index of the corresponding operation in validOperationChars
 // is the same as the index of its priority in this array
-std::map<char, int> XdmfFunction::mOperationPriority = 
+std::map<char, int> XdmfFunction::mOperationPriority =
 	boost::assign::map_list_of ('-', 4)
                                    ('+', 4)
                                    ('/', 3)
@@ -485,7 +485,7 @@ XdmfFunction::chunk(shared_ptr<XdmfArray> val1, shared_ptr<XdmfArray> val2)
     returnArray->resize(val1->getSize()+val2->getSize(), sampleValue);
   }
   else if (resultType == XdmfArrayType::Int64()) {
-    long sampleValue = 0;
+    int64_t sampleValue = 0;
     returnArray->resize(val1->getSize()+val2->getSize(), sampleValue);
   }
   else if (resultType == XdmfArrayType::UInt8()) {
@@ -498,6 +498,10 @@ XdmfFunction::chunk(shared_ptr<XdmfArray> val1, shared_ptr<XdmfArray> val2)
   }
   else if (resultType == XdmfArrayType::UInt32()) {
     unsigned int sampleValue = 0;
+    returnArray->resize(val1->getSize()+val2->getSize(), sampleValue);
+  }
+  else if (resultType == XdmfArrayType::UInt64()) {
+    uint64_t sampleValue = 0;
     returnArray->resize(val1->getSize()+val2->getSize(), sampleValue);
   }
   else if (resultType == XdmfArrayType::Float32()) {
@@ -1001,7 +1005,7 @@ XdmfFunction::interlace(shared_ptr<XdmfArray> val1, shared_ptr<XdmfArray> val2)
     returnArray->resize(val1->getSize()+val2->getSize(), sampleValue);
   }
   else if (resultType == XdmfArrayType::Int64()) {
-    long sampleValue = 0;
+    int64_t sampleValue = 0;
     returnArray->resize(val1->getSize()+val2->getSize(), sampleValue);
   }
   else if (resultType == XdmfArrayType::UInt8()) {
@@ -1014,6 +1018,10 @@ XdmfFunction::interlace(shared_ptr<XdmfArray> val1, shared_ptr<XdmfArray> val2)
   }
   else if (resultType == XdmfArrayType::UInt32()) {
     unsigned int sampleValue = 0;
+    returnArray->resize(val1->getSize()+val2->getSize(), sampleValue);
+  }
+  else if (resultType == XdmfArrayType::UInt64()) {
+    uint64_t sampleValue = 0;
     returnArray->resize(val1->getSize()+val2->getSize(), sampleValue);
   }
   else if (resultType == XdmfArrayType::Float32()) {
@@ -1391,7 +1399,7 @@ XdmfFunction::traverse(const shared_ptr<XdmfBaseVisitor> visitor)
   if (shared_ptr<XdmfWriter> writer =
         shared_dynamic_cast<XdmfWriter>(visitor)) {
     writer->setWriteXPaths(originalXPath);
-  } 
+  }
 
   for (std::map<std::string, shared_ptr<XdmfArray> >::iterator it = mVariableList.begin();
        it != mVariableList.end();

@@ -1,16 +1,5 @@
-/*=========================================================================
-
-  Program:   Visualization Toolkit
-
-  Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
-  All rights reserved.
-  See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
-     This software is distributed WITHOUT ANY WARRANTY; without even
-     the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-     PURPOSE.  See the above copyright notice for more information.
-
-=========================================================================*/
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "vtkRegressionTestImage.h"
 #include "vtkTestUtilities.h"
@@ -27,6 +16,8 @@
 #include "vtkRenderWindowInteractor.h"
 #include "vtkRenderer.h"
 #include "vtkSphereSource.h"
+
+#include <iostream>
 
 int TestGlyph3DMapperCulling(int argc, char* argv[])
 {
@@ -75,7 +66,7 @@ int TestGlyph3DMapperCulling(int argc, char* argv[])
   vtkIdType maxLOD = glypher->GetMaxNumberOfLOD();
   if (maxLOD < 2)
   {
-    cout << "This feature cannot be tested, this GPU only supports " << maxLOD << " LODs.\n";
+    std::cout << "This feature cannot be tested, this GPU only supports " << maxLOD << " LODs.\n";
     return EXIT_SUCCESS;
   }
 

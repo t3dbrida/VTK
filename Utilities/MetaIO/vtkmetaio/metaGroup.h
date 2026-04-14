@@ -12,12 +12,12 @@
 #include "metaTypes.h"
 
 #ifndef ITKMetaIO_METAGROUP_H
-#define ITKMetaIO_METAGROUP_H
+#  define ITKMetaIO_METAGROUP_H
 
-#include "metaUtils.h"
-#include "metaObject.h"
+#  include "metaUtils.h"
+#  include "metaObject.h"
 
-#include <list>
+#  include <list>
 
 
 /*!    MetaGroup (.h and .cpp)
@@ -34,62 +34,53 @@
  *    MetaObject.h
  */
 
-#if (METAIO_USE_NAMESPACE)
-namespace METAIO_NAMESPACE {
-#endif
+#  if (METAIO_USE_NAMESPACE)
+namespace METAIO_NAMESPACE
+{
+#  endif
 
 class METAIO_EXPORT MetaGroup : public MetaObject
-  {
+{
 
-  /////
-  //
   // PUBLIC
-  //
-  ////
-  public:
+public:
+  // Constructors & Destructor
+  MetaGroup();
 
-    ////
-    //
-    // Constructors & Destructor
-    //
-    ////
-    MetaGroup(void);
+  explicit MetaGroup(const char * _headerName);
 
-    MetaGroup(const char *_headerName);
+  explicit MetaGroup(const MetaGroup * _group);
 
-    MetaGroup(const MetaGroup *_group);
+  explicit MetaGroup(unsigned int dim);
 
-    MetaGroup(unsigned int dim);
+  ~MetaGroup() override;
 
-    ~MetaGroup(void) MET_OVERRIDE;
+  void
+  PrintInfo() const override;
 
-    void PrintInfo(void) const MET_OVERRIDE;
+  void
+  CopyInfo(const MetaObject * _object) override;
 
-    void CopyInfo(const MetaObject * _object) MET_OVERRIDE;
-
-    void  Clear(void) MET_OVERRIDE;
+  void
+  Clear() override;
 
 
-  ////
-  //
   // PROTECTED
-  //
-  ////
-  protected:
+protected:
 
-    void  M_Destroy(void) MET_OVERRIDE;
+  void
+  M_SetupReadFields() override;
 
-    void  M_SetupReadFields(void) MET_OVERRIDE;
+  void
+  M_SetupWriteFields() override;
 
-    void  M_SetupWriteFields(void) MET_OVERRIDE;
-
-    bool  M_Read(void) MET_OVERRIDE;
-
-  };
-
-#if (METAIO_USE_NAMESPACE)
+  bool
+  M_Read() override;
 };
-#endif
+
+#  if (METAIO_USE_NAMESPACE)
+};
+#  endif
 
 
 #endif
