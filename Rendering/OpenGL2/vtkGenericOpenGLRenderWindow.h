@@ -159,10 +159,6 @@ public:
   void OpenGLInit() override;
 
 
-  // since we are using an external context it must
-  // specify if the window is mapped or not.
-  vtkSetMacro(Mapped, vtkTypeBool);
-
 protected:
   /**
    * Overridden to not attempt to read pixels if `this->ReadyForRendering` is

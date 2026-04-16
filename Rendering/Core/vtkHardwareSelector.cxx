@@ -407,7 +407,7 @@ bool vtkHardwareSelector::CaptureBuffers()
       }
 
       this->PreCapturePass(this->CurrentPass);
-      rwin->ImmediateRender();
+      rwin->Render();
       this->PostCapturePass(this->CurrentPass);
     }
   }

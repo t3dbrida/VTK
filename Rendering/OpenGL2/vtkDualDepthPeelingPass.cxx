@@ -1048,8 +1048,7 @@ void vtkDualDepthPeelingPass::ActivateDrawBuffers(const TextureName *ids,
   this->Framebuffer->DeactivateDrawBuffers();
   for (size_t i = 0; i < numTex; ++i)
   {
-    this->Framebuffer->AddColorAttachment(GL_DRAW_FRAMEBUFFER,
-                                          static_cast<unsigned int>(i),
+    this->Framebuffer->AddColorAttachment(static_cast<unsigned int>(i),
                                           this->Textures[ids[i]]);
   }
 

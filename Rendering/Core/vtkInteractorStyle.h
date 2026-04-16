@@ -228,9 +228,6 @@ public:
   virtual void OnRightButtonDoubleClick() {}
   virtual void OnRightButtonDown() {}
   virtual void OnRightButtonUp() {}
-  virtual void OnLeftButtonDoubleClick() {}
-  virtual void OnMiddleButtonDoubleClick() {}
-  virtual void OnRightButtonDoubleClick() {}
   virtual void OnMouseWheelForward() {}
   virtual void OnMouseWheelBackward() {}
   virtual void OnMouseWheelLeft() {}
