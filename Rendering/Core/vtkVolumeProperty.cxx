@@ -49,6 +49,25 @@ vtkVolumeProperty::vtkVolumeProperty()
     this->Specular[i] = 0.2;
     this->SpecularPower[i] = 10.0;
   }
+
+  // t3d: initialize mask/region members
+  for (int i = 0; i < VTK_MAX_VRCOMP; ++i)
+  {
+    this->Opacity[i] = 1.0;
+    this->ShadingGradientScaleMin[i] = 0.0;
+    this->ShadingGradientScaleMax[i] = 1.0 / 65535.0;
+  }
+  this->BoxMask.origin[0] = this->BoxMask.origin[1] = this->BoxMask.origin[2] = 0.;
+  this->BoxMask.axisX[0] = this->BoxMask.axisX[1] = this->BoxMask.axisX[2] = 0.;
+  this->BoxMask.axisY[0] = this->BoxMask.axisY[1] = this->BoxMask.axisY[2] = 0.;
+  this->BoxMask.axisZ[0] = this->BoxMask.axisZ[1] = this->BoxMask.axisZ[2] = 0.;
+  this->CylinderMask.center[0] = this->CylinderMask.center[1] = this->CylinderMask.center[2] = 0.;
+  this->CylinderMask.axis[0] = this->CylinderMask.axis[1] = this->CylinderMask.axis[2] = 0.;
+  this->CylinderMask.radius = 0.;
+  this->BitRegion.mask = nullptr;
+  this->BitRegionLightFocus = 0.05f;
+  this->BitRegionValD = 0.3f;
+  this->BitRegionValxD = 0.7f;
 }
 
 //------------------------------------------------------------------------------
@@ -158,6 +177,19 @@ void vtkVolumeProperty::DeepCopy(vtkVolumeProperty* p)
     this->SetSpecular(i, p->GetSpecular(i));
     this->SetSpecularPower(i, p->GetSpecularPower(i));
   }
+
+  // t3d: copy mask/region members
+  for (int i = 0; i < VTK_MAX_VRCOMP; ++i)
+  {
+    this->SetOpacity(i, p->GetOpacity(i));
+    this->SetShadingGradientScale(i, p->GetShadingGradientScaleMin(i), p->GetShadingGradientScaleMax(i));
+  }
+  this->BoxMask = p->GetBoxMask();
+  this->CylinderMask = p->GetCylinderMask();
+  this->BitRegion = p->GetBitRegion();
+  this->BitRegionLightFocus = p->BitRegionLightFocus;
+  this->BitRegionValD = p->BitRegionValD;
+  this->BitRegionValxD = p->BitRegionValxD;
 
   this->Modified();
 }
@@ -987,4 +1019,40 @@ void vtkVolumeProperty::PrintSelf(ostream& os, vtkIndent indent)
   // this->LabelScalarOpacityMTime
   // this->LabelGradientOpacityMTime
 }
+
+//------------------------------------------------------------------------------
+// t3d: mask/region setters
+void vtkVolumeProperty::SetBoxMask(const struct BoxMask& boxMask)
+{
+  this->BoxMask = boxMask;
+  this->Modified();
+}
+
+void vtkVolumeProperty::SetCylinderMask(const struct CylinderMask& cylinderMask)
+{
+  this->CylinderMask = cylinderMask;
+  this->Modified();
+}
+
+void vtkVolumeProperty::SetBitRegion(const struct BitRegion& bitRegion) noexcept
+{
+  this->BitRegion = bitRegion;
+  this->Modified();
+}
+
+// t3d: opacity scalar
+void vtkVolumeProperty::SetOpacity(int index, double value)
+{
+  if (this->Opacity[index] != value)
+  {
+    this->Opacity[index] = value;
+    this->Modified();
+  }
+}
+
+double vtkVolumeProperty::GetOpacity(int index)
+{
+  return this->Opacity[index];
+}
+
 VTK_ABI_NAMESPACE_END

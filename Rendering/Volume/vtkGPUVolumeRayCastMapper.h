@@ -17,6 +17,7 @@
  */
 #ifndef vtkGPUVolumeRayCastMapper_h
 #define vtkGPUVolumeRayCastMapper_h
+#include <map>           // For std::map (t3d Masks)
 #include <unordered_map> // For std::unordered_map
 #include <vector>        // For std::vector
 
@@ -26,8 +27,10 @@
 
 VTK_ABI_NAMESPACE_BEGIN
 class vtkContourValues;
+class vtkImageData;
 class vtkRenderWindow;
 class vtkVolumeProperty;
+class vtkVolume;
 
 class VTKRENDERINGVOLUME_EXPORT VTK_MARSHALAUTO vtkGPUVolumeRayCastMapper : public vtkVolumeMapper
 {
@@ -579,6 +582,17 @@ protected:
   vtkImageData* MaskInput;
   float MaskBlendFactor;
   int MaskType;
+
+  // t3d: per-volume mask map (excluded from wrapping)
+#ifndef __VTK_WRAP__
+  struct Mask final
+  {
+    vtkImageData* Input;
+    // only relevant for label masks
+    int MaskType;
+  };
+  std::map<vtkVolume*, Mask> Masks;
+#endif
 
   vtkTypeBool AMRMode;
 

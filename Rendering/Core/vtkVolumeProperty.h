@@ -49,10 +49,12 @@
 #include "vtkRenderingCoreModule.h" // For export macro
 #include "vtkSmartPointer.h"        // Needed for vtkSmartPointer
 #include "vtkWrappingHints.h"       // For VTK_MARSHALAUTO
+#include "vtkVector.h"              // For vtkVector4 (t3d BitRegion)
 
 // STL includes
 #include <set>           // For labelmap labels set
 #include <unordered_map> // For labelmap transfer function maps
+#include <vector>        // For BitRegion colors (t3d)
 
 VTK_ABI_NAMESPACE_BEGIN
 class vtkColorTransferFunction;
@@ -64,6 +66,23 @@ class vtkTimeStamp;
 class VTKRENDERINGCORE_EXPORT VTK_MARSHALAUTO vtkVolumeProperty : public vtkObject
 {
 public:
+  // t3d: mask/region structs
+  struct BitRegion
+  {
+    vtkSmartPointer<vtkImageData> mask;
+    std::vector<vtkVector4<float>> colors;
+  };
+
+  struct BoxMask
+  {
+    double origin[3], axisX[3], axisY[3], axisZ[3];
+  };
+
+  struct CylinderMask
+  {
+    double center[3], axis[3], radius;
+  };
+
   static vtkVolumeProperty* New();
   vtkTypeMacro(vtkVolumeProperty, vtkObject);
   void PrintSelf(ostream& os, vtkIndent indent) override;
@@ -559,6 +578,55 @@ public:
    */
   std::set<int> GetLabelMapLabels();
 
+  ///@{
+  /**
+   * t3d: Per-component scalar opacity scalar value (not a transfer function).
+   */
+  void SetOpacity(int index, double value);
+  void SetOpacity(double value) { this->SetOpacity(0, value); }
+  double GetOpacity(int index);
+  double GetOpacity() { return this->GetOpacity(0); }
+  ///@}
+
+  ///@{
+  /**
+   * t3d: Shading gradient scale thresholds (per component).
+   * If gradient is below Min, shading is not applied.
+   * If gradient is above Max, shading is fully applied.
+   * Between Min and Max, shading is partially applied.
+   */
+  void SetShadingGradientScale(int index, double minThreshold, double maxThreshold)
+  {
+    ShadingGradientScaleMin[index] = minThreshold;
+    ShadingGradientScaleMax[index] = maxThreshold;
+  }
+  void SetShadingGradientScale(double minThreshold, double maxThreshold)
+  {
+    this->SetShadingGradientScale(0, minThreshold, maxThreshold);
+  }
+  double GetShadingGradientScaleMin(int index = 0) const { return ShadingGradientScaleMin[index]; }
+  double GetShadingGradientScaleMax(int index = 0) const { return ShadingGradientScaleMax[index]; }
+  ///@}
+
+  ///@{
+  /** t3d: Box/Cylinder/BitRegion mask accessors */
+  void SetBoxMask(const struct BoxMask& boxMask);
+  const struct BoxMask& GetBoxMask() const noexcept { return this->BoxMask; }
+
+  void SetCylinderMask(const struct CylinderMask& cylinderMask);
+  const struct CylinderMask& GetCylinderMask() const { return this->CylinderMask; }
+
+  void SetBitRegion(const struct BitRegion& bitRegion) noexcept;
+  const struct BitRegion& GetBitRegion() const { return this->BitRegion; }
+
+  vtkSetMacro(BitRegionLightFocus, double);
+  vtkGetMacro(BitRegionLightFocus, double);
+  vtkSetMacro(BitRegionValD, double);
+  vtkGetMacro(BitRegionValD, double);
+  vtkSetMacro(BitRegionValxD, double);
+  vtkGetMacro(BitRegionValxD, double);
+  ///@}
+
 protected:
   vtkVolumeProperty();
   ~vtkVolumeProperty() override;
@@ -631,6 +699,17 @@ protected:
   std::unordered_map<int, vtkPiecewiseFunction*> LabelScalarOpacity;
   std::unordered_map<int, vtkPiecewiseFunction*> LabelGradientOpacity;
   std::set<int> LabelMapLabels;
+
+  // t3d: mask/region members
+  double Opacity[VTK_MAX_VRCOMP];
+  double ShadingGradientScaleMin[VTK_MAX_VRCOMP];
+  double ShadingGradientScaleMax[VTK_MAX_VRCOMP];
+  struct BoxMask BoxMask;
+  struct CylinderMask CylinderMask;
+  struct BitRegion BitRegion;
+  float BitRegionLightFocus;
+  float BitRegionValD;
+  float BitRegionValxD;
 
 private:
   vtkVolumeProperty(const vtkVolumeProperty&) = delete;

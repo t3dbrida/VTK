@@ -15,7 +15,7 @@
 
 #include "vtkOpenGLGPUVolumeRayCastMapper.h"
 
-#include <vtk_glew.h>
+#include <vtk_glad.h>
 
 #include "vtkVolumeShaderComposer.h"
 #include "vtkVolumeStateRAII.h"
@@ -87,6 +87,7 @@
 #include "vtkOpenGLVolumeGradientOpacityTable.h"
 #include "vtkOpenGLVolumeOpacityTable.h"
 #include "vtkOpenGLVolumeRGBTable.h"
+#include "vtkOpenGLVolumeTransferFunction2D.h"
 #include "vtkOpenGLTransferFunction2D.h"
 
 #include <vtkVolumeMask.h>
@@ -2230,7 +2231,7 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateGradientVolume(vtkRende
             gradientVolumeTexture->SetWrapR(vtkTextureObject::ClampToEdge);
         }
 
-        return gradientVolumeTexture->Create3DFromRaw(dims[0], dims[1], dims[2], 1, VTK_UNSIGNED_SHORT, const_cast<std::uint16_t*>(precomputedGradient.data), true);
+        return gradientVolumeTexture->Create3DFromRaw(dims[0], dims[1], dims[2], 1, VTK_UNSIGNED_SHORT, const_cast<std::uint16_t*>(precomputedGradient.data));
     }
 
     return true; // gradient computed on the fly, texture at the point will remain nullptr
@@ -2405,8 +2406,7 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadRegions(vtkRenderer* ren)
                             bitRegionMaskDims[2],
                             bitRegionMask->GetNumberOfScalarComponents(),
                             bitRegionMask->GetScalarType(),
-                            static_cast<std::uint32_t*>(arr->GetVoidPointer(0)),
-                            true);
+                            static_cast<std::uint32_t*>(arr->GetVoidPointer(0)));
 
         result |= true;
         regionTexture.timestamp = bitRegionMask->GetMTime();
@@ -2472,7 +2472,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetupRegionDepthFramebuffer(v
           this->RegionDepthFBO->SaveCurrentBindingsAndBuffers(GL_FRAMEBUFFER);
           this->RegionDepthFBO->Bind(GL_FRAMEBUFFER);
           this->RegionDepthFBO->InitializeViewport(this->WindowSize[0], this->WindowSize[1]);
-          this->RegionDepthFBO->AddColorAttachment(GL_FRAMEBUFFER, 0U, this->RegionDepthTextureObject);
+          this->RegionDepthFBO->AddColorAttachment(0U, this->RegionDepthTextureObject);
           this->RegionDepthFBO->ActivateDrawBuffers(1);
           this->RegionDepthFBO->CheckFrameBufferStatus(GL_FRAMEBUFFER);
           this->RegionDepthFBO->RestorePreviousBindingsAndBuffers(GL_FRAMEBUFFER);
@@ -3129,7 +3129,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderVolumeGeometry(
     vtkNew<vtkUnsignedIntArray> polys;
     polys->SetNumberOfComponents(3);
     vtkIdType npts;
-    vtkIdType* pts;
+    vtkIdType const* pts;
 
     // See if the volume transform is orientation-preserving
     // and orient polygons accordingly
@@ -3346,7 +3346,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::CheckPickingState(vtkRenderer
     selectorPicking &= selector->GetFieldAssociation() == vtkDataObject::FIELD_ASSOCIATION_CELLS;
   }
 
-  this->IsPicking = selectorPicking || ren->GetRenderWindow()->GetIsPicking();
+  this->IsPicking = selectorPicking;
   if (this->IsPicking)
   {
     // rebuild the shader on every pass
@@ -3398,7 +3398,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::EndPicking(vtkRenderer* ren)
     {
       // Only supported on single-input
       int extents[6];
-      this->Parent->GetTransformedInput(0)->GetExtent(extents);
+      vtkImageData::SafeDownCast(this->Parent->GetTransformedInput(0))->GetExtent(extents);
 
       // Tell the selector the maximum number of cells that the mapper could render
       unsigned int const numVoxels = (extents[1] - extents[0] + 1) *
@@ -3435,7 +3435,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateSamplingDistance(vtkRen
                               std::numeric_limits<double>::lowest()};
   for (int i = 0; i < this->Parent->GetInputCount(); ++i)
   {
-    auto input = this->Parent->GetTransformedInput(i);
+    auto input = vtkImageData::SafeDownCast(this->Parent->GetTransformedInput(i));
     auto vol = this->Parent->AssembledInputs[i].Volume;
     double inputCellSpacing[3];
     input->GetSpacing(inputCellSpacing);
@@ -3463,7 +3463,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateSamplingDistance(vtkRen
   }
 
   // use the found cell spacing to compute the sampling distance
-  vtkImageData* input = this->Parent->GetTransformedInput(i);
+  vtkImageData* input = vtkImageData::SafeDownCast(this->Parent->GetTransformedInput(i));
   vtkVolume* vol = this->Parent->AssembledInputs[i].Volume;
 
   double cellSpacing[3];
@@ -3505,7 +3505,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateSamplingDistance(vtkRen
     double minWorldSpacing = std::numeric_limits<double>::max();
     vtkMatrix4x4* const worldToDataset = this->Parent->AssembledInputs.at(index).Volume->GetMatrix();
     double localCellSpacing[3];
-    this->Parent->GetTransformedInput(index)->GetSpacing(localCellSpacing);
+    vtkImageData::SafeDownCast(this->Parent->GetTransformedInput(index))->GetSpacing(localCellSpacing);
     for (int j = 0; j < 3; ++j)
     {
         double tmp = worldToDataset->GetElement(0, j);
@@ -3743,7 +3743,7 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::InitializeImageSampleFBO(
     for (unsigned int i = 0; i < num; i++)
     {
       this->ImageSampleFBO->AddColorAttachment(
-        GL_FRAMEBUFFER, i, this->ImageSampleTexture[i]);
+        i, this->ImageSampleTexture[i]);
     }
 
     // Verify completeness
@@ -3991,11 +3991,11 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetupRenderToTexture(
 
     this->FBO->Bind(GL_FRAMEBUFFER);
     this->FBO->AddDepthAttachment(
-      GL_FRAMEBUFFER, this->RTTDepthBufferTextureObject);
+      this->RTTDepthBufferTextureObject);
     this->FBO->AddColorAttachment(
-      GL_FRAMEBUFFER, 0U, this->RTTColorTextureObject);
+      0U, this->RTTColorTextureObject);
     this->FBO->AddColorAttachment(
-      GL_FRAMEBUFFER, 1U, this->RTTDepthTextureObject);
+      1U, this->RTTDepthTextureObject);
     this->FBO->ActivateDrawBuffers(2);
 
     this->FBO->CheckFrameBufferStatus(GL_FRAMEBUFFER);
@@ -4011,9 +4011,9 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::ExitRenderToTexture(
 {
   if (this->Parent->RenderToImage && this->Parent->CurrentPass == RenderPass)
   {
-    this->FBO->RemoveTexDepthAttachment(GL_FRAMEBUFFER);
-    this->FBO->RemoveTexColorAttachment(GL_FRAMEBUFFER, 0U);
-    this->FBO->RemoveTexColorAttachment(GL_FRAMEBUFFER, 1U);
+    this->FBO->RemoveDepthAttachment();
+    this->FBO->RemoveColorAttachment(0U);
+    this->FBO->RemoveColorAttachment(1U);
     this->FBO->DeactivateDrawBuffers();
     this->FBO->RestorePreviousBindingsAndBuffers();
 
@@ -4082,10 +4082,10 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetupDepthPass(
     this->DPColorTextureObject->SetAutoParameters(0);
 
     this->DPFBO->AddDepthAttachment(
-      GL_FRAMEBUFFER, this->DPDepthBufferTextureObject);
+      this->DPDepthBufferTextureObject);
 
     this->DPFBO->AddColorAttachment(
-      GL_FRAMEBUFFER, 0U, this->DPColorTextureObject);
+      0U, this->DPColorTextureObject);
   }
 
   this->DPFBO->ActivateDrawBuffers(1);
@@ -5386,7 +5386,7 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::UpdateInputs(vtkRenderer* ren
       success &= volumeTex->LoadVolume(ren, input, scalars, this->Parent->CellFlag, property->GetInterpolationType());
       volInput.ComponentMode = this->GetComponentMode(property, scalars);
 
-      success &= this->UpdateGradientVolume(ren, input, port);
+      success &= this->UpdateGradientVolume(ren, vtkImageData::SafeDownCast(input), port);
     }
     else
     {
@@ -5852,7 +5852,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
   {
     vtkVolumeInputHelper& volumeInput = input.second;
     vtkVolume* const volume = volumeInput.Volume;
-    vtkImageData* const imgData = this->Parent->TransformedInputs.at(input.first);
+    vtkImageData* const imgData = vtkImageData::SafeDownCast(this->Parent->TransformedInputs.at(input.first));
     double bounds[6];
     imgData->GetBounds(bounds);
     double* const cellSpacing = imgData->GetSpacing();
