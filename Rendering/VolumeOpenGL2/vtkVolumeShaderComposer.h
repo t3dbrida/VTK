@@ -2116,7 +2116,7 @@ namespace vtkvolume
               "          {\n"
               "            uint intRegionValue = sampleIntRegionMask(volumeParameters.data[0].intRegionIndex.x, g_dataPos);\n"
               "            vec4 intRegionResultColor = getIntRegionColor(volumeParameters.data[0].intRegionIndex.x, intRegionValue);\n"
-              "          }\n";
+              "          }\n"
               "\n"
               "          g_srcColor = vec4(0.);\n"
               "          if (volumeParameters.data[volumeIndex].volumeVisibility.x == 1)\n"
