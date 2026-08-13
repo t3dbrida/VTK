@@ -70,6 +70,7 @@ struct VolumeParameters
        volumeBias;
 
   ivec4 noOfComponents_maskIndex_regionIndex_transfer2dIndex;
+  ivec4 intRegionIndex;
   ivec4 volumeDimensions;
 
   mat4 volumeMatrix,
