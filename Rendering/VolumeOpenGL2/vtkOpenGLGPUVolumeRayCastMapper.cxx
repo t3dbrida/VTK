@@ -433,7 +433,7 @@ uvec4 sampleRegionMask(int index, vec3 uvw)
 
 uint sampleIntRegionMask(int index, vec3 uvw)
 {
-  uint result = uint(0);
+  uint result = uint(65535u);
   {
     switch (index)
     {
