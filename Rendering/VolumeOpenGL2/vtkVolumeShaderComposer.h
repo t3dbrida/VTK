@@ -3433,7 +3433,7 @@ namespace vtkvolume
         "\n"
         "uint sampleIntRegionMask(int index, vec3 uvw)\n"
         "{\n"
-        "  uint result = uint(65535u);\n"
+        "  uint result = uint(0);\n"
         "  {\n"
         "    switch (index)\n"
         "    {\n";
