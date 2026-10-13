@@ -88,6 +88,9 @@ vtkVolumeProperty::vtkVolumeProperty()
   this->BitRegionLightFocus = .05;
   this->BitRegionValD = .3;
   this->BitRegionValxD = .7;
+
+  this->IntRegion.mask = nullptr;
+  this->IntRegion.colors = nullptr;
 }
 
 // Destruct a vtkVolumeProperty
@@ -185,6 +188,8 @@ void vtkVolumeProperty::DeepCopy(vtkVolumeProperty *p)
   this->CylinderMask = p->CylinderMask;
 
   this->BitRegion = p->BitRegion;
+
+  this->IntRegion = p->IntRegion;
 
   this->Modified();
 }
@@ -760,6 +765,12 @@ void vtkVolumeProperty::SetCylinderMask(const struct CylinderMask& cylinderMask)
 void vtkVolumeProperty::SetBitRegion(const struct BitRegion& bitRegion) noexcept
 {
   this->BitRegion = bitRegion;
+  this->Modified();
+}
+
+void vtkVolumeProperty::SetIntRegion(const struct IntRegion& intRegion) noexcept
+{
+  this->IntRegion = intRegion;
   this->Modified();
 }
 

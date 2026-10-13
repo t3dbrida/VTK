@@ -210,6 +210,7 @@ struct VolumeParameters
        volumeBias;
 
   ivec4 noOfComponents_maskIndex_regionIndex_transfer2dIndex;
+  ivec4 intRegionIndex;
   ivec4 volumeDimensions;
 
   mat4 volumeMatrix,
@@ -308,11 +309,29 @@ Intersection[1] sortIntersections(Interval intervals[1])
 }
 
 uniform vec4 in_regionColor[4];
+uniform usampler3D in_intRegionMask[1];
+uniform sampler3D in_intRegionColors[1];
 
 vec4 getRegionColor(int index)
 {
   vec4 result = vec4(0.);
   result = in_regionColor[index];
+  return result;
+}
+
+vec4 getIntRegionColor(int index, uint value)
+{
+  vec4 result = vec4(0.);
+  switch (index)
+  {
+    case 0:
+    {
+      result = texelFetch(in_intRegionColors[0], ivec3(int(value & 255u), int(value >> 8u), 0), 0);
+      break;
+    }
+    default: break;
+  }
+
   return result;
 }
 
@@ -412,6 +431,29 @@ uvec4 sampleRegionMask(int index, vec3 uvw)
   return result;
 }
 
+uint sampleIntRegionMask(int index, vec3 uvw)
+{
+  uint result = uint(0);
+  {
+    switch (index)
+    {
+      case 0:
+      {
+        ivec3 volumeDimensions = textureSize(in_intRegionMask[0], 0);
+        ivec3 coords = ivec3(floor(vec3(volumeDimensions) * uvw));
+        if (all(greaterThanEqual(coords, ivec3(0))) && all(lessThan(coords, ivec3(volumeDimensions.xyz))))
+        {
+          result = texelFetch(in_intRegionMask[0], coords, 0).r;
+        }
+        break;
+      }
+      default: break;
+    }
+  }
+
+  return result;
+}
+
 //VTK::CompositeMask::Dec
 
 //VTK::ComputeRayDirection::Dec
@@ -479,26 +521,26 @@ void initializeRayCast()
   g_srcColor = vec4(0.0);
   g_exit = false;
 
-  g_dataPos = ip_textureCoords.xyz;      
+  g_dataPos = ip_textureCoords.xyz;
       
-  g_eyePosObj = in_inverseVolumeMatrix * vec4(in_cameraPos, 1.0);      
-  g_eyePosTex = (in_inverseTextureDatasetMatrix * vec4(g_eyePosObj.xyz, 1.)).xyz;      
+  g_eyePosObj = in_inverseVolumeMatrix * vec4(in_cameraPos, 1.0);
+  g_eyePosTex = (in_inverseTextureDatasetMatrix * vec4(g_eyePosObj.xyz, 1.)).xyz;
       
-  g_rayDir = normalize(ip_vertexPos.xyz - g_eyePosObj.xyz);      
-  g_rayDirSign = sign(g_rayDir);      
-  g_rayDirDot = dot(g_rayDir, g_rayDir);      
+  g_rayDir = normalize(ip_vertexPos.xyz - g_eyePosObj.xyz);
+  g_rayDirSign = sign(g_rayDir);
+  g_rayDirDot = dot(g_rayDir, g_rayDir);
       
-  g_dirStep = in_sampleDistance * (ip_inverseTextureDataAdjusted * vec4(g_rayDir, 0.0)).xyz;          
-  vec3 cs = volumeParameters.data[0].cellSpacing.xyz;          
-  g_tDelta[0] = vec3(g_rayDir.x != 0. ? (g_rayDirSign.x * cs.x / g_rayDir.x) : FLOAT_INF,          
-                     g_rayDir.y != 0. ? (g_rayDirSign.y * cs.y / g_rayDir.y) : FLOAT_INF,          
-                     g_rayDir.z != 0. ? (g_rayDirSign.z * cs.z / g_rayDir.z) : FLOAT_INF);              
+  g_dirStep = in_sampleDistance * (ip_inverseTextureDataAdjusted * vec4(g_rayDir, 0.0)).xyz;
+  vec3 cs = volumeParameters.data[0].cellSpacing.xyz;
+  g_tDelta[0] = vec3(g_rayDir.x != 0. ? (g_rayDirSign.x * cs.x / g_rayDir.x) : FLOAT_INF,
+                     g_rayDir.y != 0. ? (g_rayDirSign.y * cs.y / g_rayDir.y) : FLOAT_INF,
+                     g_rayDir.z != 0. ? (g_rayDirSign.z * cs.z / g_rayDir.z) : FLOAT_INF);
       
-  vec2 fragTexCoord = (gl_FragCoord.xy - in_windowLowerLeftCorner) * in_inverseWindowSize;      
+  vec2 fragTexCoord = (gl_FragCoord.xy - in_windowLowerLeftCorner) * in_inverseWindowSize;
       
-  if (in_useJittering)      
-  {      
-    g_rayJitter = texture(in_noiseSampler, gl_FragCoord.xy / textureSize(in_noiseSampler, 0)).x;      
+  if (in_useJittering)
+  {
+    g_rayJitter = texture(in_noiseSampler, gl_FragCoord.xy / textureSize(in_noiseSampler, 0)).x;
   }      
   else      
   {      
@@ -556,7 +598,7 @@ float castRay(const float zStart, const float zEnd)
     intervals[i].tEnter = FLOAT_INF;
     intervals[i].tExit = FLOAT_INF_NEG;
     intervals[i].valid = false;
-    if (volumeParameters.data[i].volumeVisibility.x == 1 || volumeParameters.data[i].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)
+    if (volumeParameters.data[i].volumeVisibility.x == 1 || volumeParameters.data[i].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0 || volumeParameters.data[i].intRegionIndex.x >= 0)
     {
       vec3 bboxMin = volumeParameters.data[i].boundsMin.xyz;
       vec3 bboxMax = volumeParameters.data[i].boundsMax.xyz;
@@ -588,7 +630,7 @@ float castRay(const float zStart, const float zEnd)
 
       int vi = intersections[i].volumeIndex;
 
-      if (volumeParameters.data[i].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0)
+      if (volumeParameters.data[i].noOfComponents_maskIndex_regionIndex_transfer2dIndex.z >= 0 || volumeParameters.data[i].intRegionIndex.x >= 0)
       {
         vec3 cs = volumeParameters.data[0].cellSpacing.xyz;
         vec3 hitPoint = g_eyePosObj.xyz + g_rayDir * intersections[0].t - in_sampleDistance * g_rayDir; // add an arbitrary offset to start outside the intersection position
@@ -681,8 +723,17 @@ float castRay(const float zStart, const float zEnd)
             }
           }
         }
+        if (volumeParameters.data[0].intRegionIndex.x >= 0)
+        {
+          uint intRegionMaskValue = sampleIntRegionMask(volumeParameters.data[0].intRegionIndex.x, g_dataPos);
+          vec4 regionColor = getIntRegionColor(volumeParameters.data[0].intRegionIndex.x, intRegionMaskValue);
+          if (regionColor.a > 0.)
+          {
+            g_fragDepth = length(p - g_eyePosObj.xyz);
+            return g_fragDepth;
+          }
+        }
       }
-
     }
 
     //VTK::RenderToImage::Impl
@@ -740,8 +791,8 @@ void finalizeRayCast()
 void main()
 {
       
-  initializeRayCast();    
-  castRay(-1.0, -1.0);    
+  initializeRayCast();
+  castRay(-1.0, -1.0);
   finalizeRayCast();
 }
 )";
@@ -1305,6 +1356,8 @@ public:
   };
 
   std::map<int, RegionMaskTexture> RegionMaskTextures;
+  std::map<int, RegionMaskTexture> IntRegionMaskTextures;
+  std::map<int, RegionMaskTexture> IntRegionColorTextures;
 
   vtkTimeStamp InitializationTime;
   vtkRenderWindow* LastRenderWindow;
@@ -1518,6 +1571,7 @@ public:
             volumeBias[4];
 
       int noOfComponents_maskIndex_regionIndex_transfer2dIndex[4],
+          intRegionIndex[4],
           volumeDimensions[4];
 
       float volumeMatrix[16],
@@ -2412,11 +2466,97 @@ bool vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::LoadRegions(vtkRenderer* ren)
         regionTexture.timestamp = bitRegionMask->GetMTime();
       }
     }
+
+    const struct vtkVolumeProperty::IntRegion& intRegion = in.second.Volume->GetProperty()->GetIntRegion();
+    vtkImageData* const intRegionMask = intRegion.mask;
+    vtkImageData* const intRegionColors = intRegion.colors;
+    auto intMaskIt = this->IntRegionMaskTextures.find(in.first);
+    auto intColorIt = this->IntRegionColorTextures.find(in.first);
+    const int* const intRegionColorDimensions = intRegionColors ? intRegionColors->GetDimensions() : nullptr;
+    if (intRegionMask && intRegionColors &&
+        intRegionMask->GetScalarType() == VTK_UNSIGNED_SHORT &&
+        intRegionMask->GetNumberOfScalarComponents() == 1 &&
+        intRegionColors->GetScalarType() == VTK_FLOAT &&
+        intRegionColors->GetNumberOfScalarComponents() == 4 &&
+        intRegionColorDimensions[0] == 256 && intRegionColorDimensions[1] == 256 &&
+        intRegionColorDimensions[2] == 1)
+    {
+      hasRegions = true;
+
+      auto uploadRegionTexture = [&](vtkImageData* image, auto& textureIt, auto& textures, bool intType)
+      {
+        if (textureIt != textures.end() && textureIt->second.image != image)
+        {
+          textureIt->second.texture->ReleaseGraphicsResources(ren->GetRenderWindow());
+          textures.erase(textureIt);
+          textureIt = textures.end();
+        }
+        if (textureIt == textures.end())
+        {
+          textureIt = textures.insert({in.first, {nullptr, nullptr, 0}}).first;
+        }
+        RegionMaskTexture& regionTexture = textureIt->second;
+        int dims[3];
+        image->GetDimensions(dims);
+        bool update = regionTexture.image != image || regionTexture.texture->GetContext() != context ||
+          regionTexture.texture->GetWidth() != dims[0] || regionTexture.texture->GetHeight() != dims[1] ||
+          regionTexture.texture->GetDepth() != dims[2];
+        if (update)
+        {
+          regionTexture = {image, vtkSmartPointer<vtkTextureObject>::New(), 0};
+        }
+        else
+        {
+          update = regionTexture.timestamp < image->GetMTime();
+        }
+        if (update && context)
+        {
+          int isCellData;
+          vtkDataArray* arr = this->Parent->GetScalars(image, this->Parent->ScalarMode,
+            this->Parent->ArrayAccessMode, this->Parent->ArrayId, this->Parent->ArrayName,
+            isCellData);
+          if (!arr)
+          {
+            return;
+          }
+          vtkTextureObject* const to = regionTexture.texture;
+          to->SetContext(context);
+          to->SetMinificationFilter(vtkTextureObject::Nearest);
+          to->SetMagnificationFilter(vtkTextureObject::Nearest);
+          to->SetWrapS(vtkTextureObject::ClampToEdge);
+          to->SetWrapT(vtkTextureObject::ClampToEdge);
+          to->SetWrapR(vtkTextureObject::ClampToEdge);
+          to->Create3DFromRaw(dims[0], dims[1], dims[2], image->GetNumberOfScalarComponents(), image->GetScalarType(), arr->GetVoidPointer(0), intType);
+          regionTexture.timestamp = image->GetMTime();
+          result = true;
+        }
+      };
+
+      uploadRegionTexture(intRegionMask, intMaskIt, this->IntRegionMaskTextures, true);
+      uploadRegionTexture(intRegionColors, intColorIt, this->IntRegionColorTextures, false);
+    }
+    else
+    {
+      if (intMaskIt != this->IntRegionMaskTextures.end())
+      {
+        intMaskIt->second.texture->ReleaseGraphicsResources(ren->GetRenderWindow());
+        this->IntRegionMaskTextures.erase(intMaskIt);
+      }
+      if (intColorIt != this->IntRegionColorTextures.end())
+      {
+        intColorIt->second.texture->ReleaseGraphicsResources(ren->GetRenderWindow());
+        this->IntRegionColorTextures.erase(intColorIt);
+      }
+    }
   }
 
   if (this->Parent->AssembledInputs.size() == 1)
   {
-    this->SetupRegionDepthFramebuffer(ren, this->Parent->AssembledInputs.at(0).Volume->GetProperty()->GetBitRegion().mask);
+    const vtkVolumeProperty* property = this->Parent->AssembledInputs.at(0).Volume->GetProperty();
+    const bool hasBitRegion = property->GetBitRegion().mask && !property->GetBitRegion().colors.empty();
+    const bool hasIntRegion = property->GetIntRegion().mask && property->GetIntRegion().colors &&
+      property->GetIntRegion().colors->GetNumberOfScalarComponents() == 4;
+    this->SetupRegionDepthFramebuffer(ren, hasBitRegion || hasIntRegion);
   }
 
   return result;
@@ -5450,7 +5590,9 @@ void vtkOpenGLGPUVolumeRayCastMapper::GPURender(vtkRenderer* ren,
       this->Impl->BBoxPolyData = nullptr;
   }
 
-  if (!this->Impl->MultiVolume && multiVol && !multiVol->GetVolume(0)->GetVisibility() && multiVol->GetVolume(0)->GetProperty()->GetBitRegion().colors.empty())
+   if (!this->Impl->MultiVolume && multiVol && !multiVol->GetVolume(0)->GetVisibility() &&
+       multiVol->GetVolume(0)->GetProperty()->GetBitRegion().colors.empty() &&
+       !multiVol->GetVolume(0)->GetProperty()->GetIntRegion().colors)
   {
       // there is a single volume in the multi-volume but it is not visible, do not render it
       return;
@@ -5852,6 +5994,7 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetVolumeShaderParameters(
   {
     vtkVolumeInputHelper& volumeInput = input.second;
     vtkVolume* const volume = volumeInput.Volume;
+    this->VolumeParameters[index].intRegionIndex[0] = -1;
     vtkImageData* const imgData = this->Parent->TransformedInputs.at(input.first);
     double bounds[6];
     imgData->GetBounds(bounds);
@@ -6191,7 +6334,9 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetMaskShaderParameters(
 void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetRegionShaderParameters(vtkShaderProgram* prog)
 {
   std::size_t regionIndex = 0,
-              regionOffset = 0;
+              regionOffset = 0,
+              intRegionIndex = 0;
+  const int inputCount = static_cast<int>(this->Parent->AssembledInputs.size());
   for (const auto& in : this->Parent->AssembledInputs)
   {
     const int vi = in.first;
@@ -6223,6 +6368,31 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::SetRegionShaderParameters(vtk
     {
       this->VolumeParameters[vi].noOfComponents_maskIndex_regionIndex_transfer2dIndex[2] = -1;
       //prog->SetUniformi(("in_regionIndex[" + viStr + "]").c_str(), -1);
+    }
+
+    const struct vtkVolumeProperty::IntRegion& intRegion = in.second.Volume->GetProperty()->GetIntRegion();
+    const int* const intRegionColorDimensions = intRegion.colors ? intRegion.colors->GetDimensions() : nullptr;
+    if (intRegion.mask && intRegion.colors &&
+        intRegion.mask->GetScalarType() == VTK_UNSIGNED_SHORT &&
+        intRegion.mask->GetNumberOfScalarComponents() == 1 &&
+        intRegion.colors->GetScalarType() == VTK_FLOAT &&
+        intRegion.colors->GetNumberOfScalarComponents() == 4 &&
+        intRegionColorDimensions[0] == 256 && intRegionColorDimensions[1] == 256 &&
+        intRegionColorDimensions[2] == 1)
+    {
+      auto maskIt = this->IntRegionMaskTextures.find(vi);
+      auto colorIt = this->IntRegionColorTextures.find(vi);
+      if (maskIt != this->IntRegionMaskTextures.end() && colorIt != this->IntRegionColorTextures.end())
+      {
+        this->VolumeParameters[vi].intRegionIndex[0] = static_cast<int>(intRegionIndex);
+        maskIt->second.texture->Activate();
+        colorIt->second.texture->Activate();
+        auto maskTextureUnit = maskIt->second.texture->GetTextureUnit();
+        auto colorsTextureUnit = colorIt->second.texture->GetTextureUnit();
+        prog->SetUniformi(("in_intRegionMask[" + std::to_string(intRegionIndex) + "]").c_str(), maskTextureUnit);
+        prog->SetUniformi(("in_intRegionColors[" + std::to_string(intRegionIndex) + "]").c_str(), colorsTextureUnit);
+        ++intRegionIndex;
+      }
     }
   }
   prog->SetUniformi(("in_regionOffset[" + std::to_string(this->Parent->AssembledInputs.size()) + "]").c_str(), regionOffset);
@@ -6441,11 +6611,15 @@ void vtkOpenGLGPUVolumeRayCastMapper::vtkInternal::RenderSingleInput(vtkRenderer
   const int numComp = volumeTex->GetLoadedScalars()->GetNumberOfComponents();
   while (block != nullptr)
   {
-    bool hasRegions = vol->GetProperty()->GetBitRegion().mask;
+     const auto* property = vol->GetProperty();
+     bool hasRegions = (property->GetBitRegion().mask && !property->GetBitRegion().colors.empty()) ||
+       (property->GetIntRegion().mask && property->GetIntRegion().colors &&
+        property->GetIntRegion().colors->GetNumberOfScalarComponents() == 4);
     if (!this->Parent->SimpleRegionRendering && hasRegions && this->RegionDepthFBO && this->RegionDepthShaderProgram)
     {
         float minimumRegionDepth = std::numeric_limits<float>::max();
-        if (vol->GetProperty()->GetBitRegion().colors.size() > 0)
+         if (!vol->GetProperty()->GetBitRegion().colors.empty() ||
+             (vol->GetProperty()->GetIntRegion().mask && vol->GetProperty()->GetIntRegion().colors))
         {
             const int numSamplers = (independent ? numComp : 1);
             this->ShaderCache->ReadyShaderProgram(this->RegionDepthShaderProgram);

@@ -80,6 +80,13 @@ public:
     std::vector<vtkVector4<float>> colors;
   };
 
+  struct IntRegion
+  {
+    vtkSmartPointer<vtkImageData> mask;
+
+    vtkSmartPointer<vtkImageData> colors;
+  };
+
   struct BoxMask
   {
       double origin[3],
@@ -563,6 +570,12 @@ public:
   vtkSetMacro(BitRegionValxD, double);
   vtkGetMacro(BitRegionValxD, double);
 
+  const struct IntRegion& GetIntRegion() const
+  {
+      return this->IntRegion;
+  }
+  void SetIntRegion(const struct IntRegion& intRegion) noexcept;
+
 protected:
   vtkVolumeProperty();
   ~vtkVolumeProperty() override;
@@ -633,6 +646,8 @@ protected:
   float BitRegionLightFocus;
   float BitRegionValD;
   float BitRegionValxD;
+
+  struct IntRegion IntRegion;
 
 private:
   vtkVolumeProperty(const vtkVolumeProperty&) = delete;
