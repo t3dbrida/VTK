@@ -62,6 +62,11 @@ Requirements
 
 In general VTK tries to be as portable as possible; the specific configurations below are known to work and tested.
 
+When configuring with CMake 4 or newer, VTK automatically sets
+`CMAKE_POLICY_VERSION_MINIMUM` to `3.5` for compatibility with the older
+CMake declarations in bundled dependencies. No preset is required for this
+override; other compatibility issues may still require changes.
+
 VTK supports the following C++11 compilers:
 1. Microsoft Visual Studio 2013 or newer
 2. gcc 4.8.3 or newer

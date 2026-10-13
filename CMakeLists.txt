@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.3...3.12 FATAL_ERROR)
 
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "4.0")
+  set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+endif()
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND CMAKE_VERSION VERSION_LESS 3.7)
   message(FATAL_ERROR "CMake 3.7 or above is required to build for Android")
 endif()
